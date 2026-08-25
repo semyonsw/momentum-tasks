@@ -1,5 +1,5 @@
 /**
- * TopWeightChart — one line, three gridlines, no axes box.
+ * TrendChart — one line, three gridlines, no axes box. The app's only chart.
  *
  *   80 ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄●━━●
  *                        ╱
@@ -9,11 +9,15 @@
  *      ────────────────────────────
  *      11 JUN        9 JUL    8 AUG
  *
- * Plots TOP WORKING WEIGHT PER SESSION, never per set. Real sessions ramp and
- * drop inside one exercise ("80 kg × 7, then 75 kg × 7 7 6"); charting every set
- * would draw a sawtooth and fabricate a plateau out of a warm-up. One number per
- * session is the honest signal, and it is the same number the overload engine
- * judges — so the chart can never disagree with the nudge.
+ * ONE POINT PER SESSION, whatever the series is — top working weight, reps in a
+ * session, kilograms moved in a workout. Never per set: a real session ramps and
+ * drops inside one exercise ("80 kg × 7, then 75 kg × 7 7 6"), so charting sets
+ * draws a sawtooth and invents a plateau out of a warm-up. `lib/trends.ts` owns
+ * every series this renders, which is why they all fit one component.
+ *
+ * The value axis is not forced to zero. This chart is read for DIRECTION — "is it
+ * going up" — and a 75-to-80 kg climb against a zero baseline is a flat line. The
+ * gridlines carry the actual numbers, so the scale is never a mystery.
  *
  * No fill gradient, no axes box, no second series. The gridlines are `green-dim`
  * because they are part of the same instrument as the line; the baseline is
@@ -24,12 +28,12 @@ import { View } from 'react-native';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 
 import { formatChartDate } from '../lib/units';
+import type { TrendPoint } from '../lib/trends';
 import { palette } from '../theme/tokens';
 
-export interface TopWeightPoint {
-  /** ISO date of the session. */
-  performedAt: string;
-  topWeightKg: number;
+/** Rounded integers: right for reps, kilograms and plain counts. */
+function defaultFormat(value: number): string {
+  return String(Math.round(value));
 }
 
 /* Geometry from the design: a 342 × 160 box, plot area y 8–104, 34 wide gutter. */
@@ -41,32 +45,38 @@ const PLOT_BOTTOM = 104;
 const BASELINE_Y = 128;
 const LABEL_Y = 150;
 
-interface TopWeightChartProps {
-  points: TopWeightPoint[];
+interface TrendChartProps {
+  /** Oldest first, one point per session. Under two points nothing is drawn. */
+  points: readonly TrendPoint[];
+  /**
+   * How a gridline's number reads — "80", "2:00", "4 720". Defaults to a rounded
+   * integer, which is right for reps, kilograms and counts.
+   */
+  formatValue?: (value: number) => string;
 }
 
-export function TopWeightChart({ points }: TopWeightChartProps) {
+export function TrendChart({ points, formatValue = defaultFormat }: TrendChartProps) {
   if (points.length < 2) return null;
 
-  const weights = points.map((p) => p.topWeightKg);
-  const max = Math.max(...weights);
-  const min = Math.min(...weights);
+  const values = points.map((p) => p.value);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
   /*
-   * A flat run (every session the same weight — exactly the case the nudge
-   * fires on) would divide by zero and collapse the line onto one gridline.
-   * Give it a nominal span so it draws as a level line mid-plot instead.
+   * A flat run (every session the same number — exactly the case the nudge fires
+   * on) would divide by zero and collapse the line onto one gridline. Give it a
+   * nominal span so it draws as a level line mid-plot instead.
    */
   const span = max === min ? Math.max(max * 0.1, 1) : max - min;
   const floor = max === min ? min - span / 2 : min;
 
   const x = (index: number) =>
     GUTTER + 18 + (index * (WIDTH - GUTTER - 40)) / Math.max(1, points.length - 1);
-  const y = (weight: number) => PLOT_BOTTOM - ((weight - floor) / span) * (PLOT_BOTTOM - PLOT_TOP);
+  const y = (value: number) => PLOT_BOTTOM - ((value - floor) / span) * (PLOT_BOTTOM - PLOT_TOP);
 
-  /* Three gridlines: the top weight, the bottom, and the midpoint. */
+  /* Three gridlines: the highest value, the lowest, and the midpoint. */
   const gridlines = [max, floor + span / 2, floor];
 
-  const polyline = points.map((p, i) => `${x(i)},${y(p.topWeightKg)}`).join(' ');
+  const polyline = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
   const lastIndex = points.length - 1;
 
   // First, middle and last dates only — a label under every point would be a
@@ -78,13 +88,13 @@ export function TopWeightChart({ points }: TopWeightChartProps) {
   return (
     <View>
       <Svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
-        {gridlines.map((weight) => (
+        {gridlines.map((value) => (
           <Line
-            key={`grid-${weight}`}
+            key={`grid-${value}`}
             x1={GUTTER}
-            y1={y(weight)}
+            y1={y(value)}
             x2={WIDTH}
-            y2={y(weight)}
+            y2={y(value)}
             stroke={palette.greenDim}
             strokeWidth={1}
           />
@@ -99,17 +109,17 @@ export function TopWeightChart({ points }: TopWeightChartProps) {
           strokeWidth={1}
         />
 
-        {gridlines.map((weight) => (
+        {gridlines.map((value) => (
           <SvgText
-            key={`axis-${weight}`}
+            key={`axis-${value}`}
             x={0}
-            y={y(weight) + 4}
+            y={y(value) + 4}
             fill={palette.inkFaint}
             fontSize={11}
             fontWeight="600"
             letterSpacing={1.1}
           >
-            {String(Math.round(weight))}
+            {formatValue(value)}
           </SvgText>
         ))}
 
@@ -127,17 +137,17 @@ export function TopWeightChart({ points }: TopWeightChartProps) {
         {points.map((point, index) =>
           index === lastIndex ? (
             <Circle
-              key={point.performedAt}
+              key={`${point.at}-${index}`}
               cx={x(index)}
-              cy={y(point.topWeightKg)}
+              cy={y(point.value)}
               r={4}
               fill={palette.greenBright}
             />
           ) : (
             <Circle
-              key={point.performedAt}
+              key={`${point.at}-${index}`}
               cx={x(index)}
-              cy={y(point.topWeightKg)}
+              cy={y(point.value)}
               r={3}
               fill={palette.bg}
               stroke={palette.greenBright}
@@ -148,7 +158,7 @@ export function TopWeightChart({ points }: TopWeightChartProps) {
 
         {labelled.map((index) => (
           <SvgText
-            key={`label-${points[index].performedAt}`}
+            key={`label-${index}`}
             x={x(index)}
             y={LABEL_Y}
             textAnchor={index === 0 ? 'start' : index === lastIndex ? 'end' : 'middle'}
@@ -157,7 +167,7 @@ export function TopWeightChart({ points }: TopWeightChartProps) {
             fontWeight="600"
             letterSpacing={1.1}
           >
-            {formatChartDate(points[index].performedAt)}
+            {formatChartDate(points[index].at)}
           </SvgText>
         ))}
       </Svg>
