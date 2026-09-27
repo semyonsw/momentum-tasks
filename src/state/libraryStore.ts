@@ -163,6 +163,17 @@ interface LibraryState {
     exercises: number;
     routines: number;
   };
+  /**
+   * Put a whole library in place — the exercises and the routines — keeping the
+   * sequence, with every step that no longer resolves dropped.
+   *
+   * One caller: an AI suggestion being applied, and the Undo that takes it back.
+   * `lib/ai/aiProposal.ts` computes the next library as a VALUE, which is what
+   * makes the snapshot from before it a working Undo; this is the one write, and
+   * it goes through the same validator a rehydration does, so a proposal can no
+   * more put a malformed row on disk than a corrupted blob can.
+   */
+  replaceLibrary: (next: { exercises: Exercise[]; routines: Routine[] }) => void;
 }
 
 /** How many routines an exercise appears in — for the delete confirmation copy. */
@@ -634,6 +645,11 @@ export const useLibrary = create<LibraryState>()(
 
       restoreSeedLibrary: () =>
         set({ exercises: seedExercises, routines: seedRoutines, sequence: NO_SEQUENCE }),
+
+      replaceLibrary: (next) => {
+        const library = sanitizeLibrary(next.exercises, next.routines, get());
+        set({ ...library, sequence: sanitizeSequence(get().sequence, library.routines) });
+      },
 
       importLibrary: (raw) => {
         /*

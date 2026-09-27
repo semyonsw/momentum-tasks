@@ -75,6 +75,8 @@ import {
 } from '../components/glass';
 import { pressedStyle } from '../components/motion';
 import { Kicker, Separator, StepperRow, TextButton, Toggle } from '../components/primitives';
+import { SparkleCircle } from '../components/AiEntryCard';
+import { useAi } from '../state/aiStore';
 import { runBackupNow } from '../hooks/useAutoBackup';
 import { describeBackupAge } from '../lib/autoBackup';
 import {
@@ -98,7 +100,7 @@ import { commit, tap } from '../lib/feedback';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_NAMES, type Language } from '../lib/i18n';
 import { applyBackup, currentSnapshot, exportBackupText } from '../state/dataTransfer';
 import { SETTING_LIMITS, useSettings } from '../state/settingsStore';
-import { danger, palette, radius } from '../theme/tokens';
+import { danger, halo, palette, radius } from '../theme/tokens';
 
 /** A file that has been read and understood, waiting for a yes. */
 interface PendingImport {
@@ -128,12 +130,15 @@ interface SettingsHomeScreenProps {
   onOpenWorkoutSettings: () => void;
   onOpenTaskSettings: () => void;
   onOpenMoneySettings: () => void;
+  /** `AI assistant` — the key, the model, the test. */
+  onOpenAiSettings: () => void;
 }
 
 export function SettingsHomeScreen({
   onOpenWorkoutSettings,
   onOpenTaskSettings,
   onOpenMoneySettings,
+  onOpenAiSettings,
 }: SettingsHomeScreenProps) {
   const settings = useSettings();
   const t = useT();
@@ -354,6 +359,13 @@ export function SettingsHomeScreen({
               'Each one holds only what its own section reads. Rest, plates and weekly targets are training; the automatic tick is the daily tasks; what amounts are counted in is the expenses.',
             )}
           </Text>
+
+          {/* THE ASSISTANT, between the sections it reads and the general
+              block. One row, whose second line is the one fact about it that
+              matters — whether a key has passed its test — and a lit dot when
+              it has. */}
+          <Kicker className="mx-lg mb-sm mt-xxl">{t('AI')}</Kicker>
+          <AiSettingsRow onPress={onOpenAiSettings} />
 
           {/* ----------------------------------------------------------
               AUTOMATIC BACKUP — the row that makes the one below it optional.
@@ -599,6 +611,71 @@ export function SettingsHomeScreen({
 }
 
 /* ------------------------------------------------------------------ */
+
+function AiSettingsRow({ onPress }: { onPress: () => void }) {
+  const t = useT();
+  const status = useAi((s) => s.status);
+  const ready = status === 'ready';
+  const line = ready
+    ? t('Google Gemini · ready')
+    : status === 'error'
+      ? t('Key failed the test')
+      : t('Not connected');
+  return (
+    <GlassSurface tier="card" radius={radius.row} shadow="e1" flat className="mx-lg">
+      <BubblePressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${t('AI assistant')}. ${line}`}
+        style={(state) => [
+          pressedStyle(state),
+          {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+          },
+        ]}
+      >
+        <View style={{ marginRight: 12 }}>
+          <SparkleCircle size={40} />
+        </View>
+        <View className="flex-1 pr-md">
+          <Text
+            allowFontScaling={false}
+            style={{ fontSize: 16, lineHeight: 21 }}
+            className="font-medium text-ink"
+          >
+            {t('AI assistant')}
+          </Text>
+          <View className="mt-[2px] flex-row items-center">
+            {ready ? (
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  marginRight: 6,
+                  backgroundColor: palette.greenBright,
+                  boxShadow: [...halo.repeating],
+                }}
+              />
+            ) : null}
+            <Text
+              allowFontScaling={false}
+              numberOfLines={1}
+              style={{ fontSize: 12 }}
+              className={ready ? 'text-green-bright' : 'text-ink-faint'}
+            >
+              {line}
+            </Text>
+          </View>
+        </View>
+        <Icon name="chevron-right" size={16} color={palette.inkFaint} />
+      </BubblePressable>
+    </GlassSurface>
+  );
+}
 
 /**
  * One of the three doors at the top, as a row of the one card.

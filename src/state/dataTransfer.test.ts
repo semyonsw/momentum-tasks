@@ -4,6 +4,7 @@ import { UnreadableLogError, applyBackup, currentSnapshot, exportBackupText } fr
 import { useLibrary } from './libraryStore';
 import { DEFAULT_SETTINGS, useSettings } from './settingsStore';
 import { useWorkoutHistory } from './workoutHistoryStore';
+import { useAi } from './aiStore';
 import { parseBackup } from '../lib/backup';
 import { buildDraftSession, type DraftSession } from '../lib/draft';
 import { seedExercises, seedRoutine, seedUser } from '../data/seed';
@@ -322,5 +323,32 @@ describe('a backup is refused when the log could not be read', () => {
     useWorkoutHistory.setState({ loadFailed: false });
 
     expect(() => exportBackupText()).not.toThrow();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe('what the assistant leaves out of a backup', () => {
+  it('carries neither a chat nor anything that looks like a key', () => {
+    const marker = 'CHAT-MARKER-7f3kQ2';
+    useAi.getState().clearChat('Workout');
+    useAi.getState().appendMessage('Workout', {
+      id: 'm1',
+      role: 'user',
+      text: marker,
+      at: '2026-09-27T18:00:00.000Z',
+    });
+    useAi.getState().markReady(800);
+
+    const text = exportBackupText();
+
+    expect(text).not.toContain(marker);
+    expect(text).not.toContain('AIza');
+    expect(text).not.toContain('gemini');
+    // And the store the chats live in has no field a key could be kept in.
+    expect(Object.keys(useAi.getState())).not.toContain('key');
+    expect(Object.keys(useAi.getState())).not.toContain('apiKey');
+    useAi.getState().clearChat('Workout');
+    useAi.getState().markOff();
   });
 });

@@ -5,6 +5,7 @@
  *   stack: session · routineEditor · addExercise · createExercise · editExercise
  *          · exerciseHistory · sequence · workoutHistory · tasksHistory
  *          · moneyHistory · workoutSettings · taskSettings · moneySettings
+ *          · aiSettings · aiChat · aiReview
  *
  * ── A SECTION IS A LOG, AND ITS PAST IS NOT A SECTION ──────────────────────
  *
@@ -46,7 +47,7 @@ import { BackHandler, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
-import { Toast } from '../components/glass';
+import { Toast, type ToastAction } from '../components/glass';
 import { useOverlayOpen } from '../components/overlay';
 import { PanelEnter, SlideIn } from '../components/motion';
 import { PrimaryButton } from '../components/primitives';
@@ -80,6 +81,12 @@ import { MoneyHistoryScreen } from '../screens/MoneyHistoryScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TasksScreen } from '../screens/TasksScreen';
 import { TasksHistoryScreen } from '../screens/TasksHistoryScreen';
+import { AiChatScreen } from '../screens/AiChatScreen';
+import { AiReviewScreen } from '../screens/AiReviewScreen';
+import { AiSettingsScreen } from '../screens/AiSettingsScreen';
+import { applyProposal, discardProposal } from '../state/aiActions';
+import { useAi } from '../state/aiStore';
+import type { AiSection } from '../lib/ai/aiSchema';
 import {
   historyByExerciseId,
   lastTrainedByRoutine,
@@ -180,7 +187,16 @@ type Route =
       accountId: ID | null;
       direction?: Direction;
       day?: string;
-    };
+    }
+  /* The assistant. Settings is reached from a section's sparkle when no key is
+     connected, and carries the section and the question along so that passing
+     the test lands on the chat that was asked for. */
+  | { name: 'aiSettings'; from?: AiSection; prompt?: string }
+  | { name: 'aiChat'; section: AiSection; prompt?: string }
+  | { name: 'aiReview'; proposalId: string };
+
+/** How long a toast with an Undo stays: long enough to read and reach. */
+const UNDO_TOAST_MS = 4500;
 
 export function AppShell() {
   const t = useT();
@@ -200,12 +216,19 @@ export function AppShell() {
    * gone by the time the amount exists, and a toast rendered by a component
    * that has just unmounted is a toast nobody sees.
    */
-  const [toast, setToastState] = useState<{ text: string; key: number } | null>(null);
+  const [toast, setToastState] = useState<{
+    text: string;
+    key: number;
+    action?: ToastAction;
+  } | null>(null);
   /* Keyed, so a second toast with the same words still replays its entrance. */
-  const setToast = useCallback((text: string) => setToastState({ text, key: Date.now() }), []);
+  const setToast = useCallback(
+    (text: string, action?: ToastAction) => setToastState({ text, key: Date.now(), action }),
+    [],
+  );
   useEffect(() => {
     if (toast == null) return undefined;
-    const timer = setTimeout(() => setToastState(null), 1900);
+    const timer = setTimeout(() => setToastState(null), toast.action ? UNDO_TOAST_MS : 1900);
     return () => clearTimeout(timer);
   }, [toast]);
   /**
@@ -344,6 +367,11 @@ export function AppShell() {
   const deleteWorkoutExercise = useWorkoutHistory((s) => s.deleteWorkoutExercise);
   const numbering = useWorkoutHistory((s) => s.numbering);
   const setWorkoutNumber = useWorkoutHistory((s) => s.setWorkoutNumber);
+
+  /* The assistant: whether a key has passed its test, and the routines it made. */
+  const aiStatus = useAi((s) => s.status);
+  const aiReady = aiStatus === 'ready';
+  const unseenAiRoutines = useAi((s) => s.unseenRoutineIds);
 
   const exercisesById = useMemo<Record<ID, Exercise>>(
     () => Object.fromEntries(exercises.map((e) => [e.id, e])),
@@ -621,9 +649,10 @@ export function AppShell() {
           exerciseCount: items.length,
           setCount: items.reduce((total, item) => total + item.targetSets, 0),
           lastTrainedAt: lastTrained[routine.id] ?? null,
+          isAi: unseenAiRoutines.includes(routine.id),
         };
       }),
-    [exercisesById, lastTrained, routines, lang],
+    [exercisesById, lastTrained, routines, lang, unseenAiRoutines],
   );
 
   /**
@@ -671,6 +700,8 @@ export function AppShell() {
    */
   const handleOpenWorkout = useCallback(
     (routineId: ID) => {
+      // An AI routine stops saying so once it has been opened. See `aiStore`.
+      useAi.getState().markRoutineSeen(routineId);
       /*
        * A STARTED session is never clobbered: if one exists — the user backed out
        * of it and came back — this returns to it rather than rebuilding the draft,
@@ -874,9 +905,103 @@ export function AppShell() {
     [historyById, lang],
   );
 
+  /**
+   * A section's sparkle or chip. With a key that passed its test it opens that
+   * section's chat — asking the chip's question, if a chip was tapped. Without
+   * one it opens the AI settings, carrying both along, so the test's ready screen
+   * can finish the trip the user started.
+   */
+  const openAi = useCallback(
+    (section: AiSection, prompt?: string) => {
+      if (useAi.getState().status === 'ready') push({ name: 'aiChat', section, prompt });
+      else push({ name: 'aiSettings', from: section, prompt });
+    },
+    [push],
+  );
+
+  /**
+   * `Add to routines` / `Apply changes`, from the card or the review screen —
+   * the one write an AI suggestion makes, and its toast with the Undo. Here and
+   * not in the chat, because the toast has to outlive the review screen that
+   * raised it.
+   */
+  const acceptProposal = useCallback(
+    (proposalId: string) => {
+      const applied = applyProposal(proposalId);
+      if (!applied) {
+        setToast(t('Nothing left to apply'));
+        return;
+      }
+      setToast(applied.message, { label: t('Undo'), onPress: applied.undo });
+    },
+    [setToast, t],
+  );
+
+  /* An AI routine stops saying so once its editor has been opened, too. */
+  useEffect(() => {
+    if (top?.name === 'routineEditor') useAi.getState().markRoutineSeen(top.routineId);
+  }, [top]);
+
   /* ------------------------------------------------------------------ */
   /* Pushed screens                                                      */
   /* ------------------------------------------------------------------ */
+
+  if (top?.name === 'aiSettings') {
+    const route = top;
+    return (
+      <AiSettingsScreen
+        from={route.from}
+        onBack={pop}
+        onOpenChat={(section) => {
+          /* The ready screen's button: the settings screen is REPLACED by the
+             chat, so back from the chat lands where the trip began. */
+          setTab(section);
+          replaceTop({ name: 'aiChat', section, prompt: route.prompt });
+        }}
+      />
+    );
+  }
+
+  if (top?.name === 'aiChat') {
+    const route = top;
+    return (
+      <View className="flex-1">
+        <AiChatScreen
+          key={route.section}
+          section={route.section}
+          prompt={route.prompt}
+          /* Dropped from the route once sent, so coming back from the review
+             screen does not ask it a second time. */
+          onPromptSent={() => replaceTop({ name: 'aiChat', section: route.section })}
+          onBack={pop}
+          onReview={(proposalId) => push({ name: 'aiReview', proposalId })}
+          onAccept={acceptProposal}
+        />
+        {toast ? (
+          <Toast key={toast.key} label={toast.text} action={toast.action} bottom={132} />
+        ) : null}
+      </View>
+    );
+  }
+
+  if (top?.name === 'aiReview') {
+    const route = top;
+    return (
+      <AiReviewScreen
+        proposalId={route.proposalId}
+        onBack={pop}
+        onAccept={() => {
+          pop();
+          acceptProposal(route.proposalId);
+        }}
+        onDiscard={() => {
+          discardProposal(route.proposalId);
+          pop();
+          setToast(t('Suggestion discarded'));
+        }}
+      />
+    );
+  }
 
   if (top?.name === 'session') {
     return (
@@ -1465,6 +1590,8 @@ export function AppShell() {
               onOpenHistory={() => push({ name: 'workoutHistory' })}
               onOpenRoutines={() => push({ name: 'routines' })}
               onOpenLibrary={() => push({ name: 'library' })}
+              aiReady={aiReady}
+              onOpenAi={(prompt) => openAi('Workout', prompt)}
               justSaved={justSaved}
               onCelebrated={() => setJustSaved(null)}
             />
@@ -1479,6 +1606,8 @@ export function AppShell() {
                  that picked it being unmounted. */
               day={taskDay}
               onChangeDay={setPinnedTaskDay}
+              aiReady={aiReady}
+              onOpenAi={(prompt) => openAi('Tasks', prompt)}
             />
           ) : null}
 
@@ -1504,6 +1633,8 @@ export function AppShell() {
               onOpenHistory={(accountId, anchor) =>
                 push({ name: 'moneyHistory', accountId, day: anchor })
               }
+              aiReady={aiReady}
+              onOpenAi={(prompt) => openAi('Expenses', prompt)}
             />
           ) : null}
 
@@ -1512,6 +1643,7 @@ export function AppShell() {
               onOpenWorkoutSettings={() => push({ name: 'workoutSettings' })}
               onOpenTaskSettings={() => push({ name: 'taskSettings' })}
               onOpenMoneySettings={() => push({ name: 'moneySettings' })}
+              onOpenAiSettings={() => push({ name: 'aiSettings' })}
             />
           ) : null}
         </PanelEnter>
@@ -1521,7 +1653,7 @@ export function AppShell() {
 
       {/* Last child, over the nav pill, and non-interactive: pressing the
           floating action twice in a row must still work while it is up. */}
-      {toast ? <Toast key={toast.key} label={toast.text} /> : null}
+      {toast ? <Toast key={toast.key} label={toast.text} action={toast.action} /> : null}
     </View>
   );
 }

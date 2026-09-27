@@ -70,7 +70,14 @@ bare `No such file or directory`, twice over — once per asset, because its two
 work actions run in parallel and race to create the `out/assets` directory they
 share. Nothing is wrong. Re-run the same command; the task succeeds on the
 second pass and everything upstream of it is cached, so it costs seconds rather
-than the eleven minutes the failed build did. `android/local.properties`
+than the eleven minutes the failed build did. A third, and this one is NOT a flake — it fails identically every time:
+`:expo:mergeReleaseResources` dies with `NullPointerException … File.getParentFile()
+is null`. Library build output lives inside `node_modules/<lib>/android/build/`, so
+a build on the Windows box leaves an incremental merge record there
+(`intermediates/incremental/release/mergeReleaseResources/merger.xml`) full of
+`C:\Users\…\.gradle` paths, which have no parent on Linux. Delete that one
+directory (`grep -l 'C:\\Users' node_modules/*/android/build/intermediates/incremental/release/*/merger.xml`
+finds any others) and re-run; it is a cache and regenerates. `android/local.properties`
 needs pointing at the Linux SDK for the same reason (`sdk.dir=/root/android-sdk`);
 both files are gitignored, so neither correction can follow the repo to the other
 machine and break it.

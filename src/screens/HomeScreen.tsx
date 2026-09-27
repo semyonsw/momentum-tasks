@@ -76,6 +76,7 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
 
+import { AiEntryCard } from '../components/AiEntryCard';
 import { Icon } from '../components/Icon';
 import { SectionTopBar } from '../components/SectionTopBar';
 import { SparkBurst, SPARK_MS } from '../components/SparkBurst';
@@ -116,6 +117,8 @@ export interface RoutineChoice {
   setCount: number;
   /** When it was last trained, for the hero's `LAST` stat. Null if never. */
   lastTrainedAt: string | null;
+  /** Made by the assistant and not opened yet — the row's `AI` pill. */
+  isAi?: boolean;
 }
 
 export interface NextUpPlan extends RoutineChoice {
@@ -176,6 +179,10 @@ interface HomeScreenProps {
    */
   onOpenRoutines: () => void;
   onOpenLibrary: () => void;
+  /** A key has passed its test: the sparkle is lit. See `components/AiEntryCard.tsx`. */
+  aiReady: boolean;
+  /** The training chat, asking `prompt` if a chip was tapped. */
+  onOpenAi: (prompt?: string) => void;
   /**
    * The workout that was just saved, if this screen is what the save came back
    * to: the hero throws its sparks and the new row grows into Recent. Cleared
@@ -198,6 +205,8 @@ export function HomeScreen({
   onOpenHistory,
   onOpenRoutines,
   onOpenLibrary,
+  aiReady,
+  onOpenAi,
   justSaved = null,
   onCelebrated,
 }: HomeScreenProps) {
@@ -261,12 +270,19 @@ export function HomeScreen({
       <StatusBar style="light" />
       <Lamps section="Workout" />
 
-      {/* Three destinations, one size, left to right: the routines, the library,
-          the past. See `components/SectionTopBar.tsx` on why they are up here
+      {/* Four destinations, one size, left to right: the assistant, the
+          routines, the library, the past. See `components/SectionTopBar.tsx` on why they are up here
           and why a commit action never is. */}
       <SectionTopBar
         title={t('Workout')}
         actions={[
+          {
+            key: 'ai',
+            icon: 'sparkle',
+            label: t('Open the AI assistant'),
+            lit: aiReady,
+            onPress: () => onOpenAi(),
+          },
           {
             key: 'routines',
             icon: 'routines',
@@ -309,6 +325,8 @@ export function HomeScreen({
                 <Hero plan={next} number={nextNumber} plural={plural} />
               </Animated.View>
             ) : null}
+
+            <AiEntryCard section="Workout" ready={aiReady} onOpen={onOpenAi} />
 
             {others.length > 0 ? (
               <>
@@ -1235,11 +1253,15 @@ function ChoiceRow({ choice, onPress }: { choice: RoutineChoice; onPress: () => 
           {/* Both lines RUN rather than ellipsise — two routines whose names
               differ only at the end are two routines. */}
           <View className="flex-1 pr-md" style={{ minWidth: 0 }}>
-            <RunningText
-              text={choice.name}
-              fadeColor={FADE_ON.card}
-              className="text-body font-medium text-ink"
-            />
+            <View className="flex-row items-center">
+              <RunningText
+                text={choice.name}
+                fadeColor={FADE_ON.card}
+                containerStyle={{ flexShrink: 1 }}
+                className="text-body font-medium text-ink"
+              />
+              {choice.isAi ? <AiPill /> : null}
+            </View>
             <RunningText
               text={detail}
               fadeColor={FADE_ON.card}
@@ -1266,6 +1288,35 @@ function ChoiceRow({ choice, onPress }: { choice: RoutineChoice; onPress: () => 
         </BubblePressable>
       </GlassSurface>
     </Animated.View>
+  );
+}
+
+/**
+ * `AI`, beside a routine the assistant made, until it is first opened — a
+ * statement of where the row came from, in the 9 px the proposal tags use.
+ */
+function AiPill() {
+  return (
+    <View
+      style={{
+        marginLeft: 8,
+        height: 18,
+        paddingHorizontal: 6,
+        justifyContent: 'center',
+        borderRadius: radius.pill,
+        borderWidth: 1,
+        borderColor: 'rgba(63,169,108,0.30)',
+        backgroundColor: 'rgba(63,169,108,0.16)',
+      }}
+    >
+      <Text
+        allowFontScaling={false}
+        style={{ fontSize: 9, letterSpacing: 0.9 }}
+        className="font-semibold uppercase text-green-bright"
+      >
+        AI
+      </Text>
+    </View>
   );
 }
 

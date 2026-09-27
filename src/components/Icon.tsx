@@ -1,5 +1,5 @@
 /**
- * Icon — the entire icon set. Ten glyphs, one drag handle, nothing else.
+ * Icon — the entire icon set. The glyphs below, one drag handle, nothing else.
  *
  *   check · plus · minus · chevron ×3 · trending-up · trending-down · x
  *   play · pause                                     (+ the reorder handle)
@@ -82,7 +82,16 @@ export type IconName =
    */
   | 'money'
   | 'flame'
-  | 'backspace';
+  | 'backspace'
+  /**
+   * THE ONE MARK FOR "THE ASSISTANT", and it is used on nothing else: the
+   * corner of the three sections, the card under each hero, the settings row,
+   * the chat. A four-point star and a small plus — the plus is what separates it
+   * from a decoration, the same way the rewind notch separates `history` from
+   * `clock`. It is a destination like the other corner glyphs, not a verb, so
+   * it is drawn at the quieter weight.
+   */
+  | 'sparkle';
 
 interface IconProps {
   name: IconName;
@@ -114,6 +123,7 @@ const STROKE: Record<IconName, number> = {
   money: 2,
   flame: 2,
   backspace: 2,
+  sparkle: 2,
 };
 
 /**
@@ -194,6 +204,12 @@ const PATHS: Record<IconName, string[]> = {
   flame: [
     'M12 3.2c3.6 3.3 5.6 6 5.6 8.9a5.6 5.6 0 11-11.2 0c0-2.9 2-5.6 5.6-8.9z',
     'M12 13.4c1.4 1.1 2.1 2 2.1 3a2.1 2.1 0 11-4.2 0c0-1 .7-1.9 2.1-3z',
+  ],
+  // The star's four points on the 24 grid's centre-left, and the plus in the
+  // corner it leaves free.
+  sparkle: [
+    'M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z',
+    'M18.5 15.5v4M16.5 17.5h4',
   ],
   // A die on its five face: a rounded square, and the pips come from `DOTS`.
   dice: [

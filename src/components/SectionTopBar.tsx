@@ -75,7 +75,7 @@ import { GlassBar, SpecularEdge } from './glass';
 import { pressedStyle } from './motion';
 import { SlidingThumb } from './SlidingThumb';
 import { useT } from '../hooks/useT';
-import { palette, radius } from '../theme/tokens';
+import { glass, halo, palette, radius } from '../theme/tokens';
 
 export interface TopBarAction {
   /** Stable across renders, so a row of three does not re-key on every tick. */
@@ -86,6 +86,12 @@ export interface TopBarAction {
   onPress: () => void;
   /** Lit, for an action that is currently the answer — the language in force. */
   active?: boolean;
+  /**
+   * The whole circle lit, not just its glyph: the assistant's sparkle once a key
+   * has passed its test. A green glyph alone says "selected"; a lit circle says
+   * "this is switched on and waiting", which is what a connected assistant is.
+   */
+  lit?: boolean;
 }
 
 interface SectionTopBarProps {
@@ -192,8 +198,9 @@ function TopBarButton({ action }: { action: TopBarAction }) {
           borderRadius: radius.pill,
           overflow: 'hidden',
           borderWidth: 1,
-          borderColor: 'rgba(236,241,238,0.07)',
-          backgroundColor: 'rgba(236,241,238,0.055)',
+          borderColor: action.lit ? glass.greenEdge : 'rgba(236,241,238,0.07)',
+          backgroundColor: action.lit ? 'rgba(63,169,108,0.16)' : 'rgba(236,241,238,0.055)',
+          ...(action.lit ? { boxShadow: [...halo.repeating] } : {}),
         },
       ]}
     >
@@ -201,11 +208,14 @@ function TopBarButton({ action }: { action: TopBarAction }) {
           the heaviest blur in the app; blurring a 36 dp circle against a surface
           that is itself blurred buys nothing the tint does not, and it would be
           three more native layers on the one bar that is always on screen. */}
-      <SpecularEdge color="rgba(236,241,238,0.10)" radius={radius.pill} />
+      <SpecularEdge
+        color={action.lit ? 'rgba(236,241,238,0.12)' : 'rgba(236,241,238,0.10)'}
+        radius={radius.pill}
+      />
       <Icon
         name={action.icon}
         size={18}
-        color={action.active ? palette.greenBright : palette.inkMuted}
+        color={action.active || action.lit ? palette.greenBright : palette.inkMuted}
       />
     </BubblePressable>
   );

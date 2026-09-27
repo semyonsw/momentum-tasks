@@ -119,6 +119,7 @@ import { useMotionScale } from '../hooks/useMotionScale';
 import { Icon } from '../components/Icon';
 import { ReorderRow } from '../components/ReorderRow';
 import { SectionTopBar } from '../components/SectionTopBar';
+import { AiEntryCard } from '../components/AiEntryCard';
 import { SparkBurst, SPARK_MS } from '../components/SparkBurst';
 import { StreakFlame } from '../components/StreakFlame';
 import { CommitMark, FloatingAction, GlassSurface, Lamps, useBarInsets } from '../components/glass';
@@ -161,9 +162,20 @@ interface TasksScreenProps {
   /** The day the grid last sent back, so opening a square lands here. */
   day: string;
   onChangeDay: (day: string) => void;
+  /** A key has passed its test: the sparkle is lit. */
+  aiReady: boolean;
+  /** The habits chat, asking `prompt` if a chip was tapped. */
+  onOpenAi: (prompt?: string) => void;
 }
 
-export function TasksScreen({ onOpenTask, onOpenHistory, day, onChangeDay }: TasksScreenProps) {
+export function TasksScreen({
+  onOpenTask,
+  onOpenHistory,
+  day,
+  onChangeDay,
+  aiReady,
+  onOpenAi,
+}: TasksScreenProps) {
   const t = useT();
   const lang = useLanguage();
   const tasks = useTasks((s) => s.tasks);
@@ -280,6 +292,20 @@ export function TasksScreen({ onOpenTask, onOpenHistory, day, onChangeDay }: Tas
         title={t('Daily tasks')}
         onOpenHistory={lifted ? undefined : onOpenHistory}
         historyLabel={t('Task history')}
+        /* Gone mid-drag too, for the same reason as the ⟲. */
+        actions={
+          lifted
+            ? []
+            : [
+                {
+                  key: 'ai',
+                  icon: 'sparkle',
+                  label: t('Open the AI assistant'),
+                  lit: aiReady,
+                  onPress: () => onOpenAi(),
+                },
+              ]
+        }
       />
 
       <ScrollView
@@ -411,6 +437,8 @@ export function TasksScreen({ onOpenTask, onOpenHistory, day, onChangeDay }: Tas
                 </>
               )}
             </View>
+
+            <AiEntryCard section="Tasks" ready={aiReady} onOpen={onOpenAi} />
           </>
         )}
 

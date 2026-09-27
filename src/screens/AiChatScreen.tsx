@@ -1,0 +1,463 @@
+/**
+ * AiChatScreen — one section's conversation with the assistant.
+ *
+ *   ‹  AI · WORKOUT                                  +
+ *      Gemini · reads your training log on this phone
+ *   ─────────────────────────────────────────────────
+ *                          Summarize my last 4 weeks ▸
+ *   GEMINI
+ *   [ LAST 4 WEEKS · 11 WORKOUTS  214 sets · 38.4 t … ]
+ *   ─────────────────────────────────────────────────
+ *   [Last 4 weeks] [Squat trend] [Suggest a routine] →
+ *   ( Ask about your workouts…                    ➤ )
+ *
+ * ── ONE CHAT PER SECTION, AND IT SAYS WHICH ────────────────────────────────
+ *
+ * Three chats rather than one, because each is about a different log and the
+ * context sent with a question is that log alone. The kicker names the section
+ * and the line under it names what is read, so there is never a question about
+ * what the assistant can see: the training log, the task answers, or the amounts.
+ *
+ * ── THE SCREEN IS COMPOSITION ──────────────────────────────────────────────
+ *
+ * Every decision is elsewhere: what is sent and what the answer means is
+ * `state/aiActions.ts` over `lib/ai/`, and how a block is drawn is
+ * `components/AiBlocks.tsx`. This file lays them out, keeps the list scrolled to
+ * the newest message, and owns one piece of state — the draft in the composer.
+ *
+ * A proposal's `Add to routines` goes to the shell rather than straight to the
+ * store, because the toast that says what happened — with its Undo — has to be
+ * raised by something that outlives this screen.
+ */
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollView, Text, TextInput, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { SparkleCircle } from '../components/AiEntryCard';
+import { ErrorAnswer, SummaryCard, TextAnswer, Typing, UserBubble } from '../components/AiBlocks';
+import { AiProposalCard } from '../components/AiProposalCard';
+import { BubblePressable } from '../components/bubbles';
+import { ConfirmSheet } from '../components/ConfirmSheet';
+import { COMMIT_GRADIENT, GlassBar, GlassSurface, Lamps } from '../components/glass';
+import { Icon } from '../components/Icon';
+import { Stagger, pressedStyle } from '../components/motion';
+import { useAiPrompts } from '../hooks/useAiPrompts';
+import { usePlural, useT } from '../hooks/useT';
+import type { AiSection } from '../lib/ai/aiSchema';
+import { tap } from '../lib/feedback';
+import { sectionContext, sendMessage } from '../state/aiActions';
+import { useAi, type AiMessage } from '../state/aiStore';
+import { glassTier, halo, motion, palette, radius } from '../theme/tokens';
+
+const META: Record<
+  AiSection,
+  { kicker: string; line: string; title: string; body: string; placeholder: string }
+> = {
+  Workout: {
+    kicker: 'AI · Workout',
+    line: 'Gemini · reads your training log on this phone',
+    title: 'Ask about your training',
+    body: 'Answers come from your own log on this phone. Suggested routines and edits wait for your OK before anything changes.',
+    placeholder: 'Ask about your workouts…',
+  },
+  Tasks: {
+    kicker: 'AI · Daily tasks',
+    line: 'Gemini · reads your task answers on this phone',
+    title: 'Ask about your habits',
+    body: 'Reads your daily tasks and how each day was answered, including the days you excused on purpose.',
+    placeholder: 'Ask about your tasks…',
+  },
+  Expenses: {
+    kicker: 'AI · Expenses',
+    line: 'Gemini · reads your amounts on this phone',
+    title: 'Ask about your money',
+    body: 'Reads your amounts by day and month, with categories. Whole-month amounts like rent are counted per month, never per day.',
+    placeholder: 'Ask about your expenses…',
+  },
+};
+
+export interface AiChatScreenProps {
+  section: AiSection;
+  /** A question to ask on arrival — the chip that opened this chat. */
+  prompt?: string;
+  /** Called once the arrival question has been sent, so it is not sent again. */
+  onPromptSent: () => void;
+  onBack: () => void;
+  onReview: (proposalId: string) => void;
+  onAccept: (proposalId: string) => void;
+}
+
+export function AiChatScreen({
+  section,
+  prompt,
+  onPromptSent,
+  onBack,
+  onReview,
+  onAccept,
+}: AiChatScreenProps) {
+  const t = useT();
+  const plural = usePlural();
+  const insets = useSafeAreaInsets();
+  const meta = META[section];
+  const messages = useAi((s) => s.chats[section]);
+  const proposals = useAi((s) => s.proposals);
+  const pending = useAi((s) => s.pending[section]);
+  const prompts = useAiPrompts(section);
+  const [draft, setDraft] = useState('');
+  const [confirmingNew, setConfirmingNew] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  /* The arrival question, exactly once. */
+  const sent = useRef(false);
+  useEffect(() => {
+    if (!prompt || sent.current) return;
+    sent.current = true;
+    void sendMessage(section, prompt);
+    onPromptSent();
+  }, [onPromptSent, prompt, section]);
+
+  /* How much is being read, counted once per question rather than per render. */
+  const reading = useMemo(() => {
+    if (!pending) return '';
+    const count = sectionContext(section).count;
+    if (section === 'Workout') {
+      return t('Reading {count} {noun}…', {
+        count,
+        noun: plural(count, { one: t('workout'), few: 'тренировки', many: t('workouts') }),
+      });
+    }
+    if (section === 'Tasks') {
+      return t('Reading {count} {noun} of tasks…', {
+        count,
+        noun: plural(count, { one: t('day'), few: 'дня', many: t('days') }),
+      });
+    }
+    return t('Reading {count} {noun} of amounts…', {
+      count,
+      noun: plural(count, { one: t('month'), few: 'месяца', many: t('months') }),
+    });
+  }, [pending, plural, section, t]);
+
+  const ask = (text: string) => {
+    const question = text.trim();
+    if (!question || pending) return;
+    tap();
+    setDraft('');
+    void sendMessage(section, question);
+  };
+
+  const hasPendingProposal = messages.some(
+    (m) =>
+      m.role === 'model' &&
+      m.blocks.some((b) => b.type === 'proposal' && proposals[b.proposalId]?.status === 'pending'),
+  );
+  const startNew = () => {
+    if (hasPendingProposal) setConfirmingNew(true);
+    else useAi.getState().clearChat(section);
+  };
+
+  const composerHeight = 60;
+  const chipsHeight = messages.length > 0 ? 44 : 0;
+
+  return (
+    <View className="flex-1 bg-bg">
+      <StatusBar style="light" />
+      <Lamps section={section} />
+
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+        <GlassBar>
+          <View style={{ paddingTop: insets.top }} className="pb-sm pl-sm pr-md">
+            <View className="h-[56px] flex-row items-center">
+              <RoundButton icon="chevron-left" label={t('Back')} onPress={onBack} />
+              <View className="flex-1 px-sm">
+                <Text
+                  numberOfLines={1}
+                  style={{ letterSpacing: 1.3 }}
+                  className="text-micro font-semibold uppercase text-green-bright"
+                >
+                  {t(meta.kicker)}
+                </Text>
+                <Text numberOfLines={1} className="mt-[2px] text-label text-ink-muted">
+                  {t(meta.line)}
+                </Text>
+              </View>
+              {messages.length > 0 ? (
+                <RoundButton icon="plus" label={t('Start a new chat')} onPress={startNew} />
+              ) : null}
+            </View>
+          </View>
+        </GlassBar>
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        className="flex-1"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        contentContainerStyle={{
+          paddingTop: insets.top + 64 + 16,
+          paddingBottom: insets.bottom + composerHeight + chipsHeight + 36,
+          paddingHorizontal: 16,
+          gap: 14,
+        }}
+      >
+        {messages.length === 0 && !pending ? (
+          <EmptyChat
+            title={t(meta.title)}
+            body={t(meta.body)}
+            prompts={prompts.map((p) => ({ key: p.key, label: p.label, hint: p.hint }))}
+            onAsk={ask}
+          />
+        ) : null}
+
+        {messages.map((message) => (
+          <Stagger key={message.id} duration={motion.enter}>
+            <Message
+              message={message}
+              proposals={proposals}
+              onRetry={(m) => void sendMessage(section, m.retry, m.id)}
+              onReview={onReview}
+              onAccept={onAccept}
+            />
+          </Stagger>
+        ))}
+
+        {pending ? <Typing caption={reading} /> : null}
+      </ScrollView>
+
+      <View
+        style={{ position: 'absolute', left: 12, right: 12, bottom: insets.bottom + 12 }}
+        pointerEvents="box-none"
+      >
+        {messages.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ gap: 8, paddingBottom: 10 }}
+          >
+            {prompts.map((p) => (
+              <BubblePressable
+                key={p.key}
+                onPress={() => ask(p.label)}
+                radius="pill"
+                accessibilityRole="button"
+                accessibilityLabel={p.label}
+                style={(state) => [
+                  pressedStyle(state),
+                  {
+                    height: 32,
+                    justifyContent: 'center',
+                    paddingHorizontal: 12,
+                    borderRadius: radius.pill,
+                    borderWidth: 1,
+                    borderColor: glassTier.bar.border,
+                    backgroundColor: glassTier.bar.tint,
+                  },
+                ]}
+              >
+                <Text numberOfLines={1} className="text-label text-ink-muted">
+                  {p.chip}
+                </Text>
+              </BubblePressable>
+            ))}
+          </ScrollView>
+        ) : null}
+
+        <GlassBar radius={radius.navPill}>
+          <View style={{ height: composerHeight }} className="flex-row items-center pl-lg pr-sm">
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={t(meta.placeholder)}
+              placeholderTextColor={palette.inkFaint}
+              onSubmitEditing={() => ask(draft)}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              multiline={false}
+              accessibilityLabel={t(meta.placeholder)}
+              style={{ flex: 1, fontSize: 16, color: palette.ink, padding: 0 }}
+            />
+            <SendButton live={draft.trim() !== '' && !pending} onPress={() => ask(draft)} />
+          </View>
+        </GlassBar>
+      </View>
+
+      {confirmingNew ? (
+        <ConfirmSheet
+          title={t('Start a new chat?')}
+          body={t('A suggestion in this chat has not been added yet. Starting over drops it.')}
+          confirmLabel={t('Start over')}
+          onConfirm={() => {
+            setConfirmingNew(false);
+            useAi.getState().clearChat(section);
+          }}
+          onCancel={() => setConfirmingNew(false)}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function Message({
+  message,
+  proposals,
+  onRetry,
+  onReview,
+  onAccept,
+}: {
+  message: AiMessage;
+  proposals: ReturnType<typeof useAi.getState>['proposals'];
+  onRetry: (message: Extract<AiMessage, { role: 'error' }>) => void;
+  onReview: (proposalId: string) => void;
+  onAccept: (proposalId: string) => void;
+}) {
+  if (message.role === 'user') return <UserBubble text={message.text} />;
+  if (message.role === 'error') {
+    return (
+      <ErrorAnswer
+        text={message.text}
+        onRetry={message.retry ? () => onRetry(message) : undefined}
+      />
+    );
+  }
+  return (
+    <View style={{ gap: 12 }}>
+      {message.blocks.map((block, index) => {
+        if (block.type === 'text') return <TextAnswer key={index} text={block.text} />;
+        if (block.type === 'summary') return <SummaryCard key={index} block={block} />;
+        const stored = proposals[block.proposalId];
+        if (!stored) return null;
+        return (
+          <AiProposalCard
+            key={block.proposalId}
+            stored={stored}
+            onReview={() => onReview(block.proposalId)}
+            onAccept={() => onAccept(block.proposalId)}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+function EmptyChat({
+  title,
+  body,
+  prompts,
+  onAsk,
+}: {
+  title: string;
+  body: string;
+  prompts: { key: string; label: string; hint: string }[];
+  onAsk: (text: string) => void;
+}) {
+  return (
+    <View className="pt-xl">
+      <SparkleCircle size={56} glow />
+      <Text
+        style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.9 }}
+        className="mt-lg font-semibold text-ink"
+      >
+        {title}
+      </Text>
+      <Text className="mt-sm text-body text-ink-muted">{body}</Text>
+      <View className="mt-xl" style={{ gap: 8 }}>
+        {prompts.map((prompt) => (
+          <GlassSurface key={prompt.key} tier="card" radius={radius.row} shadow="e1" flat>
+            <BubblePressable
+              onPress={() => onAsk(prompt.label)}
+              radius={radius.row}
+              accessibilityRole="button"
+              accessibilityLabel={prompt.label}
+              style={(state) => [
+                pressedStyle(state),
+                { height: 56, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
+              ]}
+            >
+              <Text numberOfLines={1} className="flex-1 text-body text-ink">
+                {prompt.label}
+              </Text>
+              <Text className="mx-sm text-label text-ink-faint">{prompt.hint}</Text>
+              <Icon name="chevron-right" size={16} color={palette.greenBright} />
+            </BubblePressable>
+          </GlassSurface>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function RoundButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: 'chevron-left' | 'plus';
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <BubblePressable
+      onPress={onPress}
+      hitSlop={8}
+      radius="pill"
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={(state) => [
+        pressedStyle(state),
+        {
+          height: 36,
+          width: 36,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: radius.pill,
+          borderWidth: 1,
+          borderColor: 'rgba(236,241,238,0.07)',
+          backgroundColor: 'rgba(236,241,238,0.055)',
+        },
+      ]}
+    >
+      <Icon name={icon} size={18} color={palette.inkMuted} />
+    </BubblePressable>
+  );
+}
+
+function SendButton({ live, onPress }: { live: boolean; onPress: () => void }) {
+  const t = useT();
+  return (
+    <BubblePressable
+      onPress={onPress}
+      disabled={!live}
+      radius="pill"
+      bubbleColor={palette.ink}
+      accessibilityRole="button"
+      accessibilityLabel={t('Send')}
+      accessibilityState={{ disabled: !live }}
+      style={{
+        height: 44,
+        width: 44,
+        borderRadius: radius.pill,
+        overflow: 'hidden',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: live ? undefined : 'rgba(236,241,238,0.07)',
+        opacity: live ? 1 : 0.6,
+        ...(live ? { boxShadow: [...halo.repeating] } : {}),
+      }}
+    >
+      {live ? (
+        <LinearGradient
+          colors={[...COMMIT_GRADIENT]}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+      ) : null}
+      {/* The one arrow in the app is the chevron; "send" is the chevron, forward. */}
+      <Icon name="chevron-right" size={20} color={live ? palette.ink : palette.inkMuted} />
+    </BubblePressable>
+  );
+}

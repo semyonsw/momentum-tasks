@@ -124,6 +124,7 @@ import {
   useBarInsets,
 } from '../components/glass';
 import { SectionTopBar } from '../components/SectionTopBar';
+import { AiEntryCard } from '../components/AiEntryCard';
 import { Sheet } from '../components/Sheet';
 import { Stagger, pressedStyle } from '../components/motion';
 import { DashedAdd, Kicker, Separator, TextButton } from '../components/primitives';
@@ -199,6 +200,10 @@ interface MoneyScreenProps {
    */
   window: MoneyWindow;
   onChangeWindow: (patch: Partial<MoneyWindow>) => void;
+  /** A key has passed its test: the sparkle is lit. */
+  aiReady: boolean;
+  /** The money chat, asking `prompt` if a chip was tapped. */
+  onOpenAi: (prompt?: string) => void;
 }
 
 /** What the money section is currently reading. See `MoneyScreenProps.window`. */
@@ -216,6 +221,8 @@ export function MoneyScreen({
   onOpenHistory,
   window: view,
   onChangeWindow,
+  aiReady,
+  onOpenAi,
 }: MoneyScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -320,6 +327,15 @@ export function MoneyScreen({
            1st". See `lib/money.ts`. */
         onOpenHistory={() => onOpenHistory(account.id, onDay)}
         historyLabel={t('Expense history')}
+        actions={[
+          {
+            key: 'ai',
+            icon: 'sparkle',
+            label: t('Open the AI assistant'),
+            lit: aiReady,
+            onPress: () => onOpenAi(),
+          },
+        ]}
       />
 
       <ScrollView
@@ -417,6 +433,8 @@ export function MoneyScreen({
             </View>
           </GlassSurface>
         </Animated.View>
+
+        <AiEntryCard section="Expenses" ready={aiReady} onOpen={onOpenAi} />
 
         <View className="mx-lg mt-lg flex-row items-center justify-center">
           <NudgeChevron

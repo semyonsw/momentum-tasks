@@ -39,12 +39,25 @@
  * data, they trigger no runtime prompt, and expo-audio's playback service is
  * declared against them. Removing those would be fighting the library over
  * something that costs the user nothing.
+ *
+ * ── AND THE FINGERPRINT READER, FOR THE SAME REASON ────────────────────────
+ *
+ * `expo-secure-store` (the AI key's keystore, `src/lib/ai/secureKey.ts`) declares
+ * `USE_BIOMETRIC` and `USE_FINGERPRINT` in its AAR manifest, for the option of
+ * locking a value behind a fingerprint. This app never asks for that — the key
+ * is stored without `requireAuthentication` — so they are stripped here too: a
+ * workout tracker that lists the fingerprint reader among its permissions is
+ * asking for trust it has no use for.
  */
 
 const { withAndroidManifest } = require('@expo/config-plugins');
 
 /** Permissions to strip from the MERGED manifest, whoever contributed them. */
-const REMOVE = ['android.permission.RECORD_AUDIO'];
+const REMOVE = [
+  'android.permission.RECORD_AUDIO',
+  'android.permission.USE_BIOMETRIC',
+  'android.permission.USE_FINGERPRINT',
+];
 
 module.exports = function withoutMicrophone(config) {
   return withAndroidManifest(config, (androidConfig) => {
@@ -56,12 +69,14 @@ module.exports = function withoutMicrophone(config) {
     manifest.$ = manifest.$ ?? {};
     manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
 
-    const existing = manifest['uses-permission'] ?? [];
-
     for (const name of REMOVE) {
       // Drop any plain grant of the same permission first: leaving both a grant
       // and a removal in one manifest is a merger conflict, not a subtraction.
-      const others = existing.filter((entry) => entry?.$?.['android:name'] !== name);
+      // Read back from the manifest EACH time, so every removal in the list
+      // survives the next one being added.
+      const others = (manifest['uses-permission'] ?? []).filter(
+        (entry) => entry?.$?.['android:name'] !== name,
+      );
       others.push({ $: { 'android:name': name, 'tools:node': 'remove' } });
       manifest['uses-permission'] = others;
     }
