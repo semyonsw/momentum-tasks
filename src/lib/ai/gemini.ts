@@ -275,8 +275,43 @@ export function parseChatResponse(body: unknown): ChatParse {
   try {
     return { ok: true, json: JSON.parse(unfenced), raw: unfenced };
   } catch {
-    return { ok: false, reason: truncated ? 'length' : 'shape' };
+    // Cut off mid-answer: nothing below can make an unterminated object whole.
+    if (truncated) return { ok: false, reason: 'length' };
   }
+
+  // The JSON with a sentence either side of it ("Here you go: {...}").
+  const embedded = embeddedJson(unfenced);
+  if (embedded !== undefined) return { ok: true, json: embedded, raw: JSON.stringify(embedded) };
+
+  // No JSON at all: the model answered in prose. That IS an answer, and
+  // `validateBlocks` reads a bare string as one text block. Re-wrapped for the
+  // history, so the next turn shows the model the shape it was meant to use.
+  if (!/^[[{]/.test(unfenced)) {
+    return {
+      ok: true,
+      json: unfenced,
+      raw: JSON.stringify({ blocks: [{ type: 'text', text: unfenced }] }),
+    };
+  }
+  return { ok: false, reason: 'shape' };
+}
+
+/** The outermost `{...}` or `[...]` inside some text that parses, if any. */
+function embeddedJson(value: string): unknown {
+  for (const [open, close] of [
+    ['{', '}'],
+    ['[', ']'],
+  ] as const) {
+    const start = value.indexOf(open);
+    const end = value.lastIndexOf(close);
+    if (start === -1 || end <= start) continue;
+    try {
+      return JSON.parse(value.slice(start, end + 1));
+    } catch {
+      // Try the other bracket.
+    }
+  }
+  return undefined;
 }
 
 /** Ids from `GET /models` that can answer a chat, without the `models/` prefix. */

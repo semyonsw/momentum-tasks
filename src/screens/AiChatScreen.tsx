@@ -40,12 +40,13 @@ import { SparkleCircle } from '../components/AiEntryCard';
 import { ErrorAnswer, SummaryCard, TextAnswer, Typing, UserBubble } from '../components/AiBlocks';
 import { AiProposalCard } from '../components/AiProposalCard';
 import { BubblePressable } from '../components/bubbles';
-import { ConfirmSheet } from '../components/ConfirmSheet';
+import { Sheet } from '../components/Sheet';
 import { COMMIT_GRADIENT, GlassBar, GlassSurface, Lamps } from '../components/glass';
 import { Icon } from '../components/Icon';
 import { Stagger, pressedStyle } from '../components/motion';
 import { useAiPrompts } from '../hooks/useAiPrompts';
-import { usePlural, useT } from '../hooks/useT';
+import { useLanguage, usePlural, useT } from '../hooks/useT';
+import { dayKey, formatShortDay } from '../lib/days';
 import type { AiSection } from '../lib/ai/aiSchema';
 import { tap } from '../lib/feedback';
 import { sectionContext, sendMessage } from '../state/aiActions';
@@ -99,6 +100,7 @@ export function AiChatScreen({
   onAccept,
 }: AiChatScreenProps) {
   const t = useT();
+  const lang = useLanguage();
   const plural = usePlural();
   const insets = useSafeAreaInsets();
   const meta = META[section];
@@ -108,7 +110,8 @@ export function AiChatScreen({
   const retrying = useAi((s) => s.retrying[section]);
   const prompts = useAiPrompts(section);
   const [draft, setDraft] = useState('');
-  const [confirmingNew, setConfirmingNew] = useState(false);
+  const [showingHistory, setShowingHistory] = useState(false);
+  const archived = useAi((s) => s.archive[section]);
   const scrollRef = useRef<ScrollView>(null);
 
   /* The arrival question, exactly once. */
@@ -150,15 +153,13 @@ export function AiChatScreen({
     void sendMessage(section, question);
   };
 
-  const hasPendingProposal = messages.some(
-    (m) =>
-      m.role === 'model' &&
-      m.blocks.some((b) => b.type === 'proposal' && proposals[b.proposalId]?.status === 'pending'),
-  );
-  const startNew = () => {
-    if (hasPendingProposal) setConfirmingNew(true);
-    else useAi.getState().clearChat(section);
-  };
+  /*
+   * `+` files the chat in the history and opens an empty one. It used to delete
+   * it — with a confirm, for a suggestion not yet added — and a chat now lives on
+   * in the history with its suggestion still there to add, so there is nothing
+   * left to confirm.
+   */
+  const startNew = () => useAi.getState().clearChat(section);
 
   const composerHeight = 60;
   const chipsHeight = messages.length > 0 ? 44 : 0;
@@ -187,6 +188,15 @@ export function AiChatScreen({
               </View>
               {/* Not while an answer is on its way: it would arrive into the new,
                   empty chat with no question above it. */}
+              {archived.length > 0 && !pending ? (
+                <View className="mr-sm">
+                  <RoundButton
+                    icon="history"
+                    label={t('Past chats')}
+                    onPress={() => setShowingHistory(true)}
+                  />
+                </View>
+              ) : null}
               {messages.length > 0 && !pending ? (
                 <RoundButton icon="plus" label={t('Start a new chat')} onPress={startNew} />
               ) : null}
@@ -299,17 +309,54 @@ export function AiChatScreen({
         </GlassBar>
       </View>
 
-      {confirmingNew ? (
-        <ConfirmSheet
-          title={t('Start a new chat?')}
-          body={t('A suggestion in this chat has not been added yet. Starting over drops it.')}
-          confirmLabel={t('Start over')}
-          onConfirm={() => {
-            setConfirmingNew(false);
-            useAi.getState().clearChat(section);
-          }}
-          onCancel={() => setConfirmingNew(false)}
-        />
+      {showingHistory ? (
+        <Sheet title={t('Past chats')} onDismiss={() => setShowingHistory(false)}>
+          {archived.length === 0 ? (
+            <Text className="text-body text-ink-muted">{t('No past chats yet.')}</Text>
+          ) : null}
+          {archived.map((chat, index) => (
+            <View
+              key={chat.id}
+              className={`flex-row items-center ${index > 0 ? 'border-t border-t-hairline' : ''}`}
+              style={{ minHeight: 60 }}
+            >
+              <BubblePressable
+                onPress={() => {
+                  useAi.getState().openArchived(section, chat.id);
+                  setShowingHistory(false);
+                }}
+                radius={radius.row}
+                accessibilityRole="button"
+                accessibilityLabel={chat.title}
+                style={(state) => [pressedStyle(state), { flex: 1, paddingVertical: 10 }]}
+              >
+                <Text numberOfLines={1} className="text-body text-ink">
+                  {chat.title}
+                </Text>
+                <Text className="mt-[2px] text-label text-ink-faint">
+                  {`${formatShortDay(dayKey(chat.updatedAt), lang)} · ${t('{count} messages', {
+                    count: chat.messages.length,
+                  })}`}
+                </Text>
+              </BubblePressable>
+              <BubblePressable
+                onPress={() => useAi.getState().deleteArchived(section, chat.id)}
+                hitSlop={10}
+                radius="pill"
+                accessibilityRole="button"
+                accessibilityLabel={t('Delete chat')}
+                style={(state) => [pressedStyle(state), { padding: 10 }]}
+              >
+                <Icon name="x" size={16} color={palette.inkFaint} />
+              </BubblePressable>
+            </View>
+          ))}
+          <Text className="mt-md text-label text-ink-faint">
+            {t(
+              'Past chats stay on this phone only. Opening one puts the chat you have open now into this list.',
+            )}
+          </Text>
+        </Sheet>
       ) : null}
     </View>
   );
@@ -409,7 +456,7 @@ function RoundButton({
   label,
   onPress,
 }: {
-  icon: 'chevron-left' | 'plus';
+  icon: 'chevron-left' | 'plus' | 'history';
   label: string;
   onPress: () => void;
 }) {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { CHAT_CAP, sanitizeAi, useAi, type AiMessage } from './aiStore';
+import { ARCHIVE_CAP, CHAT_CAP, sanitizeAi, useAi, type AiMessage } from './aiStore';
 import type { ReviewProposal } from '../lib/ai/aiProposal';
 
 /**
@@ -123,5 +123,73 @@ describe('rehydration', () => {
     expect(clean.chats.Tasks).toEqual([]);
     expect(clean.proposals).toEqual({});
     expect(clean.unseenRoutineIds).toEqual(['r1']);
+  });
+});
+
+describe('the history of past chats', () => {
+  const model = (id: string, proposalId: string): AiMessage => ({
+    id,
+    role: 'model',
+    blocks: [{ type: 'proposal', proposalId }],
+    raw: '{}',
+    at: '2026-09-27',
+  });
+
+  it('files the chat on New chat instead of deleting it, proposal and all', () => {
+    const store = useAi.getState();
+    store.appendMessage('Workout', user('q1', 'Suggest a routine'));
+    store.putProposal('p1', proposal);
+    store.appendMessage('Workout', model('a1', 'p1'));
+    useAi.getState().clearChat('Workout');
+    const { chats, archive, proposals } = useAi.getState();
+    expect(chats.Workout).toEqual([]);
+    expect(archive.Workout).toHaveLength(1);
+    expect(archive.Workout[0].title).toBe('Suggest a routine');
+    expect(proposals.p1).toBeDefined();
+  });
+
+  it('files nothing for a chat nobody asked anything in', () => {
+    useAi.getState().clearChat('Tasks');
+    expect(useAi.getState().archive.Tasks).toEqual([]);
+  });
+
+  it('reopens a past chat, and files the open one in its place', () => {
+    const store = useAi.getState();
+    store.appendMessage('Tasks', user('old', 'Old question'));
+    useAi.getState().clearChat('Tasks');
+    const oldId = useAi.getState().archive.Tasks[0].id;
+    useAi.getState().appendMessage('Tasks', user('new', 'New question'));
+    useAi.getState().openArchived('Tasks', oldId);
+    const { chats, archive } = useAi.getState();
+    expect(chats.Tasks.map((m) => m.id)).toEqual(['old']);
+    expect(archive.Tasks.map((c) => c.title)).toEqual(['New question']);
+  });
+
+  it('deletes one, and with it any proposal only it pointed at', () => {
+    const store = useAi.getState();
+    store.appendMessage('Workout', user('q', 'Q'));
+    store.putProposal('p2', proposal);
+    store.appendMessage('Workout', model('a', 'p2'));
+    useAi.getState().clearChat('Workout');
+    const id = useAi.getState().archive.Workout[0].id;
+    useAi.getState().deleteArchived('Workout', id);
+    expect(useAi.getState().archive.Workout).toEqual([]);
+    expect(useAi.getState().proposals.p2).toBeUndefined();
+  });
+
+  it('survives a relaunch, and caps how many it keeps', () => {
+    for (let i = 0; i < ARCHIVE_CAP + 3; i += 1) {
+      useAi.getState().appendMessage('Expenses', user(`q${i}`, `Q${i}`));
+      useAi.getState().clearChat('Expenses');
+    }
+    const blob = JSON.parse(JSON.stringify(useAi.getState()));
+    const back = sanitizeAi(blob);
+    expect(back.archive.Expenses).toHaveLength(ARCHIVE_CAP);
+    expect(back.archive.Expenses[0].title).toBe(`Q${ARCHIVE_CAP + 2}`);
+    expect(sanitizeAi({ archive: 'junk' }).archive).toEqual({
+      Workout: [],
+      Tasks: [],
+      Expenses: [],
+    });
   });
 });

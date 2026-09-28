@@ -208,6 +208,21 @@ describe('asking a question', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('asks once more with the format spelled out when a reply cannot be read', async () => {
+    await connect();
+    answers = [
+      {
+        status: 200,
+        body: { candidates: [{ content: { parts: [{ text: '{"blocks":[{"type":"chart"}]}' }] } }] },
+      },
+      gemini([{ type: 'text', text: 'Push, Pull, Legs, then again.' }]),
+    ];
+    await sendMessage('Workout', 'do you see my workout routines loop?');
+    expect(calls).toHaveLength(2);
+    expect(calls[1].body).toContain('could not be read');
+    expect(useAi.getState().chats.Workout.at(-1)?.role).toBe('model');
+  });
+
   it('says so when there is no signal', async () => {
     await connect();
     answers = ['offline'];
@@ -303,7 +318,9 @@ describe('a routine proposal', () => {
     await connect();
     answers = [gemini([legsDay])];
     await sendMessage('Tasks', 'Suggest a new routine');
-    expect(useAi.getState().chats.Tasks.at(-1)).toMatchObject({ role: 'error' });
+    // Its reason may be said, as text; the proposal itself is never stored.
+    const last = useAi.getState().chats.Tasks.at(-1)!;
+    expect(last.role === 'model' && last.blocks.every((b) => b.type === 'text')).toBe(true);
     expect(Object.keys(useAi.getState().proposals)).toEqual([]);
   });
 });

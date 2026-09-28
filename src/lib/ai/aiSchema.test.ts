@@ -59,8 +59,6 @@ describe('malformed shapes are dropped', () => {
           { type: 'text' },
           { type: 'text', text: '   ' },
           { type: 'summary', title: 'Only a title' },
-          { type: 'summary', stats: [{ label: 'a', value: 'b' }] },
-          'hello',
           null,
           { type: 'text', text: 'kept' },
         ],
@@ -71,11 +69,68 @@ describe('malformed shapes are dropped', () => {
   });
 
   it('anything that is not a reply at all', () => {
-    for (const raw of [null, undefined, 42, 'text', { blocks: 'no' }, {}]) {
+    for (const raw of [null, undefined, 42, '   ', {}, { blocks: [] }]) {
       expect(validateBlocks(raw, tasks)).toEqual([]);
     }
   });
+});
 
+/*
+ * THE "SHAPE I COULD NOT READ" BUG. A model answering a plain question
+ * ("do you see my routines loop?") sent something close to the schema and not
+ * on it — a number where a string goes, a summary with no title, a sentence in
+ * the list instead of a block — and the strict validator threw every block
+ * away, so the chat said it could not read an answer that was right there.
+ * Each case below is one of those, and each must now come through as what it
+ * plainly meant.
+ */
+describe('near-misses are read as what they meant', () => {
+  it('a bare sentence in the list, or as the whole reply', () => {
+    expect(validateBlocks({ blocks: ['Yes, I see it.'] }, tasks)).toEqual([
+      { type: 'text', text: 'Yes, I see it.' },
+    ]);
+    expect(validateBlocks('Yes.', tasks)).toEqual([{ type: 'text', text: 'Yes.' }]);
+  });
+
+  it('a list serialised into a string', () => {
+    expect(
+      validateBlocks({ blocks: JSON.stringify([{ type: 'text', text: 'Inside.' }]) }, tasks),
+    ).toEqual([{ type: 'text', text: 'Inside.' }]);
+  });
+
+  it('one block with no wrapper, or under another key', () => {
+    expect(validateBlocks({ type: 'text', text: 'Solo.' }, tasks)).toHaveLength(1);
+    expect(validateBlocks({ answer: { blocks: [{ type: 'text', text: 'A.' }] } }, tasks)).toEqual([
+      { type: 'text', text: 'A.' },
+    ]);
+  });
+
+  it('numbers where strings go', () => {
+    const [summary] = validateBlocks(
+      { blocks: [{ type: 'summary', title: 'Week', stats: [{ label: 'Sets', value: 42 }] }] },
+      tasks,
+    );
+    expect(summary).toEqual({
+      type: 'summary',
+      title: 'Week',
+      stats: [{ label: 'Sets', value: '42' }],
+    });
+  });
+
+  it('a summary with its numbers and no title', () => {
+    expect(
+      validateBlocks({ blocks: [{ type: 'summary', stats: [{ label: 'a', value: 'b' }] }] }, tasks),
+    ).toEqual([{ type: 'summary', title: '', stats: [{ label: 'a', value: 'b' }] }]);
+  });
+
+  it('prose under an unknown type or another field name', () => {
+    expect(validateBlocks({ blocks: [{ type: 'paragraph', content: 'Words.' }] }, tasks)).toEqual([
+      { type: 'text', text: 'Words.' },
+    ]);
+  });
+});
+
+describe('malformed parts of a good block are dropped', () => {
   it('rows and stats missing their label or value, and negative bars', () => {
     const [summary] = validateBlocks(
       {
@@ -173,16 +228,24 @@ describe('caps and clamps', () => {
 });
 
 describe('proposals', () => {
-  it('are dropped outside the Workout section', () => {
-    expect(validateBlocks({ blocks: [proposal()] }, tasks)).toEqual([]);
-    expect(validateBlocks({ blocks: [proposal()] }, { ...tasks, section: 'Expenses' })).toEqual([]);
+  it('are never proposals outside the Workout section — only their reason, as text', () => {
+    for (const ctx of [tasks, { ...tasks, section: 'Expenses' as const }]) {
+      const blocks = validateBlocks({ blocks: [proposal()] }, ctx);
+      expect(blocks.every((b) => b.type === 'text')).toBe(true);
+    }
   });
 
   it('are dropped when an edit targets a routine the context did not name', () => {
+    const gone = validateBlocks(
+      { blocks: [proposal({ kind: 'edit', targetRoutineId: 'r_gone' })] },
+      workout,
+    );
+    expect(gone.some((b) => b.type === 'routine_proposal')).toBe(false);
     expect(
-      validateBlocks({ blocks: [proposal({ kind: 'edit', targetRoutineId: 'r_gone' })] }, workout),
-    ).toEqual([]);
-    expect(validateBlocks({ blocks: [proposal({ kind: 'edit' })] }, workout)).toEqual([]);
+      validateBlocks({ blocks: [proposal({ kind: 'edit' })] }, workout).some(
+        (b) => b.type === 'routine_proposal',
+      ),
+    ).toBe(false);
     expect(
       validateBlocks({ blocks: [proposal({ kind: 'edit', targetRoutineId: 'r_push' })] }, workout),
     ).toHaveLength(1);
@@ -190,7 +253,8 @@ describe('proposals', () => {
 
   it('are dropped with no exercises, no name or no why', () => {
     for (const over of [{ exercises: [] }, { name: '' }, { why: undefined }, { kind: 'delete' }]) {
-      expect(validateBlocks({ blocks: [proposal(over)] }, workout)).toEqual([]);
+      const blocks = validateBlocks({ blocks: [proposal(over)] }, workout);
+      expect(blocks.some((b) => b.type === 'routine_proposal')).toBe(false);
     }
   });
 

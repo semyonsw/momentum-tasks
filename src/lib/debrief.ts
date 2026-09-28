@@ -45,6 +45,7 @@
  */
 
 import type { CompletedWorkout } from './completedWorkout';
+import { dayKey } from './days';
 import type { ID } from '../types/models';
 
 export type QuestionKind = 'single' | 'multi' | 'text';
@@ -257,11 +258,14 @@ export function answeredCount(debrief: WorkoutDebrief): number {
 export function debriefToOffer(
   debriefs: readonly WorkoutDebrief[],
   now: Date = new Date(),
+  /** The workouts still in the log. A deleted workout is not asked about. */
+  liveIds?: ReadonlySet<string>,
 ): WorkoutDebrief | null {
   const cutoff = now.getTime() - DEBRIEF_OFFER_DAYS * 86_400_000;
   let best: WorkoutDebrief | null = null;
   for (const debrief of debriefs) {
     if (debrief.status !== 'pending') continue;
+    if (liveIds && !liveIds.has(debrief.workoutId)) continue;
     if (new Date(debrief.createdAt).getTime() < cutoff) continue;
     if (!best || debrief.createdAt > best.createdAt) best = debrief;
   }
@@ -298,7 +302,8 @@ export function debriefForAi(debrief: WorkoutDebrief): Record<string, unknown> |
   }
   if (Object.keys(answers).length === 0) return null;
   return {
-    date: debrief.startedAt.slice(0, 10),
+    // The LOCAL day, as the session rows beside it are dated (`dayKey`).
+    date: dayKey(debrief.startedAt),
     routine: debrief.title,
     ...(debrief.routineId ? { routineId: debrief.routineId } : {}),
     answers,

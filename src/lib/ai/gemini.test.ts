@@ -175,9 +175,24 @@ describe('reading an answer', () => {
       ok: false,
       reason: 'safety',
     });
-    expect(parseChatResponse(answer('not json'))).toEqual({ ok: false, reason: 'shape' });
+    expect(parseChatResponse(answer('{"blocks": [broken'))).toEqual({ ok: false, reason: 'shape' });
     expect(parseChatResponse({})).toEqual({ ok: false, reason: 'shape' });
     expect(parseChatResponse(null)).toEqual({ ok: false, reason: 'shape' });
+  });
+
+  it('reads a prose answer as an answer, re-wrapped for the history', () => {
+    const result = parseChatResponse(answer('Yes — Push, then Pull, then Legs.'));
+    expect(result).toMatchObject({ ok: true, json: 'Yes — Push, then Pull, then Legs.' });
+    expect(result.ok && JSON.parse(result.raw)).toEqual({
+      blocks: [{ type: 'text', text: 'Yes — Push, then Pull, then Legs.' }],
+    });
+  });
+
+  it('finds the JSON inside a sentence either side of it', () => {
+    const result = parseChatResponse(
+      answer('Here you go: {"blocks":[{"type":"text","text":"Hi"}]} Done.'),
+    );
+    expect(result).toMatchObject({ ok: true, json: { blocks: [{ type: 'text', text: 'Hi' }] } });
   });
 
   it('leaves a thinking model’s thought parts out of the answer', () => {

@@ -1082,8 +1082,7 @@ export function AppShell() {
                * not arrive on top of the celebration it follows.
                */
               if (saved && useSettings.getState().askAfterWorkout) {
-                useDebriefs.getState().offer(saved, false);
-                setTimeout(() => useDebriefs.getState().open(saved.id), DEBRIEF_DELAY_MS);
+                useDebriefs.getState().offer(saved, DEBRIEF_DELAY_MS);
               }
               // The queue only moves when a workout from the step it is on actually
               // gets recorded. A session with nothing logged saves nothing, and a

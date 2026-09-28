@@ -94,7 +94,7 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
   return (
     <GlassSurface tier="card" radius={radius.card} shadow="e1" flat>
       <View style={{ padding: 16 }}>
-        <AnswerKicker>{block.title}</AnswerKicker>
+        {block.title ? <AnswerKicker>{block.title}</AnswerKicker> : null}
 
         {block.stats ? (
           <View className="mt-sm flex-row">

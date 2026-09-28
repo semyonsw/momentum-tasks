@@ -63,6 +63,7 @@ import {
 import { celebrate, commit, tap } from '../lib/feedback';
 import { useAi } from '../state/aiStore';
 import { useDebriefs } from '../state/debriefStore';
+import { useWorkoutHistory } from '../state/workoutHistoryStore';
 import { curve, glass, motion, palette, radius } from '../theme/tokens';
 
 /**
@@ -95,8 +96,13 @@ export function DebriefCard() {
   const t = useT();
   const debriefs = useDebriefs((s) => s.debriefs);
   const openId = useDebriefs((s) => s.openId);
-  const offer = useMemo(() => debriefToOffer(debriefs), [debriefs]);
-  if (!offer || openId) return null;
+  const queuedId = useDebriefs((s) => s.queuedId);
+  const workouts = useWorkoutHistory((s) => s.workouts);
+  const offer = useMemo(
+    () => debriefToOffer(debriefs, new Date(), new Set(workouts.map((w) => w.id))),
+    [debriefs, workouts],
+  );
+  if (!offer || openId || queuedId) return null;
 
   const answered = answeredCount(offer);
   const title = offer.title

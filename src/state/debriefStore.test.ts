@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useDebriefs } from './debriefStore';
 import type { CompletedWorkout } from '../lib/completedWorkout';
@@ -24,7 +24,7 @@ const workout = (id = 'w1'): CompletedWorkout => ({
 });
 
 beforeEach(() => {
-  useDebriefs.setState({ debriefs: [], openId: null, aiPrompt: null });
+  useDebriefs.setState({ debriefs: [], openId: null, aiPrompt: null, queuedId: null });
 });
 
 describe('offering', () => {
@@ -40,6 +40,32 @@ describe('offering', () => {
     expect(useDebriefs.getState().openId).toBeNull();
     useDebriefs.getState().open('w1');
     expect(useDebriefs.getState().openId).toBe('w1');
+  });
+
+  it('opens a beat later, unless it was dismissed in that beat', () => {
+    vi.useFakeTimers();
+    try {
+      useDebriefs.getState().offer(workout('a'), 1500);
+      expect(useDebriefs.getState().queuedId).toBe('a');
+      vi.advanceTimersByTime(1500);
+      expect(useDebriefs.getState().openId).toBe('a');
+
+      useDebriefs.setState({ openId: null });
+      useDebriefs.getState().offer(workout('b'), 1500);
+      useDebriefs.getState().dismiss('b');
+      vi.advanceTimersByTime(1500);
+      expect(useDebriefs.getState().openId).toBeNull();
+      expect(useDebriefs.getState().queuedId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never reopens one that was dismissed', () => {
+    useDebriefs.getState().offer(workout(), false);
+    useDebriefs.getState().dismiss('w1');
+    useDebriefs.getState().open('w1');
+    expect(useDebriefs.getState().openId).toBeNull();
   });
 
   it('will not open a debrief that does not exist', () => {

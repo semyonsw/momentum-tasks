@@ -176,6 +176,12 @@ describe('which one Home offers', () => {
     ).toBe('b');
   });
 
+  it('is never about a workout deleted from the log', () => {
+    const pending = [at('gone', '2026-09-27T19:00:00.000Z')];
+    expect(debriefToOffer(pending, now, new Set(['other']))).toBeNull();
+    expect(debriefToOffer(pending, now, new Set(['gone']))?.workoutId).toBe('gone');
+  });
+
   it('is nothing once it is a week old', () => {
     expect(debriefToOffer([at('a', '2026-09-19T19:00:00.000Z')], now)).toBeNull();
   });

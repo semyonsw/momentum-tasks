@@ -151,17 +151,22 @@ export const responseSchema = {
   properties: {
     blocks: {
       type: 'array',
+      // An empty list was the other way to send "nothing I could read".
+      minItems: 1,
       items: {
         type: 'object',
         properties: {
           type: { type: 'string', enum: ['text', 'summary', 'routine_proposal'] },
-          text: str,
-          title: str,
+          text: { type: 'string', description: 'The paragraph, for a "text" block.' },
+          title: { type: 'string', description: 'The heading, for a "summary" block.' },
           stats: {
             type: 'array',
             items: {
               type: 'object',
-              properties: { label: str, value: str },
+              properties: {
+                label: str,
+                value: { type: 'string', description: 'A string, e.g. "11" or "60x8".' },
+              },
               required: ['label', 'value'],
             },
           },
@@ -217,6 +222,7 @@ export const responseSchema = {
           },
         },
         required: ['type'],
+        propertyOrdering: ['type', 'text', 'title', 'stats', 'rows', 'bars', 'notes', 'proposal'],
       },
     },
   },
@@ -241,6 +247,10 @@ function isRecord(value: unknown): value is Rec {
 
 /** A trimmed, capped string, or null when there is nothing in it. */
 function text(value: unknown, max: number): string | null {
+  // A model asked for `"value": "12"` writes `"value": 12` often enough that a
+  // number is read as the string it would have been.
+  if (typeof value === 'number' && Number.isFinite(value)) value = String(value);
+  if (typeof value === 'boolean') value = value ? 'yes' : 'no';
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (trimmed === '') return null;
@@ -280,8 +290,10 @@ const CHANGES = new Set(['same', 'changed', 'new', 'removed']);
 const MUSCLES = new Set<string>(MUSCLE_GROUPS);
 
 function validateSummary(raw: Rec): SummaryBlock | null {
-  const title = text(raw.title, LIMITS.title);
-  if (!title) return null;
+  // A summary without a title still has its numbers; the heading is the part
+  // that can be done without. (`label` and `name` are where a model puts one
+  // when it forgets the field's name.)
+  const title = text(raw.title ?? raw.label ?? raw.name, LIMITS.title) ?? '';
 
   const stats = list(raw.stats, LIMITS.stats, (item) => {
     if (!isRecord(item)) return null;
@@ -310,7 +322,9 @@ function validateSummary(raw: Rec): SummaryBlock | null {
     // is what this block is for.
     return label && value != null && value >= 0 ? { label, value } : null;
   });
-  const notes = list(raw.notes, LIMITS.notes, (item) => text(item, 240));
+  const notes = list(raw.notes, LIMITS.notes, (item) =>
+    text(isRecord(item) ? (item.text ?? item.note) : item, 240),
+  );
 
   const block: SummaryBlock = { type: 'summary', title };
   if (stats.length) block.stats = stats;
@@ -380,31 +394,80 @@ function validateProposal(raw: unknown, ctx: ValidateContext): RoutineProposal |
  * empty list for anything else; see the file header on why this never throws.
  */
 export function validateBlocks(raw: unknown, ctx: ValidateContext): AiBlock[] {
-  const source = Array.isArray(raw) ? raw : isRecord(raw) ? raw.blocks : null;
-  if (!Array.isArray(source)) return [];
+  const source = blockList(raw);
+  if (!source) return [];
 
   const out: AiBlock[] = [];
   let proposals = 0;
   for (const item of source) {
     if (out.length >= LIMITS.blocks) break;
+    if (typeof item === 'string') {
+      // A bare string in the list is a sentence the model meant as a text block.
+      const body = text(item, LIMITS.text);
+      if (body) out.push({ type: 'text', text: body });
+      continue;
+    }
     if (!isRecord(item)) continue;
 
-    if (item.type === 'text') {
-      const body = text(item.text, LIMITS.text);
-      if (body) out.push({ type: 'text', text: body });
-    } else if (item.type === 'summary') {
-      const block = validateSummary(item);
-      if (block) out.push(block);
-    } else if (item.type === 'routine_proposal') {
+    if (item.type === 'routine_proposal' || (item.type == null && isRecord(item.proposal))) {
       // Workout only, and one per reply: two suggestions at once is a choice
       // the model should have made, not the user.
-      if (ctx.section !== 'Workout' || proposals > 0) continue;
-      const proposal = validateProposal(item.proposal, ctx);
+      const proposal =
+        ctx.section === 'Workout' && proposals === 0 ? validateProposal(item.proposal, ctx) : null;
       if (proposal) {
         out.push({ type: 'routine_proposal', proposal });
         proposals += 1;
+        continue;
+      }
+      // A suggestion that cannot be applied — an edit of a routine id the phone
+      // never named, one in a chat that cannot hold one — still carried its reason.
+      // Said as text, rather than dropped along with everything it explained.
+      // A second one in the same reply is simply the one too many.
+      const why =
+        proposals === 0 && isRecord(item.proposal) ? text(item.proposal.why, LIMITS.text) : null;
+      if (why) out.push({ type: 'text', text: why });
+      continue;
+    }
+
+    if (item.type === 'summary' || (item.type == null && hasSummaryParts(item))) {
+      const block = validateSummary(item);
+      if (block) {
+        out.push(block);
+        continue;
       }
     }
+
+    // `text`, or any block whose type the app does not draw: whatever prose it
+    // carries is still the answer. A summary with nothing drawable but a
+    // sentence falls through to here too.
+    const body = text(item.text ?? item.content ?? item.message ?? item.body, LIMITS.text);
+    if (body) out.push({ type: 'text', text: body });
   }
   return out;
+}
+
+/** The list of blocks, from any of the shapes a model has been seen to send. */
+function blockList(raw: unknown): unknown[] | null {
+  if (Array.isArray(raw)) return raw;
+  if (!isRecord(raw)) return typeof raw === 'string' && raw.trim() !== '' ? [raw] : null;
+  if (Array.isArray(raw.blocks)) return raw.blocks;
+  // The list serialised INTO a string: `{"blocks": "[{...}]"}`.
+  if (typeof raw.blocks === 'string') {
+    try {
+      const inner: unknown = JSON.parse(raw.blocks);
+      if (Array.isArray(inner)) return inner;
+    } catch {
+      return [raw.blocks];
+    }
+  }
+  // One block with no wrapper at all.
+  if (typeof raw.type === 'string' || typeof raw.text === 'string') return [raw];
+  for (const key of ['response', 'answer', 'reply']) {
+    if (raw[key] != null) return blockList(raw[key]);
+  }
+  return null;
+}
+
+function hasSummaryParts(item: Rec): boolean {
+  return ['stats', 'rows', 'bars', 'notes'].some((key) => Array.isArray(item[key]));
 }

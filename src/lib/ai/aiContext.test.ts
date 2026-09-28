@@ -115,6 +115,27 @@ describe('the workout context', () => {
     expect(withDebriefs.json.length).toBeLessThanOrEqual(CONTEXT_CAP);
   });
 
+  it('carries the training loop in order, with what is next', () => {
+    const [a, b] = seedRoutines;
+    const looped = JSON.parse(
+      buildWorkoutContext({
+        exercises: seedExercises,
+        routines: seedRoutines,
+        workouts,
+        unitSystem: 'metric',
+        lang: 'en',
+        now: NOW,
+        sequence: { isActive: true, routineIds: [a.id, b.id, 'r_deleted', a.id], cursor: 1 },
+      }).json,
+    );
+    expect(looped.sequence).toMatchObject({
+      on: true,
+      order: [a.name, b.name, a.name],
+      next: b.name,
+    });
+    expect(json.sequence).toMatchObject({ on: false });
+  });
+
   it('sends no debriefs key when there are none', () => {
     expect(json.debriefs).toBeUndefined();
   });

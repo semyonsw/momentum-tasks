@@ -41,8 +41,16 @@ interface DebriefState {
   askAi: (prompt: string) => void;
   clearAiPrompt: () => void;
 
-  /** A workout was just saved: file its debrief and open the sheet on it. */
-  offer: (workout: CompletedWorkout, open?: boolean) => void;
+  /**
+   * The debrief filed and about to open (`offer` with a delay). Home's card
+   * stays hidden meanwhile, so the same questions are not offered twice at once.
+   */
+  queuedId: ID | null;
+  /**
+   * A workout was just saved: file its debrief, and open the sheet on it — now
+   * (`true`), after `open` milliseconds, or not at all (`false`).
+   */
+  offer: (workout: CompletedWorkout, open?: boolean | number) => void;
   open: (workoutId: ID) => void;
   close: () => void;
   /**
@@ -56,6 +64,9 @@ interface DebriefState {
   importDebriefs: (raw: unknown) => number;
 }
 
+/** The pending delayed open, if any. One at a time: a newer save replaces it. */
+let queued: ReturnType<typeof setTimeout> | null = null;
+
 export const useDebriefs = create<DebriefState>()(
   persist(
     (set, get) => ({
@@ -65,15 +76,31 @@ export const useDebriefs = create<DebriefState>()(
       askAi: (prompt) => set({ aiPrompt: prompt, openId: null }),
       clearAiPrompt: () => set({ aiPrompt: null }),
 
+      queuedId: null,
       offer: (workout, open = true) => {
         const existing = get().debriefs.find((d) => d.workoutId === workout.id);
         if (!existing) {
           set({ debriefs: [createDebrief(workout), ...get().debriefs].slice(0, DEBRIEF_CAP) });
         }
-        if (open) set({ openId: workout.id });
+        if (queued) clearTimeout(queued);
+        queued = null;
+        if (open === true) {
+          set({ openId: workout.id, queuedId: null });
+        } else if (typeof open === 'number') {
+          set({ queuedId: workout.id });
+          queued = setTimeout(() => {
+            queued = null;
+            if (get().queuedId !== workout.id) return;
+            set({ queuedId: null });
+            get().open(workout.id);
+          }, open);
+        }
       },
       open: (workoutId) => {
-        if (get().debriefs.some((d) => d.workoutId === workoutId)) set({ openId: workoutId });
+        // Only a debrief still waiting: one dismissed from Home's card in the
+        // beat before the delayed open fired must stay dismissed.
+        const debrief = get().debriefs.find((d) => d.workoutId === workoutId);
+        if (debrief?.status === 'pending') set({ openId: workoutId });
       },
       close: () => set({ openId: null }),
 
@@ -99,6 +126,7 @@ export const useDebriefs = create<DebriefState>()(
       dismiss: (workoutId) =>
         set((state) => ({
           openId: state.openId === workoutId ? null : state.openId,
+          queuedId: state.queuedId === workoutId ? null : state.queuedId,
           debriefs: state.debriefs.map((d) =>
             d.workoutId === workoutId && d.status === 'pending'
               ? { ...d, status: 'dismissed' as const }

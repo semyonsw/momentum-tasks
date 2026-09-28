@@ -1377,6 +1377,13 @@ const RU: Record<string, string> = {
   'Gemini is overloaded right now. Try again in a minute.':
     'Gemini сейчас перегружен. Попробуйте через минуту.',
 
+  'Past chats': 'Прошлые чаты',
+  'No past chats yet.': 'Прошлых чатов пока нет.',
+  '{count} messages': 'сообщений: {count}',
+  'Delete chat': 'Удалить чат',
+  'Past chats stay on this phone only. Opening one puts the chat you have open now into this list.':
+    'Прошлые чаты хранятся только на этом телефоне. Если открыть один из них, текущий чат попадёт в этот список.',
+
   // Success popups
   'Export successful': 'Экспорт выполнен',
   'Import successful': 'Импорт выполнен',

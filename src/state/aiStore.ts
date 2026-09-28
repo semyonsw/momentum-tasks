@@ -75,6 +75,47 @@ type Chats = Record<AiSection, AiMessage[]>;
 
 const EMPTY_CHATS: Chats = { Workout: [], Tasks: [], Expenses: [] };
 
+/**
+ * A chat that was put away by `Start a new chat` — kept on this phone, listed
+ * in the chat's history sheet, and reopenable exactly as it was left.
+ *
+ * `New chat` used to DELETE the conversation, which made the one button a user
+ * presses to change the subject also the button that throws away last week's
+ * answer about their bench press. Now it files it. The archive lives in the same
+ * AsyncStorage blob as the chats, and like them it never goes into a backup.
+ */
+export interface ArchivedChat {
+  id: string;
+  /** The first question, as the list shows it. */
+  title: string;
+  startedAt: string;
+  updatedAt: string;
+  messages: AiMessage[];
+}
+
+/** Past chats kept per section; the oldest go first. */
+export const ARCHIVE_CAP = 30;
+
+type Archive = Record<AiSection, ArchivedChat[]>;
+
+const EMPTY_ARCHIVE: Archive = { Workout: [], Tasks: [], Expenses: [] };
+
+let archiveSeed = 0;
+
+/** A chat worth keeping: one the user actually asked something in. */
+function toArchived(messages: readonly AiMessage[]): ArchivedChat | null {
+  const first = messages.find((m) => m.role === 'user');
+  if (!first || first.role !== 'user') return null;
+  archiveSeed += 1;
+  return {
+    id: `chat_${Date.now().toString(36)}_${archiveSeed}`,
+    title: first.text.trim().slice(0, 120),
+    startedAt: messages[0].at,
+    updatedAt: messages[messages.length - 1].at,
+    messages: [...messages],
+  };
+}
+
 interface AiValue {
   provider: 'google';
   model: string;
@@ -83,6 +124,8 @@ interface AiValue {
   lastTestedAt: string | null;
   latencyMs: number | null;
   chats: Chats;
+  /** Past chats, per section, newest first — see `ArchivedChat`. */
+  archive: Archive;
   proposals: Record<string, StoredProposal>;
   /**
    * Routines the assistant created that have not been opened yet — the `AI` pill
@@ -107,7 +150,11 @@ interface AiState extends AiValue {
 
   appendMessage: (section: AiSection, message: AiMessage) => void;
   removeMessage: (section: AiSection, id: string) => void;
+  /** `Start a new chat`: the current one goes into the history, not the bin. */
   clearChat: (section: AiSection) => void;
+  /** Bring a past chat back; whatever was open takes its place in the history. */
+  openArchived: (section: AiSection, id: string) => void;
+  deleteArchived: (section: AiSection, id: string) => void;
   setPending: (section: AiSection, pending: boolean) => void;
   setRetrying: (section: AiSection, retrying: boolean) => void;
 
@@ -120,10 +167,11 @@ interface AiState extends AiValue {
 }
 
 /** Every proposal id some message in some chat still points at. */
-function referenced(chats: Chats): Set<string> {
+function referenced(chats: Chats, archive: Archive = EMPTY_ARCHIVE): Set<string> {
   const ids = new Set<string>();
   for (const section of AI_SECTIONS) {
-    for (const message of chats[section]) {
+    const all = [...chats[section], ...archive[section].flatMap((c) => c.messages)];
+    for (const message of all) {
       if (message.role !== 'model') continue;
       for (const block of message.blocks) if (block.type === 'proposal') ids.add(block.proposalId);
     }
@@ -134,8 +182,9 @@ function referenced(chats: Chats): Set<string> {
 function prune(
   proposals: Record<string, StoredProposal>,
   chats: Chats,
+  archive: Archive = EMPTY_ARCHIVE,
 ): Record<string, StoredProposal> {
-  const keep = referenced(chats);
+  const keep = referenced(chats, archive);
   return Object.fromEntries(Object.entries(proposals).filter(([id]) => keep.has(id)));
 }
 
@@ -149,6 +198,7 @@ export const useAi = create<AiState>()(
       lastTestedAt: null,
       latencyMs: null,
       chats: EMPTY_CHATS,
+      archive: EMPTY_ARCHIVE,
       proposals: {},
       unseenRoutineIds: [],
       pending: { Workout: false, Tasks: false, Expenses: false },
@@ -170,19 +220,43 @@ export const useAi = create<AiState>()(
       markOff: () => set({ status: 'off', lastError: null, lastTestedAt: null, latencyMs: null }),
 
       appendMessage: (section, message) => {
-        const { chats, proposals } = get();
+        const { chats, archive, proposals } = get();
         const next = { ...chats, [section]: [...chats[section], message].slice(-CHAT_CAP) };
-        set({ chats: next, proposals: prune(proposals, next) });
+        set({ chats: next, proposals: prune(proposals, next, archive) });
       },
       removeMessage: (section, id) => {
-        const { chats, proposals } = get();
+        const { chats, archive, proposals } = get();
         const next = { ...chats, [section]: chats[section].filter((m) => m.id !== id) };
-        set({ chats: next, proposals: prune(proposals, next) });
+        set({ chats: next, proposals: prune(proposals, next, archive) });
       },
       clearChat: (section) => {
-        const { chats, proposals } = get();
+        const { chats, archive, proposals } = get();
+        const filed = toArchived(chats[section]);
+        const nextArchive = filed
+          ? { ...archive, [section]: [filed, ...archive[section]].slice(0, ARCHIVE_CAP) }
+          : archive;
         const next = { ...chats, [section]: [] };
-        set({ chats: next, proposals: prune(proposals, next) });
+        set({ chats: next, archive: nextArchive, proposals: prune(proposals, next, nextArchive) });
+      },
+      openArchived: (section, id) => {
+        const { chats, archive, proposals, pending } = get();
+        // Not while an answer is on its way: it would land in the reopened chat.
+        if (pending[section]) return;
+        const chosen = archive[section].find((c) => c.id === id);
+        if (!chosen) return;
+        const filed = toArchived(chats[section]);
+        const rest = archive[section].filter((c) => c.id !== id);
+        const nextArchive = {
+          ...archive,
+          [section]: (filed ? [filed, ...rest] : rest).slice(0, ARCHIVE_CAP),
+        };
+        const next = { ...chats, [section]: chosen.messages.slice(-CHAT_CAP) };
+        set({ chats: next, archive: nextArchive, proposals: prune(proposals, next, nextArchive) });
+      },
+      deleteArchived: (section, id) => {
+        const { chats, archive, proposals } = get();
+        const nextArchive = { ...archive, [section]: archive[section].filter((c) => c.id !== id) };
+        set({ archive: nextArchive, proposals: prune(proposals, chats, nextArchive) });
       },
       setPending: (section, pending) =>
         set((state) => ({
@@ -236,6 +310,7 @@ export const useAi = create<AiState>()(
         lastTestedAt: state.lastTestedAt,
         latencyMs: state.latencyMs,
         chats: state.chats,
+        archive: state.archive,
         proposals: state.proposals,
         unseenRoutineIds: state.unseenRoutineIds,
       }),
@@ -357,6 +432,28 @@ export function sanitizeAi(input: unknown): AiValue {
       .filter((m): m is AiMessage => m != null)
       .slice(-CHAT_CAP);
   }
+  const archive: Archive = { Workout: [], Tasks: [], Expenses: [] };
+  const rawArchive = isRec(raw.archive) ? raw.archive : {};
+  for (const section of AI_SECTIONS) {
+    const list = Array.isArray(rawArchive[section]) ? (rawArchive[section] as unknown[]) : [];
+    for (const entry of list) {
+      if (!isRec(entry)) continue;
+      const id = str(entry.id);
+      const messages = (Array.isArray(entry.messages) ? entry.messages : [])
+        .map((message) => sanitizeMessage(message, section, proposals))
+        .filter((m): m is AiMessage => m != null)
+        .slice(-CHAT_CAP);
+      if (!id || messages.length === 0) continue;
+      archive[section].push({
+        id,
+        title: str(entry.title) ?? '',
+        startedAt: str(entry.startedAt) ?? messages[0].at,
+        updatedAt: str(entry.updatedAt) ?? messages[messages.length - 1].at,
+        messages,
+      });
+    }
+    archive[section] = archive[section].slice(0, ARCHIVE_CAP);
+  }
   /*
    * `testing` does not survive a relaunch: the app was killed mid-test, and
    * whether the key it was testing got stored is exactly what is not known.
@@ -371,7 +468,8 @@ export function sanitizeAi(input: unknown): AiValue {
     lastTestedAt: str(raw.lastTestedAt),
     latencyMs: num(raw.latencyMs),
     chats,
-    proposals: prune(proposals, chats),
+    archive,
+    proposals: prune(proposals, chats, archive),
     unseenRoutineIds: Array.isArray(raw.unseenRoutineIds)
       ? raw.unseenRoutineIds.filter((id): id is string => typeof id === 'string')
       : [],

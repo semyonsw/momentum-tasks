@@ -63,6 +63,10 @@ import { useWorkoutHistory } from './workoutHistoryStore';
 
 const lang = () => useSettings.getState().language;
 
+/** Appended to the question on the one re-ask after an unreadable reply. */
+const REPAIR_NOTE =
+  '(Your previous reply could not be read. Answer the question above again, replying ONLY with JSON of the form {"blocks":[{"type":"text","text":"..."}]} using the block types from your instructions. No prose outside the JSON.)';
+
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 let idSeed = 0;
@@ -157,6 +161,7 @@ export function sectionContext(section: AiSection): {
     const settings = useSettings.getState();
     const built = buildWorkoutContext({
       debriefs: useDebriefs.getState().debriefs,
+      sequence: library.sequence,
       exercises: library.exercises,
       routines: library.routines,
       workouts: history.workouts,
@@ -269,14 +274,14 @@ export async function sendMessage(
 
     const context = sectionContext(section);
     const chosen = useAi.getState().model;
-    const request = (model: string) =>
+    const request = (model: string, userText = question) =>
       buildChatRequest({
         key,
         model,
         systemPrompt: systemPrompt(section, language),
         context: context.json,
         history,
-        userText: question,
+        userText,
       });
 
     /*
@@ -313,12 +318,35 @@ export async function sendMessage(
       return;
     }
 
-    const parsed = parseChatResponse(result.body);
+    /*
+     * Read it — and if nothing in it can be drawn, ask ONCE more with the
+     * format spelled out. The validator already reads every near-miss it can
+     * (`validateBlocks`), so what reaches this second ask is a reply that was
+     * genuinely off the schema, and a model told exactly what went wrong almost
+     * always gets it right the second time. Only then does the chat say it
+     * could not read the answer.
+     */
+    const read = (body: unknown) => {
+      const parsed = parseChatResponse(body);
+      const blocks = parsed.ok
+        ? validateBlocks(parsed.json, { section, routineIds: context.routineIds })
+        : [];
+      return { parsed, blocks };
+    };
+    let { parsed, blocks } = read(result.body);
+    const unreadable =
+      (!parsed.ok && parsed.reason === 'shape') || (parsed.ok && blocks.length === 0);
+    if (unreadable && stillAsked()) {
+      const again = await send(request(model, `${question}\n\n${REPAIR_NOTE}`), CHAT_TIMEOUT_MS);
+      if (again.kind === 'response' && again.status === 200) {
+        const second = read(again.body);
+        if (second.parsed.ok && second.blocks.length > 0) ({ parsed, blocks } = second);
+      }
+    }
     if (!parsed.ok) {
       fail(section, mapParseFailure(parsed.reason, language), question, stillAsked);
       return;
     }
-    const blocks = validateBlocks(parsed.json, { section, routineIds: context.routineIds });
 
     /* A proposal becomes a stored, editable record, and the chat keeps its id. */
     const library = useLibrary.getState();
@@ -333,7 +361,12 @@ export async function sendMessage(
         routines: library.routines,
         lastWeights: lastTopWeights(useWorkoutHistory.getState().workouts),
       });
-      if (!review) continue;
+      if (!review) {
+        // Nothing left to apply once matched against the library — its reason
+        // is still worth saying.
+        chatBlocks.push({ type: 'text', text: block.proposal.why });
+        continue;
+      }
       const proposalId = nextId('prop');
       useAi.getState().putProposal(proposalId, review);
       chatBlocks.push({ type: 'proposal', proposalId });

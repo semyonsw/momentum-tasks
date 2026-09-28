@@ -55,7 +55,14 @@ import { totalsIn, type Amount, type MoneyAccount, type MoneyCategory } from '..
 import type { CompletedWorkout } from '../completedWorkout';
 import { debriefForAi, type WorkoutDebrief } from '../debrief';
 import type { Language } from '../i18n';
-import type { Exercise, ID, Routine, SetHistory, UnitSystem } from '../../types/models';
+import type {
+  Exercise,
+  ID,
+  Routine,
+  SetHistory,
+  TrainingSequence,
+  UnitSystem,
+} from '../../types/models';
 
 /**
  * The size every context is held under, in characters of JSON.
@@ -88,6 +95,8 @@ export interface WorkoutContextInput {
   weeks?: number;
   /** What the user answered after their workouts — `lib/debrief.ts`. */
   debriefs?: readonly WorkoutDebrief[];
+  /** The training sequence — the loop of routines the user trains in order. */
+  sequence?: TrainingSequence;
 }
 
 export interface WorkoutContext {
@@ -347,12 +356,34 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     .slice(0, 12);
   let debriefLimit = debriefRows.length;
 
+  /*
+   * THE LOOP. A user who trains Push → Pull → Legs → again has told the app the
+   * order, and the Home screen follows it; without it here the model was asked
+   * "do you see my routines loop?" about a fact it had never been given.
+   * Resolved to names, in order, with the one that is up next.
+   */
+  const routineName = new Map(routines.map((r) => [r.id, r.name]));
+  const steps = (input.sequence?.routineIds ?? [])
+    .map((id) => ({ id, name: routineName.get(id) }))
+    .filter((step): step is { id: ID; name: string } => step.name != null);
+  const sequence =
+    input.sequence?.isActive && steps.length > 0
+      ? {
+          on: true,
+          order: steps.map((step) => step.name),
+          routineIds: steps.map((step) => step.id),
+          next: steps[((input.sequence.cursor % steps.length) + steps.length) % steps.length].name,
+          note: 'the user trains these routines in this order and then starts over',
+        }
+      : { on: false, note: 'no training sequence is set; the user picks a routine each time' };
+
   const base = {
     today: dayKey(now),
     language: LANGUAGE_NAME[lang],
     units: unitSystem === 'imperial' ? 'lb (numbers below are kg)' : 'kg',
     ...(bodyweightKg != null ? { bodyweightKg } : {}),
     routines: routineRows,
+    sequence,
   };
 
   /*
