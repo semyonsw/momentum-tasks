@@ -8,10 +8,23 @@
  *
  * The vocabulary is deliberately tiny, and each entry means one thing:
  *
- *   tap       a control acknowledged a press
- *   commit    a set was logged, or a clock started work
- *   success   a countdown reached zero — rest is over, or the bell rang
- *   countTick one second of a get-ready count
+ *   press      a control was pressed — fired by the control itself
+ *   tap        a control acknowledged a press
+ *   commit     a set was logged, or a clock started work
+ *   success    a countdown reached zero — rest is over, or the bell rang
+ *   countTick  one second of a get-ready count
+ *   celebrate  something reached 100% — every set of a session, every task
+ *              of a day, a finished debrief, a backup that landed
+ *   sparkle    the light ticks that ride an animation as it plays
+ *
+ * ── ONE BUZZ PER TOUCH ──────────────────────────────────────────────────────
+ *
+ * `press` fires from `BubblePressable`, which is every button in the app, and
+ * most screens ALSO call `tap()` in the same button's `onPress` — they were
+ * written before the control buzzed by itself. Two selection ticks in a row
+ * read as a stutter, so `tap` stands down when a `press` has just said the
+ * same thing. The heavier cues never stand down: a
+ * set being logged is news even if the finger that logged it was felt landing.
  *
  * ── ONE CUE PER EVENT, WHEREVER THE APP IS ─────────────────────────────────
  *
@@ -36,6 +49,24 @@ function hapticsOn(): boolean {
   return useSettings.getState().hapticsEnabled;
 }
 
+/** When the last `press` fired, for `tap` to stand down behind. */
+let lastPressAt = 0;
+let lastTapAt = 0;
+/** Covers the caller's own `tap()` in the same handler, and a quick double press. */
+const PRESS_COVERS_MS = 350;
+
+/** Timers of a pattern still playing, so a new one replaces rather than stacks. */
+let pattern: ReturnType<typeof setTimeout>[] = [];
+
+function play(steps: readonly [number, () => Promise<void>][]): void {
+  for (const timer of pattern) clearTimeout(timer);
+  pattern = steps.map(([at, buzz]) =>
+    setTimeout(() => {
+      if (hapticsOn()) buzz().catch(() => {});
+    }, at),
+  );
+}
+
 function soundOn(): boolean {
   return useSettings.getState().soundEnabled;
 }
@@ -47,9 +78,21 @@ function cueAudible(): boolean {
   return !useSettings.getState().notifyOnTimerEnd;
 }
 
+/** Any button, pressed. The lightest thing the phone can do. */
+export function press(): void {
+  if (!hapticsOn()) return;
+  lastPressAt = Date.now();
+  Haptics.selectionAsync().catch(() => {});
+}
+
 /** Light. A chip, a chevron, a start button — "I heard you". */
 export function tap(): void {
   if (!hapticsOn()) return;
+  const now = Date.now();
+  if (now - lastPressAt < PRESS_COVERS_MS) return; // `press` already said it
+  // A control that ticks for itself, inside a caller that also ticks: one tick.
+  if (now - lastTapAt < 60) return;
+  lastTapAt = now;
   Haptics.selectionAsync().catch(() => {});
 }
 
@@ -84,4 +127,38 @@ export function countTick(): void {
 export function countFinal(): void {
   if (cueAudible()) playBeep('final');
   success();
+}
+
+/**
+ * 100%. A rising three-step and the success pattern on top of it:
+ *
+ *   0 ms light · 90 ms medium · 190 ms heavy · 330 ms success
+ *
+ * A crescendo rather than one long buzz, because a single vibration of any
+ * length reads as an alarm; three steps that climb read as something filling up,
+ * which is what just happened. Reserved for completions — a day, a session, a
+ * debrief — so it keeps meaning something.
+ */
+export function celebrate(): void {
+  if (!hapticsOn()) return;
+  play([
+    [0, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)],
+    [90, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)],
+    [190, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)],
+    [330, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)],
+  ]);
+}
+
+/**
+ * Ticks that ride an animation: `count` soft taps, `every` ms apart, starting
+ * after `delay`. The spark burst uses it so the dots leaving the dial are felt
+ * leaving; a progress bar filling uses it for its segments.
+ */
+export function sparkle(count = 4, every = 70, delay = 0): void {
+  if (!hapticsOn()) return;
+  const steps: [number, () => Promise<void>][] = [];
+  for (let i = 0; i < count; i += 1) {
+    steps.push([delay + i * every, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)]);
+  }
+  play(steps);
 }

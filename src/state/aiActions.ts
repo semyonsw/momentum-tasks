@@ -50,6 +50,7 @@ import { dayKey } from '../lib/days';
 import { t } from '../lib/i18n';
 import { seedUser } from '../data/seed';
 import { useAi, type AiMessage, type ChatBlock } from './aiStore';
+import { useDebriefs } from './debriefStore';
 import { useLibrary } from './libraryStore';
 import { useMoney } from './moneyStore';
 import { useSettings } from './settingsStore';
@@ -68,7 +69,12 @@ function nextId(prefix: string): string {
 /* The key test                                                        */
 /* ------------------------------------------------------------------ */
 
-export type TestResult = { ok: true; latencyMs: number } | { ok: false; error: string };
+/**
+ * `transient` marks a failure that says nothing about the KEY — offline, a
+ * timeout. The settings screen reads it to leave a working connection working.
+ */
+export type TestResult =
+  { ok: true; latencyMs: number } | { ok: false; error: string; transient?: boolean };
 
 /**
  * Test a key the user typed, step by step, and store it only if it passed.
@@ -88,7 +94,7 @@ export async function testKey(key: string, onStep: (done: 1 | 2 | 3) => void): P
 
   const listed = await send(buildListRequest(trimmed), TEST_TIMEOUT_MS);
   if (listed.kind !== 'response') {
-    return { ok: false, error: mapTransportFailure(listed.kind, language) };
+    return { ok: false, error: mapTransportFailure(listed.kind, language), transient: true };
   }
   onStep(1);
   if (listed.status !== 200) {
@@ -98,7 +104,7 @@ export async function testKey(key: string, onStep: (done: 1 | 2 | 3) => void): P
 
   const hello = await send(buildHelloRequest(trimmed, model), TEST_TIMEOUT_MS);
   if (hello.kind !== 'response') {
-    return { ok: false, error: mapTransportFailure(hello.kind, language) };
+    return { ok: false, error: mapTransportFailure(hello.kind, language), transient: true };
   }
   if (hello.status !== 200) {
     return { ok: false, error: mapError(hello.status, hello.body, model, language) };
@@ -144,6 +150,7 @@ export function sectionContext(section: AiSection): {
     const history = useWorkoutHistory.getState();
     const settings = useSettings.getState();
     const built = buildWorkoutContext({
+      debriefs: useDebriefs.getState().debriefs,
       exercises: library.exercises,
       routines: library.routines,
       workouts: history.workouts,
@@ -190,7 +197,8 @@ function historyOf(messages: readonly AiMessage[]): HistoryTurn[] {
   return turns;
 }
 
-function fail(section: AiSection, text: string, retry: string): void {
+function fail(section: AiSection, text: string, retry: string, asked = () => true): void {
+  if (!asked()) return;
   useAi.getState().appendMessage(section, {
     id: nextId('err'),
     role: 'error',
@@ -222,20 +230,34 @@ export async function sendMessage(
   const history = historyOf(
     retryOf && earlier[earlier.length - 1]?.role === 'user' ? earlier.slice(0, -1) : earlier,
   );
+  /** The question this answer belongs under — gone means the chat was cleared. */
+  let anchorId: string | undefined;
   if (!retryOf) {
+    anchorId = nextId('msg');
     store.appendMessage(section, {
-      id: nextId('msg'),
+      id: anchorId,
       role: 'user',
       text: question,
       at: new Date().toISOString(),
     });
+  } else {
+    const before = useAi.getState().chats[section];
+    const last = before[before.length - 1];
+    if (last?.role === 'user') anchorId = last.id;
   }
+  const stillAsked = () =>
+    anchorId === undefined || useAi.getState().chats[section].some((m) => m.id === anchorId);
 
   store.setPending(section, true);
   try {
     const key = await getKey();
     if (!key || useAi.getState().status !== 'ready') {
-      fail(section, t('Connect a Google AI key in Settings first.', language), question);
+      fail(
+        section,
+        t('Connect a Google AI key in Settings first.', language),
+        question,
+        stillAsked,
+      );
       return;
     }
 
@@ -253,17 +275,17 @@ export async function sendMessage(
       CHAT_TIMEOUT_MS,
     );
     if (result.kind !== 'response') {
-      fail(section, mapTransportFailure(result.kind, language), question);
+      fail(section, mapTransportFailure(result.kind, language), question, stillAsked);
       return;
     }
     if (result.status !== 200) {
-      fail(section, mapError(result.status, result.body, model, language), question);
+      fail(section, mapError(result.status, result.body, model, language), question, stillAsked);
       return;
     }
 
     const parsed = parseChatResponse(result.body);
     if (!parsed.ok) {
-      fail(section, mapParseFailure(parsed.reason, language), question);
+      fail(section, mapParseFailure(parsed.reason, language), question, stillAsked);
       return;
     }
     const blocks = validateBlocks(parsed.json, { section, routineIds: context.routineIds });
@@ -287,9 +309,10 @@ export async function sendMessage(
       chatBlocks.push({ type: 'proposal', proposalId });
     }
     if (chatBlocks.length === 0) {
-      fail(section, mapParseFailure('shape', language), question);
+      fail(section, mapParseFailure('shape', language), question, stillAsked);
       return;
     }
+    if (!stillAsked()) return;
     useAi.getState().appendMessage(section, {
       id: nextId('ans'),
       role: 'model',
@@ -300,7 +323,7 @@ export async function sendMessage(
   } catch {
     // Belt and braces: every call above resolves, but a chat that stays
     // "typing" forever is the one failure this file exists to rule out.
-    fail(section, mapTransportFailure('network', language), question);
+    fail(section, mapTransportFailure('network', language), question, stillAsked);
   } finally {
     useAi.getState().setPending(section, false);
   }

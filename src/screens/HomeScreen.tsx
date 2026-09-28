@@ -77,6 +77,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
 
 import { AiEntryCard } from '../components/AiEntryCard';
+import { DebriefCard } from '../components/DebriefSheet';
 import { Icon } from '../components/Icon';
 import { SectionTopBar } from '../components/SectionTopBar';
 import { SparkBurst, SPARK_MS } from '../components/SparkBurst';
@@ -325,6 +326,8 @@ export function HomeScreen({
                 <Hero plan={next} number={nextNumber} plural={plural} />
               </Animated.View>
             ) : null}
+
+            <DebriefCard />
 
             <AiEntryCard section="Workout" ready={aiReady} onOpen={onOpenAi} />
 

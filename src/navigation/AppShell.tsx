@@ -86,6 +86,7 @@ import { AiReviewScreen } from '../screens/AiReviewScreen';
 import { AiSettingsScreen } from '../screens/AiSettingsScreen';
 import { applyProposal, discardProposal } from '../state/aiActions';
 import { useAi } from '../state/aiStore';
+import { useDebriefs } from '../state/debriefStore';
 import type { AiSection } from '../lib/ai/aiSchema';
 import {
   historyByExerciseId,
@@ -194,6 +195,9 @@ type Route =
   | { name: 'aiSettings'; from?: AiSection; prompt?: string }
   | { name: 'aiChat'; section: AiSection; prompt?: string }
   | { name: 'aiReview'; proposalId: string };
+
+/** From Save to the debrief sheet: the sparks' run, and a breath. */
+const DEBRIEF_DELAY_MS = 1500;
 
 /** How long a toast with an Undo stays: long enough to read and reach. */
 const UNDO_TOAST_MS = 4500;
@@ -927,6 +931,9 @@ export function AppShell() {
    */
   const acceptProposal = useCallback(
     (proposalId: string) => {
+      // A second tap that lands before the buttons re-render: the first one
+      // already applied it, and its Undo toast must not be replaced.
+      if (useAi.getState().proposals[proposalId]?.status === 'accepted') return;
       const applied = applyProposal(proposalId);
       if (!applied) {
         setToast(t('Nothing left to apply'));
@@ -936,6 +943,18 @@ export function AppShell() {
     },
     [setToast, t],
   );
+
+  /*
+   * The debrief's `Ask the assistant about it`. The sheet lives above the
+   * navigation (`DebriefHost`), so it leaves the question in its store and the
+   * shell — which owns the routes — opens the chat on it.
+   */
+  const debriefPrompt = useDebriefs((s) => s.aiPrompt);
+  useEffect(() => {
+    if (!debriefPrompt) return;
+    useDebriefs.getState().clearAiPrompt();
+    openAi('Workout', debriefPrompt);
+  }, [debriefPrompt, openAi]);
 
   /* An AI routine stops saying so once its editor has been opened, too. */
   useEffect(() => {
@@ -1053,6 +1072,18 @@ export function AppShell() {
                   number != null ? t('Workout {number} saved', { number }) : t('Workout saved'),
                 );
                 setJustSaved({ id: saved.id, at: Date.now() });
+              }
+
+              /*
+               * ...and a few questions about how it went (`lib/debrief.ts`), if
+               * the user has not switched them off. Filed NOW, so a phone locked
+               * straight after Save still has it waiting on Home; opened a beat
+               * later, so the sparks and the toast land first and the sheet does
+               * not arrive on top of the celebration it follows.
+               */
+              if (saved && useSettings.getState().askAfterWorkout) {
+                useDebriefs.getState().offer(saved, false);
+                setTimeout(() => useDebriefs.getState().open(saved.id), DEBRIEF_DELAY_MS);
               }
               // The queue only moves when a workout from the step it is on actually
               // gets recorded. A session with nothing logged saves nothing, and a

@@ -160,7 +160,7 @@ import { SetTimerPill } from '../components/SetTimerPill';
 import { useLanguage, useT } from '../hooks/useT';
 import { describeDeload } from '../lib/deload';
 import type { DraftEntry, DraftSession, DraftSet } from '../lib/draft';
-import { commit, tap, undo } from '../lib/feedback';
+import { celebrate, commit, tap, undo } from '../lib/feedback';
 import { useDragReorder, type CardLayout } from '../hooks/useDragReorder';
 import { ADVANCE_HOLD_MS, holdsAfterFinishing } from '../lib/cardAdvance';
 import { resolveRest } from '../lib/rest';
@@ -328,6 +328,17 @@ export function ActiveWorkoutScreen({
    * wraps the same selector in `useShallow`. See the note on `selectProgress`.
    */
   const progress = useSessionProgress();
+  /*
+   * 100%: the last planned set just got its ✓. Felt once, on the transition —
+   * the ref starts at the CURRENT answer, so reopening a session that was
+   * already complete is not a second celebration.
+   */
+  const everySetLogged = progress.total > 0 && progress.done === progress.total;
+  const wasEverySetLogged = useRef(everySetLogged);
+  useEffect(() => {
+    if (everySetLogged && !wasEverySetLogged.current) celebrate();
+    wasEverySetLogged.current = everySetLogged;
+  }, [everySetLogged]);
   /*
    * The timer object, not its ticking clock: this identity changes only when a
    * timer starts, is adjusted, or ends. The 4 Hz tick lives inside the pill, so

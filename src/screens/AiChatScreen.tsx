@@ -184,7 +184,9 @@ export function AiChatScreen({
                   {t(meta.line)}
                 </Text>
               </View>
-              {messages.length > 0 ? (
+              {/* Not while an answer is on its way: it would arrive into the new,
+                  empty chat with no question above it. */}
+              {messages.length > 0 && !pending ? (
                 <RoundButton icon="plus" label={t('Start a new chat')} onPress={startNew} />
               ) : null}
             </View>
@@ -214,12 +216,19 @@ export function AiChatScreen({
           />
         ) : null}
 
-        {messages.map((message) => (
+        {messages.map((message, index) => (
           <Stagger key={message.id} duration={motion.enter}>
             <Message
               message={message}
               proposals={proposals}
-              onRetry={(m) => void sendMessage(section, m.retry, m.id)}
+              // Only the LAST error retries: an older one's question has later
+              // turns after it, and its answer would land at the bottom with no
+              // question beside it.
+              onRetry={
+                index === messages.length - 1
+                  ? (m) => void sendMessage(section, m.retry, m.id)
+                  : undefined
+              }
               onReview={onReview}
               onAccept={onAccept}
             />
@@ -312,7 +321,7 @@ function Message({
 }: {
   message: AiMessage;
   proposals: ReturnType<typeof useAi.getState>['proposals'];
-  onRetry: (message: Extract<AiMessage, { role: 'error' }>) => void;
+  onRetry?: (message: Extract<AiMessage, { role: 'error' }>) => void;
   onReview: (proposalId: string) => void;
   onAccept: (proposalId: string) => void;
 }) {
@@ -321,7 +330,7 @@ function Message({
     return (
       <ErrorAnswer
         text={message.text}
-        onRetry={message.retry ? () => onRetry(message) : undefined}
+        onRetry={message.retry && onRetry ? () => onRetry(message) : undefined}
       />
     );
   }

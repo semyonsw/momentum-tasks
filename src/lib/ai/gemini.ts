@@ -180,7 +180,7 @@ export function buildChatRequest(params: {
 
 export type ChatParse =
   /** `json` is the parsed object; `raw` is the text, kept for the next turn's history. */
-  { ok: true; json: unknown; raw: string } | { ok: false; reason: 'safety' | 'shape' };
+  { ok: true; json: unknown; raw: string } | { ok: false; reason: 'safety' | 'shape' | 'length' };
 
 type Rec = Record<string, unknown>;
 const rec = (value: unknown): Rec | null =>
@@ -202,23 +202,30 @@ export function parseChatResponse(body: unknown): ChatParse {
   const candidates = Array.isArray(root.candidates) ? root.candidates : [];
   const first = rec(candidates[0]);
   if (!first) return { ok: false, reason: 'shape' };
-  if (first.finishReason === 'SAFETY' || first.finishReason === 'PROHIBITED_CONTENT') {
+  const blocked = ['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'RECITATION'];
+  if (blocked.includes(first.finishReason as string)) {
     return { ok: false, reason: 'safety' };
   }
 
+  // A thinking model can return its reasoning as parts marked `thought: true`;
+  // those are not the answer, and joined into it they break the JSON.
   const parts = rec(first.content)?.parts;
   const raw = (Array.isArray(parts) ? parts : [])
+    .filter((part) => rec(part)?.thought !== true)
     .map((part) => (typeof rec(part)?.text === 'string' ? (rec(part)?.text as string) : ''))
     .join('')
     .trim();
-  if (raw === '') return { ok: false, reason: 'shape' };
+  // Cut off mid-answer: the JSON is unterminated, and "a shape I could not read"
+  // would send the user asking the same long question again.
+  const truncated = first.finishReason === 'MAX_TOKENS';
+  if (raw === '') return { ok: false, reason: truncated ? 'length' : 'shape' };
 
   // A model asked for JSON occasionally fences it anyway.
   const unfenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
     return { ok: true, json: JSON.parse(unfenced), raw: unfenced };
   } catch {
-    return { ok: false, reason: 'shape' };
+    return { ok: false, reason: truncated ? 'length' : 'shape' };
   }
 }
 
@@ -283,9 +290,11 @@ export function mapTransportFailure(kind: 'timeout' | 'network', lang: Language)
     : t('Could not reach Google. Check your connection.', lang);
 }
 
-/** The chat's two ways for a 200 to still be unusable. */
-export function mapParseFailure(reason: 'safety' | 'shape', lang: Language): string {
-  return reason === 'safety'
-    ? t('Gemini declined to answer that.', lang)
-    : t('The answer came back in a shape I could not read. Try asking again.', lang);
+/** The chat's three ways for a 200 to still be unusable. */
+export function mapParseFailure(reason: 'safety' | 'shape' | 'length', lang: Language): string {
+  if (reason === 'safety') return t('Gemini declined to answer that.', lang);
+  if (reason === 'length') {
+    return t('The answer ran out of room before it finished. Try a narrower question.', lang);
+  }
+  return t('The answer came back in a shape I could not read. Try asking again.', lang);
 }

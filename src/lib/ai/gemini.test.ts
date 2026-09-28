@@ -178,6 +178,30 @@ describe('reading an answer', () => {
     expect(parseChatResponse(null)).toEqual({ ok: false, reason: 'shape' });
   });
 
+  it('leaves a thinking model’s thought parts out of the answer', () => {
+    const body = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              { text: 'Let me think about the bench…', thought: true },
+              { text: '{"blocks":[]}' },
+            ],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+    };
+    expect(parseChatResponse(body)).toMatchObject({ ok: true, raw: '{"blocks":[]}' });
+  });
+
+  it('says an answer was cut off, rather than that it was the wrong shape', () => {
+    expect(parseChatResponse(answer('{"blocks":[{"type":"te', 'MAX_TOKENS'))).toEqual({
+      ok: false,
+      reason: 'length',
+    });
+  });
+
   it('lists only the models that can chat', () => {
     expect(
       parseModelList({

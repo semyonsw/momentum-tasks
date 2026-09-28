@@ -491,7 +491,7 @@ export function FieldWell({
    */
   selectAllOnFocus?: boolean;
   /** `number-pad` for a field that only ever holds digits. */
-  keyboardType?: 'default' | 'number-pad';
+  keyboardType?: 'default' | 'number-pad' | 'decimal-pad';
   /**
    * Fired when the field loses focus — the moment to COMMIT a value whose write is
    * expensive.
@@ -770,7 +770,10 @@ export function Toggle({
 
   return (
     <Pressable
-      onPress={() => onChange(!value)}
+      onPress={() => {
+        tap();
+        onChange(!value);
+      }}
       accessibilityRole="switch"
       accessibilityState={{ checked: value }}
       accessibilityLabel={accessibilityLabel}

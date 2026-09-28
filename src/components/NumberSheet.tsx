@@ -36,6 +36,11 @@ interface NumberSheetProps {
   initial: number | null;
   /** Smallest value `Save` will accept. Anything below it keeps Save inert. */
   min?: number;
+  /**
+   * Accept one decimal place ("62.5", or "62,5" from a Russian keyboard). Off by
+   * default: a workout number or a set count has no decimal point.
+   */
+  decimal?: boolean;
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: (value: number) => void;
@@ -47,6 +52,7 @@ export function NumberSheet({
   body,
   initial,
   min = 1,
+  decimal = false,
   confirmLabel,
   cancelLabel,
   onConfirm,
@@ -60,8 +66,11 @@ export function NumberSheet({
   const keep = cancelLabel ?? t('Cancel');
   const [text, setText] = useState(initial == null ? '' : String(initial));
 
-  /* Digits only — a workout number has no sign, no decimal point and no spaces. */
-  const parsed = /^\d+$/.test(text.trim()) ? Number(text.trim()) : NaN;
+  /* Digits only — a workout number has no sign, no decimal point and no spaces.
+     A weight may carry one decimal place, with either separator. */
+  const cleaned = text.trim().replace(',', '.');
+  const pattern = decimal ? /^\d+(\.\d?)?$/ : /^\d+$/;
+  const parsed = pattern.test(cleaned) ? Number(cleaned) : NaN;
   const valid = Number.isFinite(parsed) && parsed >= min;
 
   return (
@@ -85,7 +94,7 @@ export function NumberSheet({
           <FieldWell
             value={text}
             onChangeText={setText}
-            keyboardType="number-pad"
+            keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
             autoFocus
             selectAllOnFocus
             placeholder={String(min)}

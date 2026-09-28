@@ -99,6 +99,7 @@ import { useLanguage, useT } from '../hooks/useT';
 import { commit, tap } from '../lib/feedback';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_NAMES, type Language } from '../lib/i18n';
 import { applyBackup, currentSnapshot, exportBackupText } from '../state/dataTransfer';
+import { SuccessPopup } from '../components/SuccessPopup';
 import { SETTING_LIMITS, useSettings } from '../state/settingsStore';
 import { danger, halo, palette, radius } from '../theme/tokens';
 
@@ -146,6 +147,17 @@ export function SettingsHomeScreen({
   const bars = useBarInsets();
 
   const [status, setStatus] = useState<Status | null>(null);
+  /**
+   * The same news as `status`, in the middle of the screen for three seconds.
+   * The status line sits at the foot of the scroll, under the reset box, and an
+   * export that landed while the button's owner was looking at the top of the
+   * screen was an export they did again. See `components/SuccessPopup.tsx`.
+   */
+  const [popup, setPopup] = useState<{ title: string; detail: string } | null>(null);
+  const succeed = (title: string, text: string) => {
+    setStatus({ tone: 'ok', text });
+    setPopup({ title, detail: text });
+  };
   const [pending, setPending] = useState<PendingImport | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
   /** A picker is open or a file is being read. Stops a second tap racing it. */
@@ -181,14 +193,14 @@ export function SettingsHomeScreen({
       const adopted = outcome.folderUri != null && settings.autoBackupFolderUri == null;
       if (adopted) settings.setAutoBackupFolder(outcome.folderUri);
 
-      setStatus({
-        tone: 'ok',
-        text: `${t('Saved {name} to {where} — {counts}.', {
+      succeed(
+        t('Export successful'),
+        `${t('Saved {name} to {where} — {counts}.', {
           name: outcome.name,
           where: outcome.where,
           counts: describeCounts(onThisPhone(), language),
         })}${adopted ? ` ${t('Automatic backups will go to that folder from now on.')}` : ''}`,
-      });
+      );
     } catch (error) {
       setStatus({ tone: 'quiet', text: describeError(error, language) });
     } finally {
@@ -232,15 +244,15 @@ export function SettingsHomeScreen({
     const applied = applyBackup(pending.envelope);
     commit();
     setPending(null);
-    setStatus({
-      tone: 'ok',
+    succeed(
+      t('Import successful'),
       // What LANDED, not what the file claimed: rows that fail validation are
       // dropped on the way in, and a restore that reports the file's own numbers
       // is how someone learns not to trust the feature.
-      text: applied.settingsApplied
+      applied.settingsApplied
         ? t('Restored {counts}, and your settings.', { counts: describeCounts(applied, language) })
         : t('Restored {counts}.', { counts: describeCounts(applied, language) }),
-    });
+    );
   };
 
   /**
@@ -277,14 +289,14 @@ export function SettingsHomeScreen({
         return;
       }
       commit();
-      setStatus({
-        tone: 'ok',
-        text: t('Backed up {name} to {folder} — {counts}.', {
+      succeed(
+        t('Backup saved'),
+        t('Backed up {name} to {folder} — {counts}.', {
           name: result.name ?? '',
           folder: folderLabel(folder, language),
           counts: describeCounts(onThisPhone(), language),
         }),
-      });
+      );
     } catch (error) {
       setStatus({ tone: 'quiet', text: describeError(error, language) });
     } finally {
@@ -605,6 +617,10 @@ export function SettingsHomeScreen({
           }}
           onCancel={() => setConfirmingReset(false)}
         />
+      ) : null}
+
+      {popup ? (
+        <SuccessPopup title={popup.title} detail={popup.detail} onDone={() => setPopup(null)} />
       ) : null}
     </View>
   );

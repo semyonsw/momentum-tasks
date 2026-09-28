@@ -104,6 +104,8 @@ export interface Settings {
   keepAwakeEnabled: boolean;
   /** Fire a local notification when a timer ends, for a phone in a pocket. */
   notifyOnTimerEnd: boolean;
+  /** Ask a few questions after a workout is saved (`lib/debrief.ts`). */
+  askAfterWorkout: boolean;
   /**
    * EVERY rep-counted exercise runs a rep ladder.
    *
@@ -284,6 +286,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hapticsEnabled: true,
   keepAwakeEnabled: true,
   notifyOnTimerEnd: true,
+  askAfterWorkout: true,
   ladderAllExercises: false,
   unitSystem: 'metric',
   gyms: gymsFromLegacyPlates(DEFAULT_PLATES_KG),
@@ -414,6 +417,7 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     hapticsEnabled: raw.hapticsEnabled !== false,
     keepAwakeEnabled: raw.keepAwakeEnabled !== false,
     notifyOnTimerEnd: raw.notifyOnTimerEnd !== false,
+    askAfterWorkout: raw.askAfterWorkout !== false,
     // The one flag that defaults OFF, so `!== false` would be the wrong test: an
     // upgraded device with no such key must not wake up having rewritten its
     // whole library.
@@ -558,6 +562,7 @@ interface SettingsState extends Settings {
       | 'hapticsEnabled'
       | 'keepAwakeEnabled'
       | 'notifyOnTimerEnd'
+      | 'askAfterWorkout'
       | 'ladderAllExercises'
       | 'autoTickTasks',
     value: boolean,

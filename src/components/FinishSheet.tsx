@@ -65,6 +65,7 @@ import { curve, motion, palette, radius } from '../theme/tokens';
 import { COMMIT_GRADIENT, SpecularEdge } from './glass';
 import { Kicker, PrimaryButton } from './primitives';
 import { RollingNumber } from './RollingNumber';
+import { sparkle } from '../lib/feedback';
 import { SlidingThumb } from './SlidingThumb';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { SessionEffort } from '../types/models';
@@ -172,6 +173,8 @@ export function FinishSheet({
       }),
     ]).start();
     const reveal = setTimeout(() => setRevealStats(true), 80 * motionScale);
+    // The digits rolling up are FELT rolling: soft ticks across the roll.
+    if (motionScale > 0) sparkle(5, 110, 80);
     return () => clearTimeout(reveal);
     // Mount only: the sheet arrives once.
     // eslint-disable-next-line react-hooks/exhaustive-deps

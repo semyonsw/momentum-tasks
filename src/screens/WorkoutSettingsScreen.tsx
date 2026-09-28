@@ -94,7 +94,11 @@ import {
 } from '../components/primitives';
 import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import { parseClockTime, weekdayLabels } from '../lib/days';
-import { notificationsGranted } from '../lib/notify';
+import {
+  ensureNotificationPermission,
+  notificationsGranted,
+  openNotificationSettings,
+} from '../lib/notify';
 import type { Weekday } from '../lib/tasks';
 import { bumpRestBetweenSets, setRestBetweenSets } from '../state/restSync';
 import { LADDER_SETS, describeLadder, ladderForMax } from '../lib/repLadder';
@@ -459,7 +463,17 @@ export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
                 "How the beep reaches you when the app isn't open — a tick 5 s out, then the tone",
               )}
               value={settings.notifyOnTimerEnd}
-              onChange={(v) => settings.setFlag('notifyOnTimerEnd', v)}
+              onChange={(v) => {
+                settings.setFlag('notifyOnTimerEnd', v);
+                if (v) void ensureNotificationPermission();
+              }}
+            />
+            <Separator />
+            <SwitchRow
+              label={t('Questions after a workout')}
+              hint={t('A few taps on how it went, so the assistant knows more than the numbers')}
+              value={settings.askAfterWorkout}
+              onChange={(v) => settings.setFlag('askAfterWorkout', v)}
             />
             <Separator />
             <TestBeepRow />
@@ -1014,7 +1028,11 @@ function WorkoutReminder() {
           label={t('Remind me to train')}
           hint={t('A notification at the time you set, on the days you picked.')}
           value={enabled}
-          onChange={setEnabled}
+          onChange={(on) => {
+            setEnabled(on);
+            // Asked HERE, at the switch — the one moment the user knows why.
+            if (on) void ensureNotificationPermission().then((s) => setGranted(s === 'granted'));
+          }}
         />
       </ListCard>
 
@@ -1046,9 +1064,23 @@ function WorkoutReminder() {
       ) : null}
 
       {enabled && granted === false ? (
-        <Text className="mx-lg mt-md text-label text-ink-faint">
-          {t('Notifications are switched off for this app, so nothing will arrive.')}
-        </Text>
+        <>
+          <Text className="mx-lg mt-md text-label text-ink-faint">
+            {t('Notifications are switched off for this app, so nothing will arrive.')}
+          </Text>
+          <View className="mx-lg">
+            <TextButton
+              label={t('Allow notifications')}
+              tone="green"
+              onPress={() => {
+                void ensureNotificationPermission().then((state) => {
+                  if (state === 'granted') setGranted(true);
+                  else void openNotificationSettings();
+                });
+              }}
+            />
+          </View>
+        </>
       ) : null}
     </>
   );

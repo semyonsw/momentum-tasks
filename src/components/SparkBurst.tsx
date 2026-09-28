@@ -20,6 +20,13 @@
  * this file would lose a second of confetti and not one fact — the same test
  * `SectionGlow` had to pass before the lamps were allowed to exist.
  *
+ * ── AND IT IS FELT ─────────────────────────────────────────────────────────
+ *
+ * Every burst IS a 100% — a day closed, a workout saved — so mounting one plays
+ * `celebrate()`, the rising three-step, timed to the dots leaving the dial. It
+ * lives here rather than in the two callers so the thing you see and the thing
+ * you feel cannot drift apart.
+ *
  * Dot `i` travels to `(cos(i/14 · 2π)·r, sin(...)·r)` where `r = 64 + (i·37 mod
  * 40)` — the modulus is what stops fourteen dots landing on one clean circle and
  * reading as a loading spinner. It scales 0.4 → 1 → 0.2 and fades out over
@@ -29,6 +36,8 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 
+import { celebrate } from '../lib/feedback';
+
 const COUNT = 14;
 const DURATION = 900;
 const STAGGER = 18;
@@ -36,6 +45,9 @@ const STAGGER = 18;
 const EASING = Easing.bezier(0.2, 0.7, 0.3, 1);
 
 export function SparkBurst({ y = 170 }: { y?: number }) {
+  useEffect(() => {
+    celebrate();
+  }, []);
   return (
     <View
       pointerEvents="none"

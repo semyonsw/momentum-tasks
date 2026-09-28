@@ -39,6 +39,7 @@
 
 import { serializeBackup, type BackupCounts, type BackupPayload } from '../lib/backup';
 import { t } from '../lib/i18n';
+import { useDebriefs } from './debriefStore';
 import { useLibrary } from './libraryStore';
 import { sanitizeMoney, useMoney } from './moneyStore';
 import { sanitizeSettings, useSettings } from './settingsStore';
@@ -63,6 +64,7 @@ export function currentSnapshot(): BackupPayload {
     // it says something untrue about the format.
     tasks: sanitizeTasks(useTasks.getState()),
     money: sanitizeMoney(useMoney.getState()),
+    debriefs: useDebriefs.getState().debriefs,
   };
 }
 
@@ -148,6 +150,7 @@ export function applyBackup(payload: BackupPayload): AppliedCounts {
   if (tasksApplied) useTasks.getState().importTasks(payload.tasks);
   const moneyApplied = payload.money != null;
   if (moneyApplied) useMoney.getState().importMoney(payload.money);
+  if (payload.debriefs != null) useDebriefs.getState().importDebriefs(payload.debriefs);
 
   let sets = 0;
   for (const workout of useWorkoutHistory.getState().workouts) sets += workout.sets.length;

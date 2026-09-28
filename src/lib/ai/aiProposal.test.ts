@@ -264,6 +264,43 @@ describe('applying an edit', () => {
   });
 });
 
+describe('applying an edit after the routine changed', () => {
+  /*
+   * A suggestion is stored and applied later. In between, the user added Squats
+   * to Push in the editor and deleted Push-ups. Applying must keep the squats
+   * where they are and must not bring the push-ups back.
+   */
+  const lib = library();
+  const proposal = normalizeProposal(
+    editOfPush([
+      { exerciseId: 'ex_dips_weighted', name: 'Dips', sets: 5, reps: 10, weightKg: 35 },
+      { exerciseId: 'ex_pushups', name: 'Push-ups', sets: 3, reps: 20, weightKg: 0 },
+    ]),
+    ctx(lib),
+  )!;
+  const later = clone(lib);
+  const push = later.routines.find((r) => r.id === 'r_push')!;
+  push.items = [
+    push.items[0],
+    { id: 'rp_new', exerciseId: 'ex_squat', order: 1, targetSets: 3, targetRepsMax: 8 },
+  ];
+  const result = planApply(proposal, later, { now: NOW, ownerId: OWNER })!;
+  const items = result.routines.find((r) => r.id === 'r_push')!.items;
+
+  it('keeps an item the suggestion never mentioned, after the item it followed', () => {
+    expect(items.map((i) => i.exerciseId)).toEqual(['ex_dips_weighted', 'ex_squat']);
+    expect(items[1]).toMatchObject({ id: 'rp_new', order: 1, targetSets: 3 });
+  });
+
+  it('does not bring back an item deleted since', () => {
+    expect(items.some((i) => i.id === 'rp2')).toBe(false);
+  });
+
+  it('still applies the change to the item it did mention', () => {
+    expect(items[0]).toMatchObject({ id: 'rp1', targetSets: 5, targetRepsMax: 10, order: 0 });
+  });
+});
+
 /* ------------------------------------------------------------------ */
 
 describe('applying a new routine', () => {

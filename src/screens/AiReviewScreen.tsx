@@ -215,7 +215,13 @@ export function AiReviewScreen({ proposalId, onBack, onAccept, onDiscard }: AiRe
       {typing && typingRow ? (
         <NumberSheet
           title={t(FIELD_LABEL[typing.field])}
-          initial={Math.round(typingRow[typing.field])}
+          // The exact value: a 62.5 kg row confirmed untouched must stay 62.5.
+          initial={
+            typing.field === 'weightKg'
+              ? Math.round(typingRow.weightKg * 10) / 10
+              : Math.round(typingRow[typing.field])
+          }
+          decimal={typing.field === 'weightKg'}
           min={typing.field === 'weightKg' ? 0 : 1}
           onConfirm={(value) => {
             update(setRowValue(proposal, typing.key, typing.field, value));

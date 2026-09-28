@@ -132,6 +132,20 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
     setStep(0);
     setTested({ masked: maskKey(key), latencyMs: null });
     setPhase('testing');
+    /*
+     * What to fall back to when the test fails for a reason that is not the
+     * stored key's fault. A NEW key that fails was never stored (`testKey` only
+     * stores a pass), so the old one still works; and "offline" says nothing
+     * about any key. Turning a working connection off for either would make every
+     * chat say "connect a key first" to somebody whose key is fine.
+     */
+    const wasReady = useAi.getState().status === 'ready';
+    const typedNew = typed !== '';
+    const verdict = (failed: { error: string; transient?: boolean }) => {
+      // Back to exactly what it was — the last verified test still stands.
+      if (wasReady && (typedNew || failed.transient)) useAi.setState({ status: 'ready' });
+      else useAi.getState().markError(failed.error);
+    };
     useAi.getState().markTesting();
 
     const started = Date.now();
@@ -143,7 +157,7 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
     if (!alive.current) {
       // Gone mid-test: record the verdict, show nothing.
       if (result.ok) useAi.getState().markReady(result.latencyMs);
-      else useAi.getState().markError(result.error);
+      else verdict(result);
       return;
     }
 
@@ -156,7 +170,7 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
       setKeyInput('');
       setPhase('ready');
     } else {
-      useAi.getState().markError(result.error);
+      verdict(result);
       setError(result.error);
       setPhase('form');
     }

@@ -61,6 +61,9 @@ export async function send(
       const raw = await response.text();
       body = raw ? JSON.parse(raw) : null;
     } catch {
+      // The deadline also covers reading the body: a timeout that aborts the read
+      // is a timeout, not an answer of a shape nobody could parse.
+      if (timedOut) return { kind: 'timeout' };
       body = null;
     }
     return { kind: 'response', status: response.status, body };

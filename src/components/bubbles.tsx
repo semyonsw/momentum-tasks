@@ -57,6 +57,7 @@ import {
 } from 'react-native';
 
 import { palette } from '../theme/tokens';
+import { press } from '../lib/feedback';
 
 /** Long enough to be seen leaving, short enough to be over before the next tap. */
 const DURATION = 460;
@@ -98,12 +99,22 @@ export interface BubblePressableProps extends Omit<PressableProps, 'children'> {
   bubbleColor?: string;
   /** Off, for the few places a bubble would be noise — a drag handle, a scrim. */
   bubbles?: boolean;
+  /**
+   * The tick (`feedback.press`) when the press lands. On for every button by
+   * default; off for a control that already speaks for itself. On the PRESS and
+   * not on touch-down: a finger that lands on a row and then scrolls the list is
+   * not pressing anything, and a buzz for every scroll is the fastest way to get
+   * vibration switched off.
+   */
+  haptic?: boolean;
 }
 
 export function BubblePressable({
   radius = 0,
   bubbleColor = palette.greenBright,
   bubbles = true,
+  haptic = true,
+  onPress,
   onPressIn,
   onPressOut,
   onLayout,
@@ -169,6 +180,14 @@ export function BubblePressable({
   return (
     <Pressable
       {...rest}
+      onPress={
+        onPress
+          ? (event) => {
+              if (haptic) press();
+              onPress(event);
+            }
+          : undefined
+      }
       onPressIn={(event) => {
         if (bubbles) burst(event);
         setPressed(true);

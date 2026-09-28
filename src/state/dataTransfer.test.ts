@@ -5,6 +5,7 @@ import { useLibrary } from './libraryStore';
 import { DEFAULT_SETTINGS, useSettings } from './settingsStore';
 import { useWorkoutHistory } from './workoutHistoryStore';
 import { useAi } from './aiStore';
+import { useDebriefs } from './debriefStore';
 import { parseBackup } from '../lib/backup';
 import { buildDraftSession, type DraftSession } from '../lib/draft';
 import { seedExercises, seedRoutine, seedUser } from '../data/seed';
@@ -350,5 +351,42 @@ describe('what the assistant leaves out of a backup', () => {
     expect(Object.keys(useAi.getState())).not.toContain('apiKey');
     useAi.getState().clearChat('Workout');
     useAi.getState().markOff();
+  });
+});
+
+describe('the debriefs', () => {
+  const debriefWorkout = {
+    id: 'w_debrief',
+    title: 'Push',
+    startedAt: '2026-09-27T18:00:00.000Z',
+    endedAt: '2026-09-27T19:00:00.000Z',
+    durationMinutes: 60,
+    setCount: 1,
+    totalVolumeKg: 0,
+    volumeIsPartial: false,
+    exercises: [],
+    sets: [],
+  };
+
+  it('travel in a backup and come back', () => {
+    useDebriefs.setState({ debriefs: [], openId: null });
+    useDebriefs.getState().offer(debriefWorkout, false);
+    useDebriefs.getState().saveAnswers('w_debrief', { load: { choices: ['heavy'] } }, true);
+    const text = exportBackupText();
+    useDebriefs.setState({ debriefs: [] });
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useDebriefs.getState().debriefs).toHaveLength(1);
+    expect(useDebriefs.getState().debriefs[0].answers).toEqual({ load: { choices: ['heavy'] } });
+  });
+
+  it('are left alone by a file from before they existed', () => {
+    useDebriefs.setState({ debriefs: [], openId: null });
+    useDebriefs.getState().offer(debriefWorkout, false);
+    const parsed = parseBackup(JSON.stringify({ exercises: [], routines: [], workouts: [] }));
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useDebriefs.getState().debriefs).toHaveLength(1);
   });
 });

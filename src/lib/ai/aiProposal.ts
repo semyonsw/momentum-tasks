@@ -588,12 +588,15 @@ export function planApply(
   const target = library.routines.find((r) => r.id === proposal.targetRoutineId);
   if (!target) return null;
   const itemsById = new Map(target.items.map((item) => [item.id, item]));
-  const items: RoutineItem[] = [];
+  let items: RoutineItem[] = [];
   for (const row of proposal.rows) {
     if (row.removed) continue;
     const order = items.length;
     const original = row.itemId ? itemsById.get(row.itemId) : undefined;
     if (!original) {
+      // A row that named an item the user has since deleted stays deleted: the
+      // suggestion was about a routine that no longer has it.
+      if (row.itemId) continue;
       items.push(newItem(row, order));
       continue;
     }
@@ -601,7 +604,7 @@ export function planApply(
     const repsChanged = was != null && row.reps !== was.reps;
     const setsChanged = was != null && row.sets !== was.sets;
     if (!repsChanged && !setsChanged) {
-      items.push(original.order === order ? original : { ...original, order });
+      items.push(original);
       continue;
     }
     const next: RoutineItem = { ...original, order, targetSets: row.sets };
@@ -611,6 +614,28 @@ export function planApply(
     }
     items.push(next);
   }
+  /*
+   * AN ITEM NO ROW MENTIONS IS KEPT, where it was. A suggestion is stored and can
+   * be applied an hour later, after the user has added Dips to the routine in the
+   * editor — and applying it must not quietly delete them. Same for an item whose
+   * exercise was missing when the suggestion was built. Each goes back in after
+   * the nearest item that preceded it in the routine as it is now.
+   */
+  const mentioned = new Set(proposal.rows.map((row) => row.itemId).filter(Boolean));
+  const current = [...target.items].sort((a, b) => a.order - b.order);
+  current.forEach((item, index) => {
+    if (mentioned.has(item.id)) return;
+    let at = 0;
+    for (let j = index - 1; j >= 0; j -= 1) {
+      const found = items.findIndex((x) => x.id === current[j].id);
+      if (found !== -1) {
+        at = found + 1;
+        break;
+      }
+    }
+    items.splice(at, 0, item);
+  });
+  items = items.map((item, order) => (item.order === order ? item : { ...item, order }));
   const name = proposal.name.trim() || target.name;
   const routine: Routine = { ...target, name, items, updatedAt: iso };
   return {

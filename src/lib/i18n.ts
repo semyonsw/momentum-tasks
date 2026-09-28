@@ -1311,6 +1311,76 @@ const RU: Record<string, string> = {
   BW: 'СВ',
   'Less {label}': 'Меньше: {label}',
   'More {label}': 'Больше: {label}',
+  // Notifications
+  'Allow notifications': 'Разрешить уведомления',
+
+  // After-workout questions (lib/debrief.ts, components/DebriefSheet.tsx)
+  'How did the weights feel?': 'Как ощущались веса?',
+  'Too light': 'Слишком легко',
+  'A bit light': 'Легковато',
+  'Just right': 'В самый раз',
+  'A bit heavy': 'Тяжеловато',
+  'Too heavy': 'Слишком тяжело',
+  'How was your energy?': 'Как было с энергией?',
+  Low: 'Мало сил',
+  Normal: 'Нормально',
+  High: 'Много сил',
+  'Any pain or discomfort?': 'Была боль или дискомфорт?',
+  Shoulder: 'Плечо',
+  Elbow: 'Локоть',
+  Wrist: 'Запястье',
+  Neck: 'Шея',
+  'Lower back': 'Поясница',
+  Hip: 'Тазобедренный',
+  Knee: 'Колено',
+  'Somewhere else': 'Другое место',
+  'Which exercise was the hardest?': 'Какое упражнение было самым тяжёлым?',
+  'None stood out': 'Ничего особенного',
+  'What should happen to this routine next time?': 'Что сделать с программой в следующий раз?',
+  'Keep it as is': 'Оставить как есть',
+  'Make it harder': 'Сделать тяжелее',
+  'Make it easier': 'Сделать легче',
+  'Swap some exercises': 'Заменить упражнения',
+  'Make it shorter': 'Сделать короче',
+  'Would you do this workout again?': 'Повторили бы эту тренировку?',
+  Yes: 'Да',
+  Maybe: 'Возможно',
+  No: 'Нет',
+  'Anything else the coach should know?': 'Что ещё стоит знать тренеру?',
+  'After the workout': 'После тренировки',
+  '{n} of {total}': '{n} из {total}',
+  'Pick all that apply': 'Можно выбрать несколько',
+  'Sleep, stress, what worked, what did not…': 'Сон, стресс, что получилось, что нет…',
+  'Add a detail (optional)': 'Подробность (необязательно)',
+  'Add a note': 'Добавить заметку',
+  'Save answers': 'Сохранить ответы',
+  Next: 'Далее',
+  'Not this time': 'Не сейчас',
+  'Thanks — noted': 'Спасибо, записано',
+  'The assistant reads these answers whenever you ask about your training or a routine.':
+    'Ассистент учитывает эти ответы, когда вы спрашиваете о тренировках или программе.',
+  'Ask the assistant about it': 'Спросить ассистента',
+  'How did my {routine} workout go, and should I change anything?':
+    'Как прошла тренировка «{routine}» и стоит ли что-то изменить?',
+  'How did my last workout go, and should I change anything?':
+    'Как прошла последняя тренировка и стоит ли что-то изменить?',
+  'How did {routine} go?': 'Как прошла «{routine}»?',
+  'How did the workout go?': 'Как прошла тренировка?',
+  '{answered} of {total} answered · pick up where you left off':
+    'Отвечено {answered} из {total} · продолжить',
+  '{total} quick questions for the assistant': 'Вопросов для ассистента: {total}',
+  'Questions after a workout': 'Вопросы после тренировки',
+  'A few taps on how it went, so the assistant knows more than the numbers':
+    'Пара касаний о том, как всё прошло, — чтобы ассистент знал больше, чем цифры',
+
+  // Success popups
+  'Export successful': 'Экспорт выполнен',
+  'Import successful': 'Импорт выполнен',
+  'Backup saved': 'Копия сохранена',
+
+  // AI
+  'The answer ran out of room before it finished. Try a narrower question.':
+    'Ответ не поместился целиком. Попробуйте задать вопрос уже.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

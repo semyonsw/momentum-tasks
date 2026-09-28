@@ -65,13 +65,20 @@ import * as Notifications from 'expo-notifications';
 
 import './global.css';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { DebriefHost } from './src/components/DebriefSheet';
 import { LaunchScreen } from './src/components/LaunchScreen';
 import { AppShell } from './src/navigation/AppShell';
 import { LanguageChoiceScreen } from './src/screens/LanguageChoiceScreen';
 import { useSettingsHydrated } from './src/hooks/useHydrated';
 import { useSettings } from './src/state/settingsStore';
 import { prepareAudio } from './src/lib/beeper';
-import { ensureTimerChannels, requestNotificationPermission } from './src/lib/notify';
+import {
+  REMINDER_KIND,
+  dismissTimerAlerts,
+  ensureTimerChannels,
+  notificationKind,
+  requestNotificationPermission,
+} from './src/lib/notify';
 import { migrateHistoryIfNeeded, useWorkoutHistory } from './src/state/workoutHistoryStore';
 import { useAutoBackup } from './src/hooks/useAutoBackup';
 import { useAutoRounds } from './src/hooks/useAutoRounds';
@@ -88,19 +95,29 @@ import { useTimerAlerts } from './src/hooks/useTimerAlerts';
  * beeping more times than it counted.
  *
  * Backgrounded, it is the only thing that can reach the user, so it gets the
- * banner and the sound.
+ * banner, the sound, and a place in the shade (`shouldShowList` was false for
+ * both states, which on a phone where the handler runs with the app in the
+ * background left the alert as a banner that vanished — a rest-over nobody
+ * could find once they looked down).
+ *
+ * A REMINDER IS NOT A TIMER. It used to go through the same rule, so "Read
+ * before sleep" firing at 22:30 while the app happened to be open was swallowed
+ * whole — no banner, no list entry, nothing. Nothing on screen said it either:
+ * the pill only counts rests. So a reminder always shows, whatever is in front.
  *
  * Wrapped because this runs at module scope, before any boundary exists. A throw
  * here would be a crash on launch with no screen to report it on.
  */
 try {
   Notifications.setNotificationHandler({
-    handleNotification: async () => {
+    handleNotification: async (notification) => {
+      const reminder = notificationKind(notification.request.content.data) === REMINDER_KIND;
       const foreground = AppState.currentState === 'active';
+      const show = reminder || !foreground;
       return {
-        shouldShowBanner: !foreground,
-        shouldShowList: false,
-        shouldPlaySound: !foreground,
+        shouldShowBanner: show,
+        shouldShowList: show,
+        shouldPlaySound: show,
         shouldSetBadge: false,
       };
     },
@@ -163,6 +180,16 @@ export default function App() {
      * to place.
      */
     void migrateHistoryIfNeeded();
+
+    /*
+     * Back in front: the timer alerts in the shade are stale news — the session
+     * on screen already says the rest is over. See `dismissTimerAlerts`.
+     */
+    void dismissTimerAlerts();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void dismissTimerAlerts();
+    });
+    return () => sub.remove();
   }, []);
 
   return (
@@ -224,6 +251,8 @@ function Root() {
     <>
       <SessionClock />
       <AppShell />
+      {/* Above the shell, so it outlives whichever route is on top. */}
+      <DebriefHost />
     </>
   );
 }

@@ -45,7 +45,7 @@
  *    countdown remains the source of truth.
  */
 
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 import { t, type Language } from './i18n';
@@ -54,11 +54,11 @@ import type { PlannedReminder } from './reminders';
 /**
  * Bumped when a channel's SOUND or IMPORTANCE changes — Android freezes both.
  *
- * 3 — and the NAME is frozen too, which is why translating the three below was
- * not enough on its own: a phone that has already created `timer-go-v2` keeps
- * showing "Timer finished" in its notification settings forever. A new id is the
- * only way the Russian name reaches an existing install, and the old ids join
- * `RETIRED_CHANNELS` so the settings screen does not list both.
+ * 3 — renamed so the Russian names reached existing installs. (The name turned
+ * out NOT to be frozen — Android updates a channel's name and description in
+ * place — which is why `ensureTimerChannels` now rewrites them whenever the
+ * language changes. The bump stays: it is harmless, and the old ids are in
+ * `RETIRED_CHANNELS` so the settings screen does not list both.)
  */
 const CHANNEL_VERSION = 3;
 
@@ -103,18 +103,26 @@ const RETIRED_CHANNELS = [
  */
 export const GETSET_LEAD_SECONDS = 5;
 
-let channelsReady = false;
+/** `data.kind` on every rest / set-timer alert — see `notificationKind`. */
+export const TIMER_KIND = 'timer';
 
 /**
- * Create the two Android channels once, and clear out retired ones.
+ * The channels as they were last written, and the language they were written in.
  *
- * No-op elsewhere, and never throws. Safe to call on every launch; safe never to
- * be called at all, in which case Android posts to a default channel with a
- * default sound.
+ * A PROMISE rather than a flag, because the flag this replaced was set before the
+ * three `setNotificationChannelAsync` calls had finished: launch fires
+ * `ensureTimerChannels()` and, half a second later, the reminder sync calls it
+ * again, sees `true`, and schedules straight onto a channel Android has not created
+ * yet — and a notification posted to a channel that does not exist is DROPPED on
+ * Android 8+, silently. Every caller now awaits the same write.
+ *
+ * Keyed by language because a channel's NAME and DESCRIPTION can be updated in
+ * place (only its sound and importance are frozen), so switching the app to
+ * Russian rewrites what the phone's notification settings call them.
  */
-export async function ensureTimerChannels(lang: Language = 'en'): Promise<void> {
-  if (channelsReady || Platform.OS !== 'android') return;
-  channelsReady = true;
+let channels: { lang: Language; ready: Promise<boolean> } | null = null;
+
+async function writeChannels(lang: Language): Promise<boolean> {
   try {
     for (const id of RETIRED_CHANNELS) {
       await Notifications.deleteNotificationChannelAsync(id).catch(() => {});
@@ -153,9 +161,32 @@ export async function ensureTimerChannels(lang: Language = 'en'): Promise<void> 
       bypassDnd: false,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
     });
+    return true;
   } catch {
-    channelsReady = false; // let a later call try again
+    return false;
   }
+}
+
+/**
+ * Create the three Android channels, and clear out retired ones.
+ *
+ * No-op elsewhere, and never throws. Safe to call on every launch and from every
+ * scheduling path: concurrent callers share one write, and a failed write is
+ * retried by the next caller rather than remembered as done.
+ *
+ * Without a language it keeps whatever the channels were last written in — the
+ * launch call does not know the language yet, and must not rename them to English
+ * on a Russian phone.
+ */
+export async function ensureTimerChannels(lang?: Language): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  if (channels && (lang === undefined || lang === channels.lang)) {
+    if (await channels.ready) return;
+  }
+  const target = lang ?? channels?.lang ?? 'en';
+  const ready = writeChannels(target);
+  channels = { lang: target, ready };
+  if (!(await ready) && channels?.ready === ready) channels = null; // let a later call try again
 }
 
 /**
@@ -176,12 +207,41 @@ export async function notificationsGranted(): Promise<boolean> {
 
 /** Ask for permission. Silent on refusal — the app works fine without it. */
 export async function requestNotificationPermission(): Promise<void> {
+  await ensureNotificationPermission();
+}
+
+/**
+ * Where the permission stands after asking for it, if it could still be asked.
+ *
+ *   granted  alerts will arrive
+ *   denied   refused this time; the system may ask again later
+ *   blocked  refused for good — only the phone's Settings can turn it back on,
+ *            which is what `openNotificationSettings` is for
+ *
+ * Asked at the moment a reminder is switched ON, not only at launch: a switch
+ * that arms a reminder behind a permission nobody was ever asked for is the
+ * "everything looks right and nothing arrives" state `WorkoutReminder` warns
+ * about, and the switch is the one moment the user knows why we are asking.
+ */
+export async function ensureNotificationPermission(): Promise<'granted' | 'denied' | 'blocked'> {
   try {
     const current = await Notifications.getPermissionsAsync();
-    if (current.granted) return;
-    await Notifications.requestPermissionsAsync();
+    if (current.granted) return 'granted';
+    if (current.canAskAgain === false) return 'blocked';
+    const asked = await Notifications.requestPermissionsAsync();
+    if (asked.granted) return 'granted';
+    return asked.canAskAgain === false ? 'blocked' : 'denied';
   } catch {
-    // Nothing to do: the countdown on screen is unaffected.
+    return 'denied';
+  }
+}
+
+/** The app's own page in the phone's Settings, where a blocked permission lives. */
+export async function openNotificationSettings(): Promise<void> {
+  try {
+    await Linking.openSettings();
+  } catch {
+    // No settings app to open. Nothing else can grant it.
   }
 }
 
@@ -216,6 +276,8 @@ export async function scheduleTimerAlert(alert: TimerAlert): Promise<string | nu
         body: alert.body,
         // Android ignores this in favour of the channel's sound; iOS uses it.
         sound: alert.kind === 'getset' ? 'beep_tick.wav' : 'beep_final.wav',
+        // Read back by the foreground handler and by `dismissTimerAlerts`.
+        data: { kind: TIMER_KIND },
         interruptionLevel: 'timeSensitive', // iOS: pierces Focus modes
         ...(Platform.OS === 'android' ? { channelId } : {}),
       },
@@ -270,6 +332,26 @@ export async function scheduleTimerAlertPair(params: {
   return ids;
 }
 
+/**
+ * Clear the timer alerts still sitting in the shade.
+ *
+ * Called when the app comes back to the front: a "Rest over" from four minutes
+ * ago is not news to somebody who is looking at the session, and a shade that
+ * piles up one per set is the other reason people switch alerts off. Reminders
+ * are left where they are — "read before sleep" is still true until it is done.
+ */
+export async function dismissTimerAlerts(): Promise<void> {
+  try {
+    const shown = await Notifications.getPresentedNotificationsAsync();
+    for (const entry of shown) {
+      if (notificationKind(entry.request.content.data) !== TIMER_KIND) continue;
+      await Notifications.dismissNotificationAsync(entry.request.identifier).catch(() => {});
+    }
+  } catch {
+    // Nothing presented, or the module is unavailable.
+  }
+}
+
 /** Cancel scheduled alerts. Safe with stale ids, nulls, or no permission. */
 export async function cancelTimerAlerts(ids: readonly (string | null)[]): Promise<void> {
   for (const id of ids) {
@@ -296,7 +378,33 @@ export async function cancelTimerAlerts(ids: readonly (string | null)[]): Promis
  * task's reminder — a rest that then ends in complete silence with the phone in a
  * pocket.
  */
-const REMINDER_KIND = 'reminder';
+export const REMINDER_KIND = 'reminder';
+
+/**
+ * Which of this app's two kinds a notification is, from its `data`.
+ *
+ * Total over whatever the bridge hands back — Android returns `data` as a map, a
+ * JSON string on some versions, or nothing for a notification scheduled before
+ * the marker existed.
+ */
+export function notificationKind(data: unknown): string | null {
+  let value = data;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value !== 'object' || value === null) return null;
+  const kind = (value as { kind?: unknown }).kind;
+  return typeof kind === 'string' ? kind : null;
+}
+
+/** A reminder's identifier, as `planReminders` writes it. The fallback marker. */
+function isReminderId(identifier: string): boolean {
+  return identifier.startsWith('task:') || identifier.startsWith('workout:');
+}
 
 /**
  * Monday = 0 … Sunday = 6  →  Android's 1 = Sunday … 7 = Saturday.
@@ -354,10 +462,24 @@ function triggerFor(reminder: PlannedReminder): Notifications.NotificationTrigge
  * did before reminders existed, and the settings screen is what reports that the
  * permission is missing.
  */
-export async function syncReminders(
+export function syncReminders(
   plan: readonly PlannedReminder[],
   lang: Language = 'en',
 ): Promise<number> {
+  /*
+   * ONE AT A TIME. Launch runs the debounced sync and the foreground sync within
+   * the same second, and two interleaved cancel-then-schedule passes can have the
+   * second one's cancel land between the first one's schedules. Chained, the last
+   * plan asked for is the one Android ends up holding.
+   */
+  const run = syncQueue.then(() => syncNow(plan, lang));
+  syncQueue = run.catch(() => 0);
+  return run;
+}
+
+let syncQueue: Promise<unknown> = Promise.resolve();
+
+async function syncNow(plan: readonly PlannedReminder[], lang: Language): Promise<number> {
   try {
     await ensureTimerChannels(lang);
     await cancelAllReminders();
@@ -393,7 +515,9 @@ export async function cancelAllReminders(): Promise<void> {
   try {
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const entry of scheduled) {
-      if ((entry.content?.data as { kind?: string } | undefined)?.kind !== REMINDER_KIND) continue;
+      const ours =
+        notificationKind(entry.content?.data) === REMINDER_KIND || isReminderId(entry.identifier);
+      if (!ours) continue;
       await Notifications.cancelScheduledNotificationAsync(entry.identifier).catch(() => {});
     }
   } catch {

@@ -9,6 +9,7 @@ import {
   workoutFacts,
 } from './aiContext';
 import { recomputeWorkout, type CompletedWorkout } from '../completedWorkout';
+import { createDebrief } from '../debrief';
 import { seedExercises, seedExercisesById, seedRoutines } from '../../data/seed';
 import { fixtureHistory } from '../../../test/fixtures/history';
 import type { Amount, MoneyAccount, MoneyCategory } from '../money';
@@ -76,6 +77,46 @@ describe('the workout context', () => {
 
   it('stays under the cap', () => {
     expect(built.json.length).toBeLessThanOrEqual(CONTEXT_CAP);
+  });
+
+  it('carries what the user said after a workout, and only for workouts it sent', () => {
+    const latest = workouts[0];
+    const debrief = {
+      ...createDebrief(latest),
+      status: 'answered' as const,
+      answers: {
+        load: { choices: ['heavy'] },
+        pain: { choices: ['lower_back'], note: 'on the deadlift' },
+        plan: { choices: ['easier'] },
+      },
+    };
+    const orphan = { ...createDebrief(latest), workoutId: 'gone', answers: debrief.answers };
+    const withDebriefs = buildWorkoutContext({
+      exercises: seedExercises,
+      routines: seedRoutines,
+      workouts,
+      unitSystem: 'metric',
+      lang: 'en',
+      now: NOW,
+      debriefs: [debrief, orphan],
+    });
+    const rows = JSON.parse(withDebriefs.json).debriefs;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      routine: 'Pull',
+      routineId: 'r_pull',
+      answers: {
+        'How did the weights feel?': 'A bit heavy',
+        'Any pain or discomfort?': 'Lower back — on the deadlift',
+        'What should happen to this routine next time?': 'Make it easier',
+      },
+    });
+    expect(withDebriefs.debriefCount).toBe(1);
+    expect(withDebriefs.json.length).toBeLessThanOrEqual(CONTEXT_CAP);
+  });
+
+  it('sends no debriefs key when there are none', () => {
+    expect(json.debriefs).toBeUndefined();
   });
 
   it('says what day it is, which language to answer in, and the units', () => {
@@ -320,6 +361,68 @@ describe('the expenses context', () => {
       '2026-09',
     ]);
     expect(built.monthCount).toBe(2);
+  });
+
+  it('carries every note in the window, newest first, as one line each', () => {
+    const noted = buildExpensesContext({
+      amounts: [
+        ...amounts,
+        amount('n1', { note: 'dinner with Anna', when: { kind: 'day', date: '2026-09-20' } }),
+        amount('n2', {
+          note: '  weekly   groceries ',
+          value: 3200,
+          when: { kind: 'day', date: '2026-08-02' },
+        }),
+        amount('n3', {
+          categoryId: 'home',
+          note: 'rent, flat on Abovyan',
+          value: 5000,
+          when: { kind: 'month', year: 2026, month: 7 },
+        }),
+        // Outside the six months: left out.
+        amount('old', { note: 'ancient', when: { kind: 'day', date: '2025-12-01' } }),
+      ],
+      categories,
+      accounts,
+      currency: '֏',
+      today: '2026-09-27',
+      lang: 'en',
+    });
+    const parsed = JSON.parse(noted.json);
+    expect(parsed.notes).toEqual([
+      '2026-09-20 expense Food 100: dinner with Anna',
+      '2026-08-02 expense Food 3200: weekly groceries',
+      '2026-08 (whole month) expense Home 5000: rent, flat on Abovyan',
+    ]);
+    expect(noted.noteCount).toBe(3);
+  });
+
+  it('sheds the oldest notes first to stay under the cap', () => {
+    const many = Array.from({ length: 400 }, (_, i) =>
+      amount(`m${i}`, {
+        note: `note number ${i} with a little bit of extra text to take up room`,
+        when: { kind: 'day', date: `2026-09-${String((i % 27) + 1).padStart(2, '0')}` },
+        createdAt: `2026-09-01T00:00:${String(i % 60).padStart(2, '0')}Z`,
+      }),
+    );
+    const capped = buildExpensesContext({
+      amounts: many,
+      categories,
+      accounts,
+      currency: '֏',
+      today: '2026-09-27',
+      lang: 'en',
+    });
+    expect(capped.json.length).toBeLessThanOrEqual(CONTEXT_CAP);
+    const notes: string[] = JSON.parse(capped.json).notes;
+    expect(notes.length).toBe(capped.noteCount);
+    expect(notes.length).toBeGreaterThan(20);
+    expect(notes[0].startsWith('2026-09-27')).toBe(true);
+  });
+
+  it('carries no notes key when nobody wrote one', () => {
+    expect(json.notes).toBeUndefined();
+    expect(built.noteCount).toBe(0);
   });
 
   it('ranks the categories and states each balance with its opening', () => {

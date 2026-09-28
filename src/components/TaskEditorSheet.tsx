@@ -67,6 +67,7 @@ import {
   TextButton,
 } from './primitives';
 import { dayKey, formatLongDay, shiftDay, weekdayLabels } from '../lib/days';
+import { ensureNotificationPermission } from '../lib/notify';
 import { useLanguage, useT } from '../hooks/useT';
 import type { TaskReminder, TaskSchedule, Weekday } from '../lib/tasks';
 
@@ -128,6 +129,8 @@ export function TaskEditorSheet({
   /** Which of the two dates the grid is pointing at, or neither. */
   const [datePicker, setDatePicker] = useState<'start' | 'once' | null>(null);
   const [reminder, setReminder] = useState<TaskReminder | null>(initialReminder);
+  /** The permission was asked for when the switch went on, and refused. */
+  const [blocked, setBlocked] = useState(false);
 
   const schedule: TaskSchedule =
     kind === 'daily'
@@ -236,9 +239,19 @@ export function TaskEditorSheet({
           value={reminder !== null}
           // 07:00 rather than the current time: a reminder is a thing you want
           // in the morning far more often than you want it at 14:36.
-          onChange={(on) => setReminder(on ? { hour: 7, minute: 0 } : null)}
+          onChange={(on) => {
+            setReminder(on ? { hour: 7, minute: 0 } : null);
+            if (on)
+              void ensureNotificationPermission().then((state) => setBlocked(state !== 'granted'));
+          }}
         />
       </View>
+
+      {reminder && blocked ? (
+        <Text className="mt-sm text-label text-ink-faint">
+          {t('Notifications are switched off for this app, so nothing will arrive.')}
+        </Text>
+      ) : null}
 
       {reminder ? (
         <View className="mt-lg">

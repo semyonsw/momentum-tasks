@@ -121,6 +121,12 @@ export interface BackupPayload {
    */
   tasks?: unknown;
   money?: unknown;
+  /**
+   * What the user answered after each workout (`lib/debrief.ts`). Optional and
+   * absent-means-absent, like the two logs above: a file from before debriefs
+   * existed leaves this phone's answers exactly where they are.
+   */
+  debriefs?: unknown;
 }
 
 export interface BackupEnvelope extends BackupPayload {
@@ -294,6 +300,7 @@ export function parseBackup(text: string, lang: Language = 'en'): ParseResult {
     // `applyBackup` reads the difference to decide whether to touch these logs.
     tasks: source.tasks ?? undefined,
     money: source.money ?? undefined,
+    debriefs: source.debriefs ?? undefined,
   };
   const counts = countPayload(payload);
 

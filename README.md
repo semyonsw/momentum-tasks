@@ -88,6 +88,8 @@ npm run lint             # also what CI runs, on every push
 | The next workout glows | the card the app is suggesting breathes a slow green halo. It says nothing the card was not already saying; it is what makes it findable in a column of cards without reading any of them |
 | An assistant, if you want one | off until you paste your own Google AI key into `Settings → AI assistant`, where it is tested in three named steps before it is kept — in the phone's keystore, never in a backup. Then each section has its own chat behind a ✦ in its corner: summaries, trends and, in the workout section, a suggested routine or an edit to one, every number of it editable before `Add to routines`, and nothing written until that tap. It reads only the section you ask from, summarised on the phone first, and goes straight to Google — there is no server |
 | Bubbles | every button, row, chip and tab opens a ring from the point your thumb landed. It costs nothing at rest and it is the whole app answering a touch the same way |
+| A few questions after a workout | once it is saved: how the weights felt, energy, anything that hurt, the hardest exercise, what to do with the routine, and a note — one per screen, every one skippable, `Later` keeps them waiting on Home. The assistant reads the answers (and every note written on an amount) whenever you ask it about your training or your money |
+| Felt, not only seen | a tick under every button as the ring opens, a rising three-step when something reaches 100% — the last set of a session, the last task of a day, a finished debrief, a backup that landed |
 
 ## Three logs, one app
 

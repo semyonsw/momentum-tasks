@@ -4,11 +4,13 @@
  *
  *   buildWorkoutContext   routines, the library's names, the last 20 weeks of
  *                         sessions in the app's own shorthand, per-exercise
- *                         rollups, sets per cluster, and the app's own verdicts
+ *                         rollups, sets per cluster, the app's own verdicts, and
+ *                         what the user SAID after each workout (the debriefs)
  *   buildTasksContext     the tasks, and per task: asked, done, excused, missed,
  *                         streaks, weekday rates; plus the daily completion line
  *   buildExpensesContext  months of spent and income, categories per month, the
- *                         whole-month amounts named separately, the balances
+ *                         whole-month amounts named separately, the balances,
+ *                         and every amount the user wrote a NOTE on
  *
  * ── NEVER THE WHOLE DATABASE ───────────────────────────────────────────────
  *
@@ -51,11 +53,21 @@ import { ladderOf } from '../repLadder';
 import { asksOn, dayProgress, entryOf, streakOf, type Task, type TaskLog } from '../tasks';
 import { totalsIn, type Amount, type MoneyAccount, type MoneyCategory } from '../money';
 import type { CompletedWorkout } from '../completedWorkout';
+import { debriefForAi, type WorkoutDebrief } from '../debrief';
 import type { Language } from '../i18n';
 import type { Exercise, ID, Routine, SetHistory, UnitSystem } from '../../types/models';
 
-/** The size every context is held under, in characters of JSON. */
-export const CONTEXT_CAP = 6000;
+/**
+ * The size every context is held under, in characters of JSON.
+ *
+ * 12,000 — about 3,000 tokens — since the contexts started carrying what the user
+ * WROTE as well as what they logged: the notes on amounts, and the answers after
+ * a workout. At 6,000 those were the first thing the shedding loops threw away,
+ * which is exactly backwards: they are the one part of the context the model
+ * cannot work out from the numbers. Still a rounding error against the model's
+ * window, and still small enough that the oldest detail goes first.
+ */
+export const CONTEXT_CAP = 12_000;
 
 export const LANGUAGE_NAME: Record<Language, string> = { ru: 'Russian', en: 'English' };
 
@@ -74,12 +86,16 @@ export interface WorkoutContextInput {
   lang: Language;
   now?: Date;
   weeks?: number;
+  /** What the user answered after their workouts — `lib/debrief.ts`. */
+  debriefs?: readonly WorkoutDebrief[];
 }
 
 export interface WorkoutContext {
   json: string;
   /** Workouts in the window that was sent — the chat's "Reading 91 workouts…". */
   workoutCount: number;
+  /** Debriefs that made it into `json`. */
+  debriefCount: number;
   /** The most-trained loaded lift, for "How is my bench press going?". */
   topLift: string | null;
   /** The routine trained most recently that still exists, for "Improve my Push". */
@@ -316,6 +332,21 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     return row;
   });
 
+  /*
+   * THE DEBRIEFS — newest first, only for workouts still in the window, and each
+   * one only if it says something. They are what the numbers cannot say ("too
+   * heavy", "lower back", "make it shorter"), so they are shed LAST of anything
+   * optional: down to three before the sessions go below six.
+   */
+  const inWindowIds = new Set(inWindow.map((w) => w.id));
+  const debriefRows = (input.debriefs ?? [])
+    .filter((d) => inWindowIds.has(d.workoutId))
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .map(debriefForAi)
+    .filter((row): row is Record<string, unknown> => row != null)
+    .slice(0, 12);
+  let debriefLimit = debriefRows.length;
+
   const base = {
     today: dayKey(now),
     language: LANGUAGE_NAME[lang],
@@ -350,6 +381,7 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
       })),
       setsPerCluster4w,
       signals,
+      ...(debriefLimit > 0 ? { debriefs: debriefRows.slice(0, debriefLimit) } : {}),
     });
 
   let json = render();
@@ -367,13 +399,26 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     rollupLimit = Math.max(5, rollupLimit - 5);
     json = render();
   }
+  while (json.length > CONTEXT_CAP && debriefLimit > 3) {
+    debriefLimit -= 1;
+    json = render();
+  }
   while (json.length > CONTEXT_CAP && sessionLimit > 1) {
     sessionLimit -= 1;
     json = render();
   }
+  while (json.length > CONTEXT_CAP && debriefLimit > 0) {
+    debriefLimit -= 1;
+    json = render();
+  }
 
   const facts = workoutFacts({ exercises, routines, workouts, now });
-  return { json, workoutCount: Math.min(sessionLimit, inWindow.length), ...facts };
+  return {
+    json,
+    workoutCount: Math.min(sessionLimit, inWindow.length),
+    debriefCount: debriefLimit,
+    ...facts,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -512,7 +557,12 @@ export interface ExpensesContext {
   json: string;
   /** Months in the window with anything in them — "Reading 6 months of amounts…". */
   monthCount: number;
+  /** Notes that made it into `json`. */
+  noteCount: number;
 }
+
+/** A note is a line, not an essay: the first this-many characters of each. */
+const NOTE_CHARS = 140;
 
 /** `YYYY-MM-01` of the month `offset` months from the one `day` is in. */
 function monthAnchor(day: string, offset: number): string {
@@ -579,14 +629,54 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
       return { account: account.name, balance, opening: account.opening };
     });
 
-  const json = JSON.stringify({
+  /*
+   * THE NOTES. A category says "Food 42,000"; the notes say it was "dinner with
+   * Anna", "groceries for the week", "birthday cake" — which is the difference
+   * between "you spent a lot on food" and an answer that knows what the money
+   * was actually for. Every amount in the window that carries one goes in, newest
+   * first, one line each, and the OLDEST are shed first to stay under the cap.
+   */
+  const windowStart = anchors[0];
+  const accountNames: Record<ID, string> = Object.fromEntries(accounts.map((a) => [a.id, a.name]));
+  const noted = amounts
+    .filter((amount) => amount.note.trim() !== '')
+    .map((amount) => {
+      const when =
+        amount.when.kind === 'month'
+          ? `${amount.when.year}-${String(amount.when.month + 1).padStart(2, '0')}`
+          : amount.when.date;
+      return { amount, when };
+    })
+    // A whole-month amount's key is `YYYY-MM`, which sorts before that month's days.
+    .filter(({ when }) => when >= windowStart.slice(0, 7) && when <= today)
+    .sort(
+      (a, b) =>
+        b.when.localeCompare(a.when) || b.amount.createdAt.localeCompare(a.amount.createdAt),
+    )
+    .map(({ amount, when }) => {
+      const month = amount.when.kind === 'month' ? ' (whole month)' : '';
+      const account = accountNames[amount.accountId];
+      const where = accounts.length > 1 && account ? ` [${account}]` : '';
+      const note = amount.note.trim().replace(/\s+/g, ' ').slice(0, NOTE_CHARS);
+      return `${when}${month} ${amount.direction} ${catName(amount.categoryId)} ${amount.value}${where}: ${note}`;
+    });
+
+  const base = {
     today,
     language: LANGUAGE_NAME[lang],
     currency,
-    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed',
+    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; notes are what the user wrote on individual amounts, newest first',
     months: monthRows,
     topCategories,
     balances,
-  });
-  return { json, monthCount };
+  };
+  let noteLimit = noted.length;
+  const render = () =>
+    JSON.stringify(noteLimit > 0 ? { ...base, notes: noted.slice(0, noteLimit) } : base);
+  let json = render();
+  while (json.length > CONTEXT_CAP && noteLimit > 0) {
+    noteLimit = noteLimit > 20 ? Math.floor(noteLimit * 0.8) : noteLimit - 1;
+    json = render();
+  }
+  return { json, monthCount, noteCount: noteLimit };
 }

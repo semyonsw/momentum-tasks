@@ -47,4 +47,16 @@ describe('send', () => {
     expect(await send(request, 20, slow)).toEqual({ kind: 'timeout' });
     expect(aborted).toBe(true);
   });
+
+  it('says `timeout` when the deadline lands while the body is still being read', async () => {
+    const slowBody = (_url: string, init: { signal?: AbortSignal }) =>
+      Promise.resolve({
+        status: 200,
+        text: () =>
+          new Promise<string>((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          }),
+      });
+    expect(await send(request, 20, slowBody)).toEqual({ kind: 'timeout' });
+  });
 });
