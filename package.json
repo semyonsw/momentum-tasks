@@ -1,6 +1,6 @@
 {
-  "name": "workout-tracker",
-  "version": "1.22.0",
+  "name": "momentum-app",
+  "version": "2.0.0",
   "main": "expo/AppEntry.js",
   "private": true,
   "scripts": {

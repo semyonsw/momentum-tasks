@@ -635,6 +635,7 @@ export function RoutineEditorScreen({
 
       {removing ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Remove “{name}”?', {
             name: exercisesById[removing.exerciseId]?.name ?? t('this exercise'),
           })}

@@ -26,13 +26,13 @@ import { Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { BubblePressable } from './bubbles';
-import { COMMIT_GRADIENT, GlassSurface, SpecularEdge } from './glass';
+import { GlassSurface, SpecularEdge } from './glass';
 import { Icon } from './Icon';
 import { pressedStyle } from './motion';
 import { useT } from '../hooks/useT';
 import { proposalTotals, rowStatus, type RowValues } from '../lib/ai/aiProposal';
 import type { StoredProposal } from '../state/aiStore';
-import { palette, radius, specularHeavy } from '../theme/tokens';
+import { gradientFill, palette, radius, specularHeavy } from '../theme/tokens';
 
 /** `4 × 8 · 60 kg`, or `BW` for no weight. */
 export function formatRow(values: RowValues, kg: string, bw: string): string {
@@ -235,12 +235,12 @@ export function AiProposalCard({
                 }}
               >
                 <LinearGradient
-                  colors={[...COMMIT_GRADIENT]}
+                  {...gradientFill()}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                 />
                 <SpecularEdge color={specularHeavy} radius={radius.pill} />
-                <Icon name="check" size={14} color={palette.ink} />
-                <Text numberOfLines={1} className="ml-xs text-label font-semibold text-ink">
+                <Icon name="check" size={14} color={palette.onAcc} />
+                <Text numberOfLines={1} className="ml-xs text-label font-semibold text-on-acc">
                   {isNew ? t('Add to routines') : t('Apply changes')}
                 </Text>
               </BubblePressable>

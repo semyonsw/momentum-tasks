@@ -38,8 +38,8 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { Sheet } from './Sheet';
-import { Kicker, PrimaryButton, SelectChip, StepperRow, TextButton } from './primitives';
+import { Sheet, SheetCancel } from './Sheet';
+import { Kicker, PrimaryButton, SelectChip, StepperRow } from './primitives';
 import { useLanguage, useT } from '../hooks/useT';
 import { clusterLabel, CLUSTERS } from '../lib/muscles';
 import { drawableCount, RANDOM_LIMITS, type RandomSpec } from '../lib/randomRoutine';
@@ -136,7 +136,7 @@ export function RandomRoutineSheet({
             onRoll({ clusters, exerciseCount, sets });
           }}
         />
-        <TextButton label={t('Cancel')} onPress={onDismiss} />
+        <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
       </View>
     </Sheet>
   );

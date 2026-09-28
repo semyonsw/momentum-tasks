@@ -31,7 +31,8 @@
  *   SecondPulse   the final ten seconds, once per second.
  *   GrowIn        a row arriving by opening its own height, or leaving by
  *                 closing it — `Add set`, `Warm-up`, Undo, and the `−`.
- *   usePressScale the sink under a finger, released on the overshoot curve.
+ *   usePressScale the sink under a finger, released past full size and back.
+ *   Sheen         a band of light sweeping across a pill or a button.
  *
  * Every duration comes from `motion` in `theme/tokens.ts` and is multiplied by
  * `useMotionScale()`, so with "Remove animations" on each of these renders its
@@ -41,9 +42,10 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, View, type StyleProp, type ViewStyle } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { useMotionScale } from '../hooks/useMotionScale';
-import { curve, motion, palette } from '../theme/tokens';
+import { curve, motion, palette, tint } from '../theme/tokens';
 
 /** Matches `FocusMode.tsx`'s `EASING`. */
 const EASING = curve(motion.ease);
@@ -204,7 +206,7 @@ export function Flash({ radius = 0 }: { radius?: number }) {
         right: 0,
         bottom: 0,
         borderRadius: radius,
-        backgroundColor: 'rgba(63,169,108,0.30)',
+        backgroundColor: tint(0.3),
         opacity: v,
       }}
     />
@@ -433,42 +435,154 @@ export function GrowIn({
 }
 
 /**
- * The sink under a finger, and the release on the overshoot curve.
+ * The sink under a finger, and the release that overshoots.
  *
  * Returns the handlers to put on the `Pressable` and the style to put on an
- * `Animated.View` inside it. Down is `motion.press` on the base curve; up is a
- * little longer on `pop`, so the control settles past its size and back — the
- * same acknowledgement a ✓ gives, at a tenth of the amplitude.
+ * `Animated.View` inside it. Down: to `to` in 130 ms on the base curve. Up: the
+ * v3 spec's `.94 → 1.035 → 1` over 460 ms — PAST full size and back, the same
+ * acknowledgement a ✓ gives.
+ *
+ * ── WHY TWO LEGS AND NOT ONE OVERSHOOTING CURVE ───────────────────────────
+ *
+ * `bezier(.34,1.56,.64,1)` over the 0.06 of travel a press has overshoots by a
+ * few thousandths — a 1.004 nobody can see. The spec's 1.035 is more than half
+ * the depth of the sink again, so the release is drawn as what it is: a rise to
+ * the overshoot (45 %, ease-out) and a settle back (55 %, ease-in-out). The
+ * overshoot scales with the depth, capped at the spec's 0.035, so a 0.85 sink
+ * does not bounce to 1.09.
  *
  * `rotate` is the ✎'s own flourish: a −12° tilt with the sink, as if the pencil
  * were being picked up.
  */
+const PRESS_IN_MS = 130;
+const RELEASE_MS = 460;
+const RELEASE_RISE = Easing.out(Easing.quad);
+const RELEASE_SETTLE = Easing.inOut(Easing.quad);
+
 export function usePressScale(to = 0.94, rotate = 0) {
   const scale = useMotionScale();
+  /** 1 = sunk, 0 = rest, −1 = the overshoot past rest. */
   const v = useRef(new Animated.Value(0)).current;
   const onPressIn = useCallback(() => {
     Animated.timing(v, {
       toValue: 1,
-      duration: motion.press * scale,
+      duration: PRESS_IN_MS * scale,
       easing: EASING,
       useNativeDriver: true,
     }).start();
   }, [scale, v]);
   const onPressOut = useCallback(() => {
-    Animated.timing(v, {
-      toValue: 0,
-      duration: 220 * scale,
-      easing: POP,
-      useNativeDriver: true,
-    }).start();
+    Animated.sequence([
+      Animated.timing(v, {
+        toValue: -1,
+        duration: RELEASE_MS * 0.45 * scale,
+        easing: RELEASE_RISE,
+        useNativeDriver: true,
+      }),
+      Animated.timing(v, {
+        toValue: 0,
+        duration: RELEASE_MS * 0.55 * scale,
+        easing: RELEASE_SETTLE,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, [scale, v]);
-  const sink = { scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, to] }) };
+  const over = Math.min(0.035, (1 - to) * 0.58);
+  const sink = {
+    scale: v.interpolate({ inputRange: [-1, 0, 1], outputRange: [1 + over, 1, to] }),
+  };
   const tilt = {
-    rotate: v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${rotate}deg`] }),
+    rotate: v.interpolate({
+      inputRange: [-1, 0, 1],
+      outputRange: ['0deg', '0deg', `${rotate}deg`],
+    }),
   };
   return {
     onPressIn,
     onPressOut,
     style: { transform: rotate === 0 ? [sink] : [sink, tilt] },
   };
+}
+
+/**
+ * Sheen — a band of light sweeping across a surface, then resting.
+ *
+ * The prototype's `sheen` keyframes: `translateX(−120 %) skewX(−20°)` to
+ * `translateX(220 %)` (percent of the BAND's width) over the first 60 % of the
+ * period, still for the other 40 %. Used by the floating scroll pill (30 % band,
+ * white 0.12, 4.5 s) and the AI button (40 %, white 0.28, 3.2 s).
+ *
+ * It measures its own box rather than taking a width, because both hosts are
+ * sized by their content. Put it inside a parent that clips (`overflow:
+ * hidden` with the host's radius) — the band starts and ends outside the box.
+ * A translate on the native driver; nothing re-renders while it runs.
+ */
+export function Sheen({
+  band = 0.3,
+  alpha = 0.12,
+  periodMs = 4500,
+  skew = true,
+}: {
+  /** The band's width as a fraction of the host's. */
+  band?: number;
+  /** White at this alpha in the middle of the band. */
+  alpha?: number;
+  periodMs?: number;
+  skew?: boolean;
+}) {
+  const scale = useMotionScale();
+  const [width, setWidth] = useState(0);
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (width === 0 || scale === 0) return undefined;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, {
+          toValue: 1,
+          duration: periodMs * 0.6,
+          easing: Easing.bezier(0.42, 0, 0.58, 1),
+          useNativeDriver: true,
+        }),
+        Animated.delay(periodMs * 0.4),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [periodMs, scale, v, width]);
+  const bandWidth = width * band;
+  return (
+    <View
+      pointerEvents="none"
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+    >
+      {width > 0 ? (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: bandWidth,
+            transform: [
+              {
+                translateX: v.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-1.2 * bandWidth, 2.2 * bandWidth],
+                }),
+              },
+              ...(skew ? [{ skewX: '-20deg' }] : []),
+            ],
+          }}
+        >
+          <LinearGradient
+            colors={['rgba(255,255,255,0)', `rgba(255,255,255,${alpha})`, 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{ flex: 1 }}
+          />
+        </Animated.View>
+      ) : null}
+    </View>
+  );
 }

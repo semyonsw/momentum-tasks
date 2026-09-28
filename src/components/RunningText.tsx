@@ -65,18 +65,25 @@ import {
   marqueePhases,
   marqueeTravel,
 } from '../lib/marquee';
-import { curve, motion } from '../theme/tokens';
+import { mixSrgb } from '../lib/theme';
+import { curve, motion, palette } from '../theme/tokens';
 
 const EASE = curve(motion.ease);
 
 /** Fade colours for the three surfaces running text sits on. See the file header. */
 export const FADE_ON = {
-  gradient: '#1A6B42',
+  /** The gradient's END stop — what is behind a label's right edge on a fill. */
+  get gradient(): string {
+    return palette.c3;
+  },
   card: '#121615',
   bar: '#0E1211',
   page: '#060807',
-  lit: '#0F1A15',
-} as const;
+  /** A `lit` pane: c2 at 13% over the page. */
+  get lit(): string {
+    return mixSrgb(palette.c2, palette.bg, 0.13);
+  },
+};
 
 export function RunningText({
   text,

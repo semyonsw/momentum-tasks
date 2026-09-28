@@ -617,7 +617,8 @@ function Lift({
                   lineHeight: UNIT_LINE,
                   marginLeft: 6,
                   marginBottom: unitDrop(numeral, lineHeight),
-                  color: palette.green,
+                  // `acc`, not c2: text on black is always the accent.
+                  color: palette.acc,
                 }}
                 className="font-semibold"
               >

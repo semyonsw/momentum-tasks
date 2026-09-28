@@ -2,7 +2,7 @@
  * HomeScreen — what do I train today.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ WORKOUT                        ≡   📖    ⟲   │  ← glass bar, content under
+ *   │ WORKOUT                   ✦    ≡   📖    ⟲   │  ← glass bar, content under
  *   │ ( SEQUENCE  3/4 · then Push              › ) │  ← folded; › opens it
  *   │ ╭──────────────────────────────────────────╮ │
  *   │ │ TODAY · PULL                  ( 1 nudge )│ │  ← the hero, `lit` glass
@@ -17,7 +17,7 @@
  *   │ ╭ Boxing (cardio) Cardio · 2 ex          ▶ ╮  │
  *   │ RECENT                                       │
  *   │ │ #91  Pull + swimming     8 Aug · 74 min │  │
- *   │                            ╭ ▶ Open Pull ╮   │  ← the floating slot
+ *   │                                      ( ▶ )   │  ← the floating slot, icon only
  *   └──────────────────────────────────────────────┘
  *
  * THE USER PICKS THE WORKOUT. Every routine is on this screen and every one of
@@ -42,9 +42,11 @@
  * were wrong with it and both are placement rules now: a full-width bar inside
  * the scroll flow competes with the container it is in, and it SCROLLS AWAY —
  * the one action the screen exists for stops existing the moment you look at the
- * routine list under it. It is the floating pill at `right: 16, bottom: 92` now,
- * the same slot the other three sections put their own commit action in, and it
- * is on screen at every scroll position.
+ * routine list under it. It is the floating action at `right: 16, bottom: 102`
+ * now, the same slot the other sections put their own commit action in, and it
+ * is on screen at every scroll position. Since v3 it is a 64 dp ▶ with no word
+ * on it: the routine's name is already the hero's headline right above, and
+ * `Open Pull + swimming` spoken as its accessibility label still says it.
  *
  * "1 nudge waiting" is the only forward-looking number on the screen, and it is
  * a count of facts, not a nag: it tells you a weight has gone stale before you
@@ -74,7 +76,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
 import { AiEntryCard } from '../components/AiEntryCard';
 import { DebriefCard } from '../components/DebriefSheet';
@@ -84,7 +86,6 @@ import { SparkBurst, SPARK_MS } from '../components/SparkBurst';
 import { BubblePressable } from '../components/bubbles';
 import { FloatingBubble, useHeroRecede } from '../components/FloatingBubble';
 import {
-  COMMIT_GRADIENT,
   FloatingAction,
   GlassSurface,
   Lamps,
@@ -102,8 +103,24 @@ import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { formatElapsed, formatShortDate, formatVolumeKg } from '../lib/units';
 import { isResting, useActiveWorkout } from '../state/activeWorkoutStore';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
-import { curve, focalType, motion, palette, radius } from '../theme/tokens';
+import {
+  curve,
+  focalType,
+  gradientFill,
+  motion,
+  palette,
+  radius,
+  stopTint,
+  tint,
+} from '../theme/tokens';
 import type { ID, RecentSessionSummary } from '../types/models';
+
+/**
+ * The second line of a routine or a Recent row — between `ink-faint` and
+ * `ink-muted`, because at 14 px the faint step stops being legible on a bench
+ * and the muted one competes with the name above it.
+ */
+const DETAIL_INK = '#6B766F';
 
 /** One routine, described well enough to choose it without opening it. */
 export interface RoutineChoice {
@@ -246,7 +263,12 @@ export function HomeScreen({
   const ready = useWorkoutHistory((s) => s.ready);
 
   /* The bubble, and the hero stepping back while it is up. */
-  const { visible: bubbleUp, onScroll, scrollRef, scrollToTop } = useBubbleOnScroll();
+  /*
+   * 300 up, 250 down: the hero is ~260 tall under a strip, so the pill arrives
+   * as the card's last row leaves, and the 50 of hysteresis keeps a thumb
+   * resting near the line from making it flicker.
+   */
+  const { visible: bubbleUp, onScroll, scrollRef, scrollToTop } = useBubbleOnScroll(300, 250);
   const heroRecede = useHeroRecede(bubbleUp);
 
   /*
@@ -333,10 +355,10 @@ export function HomeScreen({
 
             {others.length > 0 ? (
               <>
-                <Kicker className="mx-lg mb-md mt-xxl">
+                <Kicker className="mx-lg mb-kicker-gap mt-kicker">
                   {next ? t('Other routines') : t('Start a workout')}
                 </Kicker>
-                <View className="mx-lg">
+                <View className="mx-lg" style={{ gap: 8 }}>
                   {others.map((choice, index) => (
                     <Stagger key={choice.routineId} delay={120 + index * 70}>
                       <ChoiceRow choice={choice} onPress={() => onOpen(choice.routineId)} />
@@ -350,7 +372,7 @@ export function HomeScreen({
 
             {recent.length > 0 ? (
               <>
-                <Kicker className="mx-lg mb-md mt-xxl">{t('Recent')}</Kicker>
+                <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Recent')}</Kicker>
                 {/* One `well` holding all of them, and the only surface on this
                     screen that is a container rather than a card: the past is
                     context, and eight lit panes of it would out-shout the hero. */}
@@ -390,12 +412,14 @@ export function HomeScreen({
       {/* THE ONE COMMIT ACTION, in the slot every section shares. */}
       {inProgress ? (
         <FloatingAction
+          round
           label={t('Back to {name}', { name: inProgress.title })}
           icon="play"
           onPress={onResume}
         />
       ) : openable ? (
         <FloatingAction
+          round
           label={t('Open {name}', { name: openable.name })}
           icon="play"
           onPress={() => onOpen(openable.routineId)}
@@ -418,13 +442,13 @@ function Skeleton() {
     <View accessible accessibilityLabel={t('Loading your training log')}>
       <Shimmer height={196} radius={radius.hero} marginTop={10} delay={0} />
       <View
-        style={{ marginTop: 40, marginHorizontal: 16, marginBottom: 12, width: 110, height: 10 }}
+        style={{ marginTop: 22, marginHorizontal: 16, marginBottom: 10, width: 110, height: 10 }}
         className="rounded-[6px] bg-ink/5"
       />
       <Shimmer height={68} radius={radius.row} delay={100} />
       <Shimmer height={68} radius={radius.row} marginTop={8} delay={100} />
       <View
-        style={{ marginTop: 40, marginHorizontal: 16, marginBottom: 12, width: 70, height: 10 }}
+        style={{ marginTop: 22, marginHorizontal: 16, marginBottom: 10, width: 70, height: 10 }}
         className="rounded-[6px] bg-ink/5"
       />
       <Shimmer height={180} radius={radius.row} delay={200} faint />
@@ -721,33 +745,38 @@ function WorkoutBubble({
       })}. ${t('Open')}.`;
 
   return (
-    <FloatingBubble visible={visible} contentStyle={{ gap: 10 }} accessibilityLabel={spoken}>
+    <FloatingBubble
+      visible={visible}
+      width={338}
+      contentStyle={{ gap: 10 }}
+      accessibilityLabel={spoken}
+    >
       <Pressable
         onPress={onTop}
         accessibilityRole="button"
         accessibilityLabel={t('Back to the top')}
         style={{
-          width: 44,
-          height: 44,
+          width: 50,
+          height: 50,
           borderRadius: 9999,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: 'rgba(63,169,108,0.20)',
+          backgroundColor: tint(0.2),
           borderWidth: 1,
-          borderColor: 'rgba(63,169,108,0.38)',
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: 'rgba(63,169,108,0.3)' }],
+          borderColor: tint(0.38),
+          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.32) }],
         }}
       >
         {inProgress ? (
           <View style={{ position: 'absolute', top: -1, left: -1 }}>
-            <ProgressDial fraction={fraction} size={44} stroke={2.5} track={null} />
+            <ProgressDial fraction={fraction} size={50} stroke={2.5} track={null} />
           </View>
         ) : null}
         <RollingNumber
           value={inProgress ? `${Math.round(fraction * 100)}%` : `#${number}`}
-          lineHeight={16}
+          lineHeight={18}
           duration={inProgress ? 600 : 800}
-          style={{ fontSize: 13 }}
+          style={{ fontSize: 14 }}
           className="font-bold text-green-bright"
         />
       </Pressable>
@@ -756,14 +785,14 @@ function WorkoutBubble({
         onPress={onTop}
         accessibilityRole="button"
         accessibilityLabel={t('Back to the top')}
-        style={{ width: 150 }}
+        style={{ width: 158 }}
       >
         <View className="flex-row items-center">
           <Text
             allowFontScaling={false}
             numberOfLines={1}
-            style={{ fontSize: 9, letterSpacing: 1 }}
-            className="font-semibold uppercase text-green-bright"
+            style={{ fontSize: 10.5, letterSpacing: 1.1 }}
+            className="font-semibold uppercase text-acc"
           >
             {inProgress ? `${t('In progress')} · ` : `${t('Up next')} · ${t('Workout')}`}
           </Text>
@@ -774,27 +803,27 @@ function WorkoutBubble({
           fadeColor="#171C1A"
           containerStyle={{ marginTop: 2 }}
           allowFontScaling={false}
-          style={{ fontSize: 14, lineHeight: 18 }}
+          style={{ fontSize: 16, lineHeight: 20 }}
           className="font-semibold text-ink"
         />
         {inProgress ? (
           <RollingPhrase
             template={t('{done} of {total} sets', { total: inProgress.total })}
             values={{ done: inProgress.done }}
-            lineHeight={14}
+            lineHeight={16}
             duration={500}
             containerStyle={{ marginTop: 1 }}
-            style={{ fontSize: 11 }}
+            style={{ fontSize: 12.5 }}
             className="text-ink-muted"
           />
         ) : (
           <RollingPhrase
             template={t('{exercises} exercises · {sets} sets')}
             values={{ exercises: plan?.exerciseCount ?? 0, sets: plan?.setCount ?? 0 }}
-            lineHeight={14}
+            lineHeight={16}
             duration={500}
             containerStyle={{ marginTop: 1 }}
-            style={{ fontSize: 11 }}
+            style={{ fontSize: 12.5 }}
             className="text-ink-muted"
           />
         )}
@@ -808,7 +837,7 @@ function WorkoutBubble({
   );
 }
 
-/** The bubble's kicker clock: 9 px, green, ticking. */
+/** The bubble's kicker clock: 10.5 px, in the accent, ticking. */
 function TickingClockSmall({ startedAt }: { startedAt: string }) {
   const startMs = useMemo(() => new Date(startedAt).getTime(), [startedAt]);
   const [now, setNow] = useState(() => Date.now());
@@ -819,15 +848,18 @@ function TickingClockSmall({ startedAt }: { startedAt: string }) {
   return (
     <Text
       allowFontScaling={false}
-      style={{ fontSize: 9, letterSpacing: 1 }}
-      className="font-semibold tabular-nums text-green-bright"
+      style={{ fontSize: 10.5, letterSpacing: 1.1 }}
+      className="font-semibold tabular-nums text-acc"
     >
       {formatElapsed(Number.isFinite(startMs) ? now - startMs : 0)}
     </Text>
   );
 }
 
-/** The bubble's ▶: 44 dp of the commit gradient. Sinks to 0.9. */
+/**
+ * The bubble's ▶: 50 dp of the commit gradient. Sinks to 0.9. The glyph is
+ * `onAcc` — ink on a light theme's gradient is the one pairing that vanishes.
+ */
 function PlayButton({ onPress, label }: { onPress: () => void; label: string }) {
   const press = usePressScale(0.9);
   return (
@@ -840,11 +872,11 @@ function PlayButton({ onPress, label }: { onPress: () => void; label: string }) 
     >
       <Animated.View
         style={{
-          width: 44,
-          height: 44,
+          width: 50,
+          height: 50,
           borderRadius: 9999,
           transform: press.style.transform,
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: 'rgba(63,169,108,0.45)' }],
+          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: tint(0.5) }],
         }}
       >
         <View
@@ -857,14 +889,35 @@ function PlayButton({ onPress, label }: { onPress: () => void; label: string }) 
           }}
         >
           <LinearGradient
-            colors={[...COMMIT_GRADIENT]}
+            {...gradientFill()}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           />
-          <SpecularEdge color="rgba(236,241,238,0.22)" radius={9999} />
-          <Icon name="play" size={15} color={palette.ink} />
+          <SpecularEdge color="rgba(255,255,255,0.3)" radius={9999} />
+          <SolidPlay size={18} color={palette.onAcc} />
         </View>
       </Animated.View>
     </Pressable>
+  );
+}
+
+/**
+ * The repo's ▶, FILLED, as the floating action draws it. `Icon` strokes only,
+ * and an outlined triangle at 15–18 dp reads as a hollow glyph on a pill that
+ * is otherwise solid. Nudged 2 dp right onto the circle's optical centre.
+ */
+function SolidPlay({ size, color }: { size: number; color: string }) {
+  return (
+    <View style={{ marginLeft: 2 }}>
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Path
+          d="M8 5.5l11 6.5-11 6.5z"
+          fill={color}
+          stroke={color}
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+        />
+      </Svg>
+    </View>
   );
 }
 
@@ -927,7 +980,7 @@ function Hero({
   }, [breath, scale]);
 
   return (
-    <View className="mx-lg mt-[22px]">
+    <View className="mx-lg mt-lg">
       <View
         pointerEvents="none"
         style={{
@@ -937,7 +990,7 @@ function Hero({
           right: 0,
           bottom: 0,
           borderRadius: radius.hero,
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 26, color: 'rgba(63,169,108,0.14)' }],
+          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 34, color: tint(0.22) }],
         }}
       />
       <Animated.View
@@ -950,31 +1003,52 @@ function Hero({
           bottom: 0,
           borderRadius: radius.hero,
           opacity: breath,
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 44, color: 'rgba(63,169,108,0.30)' }],
+          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 44, color: tint(0.3) }],
         }}
       />
       <GlassSurface tier="lit" radius={radius.hero} shadow="e2">
+        {/* The corner lamp: the theme's THIRD colour, so the hero carries the
+            far end of the gradient the floating ▶ under the thumb starts from. */}
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: -80, right: -60, width: 220, height: 220 }}
+        >
+          <Svg width={220} height={220}>
+            <Defs>
+              <RadialGradient id="heroLamp" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={stopTint(3, 1)} stopOpacity={0.26} />
+                <Stop offset="65%" stopColor={stopTint(3, 1)} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={110} cy={110} r={110} fill="url(#heroLamp)" />
+          </Svg>
+        </View>
         <View className="p-[20px]">
-          <View className="flex-row items-center">
-            <Kicker tone="green" className="flex-1">
-              {plan.focus ? `${t('Today')} · ${plan.focus}` : t('Today')}
-            </Kicker>
+          <View className="flex-row items-center" style={{ gap: 8 }}>
+            <RunningText
+              text={plan.focus ? `${t('Today')} · ${plan.focus}` : t('Today')}
+              fadeColor={FADE_ON.lit}
+              containerStyle={{ flex: 1 }}
+              allowFontScaling={false}
+              style={{ letterSpacing: 1.1 }}
+              className="text-micro font-semibold uppercase text-acc"
+            />
             {plan.nudgeCount > 0 ? (
               <View
                 style={{
-                  height: 24,
+                  height: 26,
                   paddingHorizontal: 10,
                   justifyContent: 'center',
                   borderRadius: radius.pill,
-                  backgroundColor: 'rgba(63,169,108,0.20)',
+                  backgroundColor: tint(0.2),
                   borderWidth: 1,
-                  borderColor: 'rgba(63,169,108,0.34)',
+                  borderColor: tint(0.34),
                 }}
               >
                 <Text
                   allowFontScaling={false}
-                  style={{ fontSize: 10, letterSpacing: 0.9 }}
-                  className="font-semibold uppercase tabular-nums text-green-bright"
+                  style={{ fontSize: 11.5, letterSpacing: 0.9 }}
+                  className="font-semibold uppercase tabular-nums text-acc"
                 >
                   {`${plan.nudgeCount} ${plural(plan.nudgeCount, {
                     one: t('nudge'),
@@ -1009,7 +1083,7 @@ function Hero({
             style={{ backgroundColor: 'rgba(236,241,238,0.12)', width: '62%' }}
           />
 
-          <View className="mt-lg flex-row">
+          <View className="mt-lg flex-row flex-wrap" style={{ rowGap: 10 }}>
             <HeroStat label={t('Exercises')} value={String(plan.exerciseCount)} />
             <HeroStat label={t('Sets')} value={String(plan.setCount)} />
             <HeroStat label={t('Workout')} value={`#${number}`} tone="green" rolls />
@@ -1039,13 +1113,12 @@ function HeroStat({
   /** The workout number rolls when it changes — a workout was just saved. */
   rolls?: boolean;
 }) {
-  const color =
-    tone === 'green' ? 'text-green-bright' : tone === 'muted' ? 'text-ink-muted' : 'text-ink';
+  const color = tone === 'green' ? 'text-acc' : tone === 'muted' ? 'text-ink-muted' : 'text-ink';
   return (
     <View className="mr-[22px]">
       <Text
         allowFontScaling={false}
-        style={{ fontSize: 10, letterSpacing: 1.1 }}
+        style={{ fontSize: 11.5, letterSpacing: 1.1 }}
         className="font-semibold uppercase text-ink-faint"
       >
         {label}
@@ -1053,16 +1126,16 @@ function HeroStat({
       {rolls ? (
         <RollingNumber
           value={value}
-          lineHeight={22}
+          lineHeight={24}
           duration={900}
           containerStyle={{ marginTop: 2 }}
-          style={{ fontSize: 20 }}
+          style={{ fontSize: 22 }}
           className={['font-semibold', color].join(' ')}
         />
       ) : (
         <Text
           allowFontScaling={false}
-          style={{ fontSize: 20, lineHeight: 22 }}
+          style={{ fontSize: 22, lineHeight: 24 }}
           className={['mt-[2px] font-semibold tabular-nums', color].join(' ')}
         >
           {value}
@@ -1123,7 +1196,7 @@ function SequenceStrip({ sequence, onPress }: { sequence: SequenceView; onPress:
           {
             flexDirection: 'row',
             alignItems: 'center',
-            minHeight: 40,
+            minHeight: 44,
             marginHorizontal: 16,
             paddingHorizontal: 14,
             borderRadius: radius.pill,
@@ -1134,13 +1207,13 @@ function SequenceStrip({ sequence, onPress }: { sequence: SequenceView; onPress:
         ]}
       >
         <Kicker>{t('Sequence')}</Kicker>
-        <Text
-          numberOfLines={1}
-          className="ml-md flex-1 text-label tabular-nums text-ink-faint"
+        <RunningText
+          text={summary}
+          fadeColor={FADE_ON.page}
+          containerStyle={{ flex: 1, marginLeft: 12 }}
           allowFontScaling={false}
-        >
-          {summary}
-        </Text>
+          className="text-label tabular-nums text-ink-faint"
+        />
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={16} color={palette.inkFaint} />
       </BubblePressable>
 
@@ -1188,13 +1261,11 @@ function SequenceChip({
           paddingHorizontal: 14,
           borderRadius: radius.pill,
           borderWidth: 1,
-          borderColor: step.isCurrent ? 'rgba(63,169,108,0.30)' : 'rgba(236,241,238,0.045)',
-          backgroundColor: step.isCurrent ? 'rgba(63,169,108,0.13)' : 'rgba(236,241,238,0.028)',
+          borderColor: step.isCurrent ? tint(0.3) : 'rgba(236,241,238,0.045)',
+          backgroundColor: step.isCurrent ? tint(0.13) : 'rgba(236,241,238,0.028)',
           ...(step.isCurrent
             ? {
-                boxShadow: [
-                  { offsetX: 0, offsetY: 0, blurRadius: 14, color: 'rgba(63,169,108,0.35)' },
-                ],
+                boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.35) }],
               }
             : {}),
         }}
@@ -1203,7 +1274,7 @@ function SequenceChip({
           numberOfLines={1}
           className={[
             'text-label',
-            step.isCurrent ? 'font-semibold text-green-bright' : 'text-ink-muted',
+            step.isCurrent ? 'font-semibold text-acc' : 'text-ink-muted',
           ].join(' ')}
         >
           {step.name}
@@ -1235,7 +1306,7 @@ function ChoiceRow({ choice, onPress }: { choice: RoutineChoice; onPress: () => 
 
   return (
     <Animated.View style={{ transform: press.style.transform }}>
-      <GlassSurface tier="card" radius={radius.row} shadow="e1" flat className="mb-sm">
+      <GlassSurface tier="card" radius={radius.row} shadow="e1" flat>
         <BubblePressable
           onPress={onPress}
           onPressIn={press.onPressIn}
@@ -1269,24 +1340,27 @@ function ChoiceRow({ choice, onPress }: { choice: RoutineChoice; onPress: () => 
               text={detail}
               fadeColor={FADE_ON.card}
               containerStyle={{ marginTop: 2 }}
-              className="text-label tabular-nums text-ink-faint"
+              style={{ fontSize: 14, lineHeight: 19, color: DETAIL_INK }}
+              className="tabular-nums"
             />
           </View>
           <View
             style={{
-              height: 40,
-              width: 40,
+              height: 42,
+              width: 42,
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: radius.pill,
               overflow: 'hidden',
               borderWidth: 1,
-              borderColor: 'rgba(63,169,108,0.26)',
-              backgroundColor: 'rgba(63,169,108,0.14)',
+              borderColor: tint(0.26),
+              backgroundColor: tint(0.14),
             }}
           >
             <SpecularEdge color="rgba(236,241,238,0.12)" radius={radius.pill} />
-            <Icon name="play" size={14} color={palette.greenBright} />
+            <View style={{ marginLeft: 2 }}>
+              <Icon name="play" size={15} color={palette.acc} />
+            </View>
           </View>
         </BubblePressable>
       </GlassSurface>
@@ -1296,26 +1370,32 @@ function ChoiceRow({ choice, onPress }: { choice: RoutineChoice; onPress: () => 
 
 /**
  * `AI`, beside a routine the assistant made, until it is first opened — a
- * statement of where the row came from, in the 9 px the proposal tags use.
+ * statement of where the row came from. In the assistant's OWN fixed violet →
+ * pink rather than the theme: it says who made the row, and the one colour pair
+ * no theme can wear is the one that always means the assistant.
  */
 function AiPill() {
   return (
     <View
       style={{
         marginLeft: 8,
-        height: 18,
-        paddingHorizontal: 6,
+        height: 20,
+        paddingHorizontal: 7,
         justifyContent: 'center',
         borderRadius: radius.pill,
-        borderWidth: 1,
-        borderColor: 'rgba(63,169,108,0.30)',
-        backgroundColor: 'rgba(63,169,108,0.16)',
+        overflow: 'hidden',
       }}
     >
+      <LinearGradient
+        colors={['#8B5CF6', '#EC4899']}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
       <Text
         allowFontScaling={false}
-        style={{ fontSize: 9, letterSpacing: 0.9 }}
-        className="font-semibold uppercase text-green-bright"
+        style={{ fontSize: 10, letterSpacing: 0.9, color: '#FFFFFF' }}
+        className="font-bold uppercase"
       >
         AI
       </Text>
@@ -1379,7 +1459,11 @@ function RecentRow({
       >
         <View className="flex-row items-center">
           {numbered ? (
-            <Text className="mr-sm text-[12px] font-semibold tabular-nums text-green-bright">
+            <Text
+              allowFontScaling={false}
+              style={{ fontSize: 13.5 }}
+              className="mr-sm font-semibold tabular-nums text-acc"
+            >
               {`#${number}`}
             </Text>
           ) : null}
@@ -1387,12 +1471,16 @@ function RecentRow({
             text={session.title}
             fadeColor="#0B0E0D"
             containerStyle={{ flex: 1 }}
-            className="text-[15px] leading-[20px] text-ink"
+            className="text-task text-ink"
           />
         </View>
-        <Text numberOfLines={1} className="mt-[2px] text-[12px] tabular-nums text-ink-faint">
-          {detail}
-        </Text>
+        <RunningText
+          text={detail}
+          fadeColor="#0B0E0D"
+          containerStyle={{ marginTop: 2 }}
+          style={{ fontSize: 14, lineHeight: 19, color: DETAIL_INK }}
+          className="tabular-nums"
+        />
       </BubblePressable>
     </View>
   );
@@ -1402,7 +1490,7 @@ function RecentRow({
 function Empty() {
   const t = useT();
   return (
-    <GlassSurface tier="card" radius={radius.card} shadow="e1" flat className="mx-lg mt-xxl">
+    <GlassSurface tier="card" radius={radius.card} shadow="e1" flat className="mx-lg mt-kicker">
       <View className="p-lg">
         <Kicker>{t('Nothing to open')}</Kicker>
         <Text className="mt-sm text-body text-ink-muted">

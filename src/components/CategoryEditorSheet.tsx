@@ -29,8 +29,8 @@
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
-import { Sheet } from './Sheet';
-import { FieldWell, PrimaryButton, TextButton } from './primitives';
+import { Sheet, SheetCancel } from './Sheet';
+import { FieldWell, PrimaryButton } from './primitives';
 import { useT } from '../hooks/useT';
 import { lastGlyph } from '../lib/glyph';
 import { palette } from '../theme/tokens';
@@ -58,7 +58,13 @@ export function CategoryEditorSheet({
   return (
     <Sheet title={title} onDismiss={onDismiss}>
       <View className="flex-row">
-        <View className="h-row w-row items-center justify-center rounded-surface border border-hairline bg-surface-alt">
+        <View
+          className="h-row w-row items-center justify-center rounded-[18px] border"
+          style={{
+            backgroundColor: 'rgba(236,241,238,0.04)',
+            borderColor: 'rgba(236,241,238,0.10)',
+          }}
+        >
           <TextInput
             value={glyph}
             onChangeText={(text) => setGlyph(lastGlyph(text))}
@@ -74,6 +80,7 @@ export function CategoryEditorSheet({
           <FieldWell
             value={name}
             size="body"
+            lit
             placeholder={t('Name')}
             onChangeText={setName}
             autoFocus={initialName === ''}
@@ -93,7 +100,7 @@ export function CategoryEditorSheet({
             if (savable) onSave(name.trim(), glyph.trim());
           }}
         />
-        <TextButton label={t('Cancel')} onPress={onDismiss} />
+        <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
       </View>
     </Sheet>
   );

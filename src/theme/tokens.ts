@@ -23,37 +23,156 @@
 
 import { Easing } from 'react-native';
 
+import {
+  DEFAULT_THEME_ID,
+  DEFAULT_CUSTOM_COLORS,
+  deriveTheme,
+  rgba,
+  themeColors,
+  type DerivedTheme,
+  type ThemeColors,
+} from '../lib/theme';
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE THEME — the one green became three colours the user picks.
+
+   Everything below that used to be a green literal is now a GETTER over the
+   live theme, so the four hundred places that read `palette.greenBright`,
+   `glassTier.lit` or `halo.single` paint in the chosen colours without a
+   single call site learning that a theme exists.
+
+   Why getters over a module-level theme rather than a React context: a context
+   would mean threading a hook through every component that paints, including
+   the forty memoised rows and the style objects built inside `useMemo`s. The
+   app is dark-only and changes theme only from Settings, so the shell REMOUNTS
+   the tree when the theme changes (`App.tsx`), every render re-reads these, and
+   there is exactly one place that has to know the colours can move.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let current: DerivedTheme = deriveTheme(themeColors(DEFAULT_THEME_ID, DEFAULT_CUSTOM_COLORS));
+
+/** The theme every getter below reads. */
+export function currentTheme(): DerivedTheme {
+  return current;
+}
+
+/**
+ * Pour three colours into the tokens. Called by the root before it renders, and
+ * again — followed by a remount — whenever the setting changes.
+ */
+export function applyTheme(colors: ThemeColors): DerivedTheme {
+  current = deriveTheme(colors);
+  glow = tint(0.6);
+  glowRepeating = tint(0.3);
+  return current;
+}
+
+/** c2 at an alpha — the lit fills, borders, chips and glows. */
+export function tint(alpha: number): string {
+  return rgba(current.c2, alpha);
+}
+
+/** Any of the three stops at an alpha — for the lamps and the tile corners. */
+export function stopTint(stop: 1 | 2 | 3, alpha: number): string {
+  return rgba(stop === 1 ? current.c1 : stop === 3 ? current.c3 : current.c2, alpha);
+}
+
+/**
+ * THE GRADIENT FILL — floating actions, marks, thumbs, the Home button:
+ * `linear-gradient(135deg, c1, c2 55%, c3)`. `expo-linear-gradient` props.
+ */
+export function gradientFill(): {
+  colors: [string, string, string];
+  locations: [number, number, number];
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+} {
+  return {
+    colors: [current.c1, current.c2, current.c3],
+    locations: [0, 0.55, 1],
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  };
+}
+
+/** THE BAR — `linear-gradient(90deg, c1, c2 50%, c3)`: previews, swatches, bars. */
+export function gradientBar(): {
+  colors: [string, string, string];
+  locations: [number, number, number];
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+} {
+  return {
+    colors: [current.c1, current.c2, current.c3],
+    locations: [0, 0.5, 1],
+    start: { x: 0, y: 0.5 },
+    end: { x: 1, y: 0.5 },
+  };
+}
+
+/**
+ * THE AI COLOURS — fixed, never themed, so the assistant always stands out
+ * from whatever three colours the rest of the app is wearing.
+ */
+export const ai = {
+  ring: ['#8B5CF6', '#EC4899', '#F59E0B', '#22D3EE', '#8B5CF6'] as const,
+  innerFrom: '#34245A',
+  innerTo: '#130E22',
+  glyph: '#FBCFE8',
+  subline: ['#C4B5FD', '#F9A8D4', '#A5F3FC'] as const,
+  ready: '#F472B6',
+} as const;
+
 export const palette = {
-  bg: '#060807', // page — near-black with a faint green cast (OLED off-pixels)
+  bg: '#060807', // page — near-black (OLED off-pixels)
   surface: '#0E1211', // cards, set rows
   surfaceAlt: '#141A18', // wells, the primed next set, inline editors, timer pill
   hairline: '#1E2523', // 1px separators — the only "border" in the app
   ink: '#ECF1EE', // primary text. never pure white
   inkMuted: '#8A968F', // secondary text
   inkFaint: '#57615C', // micro-labels, ghosted prefilled values
-  greenWash: '#0C1A12', // tinted card background — overload nudge only
-  greenDim: '#15452C', // progress tracks, timeline connectors, drop-target rules
-  green: '#1E7A4C', // primary fills — completed set marks, primary buttons
-  greenBright: '#3FA96C', // green text/icons on black, active timer, the nudge
+  /** Tinted card background — overload nudge only. */
+  get greenWash(): string {
+    return current.wash;
+  },
+  /** Progress tracks, timeline connectors, drop-target rules. */
+  get greenDim(): string {
+    return current.dim;
+  },
+  /** Primary fills — c2. Text on it is `onAcc`, never `ink`. */
+  get green(): string {
+    return current.c2;
+  },
+  /** Accent text/icons on black — `acc`. */
+  get greenBright(): string {
+    return current.acc;
+  },
+  get acc(): string {
+    return current.acc;
+  },
+  get onAcc(): string {
+    return current.onAcc;
+  },
+  get c1(): string {
+    return current.c1;
+  },
+  get c2(): string {
+    return current.c2;
+  },
+  get c3(): string {
+    return current.c3;
+  },
   /** Scrim behind a bottom sheet. */
-  scrim: 'rgba(6,8,7,0.78)',
-} as const;
+  scrim: 'rgba(6,8,7,0.55)',
+};
 
 /**
  * GLASS — the raised translucent surfaces the sections are built from.
  *
- * The redesign stopped drawing cards as opaque `surface` steps and started
- * drawing them as light lying ON the page: a few percent of ink over the
- * near-black, with the same hairline holding the edge. A card is then legible
- * over the two green glows the sections carry without punching a black hole in
- * them.
- *
- * FLAT ALPHA, NOT A GRADIENT. The design draws each surface as a 180° ramp from
- * 5% to 1.2%; React Native has no gradient without a native module, and adding
- * a third one (`expo-linear-gradient`) to a build whose whole risk budget is two
- * config plugins buys about four percent of alpha. These are the ramps' midpoints,
- * and every surface is one value — which also means `bg-ink/5` in a className is
- * the same decision as `glass.raised` here.
+ * A few percent of ink over the near-black, with the same hairline holding the
+ * edge, so a card is legible over the lamps without punching a hole in them.
+ * Flat alpha: every surface is one value, and `bg-ink/5` in a className is the
+ * same decision as `glass.raised` here.
  */
 export const glass = {
   /** Cards, rows, tiles — the default raised surface. */
@@ -63,10 +182,14 @@ export const glass = {
   /** A dashed "add one" target — barely there until you look for it. */
   ghost: 'rgba(236,241,238,0.015)',
   /** The lit version: a surface that is currently the answer. */
-  green: 'rgba(63,169,108,0.12)',
-  /** Its edge. The hairline is invisible against a green fill. */
-  greenEdge: 'rgba(63,169,108,0.32)',
-} as const;
+  get green(): string {
+    return tint(0.12);
+  },
+  /** Its edge. The hairline is invisible against a lit fill. */
+  get greenEdge(): string {
+    return tint(0.32);
+  },
+};
 
 /** 4pt grid. Layout only ever uses these. */
 export const space = {
@@ -119,12 +242,9 @@ export const size = {
  * legend under that grid draws the same four, and a scale whose key disagrees
  * with the squares is worse than no key at all.
  */
-export const greenSteps = [
-  'rgba(63,169,108,0.24)',
-  'rgba(63,169,108,0.42)',
-  'rgba(63,169,108,0.60)',
-  'rgba(63,169,108,0.82)',
-] as const;
+export function greenSteps(): readonly [string, string, string, string] {
+  return [tint(0.24), tint(0.42), tint(0.6), tint(0.82)];
+}
 
 /**
  * The one GLOW, and the only thing in the app that is not a hairline or a surface
@@ -147,7 +267,8 @@ export const greenSteps = [
  * radius differs, because a 2 dp outline and a 30 dp numeral need different spreads
  * to bloom by the same amount.
  */
-export const glow = 'rgba(63,169,108,0.6)';
+// Reassigned by `applyTheme`, so importers read the live theme.
+export let glow = tint(0.6);
 
 /**
  * THE SAME GLOW, FOR A MARK THAT REPEATS.
@@ -167,7 +288,8 @@ export const glow = 'rgba(63,169,108,0.6)';
  * opaque, much wider shadow that ignores the radius asked for, which is exactly
  * how this got thick enough to need fixing.
  */
-export const glowRepeating = 'rgba(63,169,108,0.3)';
+// Reassigned by `applyTheme`, so importers read the live theme.
+export let glowRepeating = tint(0.3);
 
 /**
  * The app's ONLY shadow. It belongs to the timer pill and nothing else — the
@@ -192,7 +314,9 @@ export const timerShadow = {
  * would be two different lights on one screen.
  */
 export const focusGlow = {
-  textShadowColor: glow,
+  get textShadowColor(): string {
+    return glow;
+  },
   textShadowOffset: { width: 0, height: 0 },
   textShadowRadius: 26,
 } as const;
@@ -265,9 +389,13 @@ export const glassTier: Record<'well' | 'card' | 'lit' | 'bar', GlassTier> = {
   },
   /** A pane that is currently the answer — the hero, a done task, a lit tile. */
   lit: {
-    tint: 'rgba(63,169,108,0.13)',
+    get tint(): string {
+      return tint(0.13);
+    },
     blur: 24,
-    border: 'rgba(63,169,108,0.30)',
+    get border(): string {
+      return tint(0.3);
+    },
     specular: 'rgba(236,241,238,0.14)',
   },
   /** The two bars. The heaviest blur in the app, because content moves under it. */
@@ -296,12 +424,20 @@ export const specularHeavy = 'rgba(236,241,238,0.22)';
  * fixing in the first place.
  */
 export const halo = {
-  repeating: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: 'rgba(63,169,108,0.28)' }],
-  single: [{ offsetX: 0, offsetY: 0, blurRadius: 20, color: 'rgba(63,169,108,0.60)' }],
-  floating: [{ offsetX: 0, offsetY: 0, blurRadius: 44, color: 'rgba(63,169,108,0.50)' }],
+  get repeating() {
+    return [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.28) }];
+  },
+  get single() {
+    return [{ offsetX: 0, offsetY: 0, blurRadius: 20, color: tint(0.6) }];
+  },
+  get floating() {
+    return [{ offsetX: 0, offsetY: 0, blurRadius: 44, color: tint(0.5) }];
+  },
   /** The soft bloom a hero card carries under its shadow. Not a halo step. */
-  hero: [{ offsetX: 0, offsetY: 0, blurRadius: 30, color: 'rgba(63,169,108,0.18)' }],
-} as const;
+  get hero() {
+    return [{ offsetX: 0, offsetY: 0, blurRadius: 34, color: tint(0.22) }];
+  },
+};
 
 /**
  * THE SHADOW UNDER THE GLASS — three steps, black only.
@@ -356,13 +492,13 @@ export const radius = {
  */
 export const focalType = {
   /** Today's routine name on the workout hero. */
-  heroName: { fontSize: 30, lineHeight: 34, letterSpacing: -0.9 },
+  heroName: { fontSize: 32, lineHeight: 36, letterSpacing: -0.9 },
   /** The all-time balance. */
-  balance: { fontSize: 52, lineHeight: 54, letterSpacing: -2 },
+  balance: { fontSize: 54, lineHeight: 56, letterSpacing: -2 },
   /** The keypad's amount. */
-  amount: { fontSize: 60, lineHeight: 62, letterSpacing: -2.4 },
+  amount: { fontSize: 62, lineHeight: 66, letterSpacing: -2.4 },
   /** The day number inside the tasks dial. Was 44. */
-  dayDial: { fontSize: 64, lineHeight: 64, letterSpacing: -2.4 },
+  dayDial: { fontSize: 66, lineHeight: 66, letterSpacing: -2.4 },
 } as const;
 
 /**
@@ -374,13 +510,17 @@ export const focalType = {
 export const textGlow = {
   /** The day number, the balance. */
   hero: {
-    textShadowColor: 'rgba(63,169,108,0.32)',
+    get textShadowColor(): string {
+      return tint(0.32);
+    },
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 30,
   },
   /** The up-next set's numbers. */
   live: {
-    textShadowColor: 'rgba(63,169,108,0.60)',
+    get textShadowColor(): string {
+      return tint(0.6);
+    },
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 16,
   },
@@ -407,27 +547,34 @@ export interface LampSpec {
   r: number;
   /** Peak opacity at the centre. */
   a: number;
-  /** `dim` is the darker green, for the lamps furthest from the hero. */
-  hue?: 'bright' | 'dim';
+  /** `bright` is c2, `dim` is c1, `third` is c3 — the theme's three stops. */
+  hue?: 'bright' | 'dim' | 'third';
 }
 
 export const LAMPS: Record<string, readonly LampSpec[]> = {
+  /** The landing: all three stops, one per sphere the tiles below it lead to. */
+  Home: [
+    { x: 0.22, y: 190, r: 260, a: 0.3, hue: 'dim' },
+    { x: 0.88, y: 470, r: 240, a: 0.18, hue: 'third' },
+    { x: 0.3, y: 810, r: 260, a: 0.14 },
+  ],
   Workout: [
     { x: 0.4, y: 250, r: 200, a: 0.17 },
-    { x: 0.98, y: 560, r: 170, a: 0.11, hue: 'dim' },
+    { x: 0.98, y: 560, r: 170, a: 0.14, hue: 'dim' },
   ],
   Tasks: [
     { x: 0.5, y: 240, r: 210, a: 0.2 },
-    { x: 0.08, y: 90, r: 150, a: 0.12 },
-    { x: 0.96, y: 620, r: 180, a: 0.11, hue: 'dim' },
+    { x: 0.08, y: 90, r: 150, a: 0.14, hue: 'third' },
+    { x: 0.96, y: 620, r: 180, a: 0.14, hue: 'dim' },
   ],
   Expenses: [
     { x: 0.46, y: 210, r: 200, a: 0.18 },
-    { x: 0.04, y: 420, r: 160, a: 0.1, hue: 'dim' },
+    { x: 0.04, y: 420, r: 160, a: 0.14, hue: 'dim' },
+    { x: 0.96, y: 700, r: 180, a: 0.12, hue: 'third' },
   ],
   Settings: [
     { x: 0.12, y: 120, r: 180, a: 0.12 },
-    { x: 0.92, y: 500, r: 180, a: 0.09, hue: 'dim' },
+    { x: 0.92, y: 500, r: 180, a: 0.1, hue: 'third' },
   ],
   /** Focus mode's single lamp, behind the numbers. */
   Focus: [{ x: 0.3, y: 370, r: 260, a: 0.16 }],
@@ -435,6 +582,12 @@ export const LAMPS: Record<string, readonly LampSpec[]> = {
   Session: [
     { x: 0.5, y: 200, r: 200, a: 0.14 },
     { x: 0.95, y: 600, r: 170, a: 0.1, hue: 'dim' },
+  ],
+  /** The launch: c2 behind the mark, c1 top-left, c3 bottom-right. */
+  Launch: [
+    { x: 0.5, y: 380, r: 230, a: 0.26 },
+    { x: 0.12, y: 110, r: 160, a: 0.22, hue: 'dim' },
+    { x: 0.92, y: 750, r: 180, a: 0.18, hue: 'third' },
   ],
 };
 
@@ -449,7 +602,7 @@ export const LAMPS: Record<string, readonly LampSpec[]> = {
  *
  * `bottom` clears the nav pill (64 tall at inset 12) with 16 of air.
  */
-export const floatingSlot = { right: 16, bottom: 92, height: 60, paddingH: 24 } as const;
+export const floatingSlot = { right: 16, bottom: 102, height: 64, paddingH: 24 } as const;
 
 /**
  * What a scroll must clear so the two translucent bars never hide a row.
@@ -459,7 +612,7 @@ export const floatingSlot = { right: 16, bottom: 92, height: 60, paddingH: 24 } 
  * first and last rows reachable. `bottom` is the nav pill (64), its inset (12),
  * and the floating action's clearance.
  */
-export const barInset = { top: 64, bottom: 178 } as const;
+export const barInset = { top: 76, bottom: 190 } as const;
 
 /* ══════════════════════════════════════════════════════════════════════════
    MOTION — the redesign's second pass, and the one thing it adds to this file

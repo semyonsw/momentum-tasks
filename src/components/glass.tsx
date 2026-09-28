@@ -53,27 +53,30 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BubblePressable } from './bubbles';
 import { Icon, type IconName } from './Icon';
+import { MaterialSymbol, type SymbolName } from './MaterialSymbol';
 import { Pop, usePressScale } from './motion';
 import { FADE_ON, RunningText } from './RunningText';
 import { useMotionScale } from '../hooks/useMotionScale';
 import {
-  LAMPS,
   barInset,
   curve,
   elevation,
   floatingSlot,
   glassTier,
+  gradientFill,
   halo,
+  LAMPS,
   motion,
   palette,
   radius as RADIUS,
   specularHeavy,
+  tint,
   type GlassTier,
   type LampSpec,
 } from '../theme/tokens';
@@ -105,6 +108,9 @@ import {
  * read as glass; the blur behind a 72 dp card that is 94% opaque is a cost with
  * nothing on the other side of it.
  */
+/** The ghost round action's glyph: softer than ink, so it reads as maintenance. */
+const INK_SOFT = '#AEB9B3';
+
 export function Pane({ intensity }: { intensity: number }) {
   return (
     <BlurView
@@ -177,13 +183,19 @@ export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
     >
       <Svg width={width} height={height}>
         <Defs>
+          {/* One gradient per theme stop: the lamps are the three colours of
+              the theme, not one green at two strengths. */}
           <RadialGradient id="lampBright" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={palette.greenBright} stopOpacity={1} />
-            <Stop offset="70%" stopColor={palette.greenBright} stopOpacity={0} />
+            <Stop offset="0%" stopColor={palette.c2} stopOpacity={1} />
+            <Stop offset="70%" stopColor={palette.c2} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id="lampDim" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={palette.green} stopOpacity={1} />
-            <Stop offset="70%" stopColor={palette.green} stopOpacity={0} />
+            <Stop offset="0%" stopColor={palette.c1} stopOpacity={1} />
+            <Stop offset="70%" stopColor={palette.c1} stopOpacity={0} />
+          </RadialGradient>
+          <RadialGradient id="lampThird" cx="50%" cy="50%" r="50%">
+            <Stop offset="0%" stopColor={palette.c3} stopOpacity={1} />
+            <Stop offset="70%" stopColor={palette.c3} stopOpacity={0} />
           </RadialGradient>
         </Defs>
         {specs.map((lamp: LampSpec, index: number) => (
@@ -195,7 +207,13 @@ export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
             // The alpha rides on the CIRCLE and not on the gradient stops, so
             // one pair of gradients serves every lamp in the app.
             opacity={lamp.a}
-            fill={lamp.hue === 'dim' ? 'url(#lampDim)' : 'url(#lampBright)'}
+            fill={
+              lamp.hue === 'dim'
+                ? 'url(#lampDim)'
+                : lamp.hue === 'third'
+                  ? 'url(#lampThird)'
+                  : 'url(#lampBright)'
+            }
           />
         ))}
       </Svg>
@@ -422,9 +440,6 @@ export function GlassBar({
 /* Layer 3 — the floating action                                       */
 /* ------------------------------------------------------------------ */
 
-/** The filled pill's fill. The one gradient in the app, and the ✓ marks share it. */
-export const COMMIT_GRADIENT = ['#26935C', '#1A6B42'] as const;
-
 /**
  * THE ONE COMMIT ACTION PER SECTION, in the same place in all four.
  *
@@ -443,6 +458,13 @@ export const COMMIT_GRADIENT = ['#26935C', '#1A6B42'] as const;
  * 55%, so the button does not APPEAR when the first digit lands — it wakes. A
  * control that materialises under a thumb already on its way is a control that
  * gets pressed by accident.
+ *
+ * `round` is the Momentum section action: a 64 dp circle with the glyph and no
+ * words, filled with the theme's gradient. The four section roots each have ONE
+ * obvious thing to do — ▶ in Workout, + in Tasks and Finance — and in the same
+ * place in all four it is learned by position after a day; the label stays as
+ * the accessibility label. Pushed screens keep the worded pill, because `Save`
+ * and `Test & connect` are not things a glyph says unambiguously.
  */
 export function FloatingAction({
   label,
@@ -450,6 +472,8 @@ export function FloatingAction({
   variant = 'filled',
   asleep = false,
   bottom = floatingSlot.bottom,
+  round = false,
+  symbol,
   onPress,
   accessibilityHint,
 }: {
@@ -457,6 +481,10 @@ export function FloatingAction({
   icon?: IconName;
   variant?: 'filled' | 'ghost';
   asleep?: boolean;
+  /** Icon-only 64 dp circle. See the header. */
+  round?: boolean;
+  /** A Material Symbol in place of `icon`, for the round ghost action. */
+  symbol?: SymbolName;
   /** Raised off the slot for a screen with no nav pill under it. */
   bottom?: number;
   onPress: () => void;
@@ -479,9 +507,9 @@ export function FloatingAction({
   useEffect(() => {
     Animated.timing(arrive, {
       toValue: 1,
-      duration: 420 * motionScale,
-      delay: 200 * motionScale,
-      easing: curve(motion.ease),
+      duration: (round ? 560 : 420) * motionScale,
+      delay: (round ? 280 : 200) * motionScale,
+      easing: curve(round ? motion.pop : motion.ease),
       useNativeDriver: true,
     }).start();
     // Mount only: the arrival is the section's, not the label's.
@@ -516,7 +544,15 @@ export function FloatingAction({
         boxShadow: [...(filled ? halo.floating : []), ...elevation.e2],
         opacity: Animated.multiply(arrive, wake),
         transform: [
-          { translateY: arrive.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+          {
+            translateY: arrive.interpolate({
+              inputRange: [0, 1],
+              outputRange: [round ? 18 : 10, 0],
+            }),
+          },
+          ...(round
+            ? [{ scale: arrive.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }]
+            : []),
           ...press.style.transform,
         ],
       }}
@@ -534,16 +570,17 @@ export function FloatingAction({
         accessibilityHint={accessibilityHint}
         style={{
           height: floatingSlot.height,
+          ...(round ? { width: floatingSlot.height, justifyContent: 'center' } : {}),
           borderRadius: RADIUS.pill,
           overflow: 'hidden',
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: floatingSlot.paddingH,
+          paddingHorizontal: round ? 0 : floatingSlot.paddingH,
         }}
       >
         {filled ? (
           <LinearGradient
-            colors={[...COMMIT_GRADIENT]}
+            {...gradientFill()}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           />
         ) : (
@@ -573,20 +610,49 @@ export function FloatingAction({
           radius={RADIUS.pill}
           height={filled ? 2 : 1}
         />
-        {icon ? (
-          <View style={{ marginRight: 9 }}>
-            <Icon name={icon} size={17} color={filled ? palette.ink : palette.inkMuted} />
-          </View>
-        ) : null}
-        <RunningText
-          text={label}
-          allowFontScaling={false}
-          style={{ color: filled ? palette.ink : palette.inkMuted }}
-          className="text-body font-semibold"
-          // The fill's END colour: the fade has to match what is behind the
-          // label's right edge, and that is the bottom of the gradient's run.
-          fadeColor={filled ? FADE_ON.gradient : '#161817'}
-        />
+        {round ? (
+          symbol ? (
+            <MaterialSymbol
+              name={symbol}
+              size={28}
+              color={filled ? palette.onAcc : INK_SOFT}
+              filled={filled}
+            />
+          ) : icon === 'play' ? (
+            /* The repo's ▶, filled and nudged 3 dp right so it sits on the
+               circle's optical centre rather than its geometric one. */
+            <View style={{ marginLeft: 3 }}>
+              <Svg width={26} height={26} viewBox="0 0 24 24">
+                <Path
+                  d="M8 5.5l11 6.5-11 6.5z"
+                  fill={filled ? palette.onAcc : INK_SOFT}
+                  stroke={filled ? palette.onAcc : INK_SOFT}
+                  strokeWidth={2.5}
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </View>
+          ) : icon ? (
+            <Icon name={icon} size={28} color={filled ? palette.onAcc : INK_SOFT} />
+          ) : null
+        ) : (
+          <>
+            {icon ? (
+              <View style={{ marginRight: 9 }}>
+                <Icon name={icon} size={17} color={filled ? palette.onAcc : palette.inkMuted} />
+              </View>
+            ) : null}
+            <RunningText
+              text={label}
+              allowFontScaling={false}
+              style={{ color: filled ? palette.onAcc : palette.inkMuted }}
+              className="text-body font-semibold"
+              // The fill's END colour: the fade has to match what is behind the
+              // label's right edge, and that is the bottom of the gradient's run.
+              fadeColor={filled ? FADE_ON.gradient : '#161817'}
+            />
+          </>
+        )}
       </BubblePressable>
     </Animated.View>
   );
@@ -608,7 +674,7 @@ export function FloatingPair({
 }: {
   /** Absent = the pair collapses to the primary alone, which pops in. */
   secondary?: { label: string; onPress: () => void };
-  primary: { label: string; icon?: IconName; onPress: () => void };
+  primary: { label: string; icon?: IconName; symbol?: SymbolName; onPress: () => void };
   bottom?: number;
 }) {
   const insets = useSafeAreaInsets();
@@ -641,19 +707,23 @@ export function FloatingPair({
         }}
       >
         <LinearGradient
-          colors={[...COMMIT_GRADIENT]}
+          {...gradientFill()}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
         />
         <SpecularEdge color={specularHeavy} radius={RADIUS.pill} height={2} />
-        {primary.icon ? (
+        {primary.symbol ? (
+          <View style={{ marginRight: 8 }}>
+            <MaterialSymbol name={primary.symbol} size={22} color={palette.onAcc} filled />
+          </View>
+        ) : primary.icon ? (
           <View style={{ marginRight: 9 }}>
-            <Icon name={primary.icon} size={17} color={palette.ink} />
+            <Icon name={primary.icon} size={17} color={palette.onAcc} />
           </View>
         ) : null}
         <Text
           allowFontScaling={false}
           numberOfLines={1}
-          style={{ color: palette.ink }}
+          style={{ color: palette.onAcc }}
           className="text-body font-semibold"
         >
           {primary.label}
@@ -772,10 +842,11 @@ export interface ToastAction {
 }
 
 /**
- * Where a toast sits over a section: the floating slot's top (92 + 60) and 12 of
- * air. The session screen, whose pair sits at 24, passes its own.
+ * Where a toast sits over a section: the v3 spec's bottom 190 — the floating
+ * slot's top (102 + 64) and 24 of air, so it clears the round action and its
+ * glow. The session screen, whose pair sits at 28, passes its own.
  */
-export const TOAST_BOTTOM = floatingSlot.bottom + floatingSlot.height + 12;
+export const TOAST_BOTTOM = floatingSlot.bottom + floatingSlot.height + 24;
 
 export function Toast({
   label,
@@ -817,7 +888,8 @@ export function Toast({
       <View
         pointerEvents={action ? 'box-none' : 'none'}
         style={{
-          height: 44,
+          // v3: a 46 tall glass pill, bordered and lit at c2 30 %.
+          height: 46,
           maxWidth: '100%',
           borderRadius: RADIUS.pill,
           overflow: 'hidden',
@@ -826,7 +898,7 @@ export function Toast({
           paddingHorizontal: 18,
           backgroundColor: 'rgba(14,18,17,0.9)',
           borderWidth: 1,
-          borderColor: 'rgba(63,169,108,0.3)',
+          borderColor: tint(0.3),
           boxShadow: [{ offsetX: 0, offsetY: 12, blurRadius: 30, color: 'rgba(0,0,0,0.6)' }],
         }}
       >
@@ -843,7 +915,7 @@ export function Toast({
           }}
         />
         <SpecularEdge color="rgba(236,241,238,0.12)" radius={RADIUS.pill} />
-        <Icon name="check" size={15} color={palette.greenBright} />
+        <Icon name="check" size={16} color={palette.acc} />
         <RunningText
           text={label}
           fadeColor={FADE_ON.bar}
@@ -859,13 +931,13 @@ export function Toast({
             style={{
               marginLeft: 6,
               paddingLeft: 12,
-              height: 44,
+              height: 46,
               justifyContent: 'center',
               borderLeftWidth: 1,
               borderLeftColor: palette.hairline,
             }}
           >
-            <Text className="text-label font-semibold text-green-bright">{action.label}</Text>
+            <Text className="text-label font-semibold text-acc">{action.label}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -904,16 +976,16 @@ export function CommitMark({
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(63,169,108,0.5)',
+        borderColor: tint(0.5),
         ...(glow ? { boxShadow: [...halo.repeating] } : {}),
       }}
     >
       <LinearGradient
-        colors={[...COMMIT_GRADIENT]}
+        {...gradientFill()}
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
       />
       <SpecularEdge color={specularHeavy} radius={RADIUS.pill} height={size > 60 ? 2 : 1} />
-      <Icon name="check" size={glyph} color={palette.ink} />
+      <Icon name="check" size={glyph} color={palette.onAcc} />
       {children}
     </View>
   );

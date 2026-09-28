@@ -3,32 +3,32 @@
  * spent saying what is actually being loaded.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │                  ◌  ◌                        │  ← two rings pulse out
- *   │                ╭──────╮                      │  ← 150 dp: a third per store
- *   │                │  ✓   │                      │  ← the mark: squeezes, redraws
- *   │                ╰──────╯                      │
- *   │              Workout Tracker                 │  ← letter by letter
+ *   │                  ◌  ◌                        │  ← two rings pulse out (c2, c3)
+ *   │                ╭──────╮                      │  ← r 78: a third per store
+ *   │                │ ◠ 🏋 │                      │  ← r 70: a gradient arc, spinning
+ *   │                ╰──────╯                      │  ← the mark: squeezes, morphs
+ *   │                  Momentum                    │  ← letter by letter
  *   │            TRAIN · TICK · COUNT              │
  *   │                                              │
  *   │  (✓ 92 workouts)(◌ 0 tasks)(◌ 0 accounts)    │  ← each ticks when ITS store has
  *   └──────────────────────────────────────────────┘
  *
- * ── IT STARTS ON THE NATIVE SPLASH'S OWN FRAME ────────────────────────────
+ * ── THE MARK IS THE APP, IN ONE BEAT ──────────────────────────────────────
  *
- * Android draws `assets/splash.png` — a `#1E7A4C` circle with an ink ✓ on
- * `#060807` — before a single line of JS has run, and nothing in the app can
- * move it. So this screen's FIRST frame is that same picture: the same page
- * colour, the same green circle at the same place, and every other element at
- * opacity 0. Everything that moves afterwards moves away from a frame the eye has
- * already been looking at, which is the only way a JS splash can take over from a
- * native one without a visible cut. A JS splash that opened on its own first
- * frame — a different layout, a flash of the app behind it — is the jump the
- * native splash exists to hide.
+ * An 86 dp gradient circle in the theme's three colours, and inside it the three
+ * logs take turns: `fitness_center` → `payments` → `task_alt`, each spinning in,
+ * holding and spinning out on a 2.7 s loop, a third of a loop apart. The circle
+ * squeezes on the same 0.9 s beat, so every hand-over lands on a squeeze and the
+ * swap reads as the mark changing its mind rather than as three icons fading.
+ * Every loop is transform or opacity on the native driver: this runs while the
+ * JS thread is busiest, hydrating three stores, and a JS-driven morph would
+ * stutter exactly then. The keyframes are CSS in the handoff; each is rebuilt
+ * as an `Animated.sequence` of its segments, with the handoff's easing on each.
  *
- * The handover is NOT held with `expo-splash-screen`'s `preventAutoHideAsync`:
- * that package is not in this build, and adding a native dependency for it is a
- * decision for the owner, not for a motion pass. Without it Android dismisses its
- * splash on the app's first drawn frame, and this is that frame.
+ * It starts on a page-coloured frame with the mark at rest and every glyph at
+ * opacity 0, which is the closest this screen can come to the native splash's
+ * own picture: `expo-splash-screen`'s `preventAutoHideAsync` is not in this
+ * build, so Android dismisses its splash on the first frame drawn here.
  *
  * ── THE CHIPS ARE THE TRUTH ───────────────────────────────────────────────
  *
@@ -48,40 +48,52 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Text, View, useWindowDimensions } from 'react-native';
-import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
+import { Animated, Easing, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
 import { useMotionScale } from '../hooks/useMotionScale';
 import { usePlural, useT } from '../hooks/useT';
 import { LAUNCH_CEILING_MS, launchReady, launchTicks, type LaunchStore } from '../lib/launchReady';
+import { mixSrgb } from '../lib/theme';
 import { useMoney } from '../state/moneyStore';
 import { useTasks } from '../state/tasksStore';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
-import { curve, motion, palette, radius } from '../theme/tokens';
+import { curve, gradientFill, motion, palette, radius, stopTint, tint } from '../theme/tokens';
+import { Lamps } from './glass';
 import { Icon } from './Icon';
+import { MaterialSymbol, type SymbolName } from './MaterialSymbol';
 import { Pop } from './motion';
 import { RollingNumber } from './RollingNumber';
 
 const EASE = curve(motion.ease);
-const WORDMARK = 'Workout Tracker';
+/** The glyph morph's curve, and the squeeze's — both from the handoff. */
+const MORPH_EASE = Easing.bezier(0.34, 1.3, 0.64, 1);
+const SQUEEZE_EASE = curve(motion.pop);
+/** A name, not a sentence: `Momentum` in both languages. */
+const WORDMARK = 'Momentum';
 
-/** The mark, and the box the pulse rings and the progress ring sit in. */
-const MARK = 80;
-const BOX = 170;
-const PROGRESS = 150;
+/** The mark, and the box the waves and both rings sit in. */
+const MARK = 86;
+const BOX = 180;
+const RING_BOX = 164;
+const PROGRESS_R = 78;
 const PROGRESS_STROKE = 3;
-const PROGRESS_R = (PROGRESS - PROGRESS_STROKE) / 2 - 1.5;
 const PROGRESS_LENGTH = 2 * Math.PI * PROGRESS_R;
+const SPIN_R = 70;
+
+/** One morph loop, and the three glyphs it deals out a third of a loop apart. */
+const MORPH_MS = 2700;
+const GLYPHS: readonly SymbolName[] = ['fitness_center', 'payments', 'task_alt'];
+const SQUEEZE_MS = 900;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 export function LaunchScreen({ onDone }: { onDone: () => void }) {
   const t = useT();
   const plural = usePlural();
   const scale = useMotionScale();
   const reduced = scale === 0;
-  const { width, height } = useWindowDimensions();
 
   /* --- the three stores, and when each became ready ------------------- */
   const started = useRef(Date.now()).current;
@@ -157,100 +169,76 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
 
   /* --- the choreography, all of it from mount ------------------------- */
   const lamps = useRef(new Animated.Value(reduced ? 1 : 0)).current;
-  const lampBreath = useRef(new Animated.Value(1)).current;
-  const squeeze = useRef(new Animated.Value(1)).current;
-  /* 0 is drawn: the first frame shows the ✓, exactly as the native splash does. */
-  const check = useRef(new Animated.Value(0)).current;
+  /* The squeeze beat: 0 rest → 1 pinched → 2 overshoot → 3 rest again. */
+  const beat = useRef(new Animated.Value(0)).current;
   const markGlow = useRef(new Animated.Value(0)).current;
+  const spin = useRef(new Animated.Value(0)).current;
   const wave1 = useRef(new Animated.Value(0)).current;
   const wave2 = useRef(new Animated.Value(0)).current;
   const tagline = useRef(new Animated.Value(reduced ? 1 : 0)).current;
+  /* Each glyph has an IN and an OUT value, so both halves get the overshoot. */
+  const glyphs = useRef(
+    GLYPHS.map(() => ({ enter: new Animated.Value(0), exit: new Animated.Value(0) })),
+  ).current;
 
   useEffect(() => {
     if (reduced) return undefined;
     const loops: Animated.CompositeAnimation[] = [];
     const timers: ReturnType<typeof setTimeout>[] = [];
-    Animated.timing(lamps, {
-      toValue: 1,
-      duration: 1600,
-      easing: EASE,
-      useNativeDriver: true,
-    }).start(() => {
-      const breathe = Animated.loop(
-        Animated.sequence([
-          Animated.timing(lampBreath, {
-            toValue: 0.72,
-            duration: 2500,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(lampBreath, {
-            toValue: 1,
-            duration: 2500,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      loops.push(breathe);
-      breathe.start();
-    });
-    // The squeeze: in to 0.88 over the first third, back out on the overshoot.
-    Animated.sequence([
-      Animated.timing(squeeze, {
-        toValue: 0.88,
-        duration: 315,
-        easing: EASE,
-        useNativeDriver: true,
-      }),
-      Animated.timing(squeeze, {
-        toValue: 1,
-        duration: 585,
-        easing: curve(motion.pop),
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      const glow = Animated.loop(
-        Animated.sequence([
-          Animated.timing(markGlow, {
-            toValue: 1,
-            duration: 1500,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(markGlow, {
-            toValue: 0,
-            duration: 1500,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      loops.push(glow);
-      glow.start();
-    });
-    /* The ✓ REDRAWS: wiped while the mark squeezes, then drawn again from 380 ms
-       over 520 ms — it starts on the native splash's own ✓ and ends on this one. */
-    Animated.sequence([
-      Animated.timing(check, {
-        toValue: 24,
-        duration: 180,
-        delay: 150,
-        easing: Easing.in(Easing.quad),
-        useNativeDriver: false,
-      }),
-      Animated.delay(50),
-      Animated.timing(check, { toValue: 0, duration: 520, easing: EASE, useNativeDriver: false }),
-    ]).start();
-    const wave = (v: Animated.Value, delay: number) => {
-      const loop = Animated.loop(
-        Animated.timing(v, { toValue: 1, duration: 2400, easing: EASE, useNativeDriver: true }),
-      );
+    const run = (loop: Animated.CompositeAnimation, delay = 0) => {
       loops.push(loop);
-      timers.push(setTimeout(() => loop.start(), delay));
+      if (delay === 0) loop.start();
+      else timers.push(setTimeout(() => loop.start(), delay));
     };
+    const step = (v: Animated.Value, toValue: number, duration: number, easing = EASE) =>
+      Animated.timing(v, { toValue, duration, easing, useNativeDriver: true });
+
+    // The room lighting up; `Lamps` breathes on its own from there.
+    step(lamps, 1, 1600).start();
+
+    // `squeeze`: rest 0–72 %, 84 % pinched, 94 % overshoot, 100 % rest.
+    run(
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(SQUEEZE_MS * 0.72),
+          step(beat, 1, SQUEEZE_MS * 0.12, SQUEEZE_EASE),
+          step(beat, 2, SQUEEZE_MS * 0.1, SQUEEZE_EASE),
+          step(beat, 3, SQUEEZE_MS * 0.06, SQUEEZE_EASE),
+        ]),
+      ),
+    );
+
+    // `markGlow`: 24 dp at c2 30 % ↔ 52 dp at 65 %, 3 s.
+    run(
+      Animated.loop(
+        Animated.sequence([
+          step(markGlow, 1, 1500, Easing.inOut(Easing.ease)),
+          step(markGlow, 0, 1500, Easing.inOut(Easing.ease)),
+        ]),
+      ),
+    );
+
+    run(Animated.loop(step(spin, 1, 1100, Easing.linear)));
+
+    // `morph`: 0–10 % in, hold to 27 %, out by 35 %, gone for the rest.
+    glyphs.forEach((glyph, index) =>
+      run(
+        Animated.loop(
+          Animated.sequence([
+            step(glyph.enter, 1, MORPH_MS * 0.1, MORPH_EASE),
+            Animated.delay(MORPH_MS * 0.17),
+            step(glyph.exit, 1, MORPH_MS * 0.08, MORPH_EASE),
+            Animated.delay(MORPH_MS * 0.65),
+          ]),
+        ),
+        (index * MORPH_MS) / GLYPHS.length,
+      ),
+    );
+
+    const wave = (v: Animated.Value, delay: number) => run(Animated.loop(step(v, 1, 2400)), delay);
     wave(wave1, 700);
     wave(wave2, 1500);
+
     Animated.timing(tagline, {
       toValue: 1,
       duration: 500,
@@ -313,7 +301,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
         transform: [{ scale: leave.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }) }],
       }}
     >
-      {/* The room lighting up: three radial greens, scaling in, then breathing. */}
+      {/* The room lighting up: the theme's three stops, scaling in. */}
       <Animated.View
         pointerEvents="none"
         style={{
@@ -322,35 +310,15 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
           left: 0,
           right: 0,
           bottom: 0,
-          opacity: Animated.multiply(lamps, lampBreath),
+          opacity: lamps,
           transform: [{ scale: lamps.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }],
         }}
       >
-        <Svg width={width} height={height}>
-          <Defs>
-            <RadialGradient id="launchBright" cx="50%" cy="50%" r="50%">
-              <Stop offset="0%" stopColor={palette.greenBright} stopOpacity={1} />
-              <Stop offset="70%" stopColor={palette.greenBright} stopOpacity={0} />
-            </RadialGradient>
-            <RadialGradient id="launchDim" cx="50%" cy="50%" r="50%">
-              <Stop offset="0%" stopColor={palette.green} stopOpacity={1} />
-              <Stop offset="70%" stopColor={palette.green} stopOpacity={0} />
-            </RadialGradient>
-          </Defs>
-          <Circle cx={width / 2} cy={height / 2} r={230} opacity={0.22} fill="url(#launchBright)" />
-          <Circle cx={width * 0.12} cy={110} r={160} opacity={0.14} fill="url(#launchDim)" />
-          <Circle
-            cx={width * 0.92}
-            cy={height - 100}
-            r={180}
-            opacity={0.12}
-            fill="url(#launchDim)"
-          />
-        </Svg>
+        <Lamps section="Launch" />
       </Animated.View>
 
-      {/* The mark and everything around it. 40 dp above true centre, because the
-          wordmark sits under it — the same picture the native splash draws. */}
+      {/* The mark and everything around it, 40 dp above true centre because the
+          wordmark sits under it. */}
       <View
         style={{
           width: BOX,
@@ -360,52 +328,79 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
           justifyContent: 'center',
         }}
       >
-        <Wave value={wave1} />
-        <Wave value={wave2} />
+        <Wave value={wave1} color={tint(0.5)} />
+        <Wave value={wave2} color={stopTint(3, 0.5)} />
 
+        {/* The progress ring: a third per ticked store. */}
         <Svg
-          width={PROGRESS}
-          height={PROGRESS}
+          width={RING_BOX}
+          height={RING_BOX}
           style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}
         >
           <Circle
-            cx={PROGRESS / 2}
-            cy={PROGRESS / 2}
+            cx={RING_BOX / 2}
+            cy={RING_BOX / 2}
             r={PROGRESS_R}
             fill="none"
-            stroke="rgba(21,69,44,0.7)"
+            stroke={mixSrgb(palette.c1, '#08110C', 0.4)}
             strokeWidth={PROGRESS_STROKE}
           />
-          {[PROGRESS_STROKE + 6, PROGRESS_STROKE].map((stroke, index) => (
-            <AnimatedCircle
-              key={index}
-              cx={PROGRESS / 2}
-              cy={PROGRESS / 2}
-              r={PROGRESS_R}
-              fill="none"
-              stroke={palette.greenBright}
-              strokeOpacity={index === 0 ? 0.25 : 1}
-              strokeWidth={stroke}
-              strokeLinecap="round"
-              strokeDasharray={PROGRESS_LENGTH}
-              strokeDashoffset={progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [PROGRESS_LENGTH, 0],
-              })}
-            />
-          ))}
+          <AnimatedCircle
+            cx={RING_BOX / 2}
+            cy={RING_BOX / 2}
+            r={PROGRESS_R}
+            fill="none"
+            stroke={palette.acc}
+            strokeWidth={PROGRESS_STROKE}
+            strokeLinecap="round"
+            strokeDasharray={PROGRESS_LENGTH}
+            strokeDashoffset={progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [PROGRESS_LENGTH, 0],
+            })}
+          />
         </Svg>
 
-        {/* The mark's glow breathing, 24 ↔ 48 dp: two fixed halos, one fading. */}
+        {/* The second ring: a gradient arc going round, so the screen is never
+            still between two stores reporting in. */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            width: RING_BOX,
+            height: RING_BOX,
+            transform: [
+              { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+            ],
+          }}
+        >
+          <Svg width={RING_BOX} height={RING_BOX}>
+            <Defs>
+              <SvgGradient id="launchSpin" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0%" stopColor={palette.c1} />
+                <Stop offset="50%" stopColor={palette.c2} />
+                <Stop offset="100%" stopColor={palette.c3} />
+              </SvgGradient>
+            </Defs>
+            <Circle
+              cx={RING_BOX / 2}
+              cy={RING_BOX / 2}
+              r={SPIN_R}
+              fill="none"
+              stroke="url(#launchSpin)"
+              strokeWidth={3.5}
+              strokeLinecap="round"
+              strokeDasharray="110 330"
+            />
+          </Svg>
+        </Animated.View>
+
+        {/* The mark's glow breathing, 24 ↔ 52 dp: two fixed halos, one fading. */}
         <View
           pointerEvents="none"
           style={[
             MARK_BOX,
-            {
-              boxShadow: [
-                { offsetX: 0, offsetY: 0, blurRadius: 24, color: 'rgba(63,169,108,0.25)' },
-              ],
-            },
+            { boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 24, color: tint(0.3) }] },
           ]}
         />
         <Animated.View
@@ -414,9 +409,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
             MARK_BOX,
             {
               opacity: markGlow,
-              boxShadow: [
-                { offsetX: 0, offsetY: 0, blurRadius: 48, color: 'rgba(63,169,108,0.55)' },
-              ],
+              boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 52, color: tint(0.65) }],
             },
           ]}
         />
@@ -425,30 +418,37 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
           style={[
             MARK_BOX,
             {
-              backgroundColor: palette.green,
+              overflow: 'hidden',
               alignItems: 'center',
               justifyContent: 'center',
-              transform: [{ scale: squeeze }],
+              transform: [
+                {
+                  scale: beat.interpolate({
+                    inputRange: [0, 1, 2, 3],
+                    outputRange: [1, 0.86, 1.06, 1],
+                  }),
+                },
+                {
+                  rotate: beat.interpolate({
+                    inputRange: [0, 1, 2, 3],
+                    outputRange: ['0deg', '-8deg', '4deg', '0deg'],
+                  }),
+                },
+              ],
             },
           ]}
         >
-          <Svg width={44} height={44} viewBox="0 0 24 24">
-            <AnimatedPath
-              d="M20 6L9 17l-5-5"
-              fill="none"
-              stroke={palette.ink}
-              strokeWidth={2.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray={24}
-              strokeDashoffset={check}
-            />
-          </Svg>
+          <LinearGradient
+            {...gradientFill()}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          {GLYPHS.map((name, index) => (
+            <MorphGlyph key={name} name={name} {...glyphs[index]} />
+          ))}
         </Animated.View>
       </View>
 
-      {/* The name, one letter at a time. It is a name, not a sentence: it stays
-          `Workout Tracker` in both languages. */}
+      {/* The name, one letter at a time. */}
       <View style={{ marginTop: 26, flexDirection: 'row' }} accessibilityLabel={WORDMARK}>
         {Array.from(WORDMARK).map((letter, index) => (
           <Letter key={index} letter={letter} delay={480 + index * 28} reduced={reduced} />
@@ -457,15 +457,15 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
       <Animated.Text
         allowFontScaling={false}
         style={{
-          marginTop: 6,
-          fontSize: 11,
+          marginTop: 8,
+          fontSize: 12.5,
           letterSpacing: 1.4,
           fontWeight: '600',
-          color: palette.inkFaint,
+          color: '#6B766F',
           textTransform: 'uppercase',
           opacity: tagline,
           transform: [
-            { translateY: tagline.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+            { translateY: tagline.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) },
           ],
         }}
       >
@@ -506,8 +506,51 @@ const MARK_BOX = {
   borderRadius: radius.pill,
 } as const;
 
+/**
+ * One of the three glyphs: spins in from −200° at a quarter size, holds, spins
+ * out to +200°. `enter` and `exit` are separate values so each half overshoots
+ * on its own curve; opacity is their product, rotation their sum.
+ */
+function MorphGlyph({
+  name,
+  enter,
+  exit,
+}: {
+  name: SymbolName;
+  enter: Animated.Value;
+  exit: Animated.Value;
+}) {
+  const rotate = Animated.add(
+    enter.interpolate({ inputRange: [0, 1], outputRange: [-200, 0] }),
+    exit.interpolate({ inputRange: [0, 1], outputRange: [0, 200] }),
+  ).interpolate({ inputRange: [-360, 360], outputRange: ['-360deg', '360deg'] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        opacity: Animated.multiply(
+          enter.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+          exit.interpolate({ inputRange: [0, 1], outputRange: [1, 0], extrapolate: 'clamp' }),
+        ),
+        transform: [
+          { rotate },
+          {
+            scale: Animated.multiply(
+              enter.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
+              exit.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] }),
+            ),
+          },
+        ],
+      }}
+    >
+      <MaterialSymbol name={name} size={44} color={palette.onAcc} filled />
+    </Animated.View>
+  );
+}
+
 /** One 120 dp ring pulsing out from the mark: scale 1 → 2.2, fading. */
-function Wave({ value }: { value: Animated.Value }) {
+function Wave({ value, color }: { value: Animated.Value; color: string }) {
   return (
     <Animated.View
       pointerEvents="none"
@@ -517,7 +560,7 @@ function Wave({ value }: { value: Animated.Value }) {
         height: 120,
         borderRadius: radius.pill,
         borderWidth: 1,
-        borderColor: 'rgba(63,169,108,0.5)',
+        borderColor: color,
         opacity: value.interpolate({ inputRange: [0, 1], outputRange: [0.7, 0] }),
         transform: [{ scale: value.interpolate({ inputRange: [0, 1], outputRange: [1, 2.2] }) }],
       }}
@@ -525,7 +568,7 @@ function Wave({ value }: { value: Animated.Value }) {
   );
 }
 
-/** One letter of the wordmark arriving: opacity and a 12 dp rise, 520 ms. */
+/** One letter of the wordmark arriving: opacity and a 14 dp rise, 520 ms. */
 function Letter({ letter, delay, reduced }: { letter: string; delay: number; reduced: boolean }) {
   const v = useRef(new Animated.Value(reduced ? 1 : 0)).current;
   useEffect(() => {
@@ -543,12 +586,12 @@ function Letter({ letter, delay, reduced }: { letter: string; delay: number; red
     <Animated.Text
       allowFontScaling={false}
       style={{
-        fontSize: 24,
+        fontSize: 26,
         letterSpacing: -0.5,
         fontWeight: '600',
         color: palette.ink,
         opacity: v,
-        transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+        transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
       }}
     >
       {letter}
@@ -557,8 +600,8 @@ function Letter({ letter, delay, reduced }: { letter: string; delay: number; red
 }
 
 /**
- * One status chip: a spinner until its store is ready, then a popped ✓ in a green
- * dot, and the count rolling up from zero at the same moment.
+ * One status chip: a spinner until its store is ready, then a popped ✓ in a
+ * gradient dot, and the count rolling up from zero at the same moment.
  */
 function StatusChip({
   done,
@@ -589,7 +632,7 @@ function StatusChip({
   return (
     <Animated.View
       style={{
-        height: 32,
+        height: 34,
         paddingLeft: 8,
         paddingRight: 12,
         flexDirection: 'row',
@@ -597,42 +640,50 @@ function StatusChip({
         gap: 6,
         borderRadius: radius.pill,
         borderWidth: 1,
-        backgroundColor: done ? 'rgba(63,169,108,0.14)' : 'rgba(236,241,238,0.035)',
-        borderColor: done ? 'rgba(63,169,108,0.3)' : 'rgba(236,241,238,0.06)',
+        backgroundColor: done ? tint(0.14) : 'rgba(236,241,238,0.035)',
+        borderColor: done ? tint(0.3) : 'rgba(236,241,238,0.06)',
         opacity: arrive,
         transform: [
-          { translateY: arrive.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+          { translateY: arrive.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) },
         ],
       }}
     >
       <View
         style={{
-          width: 18,
-          height: 18,
+          width: 20,
+          height: 20,
           borderRadius: radius.pill,
+          overflow: 'hidden',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: done ? palette.green : 'transparent',
         }}
       >
         {done ? (
-          <Pop duration={320}>
-            <Icon name="check" size={11} color={palette.ink} />
-          </Pop>
+          <>
+            <LinearGradient
+              colors={[palette.c1, palette.c2]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            />
+            <Pop duration={320}>
+              <Icon name="check" size={12} color={palette.onAcc} />
+            </Pop>
+          </>
         ) : (
           <Spinner reduced={reduced} />
         )}
       </View>
       <RollingNumber
         value={done ? String(count) : '0'}
-        lineHeight={16}
+        lineHeight={17}
         duration={600}
-        style={{ fontSize: 12, color: done ? palette.greenBright : palette.inkFaint }}
+        style={{ fontSize: 13, color: done ? palette.acc : palette.inkFaint }}
         className="font-semibold"
       />
       <Text
         allowFontScaling={false}
-        style={{ fontSize: 12, color: done ? palette.inkMuted : palette.inkFaint }}
+        style={{ fontSize: 13, color: done ? palette.inkMuted : palette.inkFaint }}
         className="font-medium"
       >
         {label}
@@ -641,7 +692,7 @@ function StatusChip({
   );
 }
 
-/** A 10 dp ring with a lit top segment, turning once every 700 ms. */
+/** An 11 dp ring with a lit top segment, turning once every 700 ms. */
 function Spinner({ reduced }: { reduced: boolean }) {
   const turn = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -660,12 +711,12 @@ function Spinner({ reduced }: { reduced: boolean }) {
   return (
     <Animated.View
       style={{
-        width: 10,
-        height: 10,
+        width: 11,
+        height: 11,
         borderRadius: radius.pill,
         borderWidth: 2,
-        borderColor: 'rgba(63,169,108,0.3)',
-        borderTopColor: palette.greenBright,
+        borderColor: tint(0.3),
+        borderTopColor: palette.acc,
         transform: [
           { rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
         ],

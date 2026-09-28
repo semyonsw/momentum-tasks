@@ -4,7 +4,7 @@
  *
  *   ┌─────────────────────────┐
  *   │        ·  ∘  ○          │   a ring opening from where you touched,
- *   │      ( ● )              │   fading as it goes, gone in 460ms
+ *   │      ( ● )              │   fading as it goes, gone in 620ms
  *   └─────────────────────────┘
  *
  * ── WHY THIS IS A COMPONENT AND NOT A FLAG ON EVERY BUTTON ────────────────
@@ -59,8 +59,11 @@ import {
 import { palette } from '../theme/tokens';
 import { press } from '../lib/feedback';
 
-/** Long enough to be seen leaving, short enough to be over before the next tap. */
-const DURATION = 460;
+/**
+ * The v3 spec's 620 ms. Long enough to be seen leaving, and since the ripple
+ * never blocks a touch, a second tap before it is over simply starts another.
+ */
+const DURATION = 620;
 
 /**
  * Live bubbles at once. Four is two more than a fast double-tap needs and far
@@ -95,7 +98,10 @@ export interface BubblePressableProps extends Omit<PressableProps, 'children'> {
    * a number for a surface corner, 0 for a plain row.
    */
   radius?: number | 'pill';
-  /** The ring's colour. Defaults to the green everything else in the app is. */
+  /**
+   * The ring's colour. Defaults to the theme's accent (`palette.greenBright` is
+   * `acc` now), read at render so a theme change is picked up on the remount.
+   */
   bubbleColor?: string;
   /** Off, for the few places a bubble would be noise — a drag handle, a scrim. */
   bubbles?: boolean;

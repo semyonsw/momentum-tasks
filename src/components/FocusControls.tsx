@@ -31,8 +31,8 @@ import { Pressable } from './Pressable';
 
 import { commit, tap, undo as undoFeedback } from '../lib/feedback';
 import { useMotionScale } from '../hooks/useMotionScale';
-import { glow as GLOW, palette } from '../theme/tokens';
-import { COMMIT_GRADIENT, SpecularEdge } from './glass';
+import { glow as GLOW, gradientFill, palette, tint } from '../theme/tokens';
+import { SpecularEdge } from './glass';
 import { Icon, type IconName } from './Icon';
 import { Ripple, usePressScale } from './motion';
 import { useT } from '../hooks/useT';
@@ -47,8 +47,10 @@ const PRESS_SCALE_LARGE = 0.975;
 
 /** The one glow, spread behind the one control that is always the answer. */
 const DONE_GLOW = {
-  boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 40, color: GLOW }],
-} as const;
+  get boxShadow() {
+    return [{ offsetX: 0, offsetY: 0, blurRadius: 40, color: GLOW }];
+  },
+};
 
 /**
  * DONE — 176 dp of "I did that".
@@ -121,7 +123,7 @@ export function FocusDone({
             borderRadius: 9999,
             transform: press.style.transform,
             boxShadow: [
-              { offsetX: 0, offsetY: 0, blurRadius: 44, color: 'rgba(63,169,108,0.45)' },
+              { offsetX: 0, offsetY: 0, blurRadius: 44, color: tint(0.45) },
               { offsetX: 0, offsetY: 18, blurRadius: 44, color: 'rgba(0,0,0,0.6)' },
             ],
           }}
@@ -134,22 +136,22 @@ export function FocusDone({
               alignItems: 'center',
               justifyContent: 'center',
               borderWidth: 1,
-              borderColor: 'rgba(63,169,108,0.5)',
+              borderColor: tint(0.5),
             }}
           >
             <LinearGradient
-              colors={[...COMMIT_GRADIENT]}
+              {...gradientFill()}
               style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
             />
             <SpecularEdge color="rgba(236,241,238,0.22)" radius={9999} height={2} />
             {/* The check never changes meaning anywhere in this app; this is the
                 same mark the set row carries, at the size a thumb aiming from
                 above needs. */}
-            <Icon name="check" size={56} color={palette.ink} />
+            <Icon name="check" size={56} color={palette.onAcc} />
             <Text
               allowFontScaling={false}
               style={{ marginTop: 6, fontSize: 15, letterSpacing: 2 }}
-              className="font-bold uppercase text-ink"
+              className="font-bold uppercase text-on-acc"
             >
               {label}
             </Text>
@@ -184,8 +186,8 @@ export function FocusFinish({ onPress }: { onPress: () => void }) {
       ]}
       className="h-focus-finish flex-row items-center justify-center rounded-pill bg-green"
     >
-      <Icon name="check" size={34} color={palette.ink} />
-      <Text className="ml-lg text-title-lg font-semibold text-ink">{t('Finish workout')}</Text>
+      <Icon name="check" size={34} color={palette.onAcc} />
+      <Text className="ml-lg text-title-lg font-semibold text-on-acc">{t('Finish workout')}</Text>
     </Pressable>
   );
 }
@@ -253,7 +255,7 @@ export function FocusAction({
   accessibilityLabel: string;
 }) {
   const filled = tone === 'filled';
-  const ink = filled ? palette.ink : palette.greenBright;
+  const ink = filled ? palette.onAcc : palette.acc;
 
   return (
     <Pressable
@@ -276,7 +278,7 @@ export function FocusAction({
           className={[
             'text-title font-semibold',
             icon ? 'ml-md' : '',
-            filled ? 'text-ink' : 'text-green-bright',
+            filled ? 'text-on-acc' : 'text-acc',
           ].join(' ')}
         >
           {label}

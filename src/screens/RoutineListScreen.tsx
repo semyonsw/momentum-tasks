@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { pressedStyle } from '../components/motion';
+import { FADE_ON, RunningText } from '../components/RunningText';
 import { AddRow, Kicker, ListCard, Separator } from '../components/primitives';
 import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import type { Language } from '../lib/i18n';
@@ -117,10 +118,12 @@ export function RoutineListScreen({
                     style={pressedStyle}
                     className="h-row-lg flex-1 flex-row items-center pl-lg"
                   >
-                    <View className="flex-1">
-                      <Text numberOfLines={1} className="text-body font-medium text-ink">
-                        {routine.name}
-                      </Text>
+                    <View className="flex-1" style={{ minWidth: 0 }}>
+                      <RunningText
+                        text={routine.name}
+                        fadeColor={FADE_ON.card}
+                        className="text-body font-medium text-ink"
+                      />
                       <Text
                         numberOfLines={1}
                         className="mt-[2px] text-label tabular-nums text-ink-faint"

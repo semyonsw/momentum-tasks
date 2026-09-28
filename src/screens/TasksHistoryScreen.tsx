@@ -230,7 +230,7 @@ function MonthView({
       <View className="mx-lg mt-lg flex-row items-center">
         <Kicker>{t('Less')}</Kicker>
         <View className="mx-sm h-[6px] flex-1 flex-row overflow-hidden rounded-pill">
-          {greenSteps.map((step) => (
+          {greenSteps().map((step) => (
             <View key={step} className="h-[6px] flex-1" style={{ backgroundColor: step }} />
           ))}
         </View>
@@ -257,10 +257,10 @@ function MonthView({
  * light behind it.
  */
 function fillFor(fraction: number): string | null {
-  if (fraction >= 1) return greenSteps[3];
-  if (fraction >= 0.75) return greenSteps[2];
-  if (fraction >= 0.5) return greenSteps[1];
-  if (fraction > 0) return greenSteps[0];
+  if (fraction >= 1) return greenSteps()[3];
+  if (fraction >= 0.75) return greenSteps()[2];
+  if (fraction >= 0.5) return greenSteps()[1];
+  if (fraction > 0) return greenSteps()[0];
   return null;
 }
 
@@ -317,7 +317,15 @@ function MonthCell({
         <Text
           className={[
             'text-label tabular-nums',
-            !cell.isBlank && cell.fraction >= 0.5 ? 'font-medium text-ink' : 'text-ink-faint',
+            // The two top steps are 60–82% c2, close enough to a fill that the
+            // numeral takes `onAcc` like any other text on c2; ink below that.
+            cell.isBlank
+              ? 'text-ink-faint'
+              : cell.fraction >= 0.75
+                ? 'font-medium text-on-acc'
+                : cell.fraction >= 0.5
+                  ? 'font-medium text-ink'
+                  : 'text-ink-faint',
           ].join(' ')}
         >
           {cell.day}

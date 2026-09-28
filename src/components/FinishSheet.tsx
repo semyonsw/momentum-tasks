@@ -61,8 +61,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT, type Translate } from '../hooks/useT';
 import { formatValue } from '../lib/money';
-import { curve, motion, palette, radius } from '../theme/tokens';
-import { COMMIT_GRADIENT, SpecularEdge } from './glass';
+import { curve, gradientFill, motion, palette, radius, tint } from '../theme/tokens';
+import { SpecularEdge } from './glass';
 import { Kicker, PrimaryButton } from './primitives';
 import { RollingNumber } from './RollingNumber';
 import { sparkle } from '../lib/feedback';
@@ -322,9 +322,7 @@ export function FinishSheet({
                 style={{
                   borderRadius: radius.pill,
                   backgroundColor: palette.green,
-                  boxShadow: [
-                    { offsetX: 0, offsetY: 0, blurRadius: 14, color: 'rgba(63,169,108,0.3)' },
-                  ],
+                  boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.3) }],
                 }}
               />
               {EFFORT_CHOICES.map((choice) => {
@@ -341,7 +339,9 @@ export function FinishSheet({
                     <Text
                       allowFontScaling={false}
                       style={{ fontSize: 13 }}
-                      className={selected ? 'font-semibold text-ink' : 'font-medium text-ink-muted'}
+                      className={
+                        selected ? 'font-semibold text-on-acc' : 'font-medium text-ink-muted'
+                      }
                     >
                       {efforts[choice]}
                     </Text>
@@ -403,8 +403,8 @@ function StatTile({
         padding: 14,
         borderRadius: radius.row,
         borderWidth: 1,
-        backgroundColor: lit ? 'rgba(63,169,108,0.13)' : 'rgba(236,241,238,0.055)',
-        borderColor: lit ? 'rgba(63,169,108,0.3)' : 'rgba(236,241,238,0.06)',
+        backgroundColor: lit ? tint(0.13) : 'rgba(236,241,238,0.055)',
+        borderColor: lit ? tint(0.3) : 'rgba(236,241,238,0.06)',
       }}
     >
       <Text
@@ -437,7 +437,7 @@ function SaveButton({ label, onPress }: { label: string; onPress: () => void }) 
     <View
       style={{
         borderRadius: radius.pill,
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 30, color: 'rgba(63,169,108,0.35)' }],
+        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 30, color: tint(0.35) }],
       }}
     >
       <Pressable
@@ -453,11 +453,11 @@ function SaveButton({ label, onPress }: { label: string; onPress: () => void }) 
         }}
       >
         <LinearGradient
-          colors={[...COMMIT_GRADIENT]}
+          {...gradientFill()}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
         />
         <SpecularEdge color="rgba(236,241,238,0.22)" radius={radius.pill} height={2} />
-        <Text allowFontScaling={false} className="text-body font-semibold text-ink">
+        <Text allowFontScaling={false} className="text-body font-semibold text-on-acc">
           {label}
         </Text>
       </Pressable>

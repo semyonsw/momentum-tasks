@@ -110,7 +110,7 @@
  *    coloured as neglected, no "you should train legs". A cluster with zero sets
  *    shows zero, and that IS the feature — "legs 0" over twelve weeks is a fact,
  *    and what to do about it belongs to the person who did the training.
- *    The bar is `green-dim`, scaled to the largest cluster, and it is a
+ *    The bar is the theme gradient, scaled to the largest cluster, and it is a
  *    comparison between the user's own numbers rather than against a goal.
  *  • AND WHEN A NUMBER CANNOT BE STOOD BEHIND, IT IS NOT SHOWN. Session volume
  *    needs a bodyweight to weigh a push-up or a −20 kg assisted pull-up, and the
@@ -122,22 +122,18 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Animated, ScrollView, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from '../components/Pressable';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
+import { GlassSurface } from '../components/glass';
+import { FADE_ON, RunningText } from '../components/RunningText';
 import { Icon } from '../components/Icon';
 import { pressedStyle, Reveal } from '../components/motion';
 import { NumberSheet } from '../components/NumberSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
-import {
-  FieldWell,
-  Kicker,
-  ListCard,
-  Segmented,
-  Separator,
-  StepperRow,
-} from '../components/primitives';
+import { FieldWell, Kicker, Separator, StepperRow } from '../components/primitives';
 import {
   BALANCE_WINDOWS,
   balanceWindowDays,
@@ -167,7 +163,7 @@ import { historyTotals } from '../state/workoutHistoryStore';
 import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import { term, type Language } from '../lib/i18n';
 import { formatMonth } from '../lib/days';
-import { palette } from '../theme/tokens';
+import { curve, elevation, gradientBar, palette, radius, tint } from '../theme/tokens';
 import { useSettings } from '../state/settingsStore';
 import { DURATION_LIMITS, formatTimeOfDay } from '../lib/workoutEdit';
 import type { Exercise, ID, SessionEffort, SetHistory, UnitSystem } from '../types/models';
@@ -189,6 +185,20 @@ const MINUTES_PER_DAY = 1440;
  * hour. Four taps an hour is the right coarseness for that.
  */
 const TIME_STEP_MINUTES = 15;
+
+/** The second line of a session card — between faint and muted. See HomeScreen. */
+const DETAIL_INK = '#6B766F';
+
+/*
+ * The motion curves the design gives this screen: the range thumb and the
+ * chevron land with a slight overshoot, the bars with a smaller one.
+ */
+const THUMB_EASE = [0.34, 1.3, 0.64, 1] as const;
+const CHEVRON_EASE = THUMB_EASE;
+const BAR_RESIZE_EASE = [0.34, 1.2, 0.64, 1] as const;
+const BAR_GROW_EASE = [0.2, 0.8, 0.2, 1] as const;
+/** One segment of the `4w / 12w / All` switch, and the thumb that slides under it. */
+const RANGE_SEGMENT = 46;
 
 /*
  * A function rather than a constant, because the words are translated: a
@@ -422,40 +432,48 @@ export function HistoryScreen({
                 SETS PER CLUSTER — above the months, because it is about the
                 shape of recent training rather than about one session. */}
             {balance.totalSets > 0 ? (
-              <View className="mb-lg">
-                <View className="mx-lg mb-sm flex-row items-center">
-                  <Kicker className="flex-1">{t('Sets per cluster')}</Kicker>
-                </View>
-                <View className="mx-lg mb-md">
-                  <Segmented
-                    options={BALANCE_WINDOWS.map((w) => ({ value: w.value, label: t(w.label) }))}
-                    value={window}
-                    onChange={(next) => {
-                      tap();
-                      setWindow(next);
-                    }}
-                    accessibilityLabel={t('How far back the cluster counts reach')}
-                  />
-                </View>
-                <ListCard className="mx-lg">
-                  {balance.clusters.map((row, index) => (
-                    <View key={row.cluster}>
-                      {index > 0 ? <Separator /> : null}
+              <GlassSurface
+                tier="lit"
+                radius={radius.hero}
+                shadow="e2"
+                glow="hero"
+                flat
+                className="mx-lg"
+              >
+                <View className="p-[18px]">
+                  <View className="flex-row items-center" style={{ gap: 8 }}>
+                    <Text
+                      allowFontScaling={false}
+                      numberOfLines={1}
+                      style={{ letterSpacing: 1.1 }}
+                      className="flex-1 text-micro font-semibold uppercase text-acc"
+                    >
+                      {t('Sets per cluster')}
+                    </Text>
+                    <RangeSwitch
+                      value={window}
+                      onChange={(next) => {
+                        tap();
+                        setWindow(next);
+                      }}
+                    />
+                  </View>
+                  <View className="mt-lg" style={{ gap: 12 }}>
+                    {balance.clusters.map((row, index) => (
                       <ClusterRow
+                        key={row.cluster}
                         row={row}
+                        index={index}
                         maxSets={balance.maxSets}
                         target={weeklyTargets[row.cluster]}
                       />
-                    </View>
-                  ))}
-                  {/* Only when there is something to say. Sets whose exercise has
-                      been deleted still happened, and a total that quietly omitted
-                      them would be worse than one that admits it cannot place
-                      them. */}
-                  {balance.unfiled > 0 ? (
-                    <>
-                      <Separator />
-                      <View className="min-h-[44px] flex-row items-center px-lg py-sm">
+                    ))}
+                    {/* Only when there is something to say. Sets whose exercise has
+                        been deleted still happened, and a total that quietly omitted
+                        them would be worse than one that admits it cannot place
+                        them. */}
+                    {balance.unfiled > 0 ? (
+                      <View className="flex-row items-center">
                         <Text className="flex-1 text-label text-ink-faint">
                           {t('Exercise since deleted')}
                         </Text>
@@ -463,10 +481,10 @@ export function HistoryScreen({
                           {balance.unfiled}
                         </Text>
                       </View>
-                    </>
-                  ) : null}
-                </ListCard>
-              </View>
+                    ) : null}
+                  </View>
+                </View>
+              </GlassSurface>
             ) : null}
 
             {months.map((month) => (
@@ -476,14 +494,17 @@ export function HistoryScreen({
                   monthOffsets.current[month.key] = e.nativeEvent.layout.y;
                 }}
               >
-                <Kicker className="mx-lg mb-sm mt-xl">{month.label}</Kicker>
+                <Kicker className="mx-lg mb-kicker-gap mt-kicker">{month.label}</Kicker>
                 <View
                   onLayout={(e) => {
                     cardOffsets.current[month.key] = e.nativeEvent.layout.y;
                   }}
                 >
-                  <ListCard className="mx-lg">
-                    {month.workouts.map((workout, index) => (
+                  {/* One card per session, 8 apart — a session that opens grows
+                      its OWN pane, rather than pushing a seam through a shared
+                      one. */}
+                  <View className="mx-lg" style={{ gap: 8 }}>
+                    {month.workouts.map((workout) => (
                       <View
                         key={workout.id}
                         onLayout={(e) => {
@@ -493,7 +514,6 @@ export function HistoryScreen({
                           };
                         }}
                       >
-                        {index > 0 ? <Separator /> : null}
                         <WorkoutRow
                           workout={workout}
                           number={numbers[workout.id]}
@@ -524,7 +544,7 @@ export function HistoryScreen({
                         />
                       </View>
                     ))}
-                  </ListCard>
+                  </View>
                 </View>
               </View>
             ))}
@@ -549,6 +569,7 @@ export function HistoryScreen({
 
       {deleting ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Delete “{title}”?', { title: deleting.title })}
           body={t(
             '{date} · {count} sets. This is the record of a workout you did — deleting it also removes those sets from what the overload suggestions read.',
@@ -631,9 +652,60 @@ function WorkoutRow({
   const [editingWorkout, setEditingWorkout] = useState(false);
   /** The name, while it is being typed. Committed on blur — see the field below. */
   const [draftTitle, setDraftTitle] = useState(workout.title);
+  /* The chevron turns over rather than swapping glyphs: 180° in 320 ms. */
+  const turn = useRef(new Animated.Value(isOpen ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(turn, {
+      toValue: isOpen ? 1 : 0,
+      duration: 320,
+      easing: curve(CHEVRON_EASE),
+      useNativeDriver: true,
+    }).start();
+  }, [isOpen, turn]);
+
+  /*
+   * ONE LINE OF FACTS under the title, the date first — the date and length used
+   * to be a right-hand column, and on a 360 dp phone that column is what squeezed
+   * the title to three letters. It RUNS instead of being cut.
+   */
+  const detail = [
+    formatShortDate(workout.startedAt, lang),
+    t('{minutes} min', { minutes: workout.durationMinutes }),
+    t('{count} {exercises}', {
+      count: exerciseCount,
+      // `few` is Russian's own third form, so it is the Russian word.
+      exercises: counted(exerciseCount, {
+        one: t('exercise'),
+        few: 'упражнения',
+        many: t('exercises'),
+      }),
+    }),
+    t('{count} sets', { count: workout.setCount }),
+    workout.totalVolumeKg > 0 && !workout.volumeIsPartial
+      ? formatVolumeKg(workout.totalVolumeKg, lang)
+      : null,
+    /* HOW IT FELT, where the user said: one more fact on a line of facts, not a
+       badge — a brutal session is not a worse session. Absent on every workout
+       logged before the question existed, and on every one where it was skipped,
+       which are the same thing and read the same way. */
+    workout.effort ? effortWords(t)[workout.effort] : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
-    <View>
+    <View
+      style={{
+        borderRadius: radius.card,
+        overflow: 'hidden',
+        borderWidth: 1,
+        // The open session is lit at the edge, so it reads as the one being
+        // looked at in a column of eight identical cards.
+        borderColor: isOpen ? tint(0.26) : 'rgba(236,241,238,0.06)',
+        backgroundColor: isOpen ? 'rgba(236,241,238,0.07)' : 'rgba(236,241,238,0.045)',
+        boxShadow: elevation.e1,
+      }}
+    >
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -648,55 +720,49 @@ function WorkoutRow({
           .filter(Boolean)
           .join(' ')}
         style={pressedStyle}
-        className="min-h-[64px] flex-row items-center px-lg py-md"
+        className="min-h-[64px] flex-row items-center px-lg py-[14px]"
       >
         {/* The ordinal is its own left column so the numbers line up down the
             list like a ledger, and so a long title can never push it off. The
             gutter is reserved even when a workout has no number, because a row
             that shifts left is harder to scan than one with a gap. */}
-        <Text className="w-[38px] text-label font-semibold tabular-nums text-green-bright">
+        <Text
+          allowFontScaling={false}
+          style={{ fontSize: 14 }}
+          className="w-[38px] font-semibold tabular-nums text-acc"
+        >
           {numbered ? `#${number}` : ''}
         </Text>
 
-        <View className="flex-1 pr-md">
-          <Text numberOfLines={1} className="text-body font-medium text-ink">
-            {workout.title}
-          </Text>
-          <Text numberOfLines={1} className="mt-[2px] text-label tabular-nums text-ink-faint">
-            {t('{count} {exercises}', {
-              count: exerciseCount,
-              // `few` is Russian's own third form, so it is the Russian word.
-              exercises: counted(exerciseCount, {
-                one: t('exercise'),
-                few: 'упражнения',
-                many: t('exercises'),
-              }),
-            })}{' '}
-            · {t('{count} sets', { count: workout.setCount })}
-            {workout.totalVolumeKg > 0 && !workout.volumeIsPartial
-              ? ` · ${formatVolumeKg(workout.totalVolumeKg, lang)}`
-              : ''}
-            {/* HOW IT FELT, where the user said. Appended in `ink-faint` rather
-                than given a badge: it is one more fact on a line of facts, and a
-                brutal session is not a worse session. Absent on every workout
-                logged before the question existed, and on every one where it was
-                skipped — which are the same thing and read the same way. */}
-            {workout.effort ? (
-              <Text className="text-label text-ink-faint"> · {effortWords(t)[workout.effort]}</Text>
-            ) : null}
-          </Text>
+        <View className="flex-1 pr-md" style={{ minWidth: 0 }}>
+          <RunningText
+            text={workout.title}
+            fadeColor={FADE_ON.card}
+            className="text-task text-ink"
+          />
+          <RunningText
+            text={detail}
+            fadeColor={FADE_ON.card}
+            containerStyle={{ marginTop: 2 }}
+            style={{ fontSize: 13.5, lineHeight: 18, color: DETAIL_INK }}
+            className="tabular-nums"
+          />
         </View>
 
-        <Text className="mr-sm text-label tabular-nums text-ink-muted">
-          {formatShortDate(workout.startedAt, lang)} ·{' '}
-          {t('{minutes} min', { minutes: workout.durationMinutes })}
-        </Text>
-        <Icon name={isOpen ? 'chevron-down' : 'chevron-right'} size={18} color={palette.inkFaint} />
+        <Animated.View
+          style={{
+            transform: [
+              { rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) },
+            ],
+          }}
+        >
+          <Icon name="chevron-down" size={18} color={palette.inkMuted} />
+        </Animated.View>
       </Pressable>
 
       {isOpen ? (
         <Reveal>
-          <View className="bg-surface-alt pb-sm">
+          <View className="border-t border-hairline pb-sm pt-xs">
             {workout.exercises.map((exercise) => {
               const total = describeTotal(exercise, t, lang);
               const listing = openExerciseId === exercise.exerciseId;
@@ -1005,23 +1071,141 @@ function WorkoutRow({
 }
 
 /**
+ * `4w / 12w / All`, with one gradient thumb sliding under the choice.
+ *
+ * Not `Segmented`: that one stretches its segments across the row and lights the
+ * selected one in place, and this sits in the card's header beside the kicker at
+ * a fixed 46 per segment, which is what lets the thumb be a plain native-driven
+ * translate — no measuring, no layout pass on a tap. The short labels are shown;
+ * the long ones (`4 weeks`) are what is spoken.
+ */
+function RangeSwitch({
+  value,
+  onChange,
+}: {
+  value: BalanceWindow;
+  onChange: (next: BalanceWindow) => void;
+}) {
+  const t = useT();
+  const index = Math.max(
+    0,
+    BALANCE_WINDOWS.findIndex((w) => w.value === value),
+  );
+  const x = useRef(new Animated.Value(index)).current;
+  useEffect(() => {
+    Animated.timing(x, {
+      toValue: index,
+      duration: 360,
+      easing: curve(THUMB_EASE),
+      useNativeDriver: true,
+    }).start();
+  }, [index, x]);
+  const short: Record<BalanceWindow, string> = { '4w': t('4w'), '12w': t('12w'), all: t('All') };
+
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel={t('How far back the cluster counts reach')}
+      style={{
+        flexDirection: 'row',
+        padding: 3,
+        borderRadius: radius.pill,
+        backgroundColor: 'rgba(6,8,7,0.35)',
+        borderWidth: 1,
+        borderColor: 'rgba(236,241,238,0.06)',
+      }}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 3,
+          bottom: 3,
+          left: 3,
+          width: RANGE_SEGMENT,
+          borderRadius: radius.pill,
+          overflow: 'hidden',
+          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 12, color: tint(0.35) }],
+          transform: [
+            {
+              translateX: x.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, RANGE_SEGMENT],
+              }),
+            },
+          ],
+        }}
+      >
+        <LinearGradient
+          /* The design's thumb is the gradient's first two stops only: at
+             46 dp the third would be a sliver. 135deg, like every fill. */
+          colors={[palette.c1, palette.c2]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ flex: 1 }}
+        />
+      </Animated.View>
+      {BALANCE_WINDOWS.map((w) => {
+        const selected = w.value === value;
+        return (
+          <Pressable
+            key={w.value}
+            onPress={() => onChange(w.value)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            accessibilityLabel={t(w.label)}
+            style={pressedStyle}
+          >
+            <View
+              style={{
+                width: RANGE_SEGMENT,
+                height: 30,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text
+                allowFontScaling={false}
+                numberOfLines={1}
+                style={{ fontSize: 13.5, color: selected ? palette.onAcc : palette.inkMuted }}
+                className="font-semibold"
+              >
+                {short[w.value]}
+              </Text>
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
  * One cluster: name, count, bar.
  *
- * The bar is `green-dim` and scaled to the LARGEST cluster, not to a target — it
- * compares the user's own numbers to each other, which is the only comparison
- * this screen is willing to draw. A cluster with no sets gets no bar and a plain
- * `0`, because a zero-width bar reads as a rendering failure and the zero is the
- * information.
+ * The bar is scaled to the LARGEST cluster, not to a target — it compares the
+ * user's own numbers to each other, which is the only comparison this screen is
+ * willing to draw. A cluster with no sets gets an empty track and a plain `0`,
+ * because the zero is the information.
  *
  * The count is `ink` even at zero: it is a fact, not a warning, and dimming it
  * would be the screen having an opinion.
+ *
+ * THE BAR MOVES TWICE, and they are two different motions on two nodes. On
+ * mount it GROWS from its left edge (`scaleX`, 800 ms, 70 ms apart per row,
+ * native-driven), which says "these were just counted". When the range changes
+ * its WIDTH travels to the new share (640 ms, 50 ms apart) — a width, so
+ * JS-driven, and on the inner node so the two drivers never share one.
  */
 function ClusterRow({
   row,
+  index,
   maxSets,
   target,
 }: {
   row: ClusterCount;
+  /** Its place in the list — the stagger of both motions. */
+  index: number;
   maxSets: number;
   /** The user's own weekly target for this cluster, or undefined. */
   target?: number;
@@ -1047,32 +1231,87 @@ function ClusterRow({
         ? row.sets / maxSets
         : 0;
 
+  const grow = useRef(new Animated.Value(0)).current;
+  const width = useRef(new Animated.Value(fraction)).current;
+  useEffect(() => {
+    Animated.timing(grow, {
+      toValue: 1,
+      duration: 800,
+      delay: 260 + index * 70,
+      easing: curve(BAR_GROW_EASE),
+      useNativeDriver: true,
+    }).start();
+    // Mount only: the grow is the arrival, not the range.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    Animated.timing(width, {
+      toValue: fraction,
+      duration: 640,
+      delay: index * 50,
+      easing: curve(BAR_RESIZE_EASE),
+      useNativeDriver: false,
+    }).start();
+  }, [fraction, index, width]);
+
   return (
     <View
-      className="min-h-[44px] flex-row items-center px-lg py-sm"
+      className="flex-row items-center"
+      style={{ gap: 10 }}
       accessibilityLabel={`${clusterLabel(row.cluster, lang)}, ${t('{count} sets', {
         count: row.sets,
       })}${target != null ? ` ${t('of {target}', { target })}` : ''}${totals ? `, ${totals}` : ''}`}
     >
-      <Text className="w-[64px] text-label font-medium text-ink">
+      <Text
+        numberOfLines={1}
+        style={{ width: 64, fontSize: 14.5, lineHeight: 20, color: '#AEB9B3' }}
+      >
         {clusterLabel(row.cluster, lang)}
       </Text>
 
       {/* `14 / 16` where a target exists, `14` where it does not. The target is
           `ink-faint` because it is the thing the user typed, not the thing that
           happened — the fact is the number in full ink beside it. */}
-      <View className="w-[56px] flex-row items-baseline">
-        <Text className="text-body font-semibold tabular-nums text-ink">{row.sets}</Text>
+      <View className="flex-row items-baseline justify-end" style={{ minWidth: 40 }}>
+        <Text
+          style={{ fontSize: 14.5, lineHeight: 20 }}
+          className="font-semibold tabular-nums text-ink"
+        >
+          {row.sets}
+        </Text>
         {target != null ? (
-          <Text className="text-label tabular-nums text-ink-faint">/{target}</Text>
+          <Text className="text-micro tabular-nums text-ink-faint">/{target}</Text>
         ) : null}
       </View>
 
       {/* The bar, and what those sets added up to, on one line. */}
-      <View className="ml-sm flex-1">
-        <View className="h-[6px] flex-row overflow-hidden rounded-pill">
-          <View className="bg-green-dim" style={{ flex: fraction }} />
-          <View style={{ flex: Math.max(0, 1 - fraction) }} />
+      <View className="flex-1">
+        <View
+          style={{
+            height: 10,
+            borderRadius: radius.pill,
+            overflow: 'hidden',
+            backgroundColor: 'rgba(236,241,238,0.05)',
+          }}
+        >
+          <Animated.View
+            style={{
+              height: '100%',
+              transformOrigin: 'left',
+              transform: [{ scaleX: grow }],
+            }}
+          >
+            <Animated.View
+              style={{
+                height: '100%',
+                borderRadius: radius.pill,
+                overflow: 'hidden',
+                width: width.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+              }}
+            >
+              <LinearGradient {...gradientBar()} style={{ flex: 1 }} />
+            </Animated.View>
+          </Animated.View>
         </View>
         {totals ? (
           <Text className="mt-[3px] text-micro tabular-nums text-ink-faint">{totals}</Text>

@@ -1,18 +1,25 @@
 /**
  * RestTimerPill — the rest countdown, at the top of the session.
  *
- *   running   ╭───────────────────────────────────────╮
- *             │  1:28                          ( ⏸ )  │  ← pause beside the clock
- *             │  BETWEEN SETS                         │
- *             │                 (−15) (+15) ( Skip )  │  ← right-aligned, the thumb
- *             │ ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░ │
- *             ╰───────────────────────────────────────╯
+ *   running   ╭──────────────────────────────────────────╮
+ *             │ BETWEEN SETS                Next: set 4  │  ← which rest, and what for
+ *             │ 1:28                                     │
+ *             │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░ │
+ *             │ ( −15 s )( +15 s )( ⏸ )( Skip )          │  ← full width, the thumb
+ *             ╰──────────────────────────────────────────╯
  *
- *   paused    ╭───────────────────────────────────────╮
- *             │  1:28                          ( ▶ )  │
- *             │  BETWEEN SETS · PAUSED                │
- *             │                 (−15) (+15) ( Skip )  │
- *             ╰───────────────────────────────────────╯
+ *   paused    │ BETWEEN SETS · PAUSED        Next: set 4 │  ← ⏸ becomes ▶
+ *
+ * MOMENTUM v3 put the controls in one full-width row of 44 dp glass chips under
+ * the drain bar. The design shows three — `+15 s`, pause, `Skip` — and this card
+ * keeps the FOURTH, `−15 s`, for the reason below: dropping it would take away the
+ * only way to shorten a rest from the gym floor. With the ± pair sharing the row
+ * equally, all four still fit a 360 dp phone at 15 dp type.
+ *
+ * `Next: set 4` is `lib/restNext.ts`: the set the glow is on, named by its number
+ * while it is on the exercise just logged and by the exercise's NAME once it is
+ * somewhere else, because "set 1" is useless when the next thing is a walk to
+ * another rack.
  *
  * The pill's geometry, elevation, inversion, drain line and every colour in it
  * belong to `TimerPill`, which the set timer shares — see that file for those
@@ -22,11 +29,8 @@
  *     rest, `⏸` stops the clock without losing it, `Skip` ends rest now. Nothing
  *     is behind a tap-to-expand, because every one of them is something people do
  *     mid-rest with one hand while holding a water bottle in the other.
- *   • THEY ARE WHERE THE RIGHT THUMB IS. The pause is a 52 dp circle on the
- *     clock's own row, at its right end; `−15 +15 Skip` are 40 dp pills
- *     right-aligned under the label. The three frequent controls sit in the arc a
- *     thumb sweeps without the hand moving, and the one that freezes the clock sits
- *     beside the clock it freezes.
+ *   • THEY ARE WHERE THE THUMB IS: one full-width row at the bottom of the card,
+ *     44 dp tall, the pause a fixed 52 dp glyph between the ± pair and `Skip`.
  *   • `−15` IS NOT DECORATION, AND IT IS NOT THE OPPOSITE OF `+15` EITHER. Both
  *     of them set the rest for every set that follows (see `useRestTimer`), and
  *     the minus is the one that was missing: the pill could only ever make a rest
@@ -44,28 +48,26 @@
  *     say.
  *   • THE ± STEP IS THE USER'S. Read from Settings rather than hard-coded at 15,
  *     so the chip's label and what it does can never drift apart.
- *   • THE LABEL SITS UNDER THE CLOCK, not beside it. Four controls and an inline
- *     label do not both fit on a 360 dp phone — see `PillLabel` — and at the size
- *     the clock is now, nothing fits beside it at all.
+ *   • THE LABEL SITS ABOVE THE CLOCK, as the card's kicker, with what the rest
+ *     is FOR on its right. Nothing shares the clock's own row any more.
  *   • It renders only while resting and unmounts cleanly. No permanent chrome.
  */
 
-import type { ReactNode } from 'react';
-import { Animated, Pressable, Text, View } from 'react-native';
+import { useMemo } from 'react';
 
 import { formatClock } from '../lib/units';
+import { restNext, type RestNext } from '../lib/restNext';
 import { useRestTimer } from '../hooks/useRestTimer';
-import type { RestSource } from '../state/activeWorkoutStore';
+import { useActiveWorkout, type RestSource } from '../state/activeWorkoutStore';
 import {
+  cardTone,
   FINAL_SECONDS,
   PillClock,
-  PillLabel,
-  pillTone,
+  PillControl,
+  PillKicker,
   TimerPill,
-  type PillTone,
 } from './TimerPill';
-import { Icon } from './Icon';
-import { usePressScale } from './motion';
+import { MaterialSymbol } from './MaterialSymbol';
 import { useT, type Translate } from '../hooks/useT';
 
 /**
@@ -80,6 +82,21 @@ export function restLabel(source: RestSource | null, isPaused: boolean, t: Trans
   const which =
     source === 'transition' ? t('next exercise') : source === 'set' ? t('between sets') : t('rest');
   return isPaused ? `${which} · ${t('paused')}` : which;
+}
+
+/** The right half of the kicker row, in words. */
+function nextLine(next: RestNext | null, t: Translate): string | null {
+  if (!next) return null;
+  switch (next.kind) {
+    case 'set':
+      return t('Next: set {number}', { number: next.number });
+    case 'warmup':
+      return t('Next: warm-up');
+    case 'exercise':
+      return t('Next: {name}', { name: next.name });
+    case 'done':
+      return t('All sets logged');
+  }
 }
 
 export function RestTimerPill() {
@@ -98,14 +115,20 @@ export function RestTimerPill() {
     resume,
     skip,
   } = useRestTimer();
+  /* The session's identity changes on every ✓ — exactly when the answer can —
+     and not on the rest ticks this component re-renders for. */
+  const session = useActiveWorkout((s) => s.session);
+  const next = useMemo(() => restNext(session), [session]);
 
   if (!isActive) return null;
 
-  // A paused pill never inverts: the slab means "act now", and the whole point of
+  // A paused card never inverts: the slab means "act now", and the whole point of
   // a pause is that nothing is being demanded of the user yet.
-  const finalTen = !isPaused && remaining <= FINAL_SECONDS;
-  const tone = pillTone(finalTen);
+  const underTen = remaining <= FINAL_SECONDS;
+  const finalTen = !isPaused && underTen;
+  const tone = cardTone(finalTen);
   const secondsLeft = Math.ceil(remaining);
+  const what = restLabel(source, false, t);
 
   return (
     <TimerPill
@@ -115,174 +138,65 @@ export function RestTimerPill() {
          deadline — see `TimerPill`. */
       drainMs={isRunning ? remaining * 1000 : null}
       drainKey={isPaused ? 'paused' : endsAt}
-      pulse={finalTen && isRunning}
-    >
-      {/* The clock row: the numerals, and the pause at their right end. */}
-      <View className="flex-row items-center">
-        <View className="flex-1">
-          <PillClock
-            value={formatClock(remaining)}
+      controls={
+        <>
+          {/* Minus first, plus second: the order they sit in on every other ±
+              control in the app. A real `−`, so it pairs with the `+`. */}
+          <PillControl
+            flex
             tone={tone}
-            accessibilityLabel={
-              isPaused
-                ? t('Rest paused with {seconds} seconds left', { seconds: secondsLeft })
-                : t('{seconds} seconds of rest left', { seconds: secondsLeft })
-            }
-          />
-        </View>
-        {/* Glyph, not a word: `Pause` and `Skip` side by side are two similar
-            words in the same weight, and the wrong one costs you a rest. */}
-        <RoundControl
-          onPress={isPaused ? resume : pause}
-          tone={tone}
-          accessibilityLabel={isPaused ? t('Resume rest') : t('Pause rest')}
-          size={52}
-        >
-          <Icon name={isPaused ? 'play' : 'pause'} size={20} color={tone.primary} />
-        </RoundControl>
-      </View>
-
-      <View className="mt-[2px]">
-        <PillLabel tone={tone} inline={false}>
-          {restLabel(source, isPaused, t)}
-        </PillLabel>
-      </View>
-
-      {/* `−15 +15 Skip`, right-aligned — see the file header. Minus first, plus
-          second: the order they sit in on every other ± control in the app. */}
-      <View className="mt-[10px] flex-row items-center justify-end" style={{ gap: 8 }}>
-        <StepChip
-          seconds={-stepSeconds}
-          tone={tone}
-          what={restLabel(source, false, t)}
-          onPress={() => add(-stepSeconds)}
-        />
-        <StepChip
-          seconds={stepSeconds}
-          tone={tone}
-          what={restLabel(source, false, t)}
-          onPress={() => add(stepSeconds)}
-        />
-        <RoundControl onPress={skip} tone={tone} accessibilityLabel={t('Skip rest')} pill>
-          <Text
-            allowFontScaling={false}
-            style={{ color: tone.primary, fontSize: 14 }}
-            className="font-semibold"
+            onPress={() => add(-stepSeconds)}
+            accessibilityLabel={t('Rest {what} {size} seconds shorter', {
+              what,
+              size: stepSeconds,
+            })}
           >
+            {`−${t('{seconds} s', { seconds: stepSeconds })}`}
+          </PillControl>
+          <PillControl
+            flex
+            tone={tone}
+            onPress={() => add(stepSeconds)}
+            accessibilityLabel={t('Rest {what} {size} seconds longer', {
+              what,
+              size: stepSeconds,
+            })}
+          >
+            {`+${t('{seconds} s', { seconds: stepSeconds })}`}
+          </PillControl>
+          {/* Glyph, not a word: `Pause` and `Skip` side by side are two similar
+              words in the same weight, and the wrong one costs you a rest. */}
+          <PillControl
+            width={52}
+            tone={tone}
+            onPress={isPaused ? resume : pause}
+            accessibilityLabel={isPaused ? t('Resume rest') : t('Pause rest')}
+          >
+            <MaterialSymbol
+              name={isPaused ? 'play_arrow' : 'pause'}
+              size={24}
+              color={tone.primary}
+              filled
+            />
+          </PillControl>
+          <PillControl flex tone={tone} onPress={skip} accessibilityLabel={t('Skip rest')}>
             {t('Skip')}
-          </Text>
-        </RoundControl>
-      </View>
-    </TimerPill>
-  );
-}
-
-/**
- * One outlined control on the pill: the 52 dp pause circle, or a 40 dp pill.
- * Sinks to 0.9 under the finger — the pill is read from across a gym, and the
- * press has to be visible from there too.
- */
-function RoundControl({
-  onPress,
-  tone,
-  accessibilityLabel,
-  size = 40,
-  pill = false,
-  children,
-}: {
-  onPress: () => void;
-  tone: PillTone;
-  accessibilityLabel: string;
-  size?: number;
-  pill?: boolean;
-  children: ReactNode;
-}) {
-  const press = usePressScale(pill ? 0.9 : 0.88);
-  return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={press.onPressIn}
-      onPressOut={press.onPressOut}
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-    >
-      <Animated.View
-        style={{
-          height: size,
-          minWidth: size,
-          paddingHorizontal: pill ? 18 : 0,
-          borderRadius: 9999,
-          borderWidth: 1,
-          borderColor: tone.chipBorder,
-          alignItems: 'center',
-          justifyContent: 'center',
-          transform: press.style.transform,
-        }}
-      >
-        {children}
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-/**
- * One end of the ± pair: a 40 dp outlined pill, `−15` / `+15`.
- *
- * The accessibility label says what the adjustment MEANS, not what it does to the
- * clock: "Rest between sets 15 seconds shorter" is the promise the button keeps —
- * every set after this one, not just this rest. See `useRestTimer`.
- */
-function StepChip({
-  seconds,
-  tone,
-  what,
-  onPress,
-}: {
-  seconds: number;
-  tone: PillTone;
-  /** "between sets" / "next exercise" — which rest is being changed. */
-  what: string;
-  onPress: () => void;
-}) {
-  const t = useT();
-  const shorter = seconds < 0;
-  const size = Math.abs(seconds);
-  const press = usePressScale(0.9);
-
-  return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={press.onPressIn}
-      onPressOut={press.onPressOut}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={
-        shorter
-          ? t('Rest {what} {size} seconds shorter', { what, size })
-          : t('Rest {what} {size} seconds longer', { what, size })
+          </PillControl>
+        </>
       }
     >
-      <Animated.View
-        style={{
-          height: 40,
-          paddingHorizontal: 16,
-          borderRadius: 9999,
-          borderWidth: 1,
-          borderColor: tone.chipBorder,
-          justifyContent: 'center',
-          transform: press.style.transform,
-        }}
-      >
-        <Text
-          allowFontScaling={false}
-          style={{ color: tone.secondary, fontSize: 14 }}
-          className="font-medium tabular-nums"
-        >
-          {shorter ? '−' : '+'}
-          {size}
-        </Text>
-      </Animated.View>
-    </Pressable>
+      <PillKicker label={restLabel(source, isPaused, t)} aside={nextLine(next, t)} tone={tone} />
+      <PillClock
+        value={formatClock(remaining)}
+        tone={tone}
+        glow={finalTen ? 'none' : underTen ? 'near' : 'rest'}
+        breathe={finalTen && isRunning}
+        accessibilityLabel={
+          isPaused
+            ? t('Rest paused with {seconds} seconds left', { seconds: secondsLeft })
+            : t('{seconds} seconds of rest left', { seconds: secondsLeft })
+        }
+      />
+    </TimerPill>
   );
 }

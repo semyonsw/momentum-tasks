@@ -3,7 +3,7 @@
  * on.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ ‹ EXPENSES SETTINGS                          │
+ *   │ ‹ FINANCE SETTINGS                           │
  *   │ COUNTED IN                                   │
  *   │ ┌──────────────────────────────────────────┐ │
  *   │ │ AMD                                      │ │
@@ -74,7 +74,7 @@ export function MoneySettingsScreen({ onBack }: { onBack: () => void }) {
     <View className="flex-1 bg-bg">
       <StatusBar style="light" />
       <ScreenHeader
-        kicker={t('Expenses settings')}
+        kicker={t('Finance settings')}
         /* Commits on the way out as well as on blur: `‹` with the keyboard up
            unmounts the field before its blur runs, and `USD` was lost. */
         onBack={() => {

@@ -60,7 +60,7 @@ import { maxLabel, showsMaxLabel } from '../lib/maxReps';
 import { countUnitLabel, formatClock, formatCount, formatWeight, unitLabel } from '../lib/units';
 import type { RestTimerApi } from '../hooks/useRestTimer';
 import { useMotionScale } from '../hooks/useMotionScale';
-import { curve, elevation, motion, palette, radius } from '../theme/tokens';
+import { curve, elevation, motion, palette, radius, tint } from '../theme/tokens';
 import { FocusNudge } from './FocusNudge';
 import { Icon } from './Icon';
 import { SecondPulse, Stagger, usePressScale } from './motion';
@@ -412,8 +412,8 @@ function RestControl({
           alignItems: 'center',
           justifyContent: 'center',
           borderWidth: 1,
-          borderColor: lit ? 'rgba(63,169,108,0.3)' : palette.hairline,
-          backgroundColor: lit ? 'rgba(63,169,108,0.12)' : 'rgba(236,241,238,0.03)',
+          borderColor: lit ? tint(0.3) : palette.hairline,
+          backgroundColor: lit ? tint(0.12) : 'rgba(236,241,238,0.03)',
           transform: press.style.transform,
         }}
       >

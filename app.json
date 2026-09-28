@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "semyonsw",
-    "slug": "workout-tracker",
-    "version": "1.22.0",
+    "name": "Momentum",
+    "slug": "momentum-app",
+    "version": "2.0.0",
     "orientation": "portrait",
     "scheme": "workouttracker",
     "platforms": [
@@ -10,7 +10,7 @@
     ],
     "userInterfaceStyle": "dark",
     "backgroundColor": "#060807",
-    "primaryColor": "#1E7A4C",
+    "primaryColor": "#3DDC84",
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash.png",
@@ -22,7 +22,7 @@
     ],
     "android": {
       "package": "com.semyonsw.workouttracker",
-      "versionCode": 48,
+      "versionCode": 49,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#060807"
@@ -42,7 +42,7 @@
       [
         "expo-notifications",
         {
-          "color": "#1E7A4C",
+          "color": "#3DDC84",
           "sounds": [
             "./assets/beep_tick.wav",
             "./assets/beep_final.wav"

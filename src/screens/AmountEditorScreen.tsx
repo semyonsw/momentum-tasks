@@ -2,9 +2,10 @@
  * AmountEditorScreen — one amount, typed on a keypad this screen owns.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ ‹  NEW EXPENSE                               │  ← no Save in this bar
+ *   │ (‹) NEW EXPENSE                              │  ← no Save in this bar
+ *   │     💵 Cash · Today, 18 Sep                  │
  *   │ AMOUNT · AMD                                 │
- *   │ 2,400 AMD                                    │  ← 60 dp, glowing once typed
+ *   │ 2,400| AMD                                   │  ← 62 dp, glowing once typed
  *   │ (🧊 Food)(🚌 Transport)(🏠 Home)(💊 Health)  │  ← pick the category here
  *   │ (💵 Cash ▾) (Expense|Income)                 │
  *   │ (‹ Today, 18 Sep ›) (Day|Month) (＋ Note)     │
@@ -19,15 +20,15 @@
  *
  * ── THE KEYPAD IS A GRID OF VIEWS, NOT A `TextInput` ──────────────────────
  *
- * The whole ergonomic argument depends on owning the bottom 290 dp. With the
+ * The whole ergonomic argument depends on owning the bottom 300 dp. With the
  * system keyboard the app cannot: it decides its own height, it covers whatever
  * it likes, it puts a `Done` key where `Save` should be, and it changes all
  * three between phones. A grid of twelve `Pressable`s is the same twelve digits
  * at a size this app chose, in a place `Save` can be anchored against.
  *
  * It also removes the last reason the amount had to be small. `2,400` is the
- * thing you came here to type and it is now the one hero on the screen at 60 dp,
- * faint at zero and lit the moment a digit exists.
+ * thing you came here to type and it is now the one hero on the screen at 62 dp,
+ * faint at zero and lit the moment a digit exists, with a caret blinking at 1 s.
  *
  * ── FOUR LABELLED SECTIONS BECAME A ROW OF CHIPS ──────────────────────────
  *
@@ -51,26 +52,28 @@
  *
  * ── THE MOTION PASS ───────────────────────────────────────────────────────
  *
- *   • It ARRIVES like a sheet, sliding up over 400 ms.
- *   • THE CATEGORY IS PICKED ON THIS SCREEN — every live category as a 32 dp
- *     chip, the chosen one filled — instead of behind a chip that opened a second
+ *   • It ARRIVES as a push (the shell slides it in); inside it, the fields rise
+ *     in at 140 ms and the twelve keys follow 22 ms apart. It used to slide up
+ *     like a sheet on its own, which stacked a second entrance on the push.
+ *   • THE CATEGORY IS PICKED ON THIS SCREEN — every live category as a 38 dp
+ *     chip, the chosen one lit and glowing — instead of behind a chip that opened a second
  *     sheet. It is the one field that changes what an amount is ABOUT, and
  *     correcting it used to cost two taps and a sheet.
  *   • THE AMOUNT ROLLS as digits land, faint at zero, ink once typed.
- *   • A KEY SINKS to 0.92 and tints green under the finger.
+ *   • A KEY SINKS to 0.92 and tints c2 under the finger.
  *   • Saving says what was saved on the way out: `Food · 1,200 AMD saved`.
  *
  * ── AND SAVE LEFT THE CORNER ──────────────────────────────────────────────
  *
  * It was a pill in the header, which is the single worst place for the one
  * action on a screen whose other twelve targets are all in the bottom third. It
- * floats above the keypad's top-right corner now — `right: 16`, the same
- * geometry as every other section's commit action.
+ * floats 16 dp above the keypad's right edge now — `right: 16`, the same
+ * geometry as every other section's commit action (the design's `bottom: 318`).
  *
- * It is PRESENT while the amount is empty, at 55% as ghost glass, rather than
- * hidden. A button that materialises under a thumb already on its way is a
- * button that gets pressed by accident; this one wakes instead, over 260 ms,
- * when the first digit lands.
+ * It is PRESENT while the amount is empty — the gradient pill at 50 % and scale
+ * .94 — rather than hidden. A button that materialises under a thumb already on
+ * its way is a button that gets pressed by accident; this one wakes instead,
+ * with a 420 ms spring, when the first digit lands. See `SavePill`.
  *
  * ── DELETE IS A SENTENCE, NOT A RED BUTTON ────────────────────────────────
  *
@@ -87,7 +90,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Animated, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated, ScrollView, Text, TextInput, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -96,10 +100,12 @@ import { ConfirmSheet } from '../components/ConfirmSheet';
 import { Sheet } from '../components/Sheet';
 import { Icon } from '../components/Icon';
 import { BubblePressable } from '../components/bubbles';
-import { FloatingAction, Lamps, SpecularEdge } from '../components/glass';
-import { pressedStyle, usePressScale } from '../components/motion';
+import { Lamps, SpecularEdge } from '../components/glass';
+import { MaterialSymbol } from '../components/MaterialSymbol';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { SlidingThumb } from '../components/SlidingThumb';
+import { Stagger, pressedStyle, usePressScale } from '../components/motion';
 import { RollingNumber } from '../components/RollingNumber';
-import { useMotionScale } from '../hooks/useMotionScale';
 import { Separator, TextButton } from '../components/primitives';
 import { dayKey, formatLongDay, formatMonth, parseDay, shiftDay } from '../lib/days';
 import { tap } from '../lib/feedback';
@@ -113,12 +119,36 @@ import {
 import { useMoney } from '../state/moneyStore';
 import { useLanguage, useT } from '../hooks/useT';
 import { useSettings } from '../state/settingsStore';
-import { curve, focalType, motion, palette, radius } from '../theme/tokens';
+import {
+  curve,
+  elevation,
+  focalType,
+  gradientFill,
+  halo,
+  motion,
+  palette,
+  radius,
+  specularHeavy,
+  tint,
+} from '../theme/tokens';
 import type { ID } from '../types/models';
 
-/** A key's height and the air around it — 52 high, 8 apart. */
-const KEY_HEIGHT = 52;
-const KEY_GAP = 8;
+/** A key's height, its corner and the air around it — 62 high, 10 apart (v3). */
+const KEY_HEIGHT = 62;
+const KEY_GAP = 10;
+const KEY_RADIUS = 20;
+/** The keypad's foot above the gesture strip. */
+const KEYPAD_FOOT = 24;
+/** One half of the Expense | Income switch. */
+const SEGMENT_WIDTH = 80;
+/** The amount at zero: fainter than `inkFaint`, so the caret is the loudest thing. */
+const AMOUNT_EMPTY = '#3A433F';
+/** Key glyphs and the date: between ink and `inkMuted`, as drawn. */
+const INK_SOFT = '#AEB9B3';
+/** Save waking: the 420 ms overshoot. */
+const WAKE_SPRING = [0.34, 1.56, 0.64, 1] as const;
+/** The direction thumb: 360 ms, a slight overshoot. */
+const THUMB_SPRING = [0.34, 1.3, 0.64, 1] as const;
 
 /** The twelve keys, in reading order. `back` is the ⌫. */
 const KEYS: readonly (string | 'back')[] = [
@@ -315,235 +345,217 @@ export function AmountEditorScreen({
     return formatMonth(at.getFullYear(), at.getMonth(), lang);
   })();
 
-  /* The keypad's own height, so `Save` can be anchored to its top-right corner
-     rather than to the bottom of the screen: four rows of 58 plus their 5 of
-     margin apiece, plus the block's own 10 of padding. The gesture strip is NOT
-     in here — `FloatingAction` adds it, the same way it does in every section. */
-  const keypadHeight = 4 * (KEY_HEIGHT + KEY_GAP) + 10;
+  /* The keypad's own height, so `Save` can be anchored just above it rather than
+     to the bottom of the screen: four rows of 62 and three gaps of 10. With the
+     keypad's 24 of foot and 16 of air that puts the pill at the design's
+     `bottom: 318`. The gesture strip is added on top of both, the same way. */
+  const keypadHeight = 4 * KEY_HEIGHT + 3 * KEY_GAP;
+  const saveBottom = KEYPAD_FOOT + keypadHeight + 16;
 
-  /* It arrives like a sheet: translateY from the bottom edge, 400 ms, base curve. */
-  const { height } = useWindowDimensions();
-  const motionScale = useMotionScale();
-  const rise = useRef(new Animated.Value(motionScale === 0 ? 0 : height)).current;
-  useEffect(() => {
-    Animated.timing(rise, {
-      toValue: 0,
-      duration: 400 * motionScale,
-      easing: curve(motion.ease),
-      useNativeDriver: true,
-    }).start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rise]);
+  const subline = chosenAccount
+    ? `${chosenAccount.glyph} ${chosenAccount.name} · ${whenLabel}`
+    : whenLabel;
 
   return (
-    <Animated.View
-      style={{ flex: 1, backgroundColor: palette.bg, transform: [{ translateY: rise }] }}
-    >
+    <View style={{ flex: 1, backgroundColor: palette.bg }}>
       <StatusBar style="light" />
       <Lamps section="Expenses" />
 
-      {/* 56 tall, a chevron and a kicker. NO COMMIT ACTION — see the header. */}
-      <View style={{ paddingTop: insets.top }} className="px-md">
-        <View className="h-[56px] flex-row items-center">
-          <Pressable
-            /* Wrapped, not passed: `onBack` takes a `saved` flag and
-               `Pressable` would hand it a gesture event, which is truthy. */
-            onPress={() => onBack()}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel={t('Back')}
-            style={pressedStyle}
-            className="h-hit w-[40px] justify-center"
-          >
-            <Icon name="chevron-left" size={22} color={palette.inkMuted} />
-          </Pressable>
-          <Text
-            numberOfLines={1}
-            allowFontScaling={false}
-            style={{ letterSpacing: 1.3 }}
-            className="flex-1 text-micro font-semibold uppercase text-ink-muted"
-          >
-            {amount ? t('Edit {noun}', { noun }) : t('New {noun}', { noun })}
-          </Text>
-        </View>
-      </View>
+      {/* The shared pushed-screen header. NO COMMIT ACTION — see the file
+          header. Wrapped, not passed: `onBack` takes a `saved` flag and a press
+          would hand it a gesture event, which is truthy. */}
+      <ScreenHeader
+        kicker={amount ? t('Edit {noun}', { noun }) : t('New {noun}', { noun })}
+        subtitle={subline}
+        onBack={() => onBack()}
+        bordered={false}
+      />
 
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 24 }}
+        /* Room to scroll the last chips out from under the floating Save. */
+        contentContainerStyle={{ paddingBottom: 96 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* THE ONE HERO. Faint at zero, ink with the app's hero glow the moment
-            there is something to read. */}
-        <View className="px-[20px] pt-[26px]">
-          <Text
-            allowFontScaling={false}
-            style={{ fontSize: 11, letterSpacing: 1.3 }}
-            className="font-semibold uppercase text-ink-faint"
-          >
-            {`${t('Amount')} · ${currency}`}
-          </Text>
-          <View className="mt-xs flex-row items-end">
-            {/* It ROLLS as digits land — the number is seen growing. */}
-            <RollingNumber
-              value={formatValue(value)}
-              lineHeight={focalType.amount.lineHeight}
-              duration={350}
-              accessibilityLabel={`${t('Amount in {currency}', { currency })}: ${formatValue(value)}`}
-              style={[
-                {
-                  fontSize: focalType.amount.fontSize,
-                  letterSpacing: focalType.amount.letterSpacing,
-                },
-                digits === ''
-                  ? undefined
-                  : { textShadowColor: 'rgba(63,169,108,0.22)', textShadowRadius: 30 },
-              ]}
-              className={['font-semibold', digits === '' ? 'text-ink-faint' : 'text-ink'].join(' ')}
-            />
+        <Stagger delay={140} duration={560} rise={14}>
+          {/* THE ONE HERO. Faint at zero, ink with a c2 glow the moment there is
+              something to read, and a caret that blinks at 1 s so the number
+              reads as the thing being typed into. */}
+          <View className="px-lg pt-[16px]">
             <Text
               allowFontScaling={false}
-              style={{ fontSize: 22, lineHeight: 26, marginBottom: 7 }}
-              className="ml-sm font-semibold text-ink-muted"
+              style={{ fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1 }}
+              className="font-semibold uppercase text-acc"
             >
-              {currency}
+              {`${t('Amount')} · ${currency}`}
             </Text>
+            <View style={{ marginTop: 4, height: 70 }} className="flex-row items-end">
+              {/* It ROLLS as digits land — the number is seen growing. */}
+              <RollingNumber
+                value={formatValue(value)}
+                lineHeight={focalType.amount.lineHeight}
+                duration={350}
+                accessibilityLabel={`${t('Amount in {currency}', { currency })}: ${formatValue(value)}`}
+                style={[
+                  {
+                    fontSize: focalType.amount.fontSize,
+                    letterSpacing: focalType.amount.letterSpacing,
+                    color: digits === '' ? AMOUNT_EMPTY : palette.ink,
+                  },
+                  digits === '' ? undefined : { textShadowColor: tint(0.45), textShadowRadius: 30 },
+                ]}
+                className="font-semibold"
+              />
+              <Caret />
+              <Text
+                allowFontScaling={false}
+                style={{ fontSize: 22, lineHeight: 26, marginBottom: 10 }}
+                className="ml-sm font-semibold text-ink-muted"
+              >
+                {currency}
+              </Text>
+            </View>
+            {complaint ? (
+              <Text className="mt-xs text-label font-medium text-green-bright">
+                {t('Type an amount first')}
+              </Text>
+            ) : null}
           </View>
-          {complaint ? (
-            <Text className="mt-xs text-label font-medium text-green-bright">
-              {t('Type an amount first')}
-            </Text>
-          ) : null}
-        </View>
 
-        {/* THE ANSWERED FIELDS, as one wrapping row. Four kickers and 400 dp of
-            scroll used to be here. */}
-        {/* THE CATEGORY, picked right here: every live one as a chip, the
-            chosen one filled. See the file header. */}
-        <View
-          accessibilityRole="radiogroup"
-          accessibilityLabel={t('Category')}
-          className="mt-lg flex-row flex-wrap px-lg"
-          style={{ gap: 6 }}
-        >
-          {live.map((option) => (
-            <CategoryChip
-              key={option.id}
-              glyph={option.glyph}
-              name={option.name}
-              selected={option.id === category}
+          {/* THE CATEGORY, picked right here: every live one as a chip, the
+              chosen one lit and glowing. See the file header. */}
+          <View
+            accessibilityRole="radiogroup"
+            accessibilityLabel={t('Category')}
+            className="flex-row flex-wrap px-lg"
+            style={{ gap: 8, marginTop: 14 }}
+          >
+            {live.map((option) => (
+              <CategoryChip
+                key={option.id}
+                glyph={option.glyph}
+                name={option.name}
+                selected={option.id === category}
+                onPress={() => {
+                  tap();
+                  setComplaint(false);
+                  setCategory(option.id);
+                }}
+              />
+            ))}
+          </View>
+
+          {/* THE OTHER ANSWERED FIELDS, as one wrapping row. */}
+          <View className="flex-row flex-wrap items-center px-lg" style={{ gap: 8, marginTop: 12 }}>
+            <Chip
+              label={chosenAccount ? `${chosenAccount.glyph} ${chosenAccount.name}` : '—'}
+              chevron
               onPress={() => {
                 tap();
-                setComplaint(false);
-                setCategory(option.id);
+                setPicking('account');
               }}
+              accessibilityLabel={t('Subsection')}
             />
-          ))}
-        </View>
+            <DirectionSwitch
+              value={direction}
+              onChange={setDirection}
+              expenseLabel={t('Expense')}
+              incomeLabel={t('Income')}
+              accessibilityLabel={t('Money out, or money in')}
+            />
+            <StepperChip
+              label={whenLabel}
+              onEarlier={() => stepWhen(-1)}
+              onLater={() => stepWhen(1)}
+            />
+            <MiniSegmented
+              options={[
+                { value: 'day' as const, label: t('A day') },
+                { value: 'month' as const, label: t('Whole month') },
+              ]}
+              value={span}
+              onChange={setSpan}
+              accessibilityLabel={t('A single day, or a whole month')}
+            />
+            <Chip
+              label={note.trim() === '' ? t('Note') : note.trim()}
+              onPress={() => {
+                tap();
+                setPicking('note');
+              }}
+              accessibilityLabel={t('Note')}
+            />
+          </View>
 
-        {/* THE OTHER ANSWERED FIELDS, as one wrapping row. */}
-        <View className="mt-md flex-row flex-wrap px-lg">
-          <Chip
-            label={chosenAccount ? `${chosenAccount.glyph}  ${chosenAccount.name}` : '—'}
-            chevron
-            onPress={() => {
-              tap();
-              setPicking('account');
-            }}
-            accessibilityLabel={t('Subsection')}
-          />
-          <MiniSegmented
-            options={[
-              { value: 'expense' as const, label: t('Expense') },
-              { value: 'income' as const, label: t('Income') },
-            ]}
-            value={direction}
-            onChange={setDirection}
-            accessibilityLabel={t('Money out, or money in')}
-          />
-          <StepperChip
-            label={whenLabel}
-            onEarlier={() => stepWhen(-1)}
-            onLater={() => stepWhen(1)}
-          />
-          <MiniSegmented
-            options={[
-              { value: 'day' as const, label: t('A day') },
-              { value: 'month' as const, label: t('Whole month') },
-            ]}
-            value={span}
-            onChange={setSpan}
-            accessibilityLabel={t('A single day, or a whole month')}
-          />
-          <Chip
-            label={note.trim() === '' ? t('Note') : note.trim()}
-            onPress={() => {
-              tap();
-              setPicking('note');
-            }}
-            accessibilityLabel={t('Note')}
-          />
-        </View>
-
-        {span === 'month' ? (
-          <Text className="mx-lg mt-sm text-label text-ink-faint">
-            {t(
-              'A whole month counts towards the month, the year and the balance, and towards no single day.',
-            )}
-          </Text>
-        ) : null}
-
-        {/* Placement rule 5: out of reach, plain, dashed, no red. */}
-        {amount ? (
-          <BubblePressable
-            onPress={() => setDeleting(true)}
-            radius={16}
-            accessibilityRole="button"
-            accessibilityLabel={t('Delete this amount')}
-            style={(state) => [
-              pressedStyle(state),
-              {
-                marginTop: 22,
-                marginHorizontal: 16,
-                paddingVertical: 14,
-                paddingHorizontal: 16,
-                borderRadius: 16,
-                borderWidth: 1,
-                borderStyle: 'dashed',
-                borderColor: 'rgba(138,150,143,0.22)',
-              },
-            ]}
-          >
-            <Text
-              allowFontScaling={false}
-              style={{ fontSize: 13 }}
-              className="font-medium text-ink-muted"
-            >
-              {t('Delete this amount')}
+          {span === 'month' ? (
+            <Text className="mx-lg mt-sm text-label text-ink-faint">
+              {t(
+                'A whole month counts towards the month, the year and the balance, and towards no single day.',
+              )}
             </Text>
-          </BubblePressable>
-        ) : null}
+          ) : null}
+
+          {/* Placement rule 5: out of reach, plain, dashed, no red. */}
+          {amount ? (
+            <BubblePressable
+              onPress={() => setDeleting(true)}
+              radius={16}
+              accessibilityRole="button"
+              accessibilityLabel={t('Delete this amount')}
+              style={(state) => [
+                pressedStyle(state),
+                {
+                  marginTop: 22,
+                  marginHorizontal: 16,
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  borderColor: 'rgba(138,150,143,0.22)',
+                },
+              ]}
+            >
+              <Text
+                allowFontScaling={false}
+                style={{ fontSize: 14.5 }}
+                className="font-medium text-ink-muted"
+              >
+                {t('Delete this amount')}
+              </Text>
+            </BubblePressable>
+          ) : null}
+        </Stagger>
       </ScrollView>
 
-      {/* THE KEYPAD. Twelve keys the app owns, at a size the app chose. */}
-      <View style={{ paddingHorizontal: 10, paddingBottom: 10 + insets.bottom }}>
+      {/* THE KEYPAD. Twelve keys the app owns, at a size the app chose, rising in
+          22 ms apart after the fields have landed. */}
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingBottom: KEYPAD_FOOT + insets.bottom,
+          gap: KEY_GAP,
+        }}
+      >
         {[0, 1, 2, 3].map((row) => (
-          <View key={row} className="flex-row">
-            {KEYS.slice(row * 3, row * 3 + 3).map((key) => (
-              <Key key={key} value={key} onPress={() => press(key)} />
+          <View key={row} className="flex-row" style={{ gap: KEY_GAP }}>
+            {KEYS.slice(row * 3, row * 3 + 3).map((key, column) => (
+              <Key
+                key={key}
+                value={key}
+                delay={200 + (row * 3 + column) * 22}
+                onPress={() => press(key)}
+              />
             ))}
           </View>
         ))}
       </View>
 
-      {/* Anchored to the keypad's top-right corner — the same `right: 16` every
-          other section's commit action uses, raised by the block it sits over. */}
-      <FloatingAction
+      <SavePill
         label={t('Save')}
-        icon="check"
         asleep={!savable}
-        bottom={keypadHeight + 12}
+        bottom={saveBottom + insets.bottom}
         onPress={save}
       />
 
@@ -593,6 +605,7 @@ export function AmountEditorScreen({
 
       {deleting && amount ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Delete this amount?')}
           body={t(
             'It leaves the category, the month, the year and the balance. Nothing else changes.',
@@ -607,74 +620,212 @@ export function AmountEditorScreen({
           onCancel={() => setDeleting(false)}
         />
       ) : null}
-    </Animated.View>
+    </View>
   );
 }
 
 /* ------------------------------------------------------------------ */
 
 /**
- * One key. 52 tall, `card` glass, radius 18 — twelve panes sitting on
- * the page rather than twelve holes cut in it.
+ * The caret: 3 × 48 in `acc`, on for half a second and off for the other half.
  *
- * `flat`: twelve `BlurView`s in one grid is four times the budget this app gives
- * a whole screen, and a key is 58 dp of solid tint with a digit on it — there is
- * nothing behind it to see through. The tint and the specular edge are what make
- * it read as glass; the blur would only cost frames.
+ * A stepped blink rather than a breathing fade — a fade reads as a lamp, and a
+ * hard on/off is the one shape everybody already knows means "typing goes
+ * here". Opacity on the native driver, so it costs the JS thread nothing.
  */
-function Key({ value, onPress }: { value: string | 'back'; onPress: () => void }) {
-  const t = useT();
-  const back = value === 'back';
-  const press = usePressScale(0.92);
+function Caret() {
+  const on = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const step = (toValue: number) =>
+      Animated.timing(on, { toValue, duration: 0, useNativeDriver: true });
+    const loop = Animated.loop(
+      Animated.sequence([step(1), Animated.delay(500), step(0.15), Animated.delay(500)]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [on]);
   return (
-    <Animated.View style={{ flex: 1, margin: KEY_GAP / 2, transform: press.style.transform }}>
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        width: 3,
+        height: 48,
+        marginLeft: 8,
+        marginBottom: 9,
+        borderRadius: 2,
+        backgroundColor: palette.acc,
+        opacity: on,
+      }}
+    />
+  );
+}
+
+/**
+ * ✓ Save — the gradient pill floating just above the keypad's right edge.
+ *
+ * Its own component rather than `FloatingAction`, because the design's sleep is
+ * a different thing from that one's: the GRADIENT pill at 50 % and scale .94
+ * (still recognisably the commit, just not yet), where `FloatingAction`'s sleep
+ * is a ghost-glass pill. Waking is a 420 ms spring on the scale and a 300 ms
+ * fade, and the halo only switches on once it is awake — a glowing button that
+ * does nothing is a lie about what a tap will do. It stays PRESSABLE asleep, so
+ * a tap with nothing typed can say why nothing happened.
+ */
+function SavePill({
+  label,
+  asleep,
+  bottom,
+  onPress,
+}: {
+  label: string;
+  asleep: boolean;
+  bottom: number;
+  onPress: () => void;
+}) {
+  const wake = useRef(new Animated.Value(asleep ? 0 : 1)).current;
+  const fade = useRef(new Animated.Value(asleep ? 0.5 : 1)).current;
+  const press = usePressScale(0.94);
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(wake, {
+        toValue: asleep ? 0 : 1,
+        duration: 420,
+        easing: curve(WAKE_SPRING),
+        useNativeDriver: true,
+      }),
+      Animated.timing(fade, {
+        toValue: asleep ? 0.5 : 1,
+        duration: 300,
+        easing: curve(motion.ease),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [asleep, fade, wake]);
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        right: 16,
+        bottom,
+        borderRadius: radius.pill,
+        boxShadow: [...(asleep ? [] : halo.floating), ...elevation.e2],
+        opacity: fade,
+        transform: [
+          { scale: wake.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+          ...press.style.transform,
+        ],
+      }}
+    >
       <BubblePressable
         onPress={onPress}
         onPressIn={press.onPressIn}
         onPressOut={press.onPressOut}
-        radius={radius.row}
+        radius="pill"
+        bubbleColor={palette.onAcc}
         accessibilityRole="button"
-        accessibilityLabel={back ? t('Delete the last digit') : value}
-        style={({ pressed }) => ({
-          height: KEY_HEIGHT,
+        accessibilityLabel={label}
+        accessibilityState={{ disabled: asleep }}
+        style={{
+          height: 60,
+          paddingHorizontal: 24,
+          flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: radius.row,
+          borderRadius: radius.pill,
           overflow: 'hidden',
-          borderWidth: 1,
-          borderColor: 'rgba(236,241,238,0.06)',
-          // Under the finger it tints green: the key being pressed is the one
-          // thing on the pad that is currently the answer.
-          backgroundColor: pressed
-            ? 'rgba(63,169,108,0.18)'
-            : back
-              ? 'rgba(236,241,238,0.028)'
-              : 'rgba(236,241,238,0.055)',
-        })}
+        }}
       >
-        <SpecularEdge color="rgba(236,241,238,0.08)" radius={radius.row} />
-        {back ? (
-          <Icon name="backspace" size={22} color={palette.inkMuted} />
-        ) : (
-          <Text
-            allowFontScaling={false}
-            style={{ fontSize: value === '000' ? 17 : 24 }}
-            className={[
-              'tabular-nums text-ink',
-              value === '000' ? 'font-semibold' : 'font-medium',
-            ].join(' ')}
-          >
-            {value}
-          </Text>
-        )}
+        <LinearGradient
+          {...gradientFill()}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+        <SpecularEdge color={specularHeavy} radius={radius.pill} height={2} />
+        <Icon name="check" size={20} color={palette.onAcc} />
+        <Text
+          allowFontScaling={false}
+          style={{ fontSize: 17, marginLeft: 8, color: palette.onAcc }}
+          className="font-semibold"
+        >
+          {label}
+        </Text>
       </BubblePressable>
     </Animated.View>
   );
 }
 
 /**
- * One category, as a 32 dp chip on the keypad: the glyph and the name, filled
- * green when it is the one this amount is in.
+ * One key. 62 tall, `card` glass, radius 20 — twelve panes sitting on the page
+ * rather than twelve holes cut in it. Each RISES in on its own delay (22 ms a
+ * key, reading order), so the pad arrives as a sweep rather than a slab.
+ *
+ * `flat`: twelve `BlurView`s in one grid is four times the budget this app gives
+ * a whole screen, and a key is 62 dp of solid tint with a digit on it — there is
+ * nothing behind it to see through. The tint and the specular edge are what make
+ * it read as glass; the blur would only cost frames.
+ */
+function Key({
+  value,
+  delay,
+  onPress,
+}: {
+  value: string | 'back';
+  delay: number;
+  onPress: () => void;
+}) {
+  const t = useT();
+  const back = value === 'back';
+  const press = usePressScale(0.92);
+  return (
+    <Stagger delay={delay} duration={420} rise={14} style={{ flex: 1 }}>
+      <Animated.View
+        style={{
+          borderRadius: KEY_RADIUS,
+          boxShadow: [{ offsetX: 0, offsetY: 8, blurRadius: 20, color: 'rgba(0,0,0,0.35)' }],
+          transform: press.style.transform,
+        }}
+      >
+        <BubblePressable
+          onPress={onPress}
+          onPressIn={press.onPressIn}
+          onPressOut={press.onPressOut}
+          radius={KEY_RADIUS}
+          accessibilityRole="button"
+          accessibilityLabel={back ? t('Delete the last digit') : value}
+          style={({ pressed }) => ({
+            height: KEY_HEIGHT,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: KEY_RADIUS,
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: 'rgba(236,241,238,0.06)',
+            // Under the finger it tints: the key being pressed is the one thing
+            // on the pad that is currently the answer.
+            backgroundColor: pressed ? tint(0.18) : 'rgba(236,241,238,0.055)',
+          })}
+        >
+          <SpecularEdge color="rgba(236,241,238,0.10)" radius={KEY_RADIUS} />
+          {back ? (
+            <MaterialSymbol name="backspace" size={26} color={INK_SOFT} />
+          ) : (
+            <Text
+              allowFontScaling={false}
+              style={{ fontSize: 27 }}
+              className="font-medium tabular-nums text-ink"
+            >
+              {value}
+            </Text>
+          )}
+        </BubblePressable>
+      </Animated.View>
+    </Stagger>
+  );
+}
+
+/**
+ * One category, as a 38 dp chip on the keypad: the glyph and the name. The one
+ * this amount is in is LIT — c2 15 % fill, 36 % border, a glow, the name in acc
+ * — rather than filled, so a light theme's c2 never has to carry ink.
  */
 function CategoryChip({
   glyph,
@@ -698,24 +849,27 @@ function CategoryChip({
         accessibilityState={{ selected }}
         accessibilityLabel={name}
         style={{
-          height: 32,
-          paddingHorizontal: 12,
+          height: 38,
+          paddingHorizontal: 14,
           flexDirection: 'row',
           alignItems: 'center',
           borderRadius: radius.pill,
           borderWidth: 1,
-          borderColor: selected ? 'rgba(63,169,108,0.5)' : palette.hairline,
-          backgroundColor: selected ? palette.green : 'rgba(236,241,238,0.035)',
+          borderColor: selected ? tint(0.36) : 'transparent',
+          backgroundColor: selected ? tint(0.15) : 'rgba(236,241,238,0.035)',
+          boxShadow: selected
+            ? [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.28) }]
+            : [],
         }}
       >
-        <Text allowFontScaling={false} style={{ fontSize: 12 }}>
+        <Text allowFontScaling={false} style={{ fontSize: 14.5 }}>
           {glyph}
         </Text>
         <Text
           allowFontScaling={false}
           numberOfLines={1}
-          style={{ fontSize: 12, marginLeft: 6, maxWidth: 140 }}
-          className={selected ? 'font-semibold text-ink' : 'font-medium text-ink-muted'}
+          style={{ fontSize: 14.5, marginLeft: 6, maxWidth: 160 }}
+          className={selected ? 'font-semibold text-acc' : 'font-medium text-ink-muted'}
         >
           {name}
         </Text>
@@ -724,21 +878,18 @@ function CategoryChip({
   );
 }
 
-/** One answered field, stated. `lit` for the one that says what this amount IS. */
+/** One answered field, stated: 38 tall, ink on quiet glass, a chevron if it opens. */
 function Chip({
   label,
-  tone = 'plain',
   chevron = false,
   onPress,
   accessibilityLabel,
 }: {
   label: string;
-  tone?: 'plain' | 'lit';
   chevron?: boolean;
   onPress: () => void;
   accessibilityLabel: string;
 }) {
-  const lit = tone === 'lit';
   return (
     <BubblePressable
       onPress={onPress}
@@ -749,35 +900,28 @@ function Chip({
         pressedStyle(state),
         {
           height: 38,
-          marginRight: 8,
-          marginBottom: 8,
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: 14,
           borderRadius: radius.pill,
           overflow: 'hidden',
           borderWidth: 1,
-          backgroundColor: lit ? 'rgba(63,169,108,0.14)' : 'rgba(236,241,238,0.045)',
-          borderColor: lit ? 'rgba(63,169,108,0.30)' : 'rgba(236,241,238,0.065)',
+          backgroundColor: 'rgba(236,241,238,0.05)',
+          borderColor: 'rgba(236,241,238,0.07)',
         },
       ]}
     >
-      {lit ? <SpecularEdge color="rgba(236,241,238,0.12)" radius={radius.pill} /> : null}
       <Text
         numberOfLines={1}
         allowFontScaling={false}
-        style={{ fontSize: 13, maxWidth: 190 }}
-        className={lit ? 'font-medium text-green-bright' : 'font-medium text-ink-muted'}
+        style={{ fontSize: 14.5, maxWidth: 190 }}
+        className="font-medium text-ink"
       >
         {label}
       </Text>
       {chevron ? (
-        <View className="ml-sm">
-          <Icon
-            name="chevron-down"
-            size={12}
-            color={lit ? palette.greenBright : palette.inkFaint}
-          />
+        <View className="ml-[6px]">
+          <Icon name="chevron-down" size={14} color={palette.inkMuted} />
         </View>
       ) : null}
     </BubblePressable>
@@ -806,15 +950,13 @@ function StepperChip({
     <View
       style={{
         height: 38,
-        marginRight: 8,
-        marginBottom: 8,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 4,
         borderRadius: radius.pill,
         borderWidth: 1,
-        backgroundColor: 'rgba(236,241,238,0.045)',
-        borderColor: 'rgba(236,241,238,0.065)',
+        backgroundColor: 'rgba(236,241,238,0.03)',
+        borderColor: 'rgba(236,241,238,0.05)',
       }}
     >
       <Pressable
@@ -830,8 +972,8 @@ function StepperChip({
       <Text
         numberOfLines={1}
         allowFontScaling={false}
-        style={{ fontSize: 13, maxWidth: 170 }}
-        className="font-medium tabular-nums text-ink-muted"
+        style={{ fontSize: 14.5, maxWidth: 170, color: INK_SOFT }}
+        className="tabular-nums"
       >
         {label}
       </Text>
@@ -850,12 +992,100 @@ function StepperChip({
 }
 
 /**
- * Two halves in a 38-high pill — a `Segmented` at chip scale.
+ * EXPENSE | INCOME — two fixed 80 dp halves and one gradient thumb that slides
+ * between them (360 ms, a slight overshoot). Fixed widths so the thumb is a
+ * translate on the native driver and never has to measure a word; the words'
+ * colours follow it, `onAcc` on the gradient and muted off it.
+ */
+function DirectionSwitch({
+  value,
+  onChange,
+  expenseLabel,
+  incomeLabel,
+  accessibilityLabel,
+}: {
+  value: Direction;
+  onChange: (value: Direction) => void;
+  expenseLabel: string;
+  incomeLabel: string;
+  accessibilityLabel: string;
+}) {
+  const options = [
+    { value: 'expense' as const, label: expenseLabel },
+    { value: 'income' as const, label: incomeLabel },
+  ];
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel={accessibilityLabel}
+      style={{
+        flexDirection: 'row',
+        padding: 3,
+        borderRadius: radius.pill,
+        borderWidth: 1,
+        backgroundColor: 'rgba(236,241,238,0.03)',
+        borderColor: 'rgba(236,241,238,0.06)',
+      }}
+    >
+      <SlidingThumb
+        index={value === 'expense' ? 0 : 1}
+        count={2}
+        trackWidth={SEGMENT_WIDTH * 2 + 6}
+        inset={3}
+        duration={360}
+        bezier={THUMB_SPRING}
+        style={{ borderRadius: radius.pill, overflow: 'hidden' }}
+      >
+        <LinearGradient
+          {...gradientFill()}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+      </SlidingThumb>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => {
+              tap();
+              onChange(option.value);
+            }}
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            accessibilityLabel={option.label}
+            style={pressedStyle}
+            className="h-[30px] items-center justify-center"
+          >
+            <Text
+              numberOfLines={1}
+              allowFontScaling={false}
+              style={{
+                width: SEGMENT_WIDTH,
+                textAlign: 'center',
+                fontSize: 13.5,
+                color: selected ? palette.onAcc : palette.inkMuted,
+              }}
+              className="font-semibold"
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * Two halves in a 38-high pill — a `Segmented` at chip scale, for `A day` /
+ * `Whole month`.
  *
  * It is not `primitives.Segmented` because that one is 44 high, full width and
  * has its own track: it is a control that owns a row. These sit in a wrapping
  * row of chips and have to be the same height as the things beside them, which
- * is the entire difference.
+ * is the entire difference. The selected half is LIT (a c2 tint) rather than
+ * filled: the gradient belongs to the direction switch beside it, and two
+ * gradient thumbs side by side would be two answers shouting at once.
  */
 function MiniSegmented<T extends string>({
   options,
@@ -874,15 +1104,13 @@ function MiniSegmented<T extends string>({
       accessibilityLabel={accessibilityLabel}
       style={{
         height: 38,
-        marginRight: 8,
-        marginBottom: 8,
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 4,
+        padding: 3,
         borderRadius: radius.pill,
         borderWidth: 1,
-        backgroundColor: 'rgba(236,241,238,0.045)',
-        borderColor: 'rgba(236,241,238,0.065)',
+        backgroundColor: 'rgba(236,241,238,0.03)',
+        borderColor: 'rgba(236,241,238,0.06)',
       }}
     >
       {options.map((option) => {
@@ -895,7 +1123,6 @@ function MiniSegmented<T extends string>({
               onChange(option.value);
             }}
             radius="pill"
-            bubbleColor={selected ? palette.ink : palette.greenBright}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
             accessibilityLabel={option.label}
@@ -908,16 +1135,17 @@ function MiniSegmented<T extends string>({
                 justifyContent: 'center',
                 borderRadius: radius.pill,
                 overflow: 'hidden',
-                backgroundColor: selected ? palette.green : 'transparent',
+                borderWidth: 1,
+                borderColor: selected ? tint(0.34) : 'transparent',
+                backgroundColor: selected ? tint(0.16) : 'transparent',
               },
             ]}
           >
-            {selected ? <SpecularEdge color="rgba(236,241,238,0.2)" radius={radius.pill} /> : null}
             <Text
               numberOfLines={1}
               allowFontScaling={false}
-              style={{ fontSize: 12 }}
-              className={selected ? 'font-semibold text-ink' : 'font-medium text-ink-faint'}
+              style={{ fontSize: 13.5 }}
+              className={selected ? 'font-semibold text-acc' : 'font-semibold text-ink-muted'}
             >
               {option.label}
             </Text>

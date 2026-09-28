@@ -136,7 +136,17 @@ export function QuickAdjust({
   };
 
   return (
-    <View className="border-t border-t-hairline bg-surface-alt p-md">
+    // A WELL inside the exercise card (Momentum v3): the rows are pills now,
+    // so the editor under one is a rounded inset rather than a full-bleed band.
+    <View
+      className="mt-[6px] p-md"
+      style={{
+        borderRadius: 18,
+        backgroundColor: 'rgba(6,8,7,0.35)',
+        borderWidth: 1,
+        borderColor: 'rgba(236,241,238,0.06)',
+      }}
+    >
       <View className="flex-row items-center justify-between">
         {/* subtract chips */}
         <View className="flex-row">
@@ -219,7 +229,7 @@ export function QuickAdjust({
           <Text
             className={[
               'text-label font-medium',
-              set.isWarmup ? 'text-green-bright' : 'text-ink-muted',
+              set.isWarmup ? 'text-acc' : 'text-ink-muted',
             ].join(' ')}
           >
             {set.isWarmup ? t('Working set') : t('Warm-up')}
@@ -249,7 +259,7 @@ export function QuickAdjust({
           accessibilityRole="button"
           accessibilityLabel={t('Done editing')}
         >
-          <Text className="text-label font-semibold text-green-bright">{t('Done')}</Text>
+          <Text className="text-label font-semibold text-acc">{t('Done')}</Text>
         </Pressable>
       </View>
     </View>
@@ -265,7 +275,7 @@ function Chip({ label, first, onPress }: { label: string; first: boolean; onPres
       accessibilityRole="button"
       accessibilityLabel={label}
       className={[
-        'h-hit min-w-[46px] items-center justify-center rounded-pill border border-hairline bg-surface px-sm',
+        'h-hit min-w-[46px] items-center justify-center rounded-pill border border-hairline bg-ink/5 px-sm',
         first ? '' : 'ml-sm',
       ].join(' ')}
     >

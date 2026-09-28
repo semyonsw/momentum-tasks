@@ -1,5 +1,5 @@
 /**
- * BalanceBubble — every account's balance, carried along at the top of Expenses
+ * BalanceBubble — every account's balance, carried along at the top of Finance
  * once the balance card has scrolled away.
  *
  *   ╭──────────────────────────────────────────╮
@@ -23,14 +23,17 @@
  * money screen never adds its accounts up: cash and a card are different piles
  * of money, and a figure that pooled them would be a number nobody can spend.
  *
- * ── THE PILLS ─────────────────────────────────────────────────────────────
+ * ── THE HALVES ────────────────────────────────────────────────────────────
  *
- *   • The selected account sits on a lit thumb that SLIDES between pills on the
- *     spring curve (460 ms). The pills are as wide as their names, so the thumb
- *     is measured onto each one rather than being a fixed fraction.
- *   • Its name goes green-bright and its amount ink; the other's name goes faint
- *     and its amount muted. The amounts ROLL, so a saved expense is seen landing.
- *   • The other pill switches account — the whole screen rolls to it. The
+ *   • One HALF per account, equal widths across a fixed 326 dp capsule (v3) —
+ *     the capsule no longer hugs its names, so the halves are divided out of
+ *     its width here rather than measured.
+ *   • The selected half is LIT: c2 16 % fill, c2 38 % border, a c2 glow. It is a
+ *     thumb that SLIDES between halves on the spring curve (460 ms), so a switch
+ *     is seen travelling rather than two panes swapping.
+ *   • Glyph, the name as a 10.5 kicker (acc when selected, faint otherwise) and
+ *     the balance at 18 / 22. The amounts ROLL, so a saved expense is seen landing.
+ *   • The other half switches account — the whole screen rolls to it. The
  *     selected one scrolls back to the top, which is where its full card is.
  *
  * It rides on `FloatingBubble`, the shell Workout and Tasks share: same glass,
@@ -38,15 +41,20 @@
  */
 
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
 
 import { useT } from '../hooks/useT';
 import { formatMoney, formatValue } from '../lib/money';
-import { radius } from '../theme/tokens';
+import { palette, radius, tint } from '../theme/tokens';
 import { FloatingBubble } from './FloatingBubble';
 import { Pressable } from './Pressable';
 import { RollingNumber } from './RollingNumber';
 import { SlidingThumb } from './SlidingThumb';
+
+/** The design's Finance pill width; `FloatingBubble` caps it at the screen. */
+const BUBBLE_WIDTH = 326;
+/** The unselected half's name: between `inkMuted` and `inkFaint`, as drawn. */
+const QUIET_KICKER = '#6B766F';
 
 export interface BubbleAccount {
   id: string;
@@ -71,6 +79,12 @@ export function BalanceBubble({
   onTop: () => void;
 }) {
   const t = useT();
+  const screen = useWindowDimensions();
+  /* The capsule's width as `FloatingBubble` caps it, less its 1 dp border, 5 dp
+     padding and the 4 dp gaps — divided into one equal half per account. */
+  const capsule = Math.min(BUBBLE_WIDTH, screen.width - 32);
+  const count = Math.max(1, accounts.length);
+  const halfWidth = (capsule - 2 - 10 - 4 * (count - 1)) / count;
   /* Where each pill landed inside the capsule, so the thumb can be put on one. */
   const [layouts, setLayouts] = useState<Record<number, { x: number; width: number }>>({});
   const selectedIndex = Math.max(
@@ -89,6 +103,7 @@ export function BalanceBubble({
   return (
     <FloatingBubble
       visible={visible}
+      width={BUBBLE_WIDTH}
       /* 140 ms, then 70 ms a pill after it. */
       delays={accounts.map((_, index) => 140 + index * 70)}
       contentStyle={{ gap: 4 }}
@@ -111,12 +126,10 @@ export function BalanceBubble({
             bezier={[0.34, 1.3, 0.64, 1]}
             style={{
               borderRadius: radius.pill,
-              backgroundColor: 'rgba(63,169,108,0.22)',
+              backgroundColor: tint(0.16),
               borderWidth: 1,
-              borderColor: 'rgba(63,169,108,0.38)',
-              boxShadow: [
-                { offsetX: 0, offsetY: 0, blurRadius: 14, color: 'rgba(63,169,108,0.3)' },
-              ],
+              borderColor: tint(0.38),
+              boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.28) }],
             }}
           />
         ) : null
@@ -133,8 +146,9 @@ export function BalanceBubble({
             accessibilityLabel={`${account.name}, ${formatMoney(account.balance, currency)}`}
             accessibilityHint={selected ? t('Back to the top') : t('Switch to this subsection')}
             style={({ pressed }) => ({
-              height: 40,
-              paddingLeft: 10,
+              width: halfWidth,
+              height: 56,
+              paddingLeft: 12,
               paddingRight: 14,
               flexDirection: 'row',
               alignItems: 'center',
@@ -142,27 +156,29 @@ export function BalanceBubble({
               transform: [{ scale: pressed ? 0.94 : 1 }],
             })}
           >
-            <Text allowFontScaling={false} style={{ fontSize: 15 }}>
+            <Text allowFontScaling={false} style={{ fontSize: 22, lineHeight: 26 }}>
               {account.glyph}
             </Text>
-            <View style={{ marginLeft: 8 }}>
+            <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
               <Text
                 allowFontScaling={false}
                 numberOfLines={1}
-                style={{ fontSize: 9, lineHeight: 10, letterSpacing: 1 }}
-                className={[
-                  'font-semibold uppercase',
-                  selected ? 'text-green-bright' : 'text-ink-faint',
-                ].join(' ')}
+                style={{
+                  fontSize: 10.5,
+                  lineHeight: 13,
+                  letterSpacing: 1.1,
+                  color: selected ? palette.acc : QUIET_KICKER,
+                }}
+                className="font-semibold uppercase"
               >
                 {account.name}
               </Text>
               <RollingNumber
                 value={formatValue(account.balance)}
-                lineHeight={17}
+                lineHeight={22}
                 duration={800}
-                containerStyle={{ marginTop: 2 }}
-                style={{ fontSize: 15 }}
+                containerStyle={{ marginTop: 1 }}
+                style={{ fontSize: 18 }}
                 className={['font-semibold', selected ? 'text-ink' : 'text-ink-muted'].join(' ')}
               />
             </View>

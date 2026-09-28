@@ -240,7 +240,8 @@ function Day({ cell }: { cell: CalendarCell }) {
         <Text
           className={[
             'text-label tabular-nums',
-            trained ? 'font-semibold text-ink' : 'text-ink-faint',
+            // `onAcc`: on a light theme's c2 the page ink disappears.
+            trained ? 'font-semibold text-on-acc' : 'text-ink-faint',
           ].join(' ')}
         >
           {cell.day}

@@ -22,41 +22,46 @@
  * capture that fires too easily makes the whole app feel like it is fighting the
  * thumb, and the failure is invisible in a simulator where drags are straight.
  *
- * ── AND WHY THERE IS NO RUBBER-BANDING CONTENT ─────────────────────────────
+ * ── IT FOLLOWS THE FINGER NOW ─────────────────────────────────────────────
  *
- * A pager that drags the next screen in under the finger has to have that screen
- * mounted, which means four tab roots alive at once — four subscriptions, four
- * `useMemo` chains over the whole log, and a workout screen re-rendering while
- * somebody reads their expenses. The sections already animate in on arrival
- * (`PanelEnter`), so the flick gets the same entrance a tap gets. One mounted
- * screen is worth more than a gesture that tracks the finger.
+ * It used to change section on release and let the arrival animation do the
+ * rest, because tracking the finger meant a second section mounted. Momentum's
+ * stage (`navigation/ShellStage.tsx`) moves the CURRENT screen with the finger
+ * instead — 0.55 of the drag, rubber-banding at 0.22 past either end — and the
+ * nav blob stretches toward the neighbour's slot, so the gesture shows where it
+ * is going before it gets there without anything else being mounted. A
+ * committed release hands its offset to the slide, which starts from there.
+ *
+ * The lock is looser than it was (10 dp, 1.3× — `lib/sectionNav.ts`) because
+ * the screen now visibly answers the finger: a capture that fires is no longer
+ * an invisible decision the user has to guess at.
  */
 
 import { useMemo, useRef, type ReactNode } from 'react';
 import { PanResponder, View } from 'react-native';
 
 import { isReordering } from '../hooks/useDragReorder';
+import { isHorizontalSwipe } from '../lib/sectionNav';
 import { isOverlayOpen } from './overlay';
 
-/** How far sideways before this is a swipe and not a tap that moved. */
-const THRESHOLD = 24;
-/** How much more sideways than vertical. A diagonal belongs to the scroll. */
-const DOMINANCE = 2;
-
 interface SwipePagerProps {
-  /** +1 for the next section (content pulled left), −1 for the previous one. */
-  onSwipe: (delta: 1 | -1) => void;
+  /** Off on Home, under a pushed screen, and mid-transition. */
+  enabled: boolean;
+  /** Raw finger travel while the swipe owns the finger. */
+  onDrag: (dx: number) => void;
+  /** The finger let go: travel and velocity (px/ms). */
+  onRelease: (dx: number, vx: number) => void;
   children: ReactNode;
 }
 
-export function SwipePager({ onSwipe, children }: SwipePagerProps) {
+export function SwipePager({ enabled, onDrag, onRelease, children }: SwipePagerProps) {
   /*
    * `PanResponder.create` runs once and its handlers close over what was in scope
-   * then, so the callback is read out of a ref — the same reason `useDragReorder`
+   * then, so the callbacks are read out of refs — the same reason `useDragReorder`
    * keeps its lift in one.
    */
-  const onSwipeRef = useRef(onSwipe);
-  onSwipeRef.current = onSwipe;
+  const handlers = useRef({ enabled, onDrag, onRelease });
+  handlers.current = { enabled, onDrag, onRelease };
 
   const responder = useMemo(
     () =>
@@ -64,28 +69,17 @@ export function SwipePager({ onSwipe, children }: SwipePagerProps) {
         // A press is never a swipe. Taps reach the rows untouched.
         onStartShouldSetPanResponderCapture: () => false,
         onMoveShouldSetPanResponderCapture: (_event, gesture) =>
-          // A row in the air owns the finger, whichever way it is moving. Capture
-          // runs parent-first, so without this a drag that wandered sideways would
-          // change section and drop the row somewhere nobody chose.
+          handlers.current.enabled &&
+          // A row in the air owns the finger, whichever way it is moving.
           !isReordering() &&
-          // Nor while a sheet is up: sheets are not `Modal`s, they live inside the
-          // section, and a sideways drag across one changed section and unmounted
-          // it with a half-typed task in it.
+          // Nor while a sheet is up: sheets live inside the section, and a
+          // sideways drag across one would change section under a half-typed task.
           !isOverlayOpen() &&
-          Math.abs(gesture.dx) > THRESHOLD &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * DOMINANCE,
-        /*
-         * The section changes on RELEASE, not at the moment the touch is claimed.
-         * Claiming is a guess about where the finger is going; the release is the
-         * user having finished saying it, and a flick that curls back under itself
-         * should land where it started.
-         */
-        onPanResponderRelease: (_event, gesture) => {
-          if (isReordering() || isOverlayOpen()) return;
-          if (Math.abs(gesture.dx) < THRESHOLD) return;
-          if (Math.abs(gesture.dx) <= Math.abs(gesture.dy) * DOMINANCE) return;
-          onSwipeRef.current(gesture.dx < 0 ? 1 : -1);
-        },
+          isHorizontalSwipe(gesture.dx, gesture.dy),
+        onPanResponderMove: (_event, gesture) => handlers.current.onDrag(gesture.dx),
+        onPanResponderRelease: (_event, gesture) =>
+          handlers.current.onRelease(gesture.dx, gesture.vx),
+        onPanResponderTerminate: () => handlers.current.onRelease(0, 0),
         onPanResponderTerminationRequest: () => false,
       }),
     [],

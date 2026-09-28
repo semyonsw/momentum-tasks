@@ -2,12 +2,15 @@
  * ActiveWorkoutScreen — the screen the app exists for.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ ‹  PULL + SWIMMING                 [ Finish ]│   ← header, always visible
- *   │    11 of 18 sets · 42 min                    │
+ *   │ (‹) PULL + SWIMMING                      #92 │   ← header, always visible
+ *   │     11 of 18 sets · 42:10                    │
  *   │    ( Stop and exit )( Restart clock )        │   ← session controls
  *   ├──────────────────────────────────────────────┤
  *   │ ╭──────────────────────────────────────────╮ │
- *   │ │  1:28   BETWEEN SETS    +15  ⏸   Skip    │ │   ← the clock, up top
+ *   │ │ BETWEEN SETS               Next: set 3   │ │   ← the lit rest card, up top
+ *   │ │ 1:28                                     │ │
+ *   │ │ ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │ │
+ *   │ │ ( −15 s )( +15 s )( ⏸ )( Skip )          │ │
  *   │ ╰──────────────────────────────────────────╯ │
  *   │ Weighted 90° pull-ups                        │   ← expanded
  *   │ 4 × 4–6 reps · last: +40 kg · 4 4            │
@@ -251,8 +254,13 @@ interface ActiveWorkoutScreenProps {
 
 /** How long a toast with an Undo in it stays up. */
 const UNDO_TOAST_MS = 4500;
-/** The session's floating pair is 64 tall at `bottom: 24`; a toast clears it. */
-const SESSION_TOAST_BOTTOM = 104;
+/**
+ * The floating pair's `bottom` — the design's 28 for the live workout, a little
+ * higher than the sections' 24 because nothing sits under it here (no nav bar).
+ */
+const PAIR_BOTTOM = 28;
+/** The pair is 64 tall at `PAIR_BOTTOM`; a toast clears it by 12. */
+const SESSION_TOAST_BOTTOM = PAIR_BOTTOM + 64 + 12;
 
 export function ActiveWorkoutScreen({
   unitSystem,
@@ -850,9 +858,9 @@ export function ActiveWorkoutScreen({
           className="flex-1"
           contentContainerStyle={{
             paddingTop: 8,
-            // The floating pair is 64 tall at `bottom: 24`; this is what keeps
+            // The floating pair is 64 tall at `PAIR_BOTTOM`; this is what keeps
             // the last card clear of it.
-            paddingBottom: insets.bottom + 120,
+            paddingBottom: insets.bottom + PAIR_BOTTOM + 96,
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -968,7 +976,8 @@ export function ActiveWorkoutScreen({
             })}
 
             {/* Anything at all, appended to the workout in flight. Last in the
-                list because that is where it lands. */}
+                list because that is where it lands — and DASHED, a slot rather
+                than a card, left-aligned under the cards (Momentum v3). */}
             {onAddExercise && !lifted ? (
               <Pressable
                 onPress={() => {
@@ -977,11 +986,22 @@ export function ActiveWorkoutScreen({
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={t('Add an exercise to this workout')}
-                className="mx-lg mt-sm h-row flex-row items-center justify-center rounded-surface border border-hairline bg-surface-alt"
+                style={({ pressed }) => ({
+                  alignSelf: 'flex-start',
+                  height: 44,
+                  paddingHorizontal: 16,
+                  borderRadius: 9999,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  borderColor: 'rgba(236,241,238,0.14)',
+                  backgroundColor: pressed ? 'rgba(236,241,238,0.05)' : 'transparent',
+                })}
+                className="mx-lg mt-xs"
               >
-                <Icon name="plus" size={14} color={palette.greenBright} />
-                <Text className="ml-sm text-label font-medium text-green-bright">
-                  {t('Add an exercise')}
+                <Text style={{ fontSize: 15, color: '#AEB9B3' }} className="font-medium">
+                  {`+ ${t('Add an exercise')}`}
                 </Text>
               </Pressable>
             ) : null}
@@ -1006,15 +1026,22 @@ export function ActiveWorkoutScreen({
         /* Every set logged: nothing left to focus on, so the pair becomes the one
            thing left to do, and it pops in. */
         <FloatingPair
+          bottom={PAIR_BOTTOM}
           primary={{ label: t('Finish workout'), icon: 'check', onPress: handleFinish }}
         />
       ) : isStarted ? (
         <FloatingPair
+          bottom={PAIR_BOTTOM}
           secondary={{ label: t('Finish'), onPress: handleFinish }}
-          primary={{ label: t('Focus'), icon: 'play', onPress: () => setFocusOpen(true) }}
+          primary={{
+            label: t('Focus'),
+            symbol: 'center_focus_strong',
+            onPress: () => setFocusOpen(true),
+          }}
         />
       ) : (
         <FloatingPair
+          bottom={PAIR_BOTTOM}
           secondary={{ label: t('Stop and exit'), onPress: handleStopAndExit }}
           primary={{ label: t('Start workout'), icon: 'play', onPress: handleStart }}
         />
@@ -1084,6 +1111,7 @@ export function ActiveWorkoutScreen({
 
       {confirming === 'discard' ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Stop and exit without saving?')}
           body={t(
             '{count} sets logged in this workout will be thrown away, and nothing will reach your history. Use Finish instead if you want to keep them.',
@@ -1136,12 +1164,12 @@ function SessionChip({
         green ? 'bg-green' : 'border border-hairline bg-surface-alt',
       ].join(' ')}
     >
-      <Icon name={icon} size={11} color={green ? palette.ink : palette.inkMuted} />
+      <Icon name={icon} size={11} color={green ? palette.onAcc : palette.inkMuted} />
       <Text
         numberOfLines={1}
         className={[
           'ml-sm text-micro font-semibold uppercase',
-          green ? 'text-ink' : 'text-ink-muted',
+          green ? 'text-on-acc' : 'text-ink-muted',
         ].join(' ')}
       >
         {label}

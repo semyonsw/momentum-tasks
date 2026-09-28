@@ -37,7 +37,7 @@
  * nothing at all. `lib/tasks.ts` has the argument in full. `on purpose` leaves
  * the denominator entirely, so the ring reads `done / (asked − excused)`.
  *
- * The mark's tap target is 60 × 72 inside a 72-high card; tapping the rest of
+ * The mark's tap target is 62 × 74 inside a 74-high card; tapping the rest of
  * the row opens that one task's own screen. Only the left column toggles.
  *
  * ── THE THREE STATES ARE THREE SURFACES ───────────────────────────────────
@@ -101,7 +101,8 @@
  *   • THE DAY BUBBLE. Scroll the dial away and a small copy of it follows you at
  *     the top: a mini ring, the date, `3 of 6 done` and the share. Ticking a row
  *     while scrolled down refills it, rolls its numbers and grows its halo with
- *     the day; at 100% the share turns solid green. Tapping it scrolls back up.
+ *     the day; at 100% the share fills with the theme gradient. Tapping it scrolls
+ *     back up.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -109,6 +110,7 @@ import { Animated, Easing, ScrollView, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { DayDial } from '../components/DayDial';
 import { FloatingBubble, useHeroRecede } from '../components/FloatingBubble';
@@ -151,8 +153,18 @@ import {
   upcomingOnce,
 } from '../lib/tasks';
 import type { Language } from '../lib/i18n';
+import { mixSrgb } from '../lib/theme';
 import { useTasks } from '../state/tasksStore';
-import { curve, focalType, motion, palette, radius, textGlow } from '../theme/tokens';
+import {
+  curve,
+  focalType,
+  gradientFill,
+  motion,
+  palette,
+  radius,
+  textGlow,
+  tint,
+} from '../theme/tokens';
 import type { ID } from '../types/models';
 
 interface TasksScreenProps {
@@ -278,7 +290,15 @@ export function TasksScreen({
   const liftedTask = lifted ? (rows.find((row) => row.id === lifted) ?? null) : null;
 
   /* The day bubble, and the dial stepping back while it is up. */
-  const { visible: bubbleUp, onScroll, scrollRef, scrollToTop } = useBubbleOnScroll();
+  // Tasks' own line: 250 is where the dial has fully left the top bar. The
+  // 40 dp below it is the same hysteresis every bubble keeps, so a thumb resting
+  // on the threshold does not flicker the pill.
+  const {
+    visible: bubbleUp,
+    onScroll,
+    scrollRef,
+    scrollToTop,
+  } = useBubbleOnScroll(BUBBLE_SHOW, BUBBLE_HIDE);
   const heroRecede = useHeroRecede(bubbleUp);
 
   return (
@@ -357,9 +377,9 @@ export function TasksScreen({
                 accessibilityRole="button"
                 accessibilityLabel={t('The day before')}
                 style={pressedStyle}
-                className="h-[34px] w-[44px] items-center justify-center"
+                className="h-[44px] w-[48px] items-center justify-center"
               >
-                <Icon name="chevron-left" size={20} color={palette.inkMuted} />
+                <Icon name="chevron-left" size={22} color={palette.inkMuted} />
               </Pressable>
 
               <View
@@ -384,7 +404,7 @@ export function TasksScreen({
                     </Text>
                     <Text
                       allowFontScaling={false}
-                      style={{ fontSize: 11, letterSpacing: 1.4 }}
+                      style={{ fontSize: 12.5, letterSpacing: 1.4 }}
                       className="mt-[6px] font-semibold uppercase tabular-nums text-ink-faint"
                     >
                       {monthLabel(day, lang)}
@@ -407,9 +427,9 @@ export function TasksScreen({
                 // `components/bubbles.tsx` on why a function in this prop never
                 // reaches the native view.
                 style={isToday ? { opacity: 0.25 } : undefined}
-                className="h-[34px] w-[44px] items-center justify-center"
+                className="h-[44px] w-[48px] items-center justify-center"
               >
-                <Icon name="chevron-right" size={20} color={palette.inkMuted} />
+                <Icon name="chevron-right" size={22} color={palette.inkMuted} />
               </Pressable>
             </Animated.View>
 
@@ -450,8 +470,9 @@ export function TasksScreen({
             ONE CARD PER ROW, with 8px of air between them. A done task is a lit
             pane, and a lit pane needs an edge of its own to be lit against. The
             gap is padding INSIDE each row's measured box, so the reorder's
-            geometry still adds up. */}
-        <View {...panHandlers} className="mx-lg mt-xl">
+            geometry still adds up. 16 above it — card to card is the rhythm's
+            short step; the old 24 read as a new section starting. */}
+        <View {...panHandlers} className="mx-lg mt-lg">
           {rowViews.map(({ task, mark, streak, detail }) => {
             const isLifted = task.id === lifted;
             return (
@@ -496,13 +517,16 @@ export function TasksScreen({
         {/* Stated, not listed as rows: there is no circle, because a day that
             has not arrived cannot be answered. See `upcomingOnce`. */}
         {!lifted && upcoming.length > 0 ? (
-          <View className="mx-lg mt-xl">
-            <Kicker>{t('Coming up')}</Kicker>
-            {upcoming.map((task) => (
+          <View className="mx-lg mt-kicker">
+            <Kicker className="mb-kicker-gap">{t('Coming up')}</Kicker>
+            {upcoming.map((task, index) => (
               <Text
                 key={task.id}
                 numberOfLines={1}
-                className="mt-sm text-label tabular-nums text-ink-muted"
+                className={[
+                  index > 0 ? 'mt-sm' : '',
+                  'text-label tabular-nums text-ink-muted',
+                ].join(' ')}
               >
                 {task.name}
                 <Text className="text-ink-faint">
@@ -515,7 +539,7 @@ export function TasksScreen({
         ) : null}
 
         {lifted ? null : (
-          <Text className="mx-lg mt-md text-label text-ink-faint">
+          <Text className="mx-lg mt-[14px] text-label text-ink-faint">
             {t('Long press a row, then slide. The others open a gap where it will land.')}
           </Text>
         )}
@@ -542,7 +566,7 @@ export function TasksScreen({
           one commit action. It was a dashed row at the foot of the list, which
           is a target that moves as the day fills. */}
       {lifted ? null : (
-        <FloatingAction label={t('Add task')} icon="plus" onPress={() => setAdding(true)} />
+        <FloatingAction round label={t('Add task')} icon="plus" onPress={() => setAdding(true)} />
       )}
 
       {adding ? (
@@ -598,23 +622,19 @@ function CountPill({
   return (
     <View
       style={{
-        height: 30,
+        height: 32,
         justifyContent: 'center',
-        paddingHorizontal: 12,
+        paddingHorizontal: 13,
         marginHorizontal: 4,
         borderRadius: radius.pill,
         borderWidth: 1,
         borderStyle: excused ? 'dashed' : 'solid',
         borderColor: done
-          ? 'rgba(63,169,108,0.30)'
+          ? tint(0.3)
           : excused
             ? 'rgba(138,150,143,0.30)'
             : 'rgba(236,241,238,0.06)',
-        backgroundColor: done
-          ? 'rgba(63,169,108,0.14)'
-          : excused
-            ? 'transparent'
-            : 'rgba(236,241,238,0.04)',
+        backgroundColor: done ? tint(0.14) : excused ? 'transparent' : 'rgba(236,241,238,0.04)',
       }}
     >
       <RollingPhrase
@@ -654,6 +674,9 @@ function TaskRow({
   const done = mark === 'done';
   const missed = mark === 'missed';
   const press = usePressScale(0.88);
+  // What the running text fades into: the row's own fill over the page. Read in
+  // render, since a lit row is c2 and c2 is the theme's.
+  const fade = done ? mixSrgb(palette.c2, palette.bg, 0.115) : missed ? palette.bg : FADE_ON.card;
 
   return (
     <GlassSurface
@@ -669,17 +692,11 @@ function TaskRow({
       // blur behind a 94%-opaque card was never what anybody was reading.
       flat
       dashed={missed}
-      tint={done ? 'rgba(63,169,108,0.115)' : missed ? 'transparent' : 'rgba(236,241,238,0.055)'}
-      borderColor={
-        done
-          ? 'rgba(63,169,108,0.30)'
-          : missed
-            ? 'rgba(138,150,143,0.26)'
-            : 'rgba(236,241,238,0.06)'
-      }
+      tint={done ? tint(0.115) : missed ? 'transparent' : 'rgba(236,241,238,0.055)'}
+      borderColor={done ? tint(0.3) : missed ? 'rgba(138,150,143,0.26)' : 'rgba(236,241,238,0.06)'}
       style={{ opacity: dimmed ? 0.4 : missed ? 0.72 : 1 }}
     >
-      <View style={{ height: 72, flexDirection: 'row', alignItems: 'center' }}>
+      <View style={{ height: ROW_HEIGHT, flexDirection: 'row', alignItems: 'center' }}>
         <Pressable
           onPress={onToggle}
           onPressIn={press.onPressIn}
@@ -691,9 +708,9 @@ function TaskRow({
           accessibilityLabel={`${task.name}. ${t(answerOf(mark))}. ${t('Tap to change.')}`}
           accessibilityHint={onLongPress ? t('Long press, then slide to reorder') : undefined}
           style={pressedStyle}
-          // 60 × 72, which is the design's own hit area for the one control on
-          // this screen that is pressed without being looked at.
-          className="h-[72px] w-[60px] items-center justify-center"
+          // 62 × 74, the design's own hit area for the one control on this
+          // screen that is pressed without being looked at.
+          className="h-[74px] w-[62px] items-center justify-center"
         >
           <Animated.View style={{ transform: press.style.transform }}>
             <Mark mark={mark} />
@@ -708,32 +725,32 @@ function TaskRow({
           accessibilityLabel={`${task.name}. ${detail}. ${t('Open the month.')}`}
           accessibilityHint={onLongPress ? t('Long press, then slide to reorder') : undefined}
           style={pressedStyle}
-          className="h-[72px] flex-1 flex-row items-center pr-lg"
+          className="h-[74px] flex-1 flex-row items-center pr-lg"
         >
-          <View className="flex-1 pr-md">
-            {/* The name RUNS: `Evening Bible reading and a short journal entry`
-                is one task, and its end is the part that says which one. */}
+          <View className="flex-1 pr-sm">
+            {/* Both lines RUN: `Evening Bible reading and a short journal entry`
+                is one task, and its end is the part that says which one — and
+                the detail line in Russian is routinely longer than the name. */}
             <RunningText
               text={task.name}
               allowFontScaling={false}
-              fadeColor={done ? '#0D1B13' : missed ? palette.bg : FADE_ON.card}
-              style={{ fontSize: 15, lineHeight: 20 }}
-              className={missed ? 'text-ink-muted' : 'text-ink'}
+              fadeColor={fade}
+              className={['text-task', missed ? 'text-ink-muted' : 'text-ink'].join(' ')}
             />
-            <Text
-              numberOfLines={1}
+            <RunningText
+              text={missed ? `${detail} · ${t('streak kept')}` : detail}
               allowFontScaling={false}
-              style={{ fontSize: 12, lineHeight: 16 }}
-              className="mt-[2px] tabular-nums text-ink-faint"
-            >
-              {missed ? `${detail} · ${t('streak kept')}` : detail}
-            </Text>
+              fadeColor={fade}
+              containerStyle={{ marginTop: 2 }}
+              style={{ fontSize: 13.5, lineHeight: 18, color: DETAIL_INK }}
+              className="tabular-nums"
+            />
           </View>
           {/* Hidden while excused: the run is kept, but that day's row is not
               about the run. */}
           {missed ? null : <StreakFlame streak={streak} />}
           <View className="ml-sm">
-            <Icon name="chevron-right" size={14} color={palette.inkFaint} />
+            <Icon name="chevron-right" size={16} color={palette.inkFaint} />
           </View>
         </Pressable>
       </View>
@@ -741,10 +758,18 @@ function TaskRow({
   );
 }
 
+/** Taller by two than the old 72: the name grew to 16.5/22 and kept its air. */
+const ROW_HEIGHT = 74;
+/** The detail line's grey — between muted and faint, the prototype's `#6B766F`. */
+const DETAIL_INK = '#6B766F';
+/** The done mark and the two it replaces are one 36 dp footprint. */
+const MARK = 36;
+
 /**
  * The three answers, as three marks. The filled one is the app's shared commit
  * mark — the same gradient, edge and specular as a logged set's ✓ and focus
- * mode's DONE, so "I did that" is one object at three sizes.
+ * mode's DONE, so "I did that" is one object at three sizes. Its ✓ is `onAcc`,
+ * because on a light theme's gradient an ink tick disappears.
  */
 function Mark({ mark }: { mark: TaskMark | null }) {
   if (mark === 'done') {
@@ -753,30 +778,41 @@ function Mark({ mark }: { mark: TaskMark | null }) {
     // the repeating halo instead, once.
     return (
       <CheckPop>
-        <CommitMark size={34} glyph={16} glow={false} />
+        <CommitMark size={MARK} glyph={17} glow={false} />
       </CheckPop>
     );
   }
   if (mark === 'missed') {
     return (
       <View
-        style={{ backgroundColor: 'rgba(236,241,238,0.05)' }}
-        className="h-[34px] w-[34px] items-center justify-center rounded-pill"
+        style={{
+          width: MARK,
+          height: MARK,
+          borderRadius: radius.pill,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(236,241,238,0.05)',
+        }}
       >
-        <Icon name="x" size={12} color={palette.inkFaint} />
+        <Icon name="x" size={13} color={DETAIL_INK} />
       </View>
     );
   }
   return (
     <View
-      style={{ borderColor: palette.hairline }}
-      className="h-[34px] w-[34px] rounded-pill border-[1.5px]"
+      style={{
+        width: MARK,
+        height: MARK,
+        borderRadius: radius.pill,
+        borderWidth: 1.5,
+        borderColor: '#2A3330',
+      }}
     />
   );
 }
 
 /**
- * The ✓ arriving: scale 0 → 1.18 → 1 over 320 ms, on the overshoot curve.
+ * The ✓ arriving: scale 0 → 1.18 → 1 over 340 ms, on the overshoot curve.
  *
  * It runs on MOUNT and nothing else, which is the whole trick: the ✓ only
  * exists while the answer is `done`, so the component mounting IS the moment the
@@ -785,32 +821,36 @@ function Mark({ mark }: { mark: TaskMark | null }) {
  * finished last Tuesday shows a still ✓, because that one never mounts fresh
  * under your finger.
  *
- * `.34,1.56,.64,1` is the app's second curve and its only use here: a thing that
- * should feel CAUGHT overshoots. Everything else in the redesign is the base
- * `.2,.8,.2,1`, and keeping the exception to the two moments that earn it — this
- * and a logged set — is what stops the overshoot reading as a bounce.
+ * Two legs rather than one timing through an interpolated 1.18: the design's
+ * keyframes put the curve on EACH leg (0 → 1.18 by 70%, then back), and a single
+ * overshooting timing through three stops would overshoot the overshoot.
+ * `.34,1.56,.64,1` is kept to the moments that should feel CAUGHT — this and a
+ * logged set — so it never reads as a bounce.
  */
 function CheckPop({ children }: { children: React.ReactNode }) {
   const pop = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(pop, {
-      toValue: 1,
-      duration: 320,
-      easing: Easing.bezier(0.34, 1.56, 0.64, 1),
-      useNativeDriver: true,
-    }).start();
+    const easing = Easing.bezier(0.34, 1.56, 0.64, 1);
+    Animated.sequence([
+      Animated.timing(pop, {
+        toValue: 1.18,
+        duration: POP_MS * 0.7,
+        easing,
+        useNativeDriver: true,
+      }),
+      Animated.timing(pop, {
+        toValue: 1,
+        duration: POP_MS * 0.3,
+        easing,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, [pop]);
 
-  return (
-    <Animated.View
-      style={{
-        transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) }],
-      }}
-    >
-      {children}
-    </Animated.View>
-  );
+  return <Animated.View style={{ transform: [{ scale: pop }] }}>{children}</Animated.View>;
 }
+
+const POP_MS = 340;
 
 function answerOf(mark: TaskMark | null): string {
   if (mark === 'done') return 'Done';
@@ -820,26 +860,44 @@ function answerOf(mark: TaskMark | null): string {
 
 /* ------------------------------------------------------------------ */
 
+/** Tasks' bubble line (spec §8): shown past 250, hidden again under 210. */
+const BUBBLE_SHOW = 250;
+const BUBBLE_HIDE = 210;
+
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const MINI = 44;
-const MINI_R = 19;
-const MINI_STROKE = 3.5;
+const MINI = 52;
+const MINI_R = 22;
+const MINI_STROKE = 4;
 const MINI_LENGTH = 2 * Math.PI * MINI_R;
 
+/*
+ * The capsule is 300 wide (spec §8). Inside its 1 dp border and 6 / 8 padding
+ * that leaves 284 for ring (52) + gap + text + gap + share. The share is held at
+ * a minimum that fits `100%`, so the text column can be a fixed width and RUN
+ * when a long month name in Russian does not fit — the bubble's children are
+ * each wrapped for their staggered entrance, so `flex: 1` has nothing to grow
+ * into.
+ */
+const BUBBLE_WIDTH = 300;
+const BUBBLE_GAP = 12;
+const SHARE_MIN = 62;
+const TEXT_WIDTH = BUBBLE_WIDTH - 2 - 6 - 8 - MINI - BUBBLE_GAP * 2 - SHARE_MIN;
+
 /**
- * THE DAY BUBBLE — the dial at a tenth of its size.
+ * THE DAY BUBBLE — the dial at a quarter of its size.
  *
  *   ╭────────────────────────────────────────╮
- *   │ (25)  TODAY · THU               ( 50% ) │
- *   │       25 September                      │
- *   │       3 of 6 done                       │
+ *   │ (28)  TODAY · MON               ( 75% ) │
+ *   │       28 September                      │
+ *   │       6 of 8 done                       │
  *   ╰────────────────────────────────────────╯
  *
  * The mini ring refills over 760 ms as marks land, the counts and the share roll,
- * and the capsule's green halo grows with the day — blur 14 → 36, alpha 0.14 →
- * 0.48 — so a nearly finished day glows brighter than an empty one even at the
- * top of a scrolled list. At 100% the share pill turns solid green. Tapping any
- * of it scrolls back to the dial.
+ * and the capsule's halo grows with the day, so a nearly finished day glows
+ * brighter than an empty one even at the top of a scrolled list. The share pill's
+ * own glow scales the same way — blur 10 → 30, alpha 0.2 → 0.5 — and at 100% it
+ * fills solid with the gradient, its number turning `onAcc`. Tapping any of it
+ * scrolls back to the dial.
  */
 function DayBubble({
   visible,
@@ -877,12 +935,14 @@ function DayBubble({
   const date = parseDay(day);
   const weekday = date ? weekdayLabels(lang)[weekdayIndex(date)] : '';
   const kicker = isToday ? `${t('Today')} · ${weekday}` : weekday;
+  const bubbleFade = FADE_ON.bar;
 
   return (
     <FloatingBubble
       visible={visible}
+      width={BUBBLE_WIDTH}
       haloFraction={clamped}
-      contentStyle={{ gap: 12, paddingRight: 18 }}
+      contentStyle={{ gap: BUBBLE_GAP, padding: 6, paddingRight: 8 }}
       accessibilityLabel={`${isToday ? t('Today') : weekdayName(day, lang)}, ${t(
         '{done} of {total} done',
         { done, total },
@@ -904,7 +964,8 @@ function DayBubble({
             cy={MINI / 2}
             r={MINI_R}
             fill="rgba(6,8,7,0.35)"
-            stroke={palette.greenDim}
+            // The dial's own track: c1 38% into the dark, so the two rings match.
+            stroke={mixSrgb(palette.c1, '#0b1410', 0.38)}
             strokeWidth={MINI_STROKE}
           />
           <AnimatedCircle
@@ -912,7 +973,7 @@ function DayBubble({
             cy={MINI / 2}
             r={MINI_R}
             fill="none"
-            stroke={palette.greenBright}
+            stroke={palette.acc}
             strokeWidth={MINI_STROKE}
             strokeLinecap="round"
             strokeDasharray={MINI_LENGTH}
@@ -925,9 +986,9 @@ function DayBubble({
         <Text
           allowFontScaling={false}
           style={{
-            fontSize: 16,
+            fontSize: 17,
             letterSpacing: -0.5,
-            textShadowColor: 'rgba(63,169,108,0.4)',
+            textShadowColor: tint(0.5),
             textShadowRadius: 12,
           }}
           className="font-bold tabular-nums text-ink"
@@ -940,55 +1001,107 @@ function DayBubble({
         onPress={onTop}
         accessibilityRole="button"
         accessibilityLabel={t('Back to the dial')}
+        style={{ width: TEXT_WIDTH }}
       >
-        <Text
+        <RunningText
+          text={kicker}
           allowFontScaling={false}
-          style={{ fontSize: 9, letterSpacing: 1 }}
-          className="font-semibold uppercase text-green-bright"
-        >
-          {kicker}
-        </Text>
-        <Text
+          fadeColor={bubbleFade}
+          style={{ fontSize: 10.5, lineHeight: 14, letterSpacing: 1.1, color: palette.acc }}
+          className="font-semibold uppercase"
+        />
+        <RunningText
+          text={formatShortDay(day, lang)}
           allowFontScaling={false}
-          numberOfLines={1}
-          style={{ fontSize: 14, marginTop: 2 }}
+          fadeColor={bubbleFade}
+          containerStyle={{ marginTop: 2 }}
+          style={{ fontSize: 16, lineHeight: 20 }}
           className="font-semibold text-ink"
-        >
-          {formatShortDay(day, lang)}
-        </Text>
+        />
         <RollingPhrase
           template={t('{done} of {total} done')}
           values={{ done, total }}
-          lineHeight={14}
+          lineHeight={16}
           duration={500}
           containerStyle={{ marginTop: 1 }}
-          style={{ fontSize: 11 }}
+          style={{ fontSize: 12.5 }}
           className="text-ink-muted"
         />
       </Pressable>
 
-      <Pressable
-        onPress={onTop}
-        accessibilityRole="button"
-        accessibilityLabel={t('Back to the dial')}
-        style={{
-          height: 26,
-          paddingHorizontal: 10,
-          justifyContent: 'center',
-          borderRadius: radius.pill,
-          borderWidth: 1,
-          borderColor: 'rgba(63,169,108,0.3)',
-          backgroundColor: full ? palette.green : 'rgba(63,169,108,0.14)',
-        }}
-      >
-        <RollingNumber
-          value={`${percent}%`}
-          lineHeight={16}
-          duration={700}
-          style={{ fontSize: 12 }}
-          className={['font-bold', full ? 'text-ink' : 'text-green-bright'].join(' ')}
-        />
-      </Pressable>
+      <SharePill percent={percent} fraction={clamped} full={full} onPress={onTop} />
     </FloatingBubble>
+  );
+}
+
+/**
+ * The share. Its glow is a function of the day, not a constant — the pill is
+ * the bubble's own small dial halo — and at 100% it stops being a tint and
+ * becomes the gradient, because a finished day is the one state worth a fill.
+ */
+function SharePill({
+  percent,
+  fraction,
+  full,
+  onPress,
+}: {
+  percent: number;
+  fraction: number;
+  full: boolean;
+  onPress: () => void;
+}) {
+  const t = useT();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={t('Back to the dial')}
+      style={{
+        height: 30,
+        minWidth: SHARE_MIN,
+        paddingHorizontal: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: radius.pill,
+        borderWidth: 1,
+        borderColor: tint(0.3),
+        backgroundColor: full ? 'transparent' : tint(0.14),
+        boxShadow: [
+          {
+            offsetX: 0,
+            offsetY: 0,
+            blurRadius: Math.round(10 + fraction * 20),
+            color: tint(0.2 + fraction * 0.3),
+          },
+        ],
+      }}
+    >
+      {full ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: radius.pill,
+            overflow: 'hidden',
+          }}
+        >
+          <LinearGradient
+            {...gradientFill()}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+        </View>
+      ) : null}
+      <RollingNumber
+        value={`${percent}%`}
+        lineHeight={18}
+        duration={700}
+        style={{ fontSize: 14, color: full ? palette.onAcc : palette.acc }}
+        className="font-bold"
+      />
+    </Pressable>
   );
 }

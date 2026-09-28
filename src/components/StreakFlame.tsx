@@ -31,7 +31,7 @@ import { Animated, Easing, View } from 'react-native';
 
 import { Icon } from './Icon';
 import { RollingNumber } from './RollingNumber';
-import { palette, radius } from '../theme/tokens';
+import { palette, radius, tint } from '../theme/tokens';
 
 /** A week, and three weeks. The two numbers this badge is a function of. */
 const WARM = 7;
@@ -76,23 +76,15 @@ export function StreakFlame({ streak }: { streak: number }) {
         paddingRight: 9,
         borderRadius: radius.pill,
         borderWidth: warm ? 1 : 0,
-        borderColor: hot ? 'rgba(63,169,108,0.42)' : 'rgba(63,169,108,0.24)',
-        backgroundColor: hot
-          ? 'rgba(63,169,108,0.20)'
-          : warm
-            ? 'rgba(63,169,108,0.12)'
-            : 'rgba(236,241,238,0.04)',
+        borderColor: hot ? tint(0.42) : tint(0.24),
+        backgroundColor: hot ? tint(0.2) : warm ? tint(0.12) : 'rgba(236,241,238,0.04)',
         ...(hot
           ? {
-              boxShadow: [
-                { offsetX: 0, offsetY: 0, blurRadius: 18, color: 'rgba(63,169,108,0.55)' },
-              ],
+              boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: tint(0.55) }],
             }
           : warm
             ? {
-                boxShadow: [
-                  { offsetX: 0, offsetY: 0, blurRadius: 9, color: 'rgba(63,169,108,0.30)' },
-                ],
+                boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 9, color: tint(0.3) }],
               }
             : {}),
       }}

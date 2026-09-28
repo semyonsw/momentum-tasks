@@ -23,13 +23,13 @@ import { Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { BubblePressable } from './bubbles';
-import { COMMIT_GRADIENT, GlassSurface, SpecularEdge } from './glass';
+import { GlassSurface, SpecularEdge } from './glass';
 import { Icon } from './Icon';
 import { pressedStyle } from './motion';
 import { useT } from '../hooks/useT';
 import type { SequenceChatBlock } from '../state/aiStore';
 import { useLibrary } from '../state/libraryStore';
-import { palette, radius, specularHeavy } from '../theme/tokens';
+import { gradientFill, palette, radius, specularHeavy, tint } from '../theme/tokens';
 
 export function AiSequenceCard({
   block,
@@ -91,8 +91,8 @@ export function AiSequenceCard({
                     paddingHorizontal: 10,
                     borderRadius: radius.pill,
                     borderWidth: 1,
-                    borderColor: next ? 'rgba(63,169,108,0.6)' : 'rgba(236,241,238,0.08)',
-                    backgroundColor: next ? 'rgba(63,169,108,0.18)' : 'rgba(6,8,7,0.35)',
+                    borderColor: next ? tint(0.6) : 'rgba(236,241,238,0.08)',
+                    backgroundColor: next ? tint(0.18) : 'rgba(6,8,7,0.35)',
                   }}
                 >
                   <Text
@@ -169,12 +169,12 @@ export function AiSequenceCard({
                 }}
               >
                 <LinearGradient
-                  colors={[...COMMIT_GRADIENT]}
+                  {...gradientFill()}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                 />
                 <SpecularEdge color={specularHeavy} radius={radius.pill} />
-                <Icon name="check" size={14} color={palette.ink} />
-                <Text numberOfLines={1} className="ml-xs text-label font-semibold text-ink">
+                <Icon name="check" size={14} color={palette.onAcc} />
+                <Text numberOfLines={1} className="ml-xs text-label font-semibold text-on-acc">
                   {t('Apply loop')}
                 </Text>
               </BubblePressable>

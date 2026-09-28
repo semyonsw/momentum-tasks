@@ -61,6 +61,7 @@ import { Pressable } from '../components/Pressable';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Icon } from '../components/Icon';
 import { pressedStyle, Reveal } from '../components/motion';
+import { FADE_ON, RunningText } from '../components/RunningText';
 import { FieldWell, Kicker, ListCard, Separator } from '../components/primitives';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { describeShape } from '../lib/exerciseShape';
@@ -436,12 +437,14 @@ function ExerciseRow({
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={`${exercise.name}. ${shape}.`}
-        style={pressedStyle}
         className="flex-1 justify-center"
+        style={(state) => [pressedStyle(state), { minWidth: 0 }]}
       >
-        <Text numberOfLines={1} className="text-body font-medium text-ink">
-          {exercise.name}
-        </Text>
+        <RunningText
+          text={exercise.name}
+          fadeColor={FADE_ON.card}
+          className="text-body font-medium text-ink"
+        />
         <Text
           numberOfLines={1}
           className="mt-[2px] text-micro font-semibold uppercase text-ink-faint"

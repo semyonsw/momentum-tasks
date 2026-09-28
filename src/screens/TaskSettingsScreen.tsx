@@ -62,7 +62,7 @@ export function TaskSettingsScreen({ onBack }: { onBack: () => void }) {
         contentContainerStyle={{ paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        <Kicker className="mx-lg mb-sm mt-md">{t('Answering')}</Kicker>
+        <Kicker className="mx-lg mb-kicker-gap mt-md">{t('Answering')}</Kicker>
         <GlassCard className="mx-lg">
           <SwitchRow
             label={t('Let the app tick what it knows')}
@@ -87,7 +87,7 @@ export function TaskSettingsScreen({ onBack }: { onBack: () => void }) {
             beside the days it asks on. A screen listing every reminder in the app
             would be a second place to change one, and the two would disagree the
             first time somebody edited a task from the day list. */}
-        <Kicker className="mx-lg mb-sm mt-xxl">{t('History opens on')}</Kicker>
+        <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('History opens on')}</Kicker>
         <View className="mx-lg flex-row flex-wrap">
           {TREND_RANGES.map((range) => (
             <SelectChip

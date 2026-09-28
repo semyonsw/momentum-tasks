@@ -1,4 +1,4 @@
-# Installing Workout Tracker
+# Installing Momentum
 
 There are two different things called "installing" here. The installer does
 both.
@@ -20,7 +20,7 @@ both.
 3. **Runs `npm run typecheck` and the whole test suite** (700-odd tests: rep
    ladders, timers, overload maths, cold starts, stores, backups, migrations).
    "Install complete" therefore means the code works on your machine.
-4. Looks for a `workout-tracker-*.apk` next to it and for `adb`. If a phone is
+4. Looks for a `momentum-*.apk` (or, before 2.0.0, `workout-tracker-*.apk`) next to it and for `adb`. If a phone is
    plugged in, it offers to push the APK over USB, and knows what each Android
    refusal means (`UPDATE_INCOMPATIBLE`, `VERSION_DOWNGRADE`,
    `INSUFFICIENT_STORAGE`, `unauthorized`).
@@ -36,7 +36,7 @@ Everything is logged to `install.log`. Re-running is safe.
 
 No computer setup needed at all:
 
-1. Download `workout-tracker-<version>.apk` from the
+1. Download `momentum-<version>.apk` from the
    [Releases page](../../releases) (on the phone, or copy it across by USB,
    Drive, Telegram — anything).
 2. Open it in **Files** and tap install. The first time, Android asks to allow

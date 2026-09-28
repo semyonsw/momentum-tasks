@@ -25,13 +25,13 @@ import { Animated, Easing, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { BubblePressable } from './bubbles';
-import { COMMIT_GRADIENT, GlassSurface } from './glass';
+import { GlassSurface } from './glass';
 import { Icon } from './Icon';
 import { pressedStyle } from './motion';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
 import type { SummaryBlock } from '../lib/ai/aiSchema';
-import { glassTier, greenSteps, palette, radius } from '../theme/tokens';
+import { glassTier, gradientFill, greenSteps, palette, radius, tint } from '../theme/tokens';
 
 /** The 10 px green kicker every answer opens with. */
 function AnswerKicker({ children }: { children: string }) {
@@ -143,7 +143,7 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
                       height: Math.max(3, Math.round((bar.value / max) * BAR_HEIGHT)),
                       borderRadius: 6,
                       overflow: 'hidden',
-                      backgroundColor: top ? undefined : greenSteps[0],
+                      backgroundColor: top ? undefined : greenSteps()[0],
                       ...(top
                         ? {
                             boxShadow: [
@@ -151,7 +151,7 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
                                 offsetX: 0,
                                 offsetY: 0,
                                 blurRadius: 14,
-                                color: 'rgba(63,169,108,0.35)',
+                                color: tint(0.35),
                               },
                             ],
                           }
@@ -160,7 +160,7 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
                   >
                     {top ? (
                       <LinearGradient
-                        colors={[...COMMIT_GRADIENT]}
+                        {...gradientFill()}
                         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                       />
                     ) : null}

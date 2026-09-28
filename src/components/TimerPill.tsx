@@ -70,14 +70,54 @@
  * has; letting the OS scale it on top of that pushes a five-character clock past
  * the pill's edge on a narrow phone, which is the one stretch of the countdown
  * anybody is actually watching.
+ *
+ * ── MOMENTUM v3: THE PILL IS A LIT CARD ─────────────────────────────────────
+ *
+ *   ╭──────────────────────────────────────────────╮
+ *   │ BETWEEN SETS                    Next: set 4  │  ← kicker in acc, and what it is FOR
+ *   │ 1:28                                         │  ← 68 / 70, ink, a c2 bloom behind
+ *   │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░ │  ← 6 dp gradient bar, drains linearly
+ *   │ ( −15 s )( +15 s )( ⏸ )( Skip )              │  ← 44 dp glass chips
+ *   ╰──────────────────────────────────────────────╯
+ *
+ * The redesign moved the pill from a `surface-alt` capsule onto the `lit` glass
+ * tier — c2 @ 13 % fill, c2 @ 30 % edge, the hero bloom, a c3 lamp in the corner
+ * — and put the drain INSIDE the card, between the clock and the controls, as a
+ * 6 dp gradient bar rather than a 3 dp line along the bottom edge. So the card
+ * owns three slots now — content, drain, `controls` — rather than one column.
+ *
+ * The 84 dp numerals came down to the design's 68: the kicker moved above them
+ * and the controls went full-width below, so nothing shares the clock's row any
+ * more, and 68 is still the largest type in the session by a distance.
+ *
+ * The card's colours are `cardTone()`, NOT `pillTone()`. Focus mode (`FocusClock`,
+ * `FocusHold`) paints its own blocks with `pillTone()`, and moving that onto the
+ * lit tier would restyle a screen this pass does not own. Both tones share the
+ * FINAL slab, so the inversion still reads as one alarm everywhere it appears.
+ *
+ * THE CLOCK'S GLOW IS AN SVG BLOOM, not a `textShadow`. The clock rolls
+ * (`RollingNumber`) and every digit column clips itself, so a text shadow would
+ * be cut into vertical stripes at each column edge. A radial behind the numerals
+ * is the same light without the clipping, and it can animate: it grows over the
+ * last ten seconds, as the design asks.
+ *
+ * THE INVERSION STAYS. The design keeps the card lit to the end with a stronger
+ * glow; this file's rule above is that the last ten seconds are read from across
+ * a room, and a slab does that where a glow does not. So the glow grows where the
+ * card is still lit — a rest PAUSED under ten seconds — and the running final ten
+ * is the slab, pulsing. Near-black on `acc` holds contrast in every preset
+ * because `acc` is c2 lifted toward white.
  */
 
 import { useEffect, useRef, type ReactNode } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 
 import { useMotionScale } from '../hooks/useMotionScale';
-import { palette, size, timerShadow } from '../theme/tokens';
-import { SecondPulse } from './motion';
+import { elevation, gradientBar, halo, palette, tint } from '../theme/tokens';
+import { SpecularEdge } from './glass';
+import { SecondPulse, usePressScale } from './motion';
 import { RollingNumber } from './RollingNumber';
 
 /** Below this a countdown inverts. Ten seconds is one deep breath and a re-grip. */
@@ -101,49 +141,91 @@ export interface PillTone {
   drain: string;
   /** The outline of the round controls — a hairline, or a darker green on the slab. */
   chipBorder: string;
+  /** The fill of a control chip on the lit card. Absent = no fill. */
+  chipFill?: string;
 }
 
 const RESTING: PillTone = {
   surface: palette.surfaceAlt,
   border: palette.hairline,
-  clock: palette.greenBright,
+  get clock(): string {
+    return palette.greenBright;
+  },
   label: palette.inkFaint,
   secondary: palette.inkMuted,
   primary: palette.ink,
-  drain: palette.greenBright,
+  get drain(): string {
+    return palette.greenBright;
+  },
   chipBorder: palette.hairline,
 };
 
 const FINAL: PillTone = {
-  surface: palette.greenBright,
+  get surface(): string {
+    return palette.greenBright;
+  },
   border: 'transparent',
-  // Near-black on bright green: the same pairing the app uses for text on a
-  // green fill everywhere else, and the only one that holds contrast here.
+  // Near-black on `acc`: `acc` is c2 lifted toward white in every preset, so
+  // this is the pairing that holds contrast on the slab whatever the theme.
   clock: palette.bg,
-  label: palette.greenWash,
-  secondary: palette.greenWash,
+  get label(): string {
+    return palette.greenWash;
+  },
+  get secondary(): string {
+    return palette.greenWash;
+  },
   primary: palette.bg,
   drain: palette.bg,
   chipBorder: 'rgba(6,8,7,0.28)',
+  chipFill: 'rgba(6,8,7,0.08)',
 };
 
-/** The colours for a pill in its normal or its final-ten-seconds state. */
+/** The colours for focus mode's blocks, in their normal or final state. */
 export function pillTone(inverted: boolean): PillTone {
   return inverted ? FINAL : RESTING;
 }
 
+/** The lit rest card's own tone — see the file header on why it is separate. */
+const CARD: PillTone = {
+  get surface(): string {
+    return tint(0.13);
+  },
+  get border(): string {
+    return tint(0.3);
+  },
+  clock: palette.ink,
+  get label(): string {
+    return palette.acc;
+  },
+  secondary: '#AEB9B3',
+  primary: palette.ink,
+  get drain(): string {
+    return palette.acc;
+  },
+  chipBorder: 'rgba(236,241,238,0.09)',
+  chipFill: 'rgba(236,241,238,0.07)',
+};
+
+/** The colours for the session's timer card, normal or final-ten-seconds. */
+export function cardTone(inverted: boolean): PillTone {
+  return inverted ? FINAL : CARD;
+}
+
+/** The card's corner — the design's 26, between `hero` and `navPill`. */
+const CARD_RADIUS = 26;
+
 interface TimerPillProps {
-  /** Solid `green-bright` slab instead of a `surface-alt` pill. */
+  /** Solid `acc` slab instead of the lit card. */
   inverted?: boolean;
   /**
-   * Fraction of the phase left to run, 0–1. `null` draws no line at all — an
+   * Fraction of the phase left to run, 0–1. `null` draws no bar at all — an
    * open-ended count-up has nothing to drain, and a track with no fill on it
    * would read as a timer that is already finished.
    */
   remainingFraction?: number | null;
   /**
-   * Milliseconds until the line reaches empty at the current rate — pass it while
-   * the clock is running and the line drains continuously over exactly that long.
+   * Milliseconds until the bar reaches empty at the current rate — pass it while
+   * the clock is running and the bar drains continuously over exactly that long.
    * Null (paused, or a count that is not a countdown) holds it where it stands.
    */
   drainMs?: number | null;
@@ -153,8 +235,9 @@ interface TimerPillProps {
    * is on each change. Usually the deadline itself.
    */
   drainKey?: string | number | null;
-  /** The final ten seconds, running: the content pulses once a second. */
-  pulse?: boolean;
+  /** The row of chips under the bar. */
+  controls?: ReactNode;
+  /** The kicker row and the clock. */
   children: ReactNode;
 }
 
@@ -163,55 +246,110 @@ export function TimerPill({
   remainingFraction,
   drainMs = null,
   drainKey = null,
-  pulse = false,
+  controls,
   children,
 }: TimerPillProps) {
-  const tone = pillTone(inverted);
+  const tone = cardTone(inverted);
   const hasDrain = remainingFraction != null;
 
   return (
     // Under the header, inset by the page gutter, with air above and below it.
-    <View className="mx-lg mb-sm mt-md">
+    <View
+      className="mx-lg mb-sm mt-md"
+      style={{
+        borderRadius: CARD_RADIUS,
+        // The slab glows harder: it is the one moment the card is an alarm.
+        boxShadow: [...(inverted ? halo.floating : halo.hero), ...elevation.e2],
+      }}
+    >
       <View
-        style={[
-          timerShadow,
-          {
-            backgroundColor: tone.surface,
-            borderWidth: 1,
-            borderColor: tone.border,
-          },
-        ]}
-        className="overflow-hidden rounded-pill"
+        style={{
+          borderRadius: CARD_RADIUS,
+          overflow: 'hidden',
+          backgroundColor: tone.surface,
+          borderWidth: 1,
+          borderColor: tone.border,
+          paddingTop: 18,
+          paddingHorizontal: 18,
+          paddingBottom: 16,
+        }}
       >
-        {/*
-          A COLUMN, and a MINIMUM height rather than a fixed one.
+        {inverted ? null : <CornerLamp />}
+        <SpecularEdge color="rgba(236,241,238,0.14)" radius={CARD_RADIUS} />
 
-          Each pill supplies exactly two children — the clock block and the
-          controls block — and in a column those stack without either pill knowing
-          it. Fixed height became wrong the moment the clock grew: `size.timer` is
-          now the floor that stops a two-control pill reading as a different
-          instrument from a four-control one, and the content sets the rest.
-        */}
-        <SecondPulse active={pulse}>
-          <View
-            style={{ minHeight: size.timer, paddingTop: 16, paddingBottom: 14 }}
-            className="justify-center pl-[26px] pr-[22px]"
-          >
-            {children}
-          </View>
-        </SecondPulse>
+        {children}
 
         {hasDrain ? (
-          /* 3 dp, always on a green-dim track so the inverted state still reads
-             as the same instrument. */
           <DrainLine
             fraction={remainingFraction}
             drainMs={drainMs}
             drainKey={drainKey}
-            color={tone.drain}
+            inverted={inverted}
           />
         ) : null}
+
+        {controls ? (
+          <View className="mt-[14px] flex-row items-center" style={{ gap: 8 }}>
+            {controls}
+          </View>
+        ) : null}
       </View>
+    </View>
+  );
+}
+
+/** The c3 lamp in the card's top-right corner: 240 dp, 26 %, off the edge. */
+function CornerLamp() {
+  return (
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', top: -80, right: -60, width: 240, height: 240 }}
+    >
+      <Svg width={240} height={240}>
+        <Defs>
+          <RadialGradient id="restLamp" cx="50%" cy="50%" r="50%">
+            <Stop offset="0%" stopColor={palette.c3} stopOpacity={0.26} />
+            <Stop offset="65%" stopColor={palette.c3} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Ellipse cx={120} cy={120} rx={120} ry={120} fill="url(#restLamp)" />
+      </Svg>
+    </View>
+  );
+}
+
+/**
+ * The kicker row over the clock: what this countdown is, in `acc`, and — on the
+ * right — what it is for ("Next: set 4"). Both run to one line.
+ */
+export function PillKicker({
+  label,
+  aside,
+  tone,
+}: {
+  label: string;
+  aside?: string | null;
+  tone: PillTone;
+}) {
+  return (
+    <View className="flex-row items-center" style={{ gap: 8 }}>
+      <Text
+        numberOfLines={1}
+        allowFontScaling={false}
+        style={{ color: tone.label }}
+        className="flex-1 text-micro font-semibold uppercase"
+      >
+        {label}
+      </Text>
+      {aside ? (
+        <Text
+          numberOfLines={1}
+          allowFontScaling={false}
+          style={{ color: tone.secondary, fontSize: 13.5, lineHeight: 18, maxWidth: '60%' }}
+        >
+          {aside}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -222,78 +360,112 @@ export function TimerPill({
  *
  * `count` is the get-ready number: a bare 5 · 4 · 3 · 2 · 1 you should be able to
  * read from the floor while you get into position, so it is bigger still.
+ *
+ * `glow` is the bloom behind them: `rest` at 40 %, `near` (under ten seconds on a
+ * card that is still lit) at 70 % and larger, `none` on the slab. `breathe` is the
+ * 1 s pulse of the final ten.
  */
 export function PillClock({
   value,
   tone,
   variant = 'clock',
+  glow = 'rest',
+  breathe = false,
   accessibilityLabel,
 }: {
   value: string | number;
   tone: PillTone;
   variant?: 'clock' | 'count';
+  glow?: 'rest' | 'near' | 'none';
+  breathe?: boolean;
   accessibilityLabel: string;
 }) {
-  /* The clock ROLLS, 320 ms a column: fast enough to finish inside the second it
-     is showing, slow enough that `+15` reads as fifteen seconds arriving. The
-     get-ready count stays a plain numeral — one digit, replaced, is the count. */
-  if (variant === 'clock') {
-    return (
-      <RollingNumber
-        value={String(value)}
-        lineHeight={88}
-        duration={320}
-        accessibilityLabel={accessibilityLabel}
-        style={{
-          fontSize: 84,
-          letterSpacing: -2.5,
-          fontWeight: '600',
-          color: tone.clock,
-        }}
-      />
-    );
-  }
+  const fontSize = variant === 'count' ? 104 : 68;
+  const lineHeight = variant === 'count' ? 108 : 70;
   return (
-    <Text
-      accessibilityLabel={accessibilityLabel}
-      allowFontScaling={false}
-      numberOfLines={1}
-      style={{
-        /*
-         * The two biggest type sizes in the app by a wide margin, and the reason
-         * the pill is 132 high with its controls stacked underneath.
-         *
-         * 84 is what a five-character clock (`12:05`) fits in across the pill's
-         * full inner width on a 320 dp phone — the narrowest thing this app is
-         * expected to run on — so the number never clips and never shrinks. The
-         * get-ready count goes further still at 104: it is a single digit with
-         * nothing beside it, and it is read off the floor while you are getting
-         * into position under a bar.
-         */
-        fontSize: variant === 'count' ? 104 : 84,
-        lineHeight: variant === 'count' ? 108 : 88,
-        letterSpacing: -2.5,
-        fontWeight: '600',
-        fontVariant: ['tabular-nums'],
-        color: tone.clock,
-      }}
-    >
-      {value}
-    </Text>
+    <View style={{ marginTop: 6, marginBottom: 12, alignSelf: 'flex-start' }}>
+      <ClockBloom glow={glow} height={lineHeight} />
+      <SecondPulse active={breathe}>
+        {/* The clock ROLLS, 320 ms a column: fast enough to finish inside the
+            second it is showing, slow enough that `+15` reads as fifteen seconds
+            arriving. The get-ready count stays a plain numeral — one digit,
+            replaced, is the count. */}
+        {variant === 'clock' ? (
+          <RollingNumber
+            value={String(value)}
+            lineHeight={lineHeight}
+            duration={320}
+            accessibilityLabel={accessibilityLabel}
+            style={{ fontSize, letterSpacing: -2.5, fontWeight: '600', color: tone.clock }}
+          />
+        ) : (
+          <Text
+            accessibilityLabel={accessibilityLabel}
+            allowFontScaling={false}
+            numberOfLines={1}
+            style={{
+              fontSize,
+              lineHeight,
+              letterSpacing: -2.5,
+              fontWeight: '600',
+              fontVariant: ['tabular-nums'],
+              color: tone.clock,
+            }}
+          >
+            {value}
+          </Text>
+        )}
+      </SecondPulse>
+    </View>
   );
 }
 
 /**
- * The micro label beside the clock — or under it: what this countdown is.
- *
- * `inline` is the default and puts it on the clock's baseline, which is where a
- * two-control pill has room for it. The rest pill sets it false and stacks the
- * label under the numerals, because it carries FOUR controls (−15, +15, pause,
- * skip) and on a 360 dp phone they leave the inline label about fifteen points to
- * live in — which renders as `BETW…`, a label that has stopped being one.
- *
- * Stacking rather than dropping it: `BETWEEN SETS` vs `NEXT EXERCISE` is how you
- * check, mid-workout, that the two rest settings are doing what they say.
+ * The light behind the numerals. Opacity and scale are native-driven and travel
+ * over 300 ms between the two strengths — the design's `text-shadow` transition.
+ */
+function ClockBloom({ glow, height }: { glow: 'rest' | 'near' | 'none'; height: number }) {
+  const target = glow === 'near' ? 1 : glow === 'rest' ? 0.55 : 0;
+  const v = useRef(new Animated.Value(target)).current;
+  useEffect(() => {
+    Animated.timing(v, {
+      toValue: target,
+      duration: 300,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [target, v]);
+  const w = 260;
+  const h = height + 60;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: -40,
+        top: -30,
+        width: w,
+        height: h,
+        opacity: v,
+        transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.12] }) }],
+      }}
+    >
+      <Svg width={w} height={h}>
+        <Defs>
+          <RadialGradient id="clockBloom" cx="50%" cy="50%" rx="50%" ry="50%">
+            <Stop offset="0%" stopColor={palette.c2} stopOpacity={0.7} />
+            <Stop offset="100%" stopColor={palette.c2} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Ellipse cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} fill="url(#clockBloom)" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+/**
+ * The micro label beside the clock, on its baseline — the set timer's exercise
+ * name ("PLANK"). The rest card uses `PillKicker` above the clock instead.
  */
 export function PillLabel({
   children,
@@ -317,7 +489,75 @@ export function PillLabel({
 }
 
 /**
- * The drain, as a native-driven `scaleX` from the left edge.
+ * One control chip on the card: 44 tall, a glass pill, 15 / 600 text. `flex`
+ * shares the row (`+15 s`, `Skip`); `width` fixes it (the 52 dp pause). Sinks to
+ * 0.9 under the finger — the card is read from across a gym, and the press has
+ * to be visible from there too.
+ */
+export function PillControl({
+  onPress,
+  tone,
+  accessibilityLabel,
+  flex = false,
+  width,
+  children,
+}: {
+  onPress: () => void;
+  tone: PillTone;
+  accessibilityLabel: string;
+  flex?: boolean;
+  width?: number;
+  children: ReactNode;
+}) {
+  const press = usePressScale(0.9);
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={flex ? { flex: 1 } : undefined}
+    >
+      <Animated.View
+        style={{
+          height: 44,
+          width,
+          paddingHorizontal: width ? 0 : 14,
+          borderRadius: 9999,
+          overflow: 'hidden',
+          backgroundColor: tone.chipFill,
+          borderWidth: 1,
+          borderColor: tone.chipBorder,
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'row',
+          transform: press.style.transform,
+        }}
+      >
+        {tone.chipFill && tone !== FINAL ? (
+          <SpecularEdge color="rgba(236,241,238,0.12)" radius={9999} />
+        ) : null}
+        {typeof children === 'string' ? (
+          <Text
+            allowFontScaling={false}
+            numberOfLines={1}
+            style={{ color: tone.primary, fontSize: 15, fontWeight: '600' }}
+            className="tabular-nums"
+          >
+            {children}
+          </Text>
+        ) : (
+          children
+        )}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+/**
+ * The drain: a 6 dp bar, a native-driven `scaleX` from the left edge.
  *
  * On every `drainKey` it jumps to where the clock actually is and, while a
  * `drainMs` is given, runs linearly to empty over exactly that long — so it moves
@@ -325,19 +565,19 @@ export function PillLabel({
  * re-anchors it instead of letting it drift. Clamped, because a `+15` that
  * overshoots the original total cannot draw past the end of the bar.
  *
- * With reduced motion on it follows the tick instead, which is the old stepped
- * line — the honest end state of "no animation".
+ * The fill is the theme's 90° gradient on the lit card and the slab's near-black
+ * on the inverted one — a gradient on `acc` would be colour on colour.
  */
 function DrainLine({
   fraction,
   drainMs,
   drainKey,
-  color,
+  inverted,
 }: {
   fraction: number;
   drainMs: number | null;
   drainKey: string | number | null;
-  color: string;
+  inverted: boolean;
 }) {
   const motionScale = useMotionScale();
   const clamped = Math.min(1, Math.max(0, fraction));
@@ -363,22 +603,38 @@ function DrainLine({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drainKey, drainMs == null, motionScale]);
 
-  /* Without a running drain, the line is simply where the clock is. */
+  /* Without a running drain, the bar is simply where the clock is. */
   useEffect(() => {
     if (motionScale === 0 || drainMs == null) v.setValue(clamped);
   }, [clamped, drainMs, motionScale, v]);
 
   return (
-    <View className="h-[3px] w-full" style={{ backgroundColor: palette.greenDim }}>
+    <View
+      style={{
+        height: 6,
+        borderRadius: 9999,
+        overflow: 'hidden',
+        backgroundColor: inverted ? 'rgba(6,8,7,0.18)' : 'rgba(236,241,238,0.07)',
+      }}
+    >
       <Animated.View
         style={{
-          height: 3,
+          height: 6,
           width: '100%',
-          backgroundColor: color,
+          borderRadius: 9999,
+          overflow: 'hidden',
+          backgroundColor: inverted ? palette.bg : undefined,
           transformOrigin: 'left',
           transform: [{ scaleX: v }],
         }}
-      />
+      >
+        {inverted ? null : (
+          <LinearGradient
+            {...gradientBar()}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+        )}
+      </Animated.View>
     </View>
   );
 }

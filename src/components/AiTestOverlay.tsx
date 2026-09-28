@@ -37,14 +37,23 @@ import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BubblePressable } from './bubbles';
-import { COMMIT_GRADIENT, CommitMark, GlassSurface, Lamps, SpecularEdge } from './glass';
+import { CommitMark, GlassSurface, Lamps, SpecularEdge } from './glass';
 import { Icon } from './Icon';
 import { Pop, Stagger } from './motion';
 import { useIsOverlay } from './overlay';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
 import { success } from '../lib/feedback';
-import { focalType, glass, halo, palette, radius, specularHeavy, textGlow } from '../theme/tokens';
+import {
+  focalType,
+  glass,
+  gradientFill,
+  halo,
+  palette,
+  radius,
+  specularHeavy,
+  textGlow,
+} from '../theme/tokens';
 
 const INSTRUMENT = 176;
 
@@ -421,15 +430,15 @@ export function AiTestOverlay({
                 }}
               >
                 <LinearGradient
-                  colors={[...COMMIT_GRADIENT]}
+                  {...gradientFill()}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                 />
                 <SpecularEdge color={specularHeavy} radius={radius.pill} height={2} />
-                <Text numberOfLines={1} className="text-body font-semibold text-ink">
+                <Text numberOfLines={1} className="text-body font-semibold text-on-acc">
                   {ctaLabel}
                 </Text>
                 <View style={{ marginLeft: 6 }}>
-                  <Icon name="chevron-right" size={16} color={palette.ink} />
+                  <Icon name="chevron-right" size={16} color={palette.onAcc} />
                 </View>
               </BubblePressable>
             </View>

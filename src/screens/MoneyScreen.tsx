@@ -2,7 +2,7 @@
  * MoneyScreen — the balance, the window, and where it went.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ EXPENSES                                 ⟲   │
+ *   │ FINANCE                                  ⟲   │
  *   │        ( 💵 Cash )( 💳 Online )( + )          │
  *   │                   CASH                       │
  *   │                9,020 AMD                     │  ← tap to set
@@ -15,7 +15,7 @@
  *   │ │ 🚌 Transport  │ │ 🧊 Food                │ │
  *   │ │   10,300 AMD  │ │    9,360 AMD           │ │
  *   │ └───────────────┘ └────────────────────────┘ │
- *   │ ╭──────────── Add expense ───────────────╮   │
+ *   │                                        (+)   │  ← opens on Food
  *   └──────────────────────────────────────────────┘
  *
  * ── THE SUBSECTION IS THE FIRST THING ON THE SCREEN ───────────────────────
@@ -67,10 +67,18 @@
  * amount onto today. `dayInWindow` is the one answer both the ⟲ and the tile
  * use, so the day you are reading is the day you are writing.
  *
- * LONG PRESS is where the rare one went: a sheet with `Edit category` on it, and
- * with the OTHER direction — because an income into a category whose tile is
- * showing expenses is the one thing a tap can no longer express. The same
- * long-press-for-the-other-thing that the rest of the app uses to reorder.
+ * LONG PRESS is where the rare one went: straight to the category's own screen,
+ * where its name, glyph, amounts and `Archive` live. It used to be a sheet that
+ * also offered the OTHER direction, and that row stopped earning its sheet once
+ * the keypad grew its own Expense | Income control — an income into a category
+ * whose tile is showing expenses is one tap on that control now, not a menu.
+ *
+ * ── THE ROUND + OPENS ON FOOD ─────────────────────────────────────────────
+ *
+ * The floating action has no tile under it, so it has to guess, and the guess
+ * that is right most often is the category you buy something in every day
+ * (`lib/quickCategory.ts`). A null would open the keypad on whichever category
+ * happens to be first, which is right for nobody on purpose.
  *
  * ── THE CHARTS ARE A QUESTION A TOTAL CANNOT ANSWER, SO THEY LEFT ────────
  *
@@ -97,12 +105,22 @@
  *     lighting in turn. The words' colours follow it.
  *   • THE RINGS TRAVEL to their new share on a month step, a direction change or
  *     a save (`ProgressRing`), and the tiles arrive 40 ms apart.
- *   • THE BALANCE BUBBLE. Scroll the balance card away and every account's
- *     balance follows you at the top (`BalanceBubble`), while the card steps back.
+ *   • THE BALANCE BUBBLE. Scroll the balance card away (240 dp) and every
+ *     account's balance follows you at the top (`BalanceBubble`), while the card
+ *     steps back.
+ *
+ * ── MOMENTUM V3 ───────────────────────────────────────────────────────────
+ *
+ * The section is called Finance to the user now (the route key and the AI's
+ * section id stay `Expenses` — renaming a persisted key buys nothing). The
+ * selected subsection chip wears the theme GRADIENT with `onAcc` text, because
+ * a gradient is what "this is the choice in force" looks like everywhere else in
+ * v3, and ink on a light theme's c2 would vanish.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
 
@@ -130,6 +148,7 @@ import { Stagger, pressedStyle } from '../components/motion';
 import { DashedAdd, Kicker, Separator, TextButton } from '../components/primitives';
 import { ProgressRing } from '../components/ProgressRing';
 import { dayKey } from '../lib/days';
+import { quickCategoryId } from '../lib/quickCategory';
 import { tap } from '../lib/feedback';
 import { useLanguage, useT } from '../hooks/useT';
 import {
@@ -151,7 +170,16 @@ import {
 } from '../lib/money';
 import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
-import { curve, focalType, motion, palette, radius, textGlow } from '../theme/tokens';
+import {
+  curve,
+  focalType,
+  gradientFill,
+  motion,
+  palette,
+  radius,
+  textGlow,
+  tint,
+} from '../theme/tokens';
 import type { ID } from '../types/models';
 
 interface MoneyScreenProps {
@@ -254,8 +282,6 @@ export function MoneyScreen({
   const setAccountId = (next: ID | null) => onChangeWindow({ accountId: next });
   const [picking, setPicking] = useState(false);
   const [naming, setNaming] = useState(false);
-  /** The category a long press is asking about. Null = no sheet. */
-  const [holding, setHolding] = useState<MoneyCategory | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
   /** The subsection a long press is asking about, and the one being renamed. */
   const [heldAccount, setHeldAccount] = useState<MoneyAccount | null>(null);
@@ -301,7 +327,9 @@ export function MoneyScreen({
   const onDay = dayInWindow(interval, anchor, dayKey(new Date()));
 
   /* The bubble, and the balance card stepping back while it is up. */
-  const { visible: bubbleUp, onScroll, scrollRef, scrollToTop } = useBubbleOnScroll();
+  // Finance's own line: 240 is where the balance card has left the top bar, and
+  // the 40 below it is the hysteresis every bubble keeps.
+  const { visible: bubbleUp, onScroll, scrollRef, scrollToTop } = useBubbleOnScroll(240, 200);
   const heroRecede = useHeroRecede(bubbleUp);
   /* Every live account's balance, for the bubble — one pill each, never a sum. */
   const bubbleAccounts = useMemo(
@@ -321,12 +349,12 @@ export function MoneyScreen({
       <Lamps section="Expenses" />
 
       <SectionTopBar
-        title={t('Expenses')}
+        title={t('Finance')}
         /* `dayInWindow` rather than the anchor itself: a month's anchor is its
            1st, and nobody reading September on the 18th means "show me the
            1st". See `lib/money.ts`. */
         onOpenHistory={() => onOpenHistory(account.id, onDay)}
-        historyLabel={t('Expense history')}
+        historyLabel={t('Finance history')}
         actions={[
           {
             key: 'ai',
@@ -352,7 +380,7 @@ export function MoneyScreen({
             instead of scrolling. Chips that run out of room drop to a second
             line, which is also the only arrangement where every one of them is
             visible without a gesture. */}
-        <View className="mx-lg flex-row flex-wrap items-center justify-center">
+        <View className="mx-lg flex-row flex-wrap items-center justify-center" style={{ gap: 8 }}>
           {liveAccounts.map((row) => (
             <AccountChip
               key={row.id}
@@ -370,9 +398,9 @@ export function MoneyScreen({
             accessibilityRole="button"
             accessibilityLabel={t('Add subsection')}
             style={pressedStyle}
-            className="mb-sm h-[36px] flex-row items-center rounded-pill border border-dashed border-hairline px-md"
+            className="h-[38px] flex-row items-center rounded-pill border border-dashed border-hairline px-md"
           >
-            <Icon name="plus" size={16} color={palette.inkMuted} />
+            <Icon name="plus" size={17} color={palette.inkMuted} />
           </Pressable>
         </View>
 
@@ -385,7 +413,7 @@ export function MoneyScreen({
             currency is stated in the corner of that panel, as a label and not as
             a control — it is a setting, and it is changed where settings are. */}
         {/* THE ONE HERO ON THIS SCREEN. `lit` glass over the section's
-            brightest lamp, and the only thing here at `balance` size — 52 dp of
+            brightest lamp, and the only thing here at `balance` size — 54 dp of
             tabular numeral with the app's hero glow behind it. Nothing else on
             the screen comes near it, which is the rule the focal steps exist
             for. */}
@@ -421,7 +449,7 @@ export function MoneyScreen({
                 />
                 <Text
                   allowFontScaling={false}
-                  style={{ fontSize: 20, lineHeight: 24, marginBottom: 6 }}
+                  style={{ fontSize: 21, lineHeight: 24, marginBottom: 7 }}
                   className="ml-sm font-semibold text-ink-muted"
                 >
                   {currency}
@@ -491,7 +519,7 @@ export function MoneyScreen({
           onChange={setDirection}
         />
 
-        <View className="mx-lg mt-xl flex-row flex-wrap">
+        <View style={{ marginHorizontal: 11, marginTop: 16 }} className="flex-row flex-wrap">
           {live.map((category, index) => (
             <Stagger
               key={category.id}
@@ -507,7 +535,7 @@ export function MoneyScreen({
                 onPress={() => onAddAmount(category.id, account.id, direction, onDay)}
                 onLongPress={() => {
                   tap();
-                  setHolding(category);
+                  onOpenCategory(category.id, account.id, interval, anchor);
                 }}
               />
             </Stagger>
@@ -515,7 +543,7 @@ export function MoneyScreen({
           <View className="w-1/2 p-[5px]">
             <DashedAdd
               label={t('Add category')}
-              height={154}
+              height={160}
               radius="card"
               onPress={() => setNaming(true)}
             />
@@ -539,10 +567,12 @@ export function MoneyScreen({
         onTop={scrollToTop}
       />
 
+      {/* Round, and it opens on Food — see the header. */}
       <FloatingAction
+        round
         label={direction === 'expense' ? t('Add expense') : t('Add income')}
         icon="plus"
-        onPress={() => onAddAmount(null, account.id, direction, onDay)}
+        onPress={() => onAddAmount(quickCategoryId(live), account.id, direction, onDay)}
       />
 
       {picking ? (
@@ -655,45 +685,6 @@ export function MoneyScreen({
           onDismiss={() => setNaming(false)}
         />
       ) : null}
-
-      {/* The long press. Two rows: the category's own screen — where the name,
-          the glyph, its amounts and `Archive` all live — and the direction a tap
-          can no longer reach. */}
-      {holding ? (
-        <Sheet title={`${holding.glyph}  ${holding.name}`} onDismiss={() => setHolding(null)}>
-          <View className="overflow-hidden rounded-surface bg-surface-alt">
-            <SheetRow
-              label={t('Edit category')}
-              detail={t('Its name, its glyph and everything recorded in it')}
-              onPress={() => {
-                const category = holding;
-                setHolding(null);
-                onOpenCategory(category.id, account.id, interval, anchor);
-              }}
-            />
-            <Separator inset={16} />
-            <SheetRow
-              label={direction === 'expense' ? t('Add an income here') : t('Add an expense here')}
-              detail={
-                direction === 'expense'
-                  ? t('A tap on the tile adds an expense')
-                  : t('A tap on the tile adds an income')
-              }
-              onPress={() => {
-                const category = holding;
-                setHolding(null);
-                onAddAmount(
-                  category.id,
-                  account.id,
-                  direction === 'expense' ? 'income' : 'expense',
-                  onDay,
-                );
-              }}
-            />
-          </View>
-          <TextButton label={t('Cancel')} onPress={() => setHolding(null)} />
-        </Sheet>
-      ) : null}
     </View>
   );
 }
@@ -751,9 +742,9 @@ function DirectionSelector({
           borderRadius: 18,
           overflow: 'hidden',
           borderWidth: 1,
-          borderColor: 'rgba(63,169,108,0.30)',
-          backgroundColor: 'rgba(63,169,108,0.14)',
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: 'rgba(63,169,108,0.18)' }],
+          borderColor: tint(0.3),
+          backgroundColor: tint(0.14),
+          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.18) }],
         }}
       >
         <SpecularEdge color="rgba(236,241,238,0.12)" radius={18} />
@@ -819,7 +810,7 @@ function DirectionHalf({
       <View>
         <Text
           allowFontScaling={false}
-          style={{ fontSize: 10, letterSpacing: 1.1 }}
+          style={{ fontSize: 11.5, letterSpacing: 1.1 }}
           className="font-semibold uppercase text-ink-muted"
         >
           {label}
@@ -827,7 +818,7 @@ function DirectionHalf({
         <Animated.View style={{ position: 'absolute', top: 0, left: 0, opacity: lit }}>
           <Text
             allowFontScaling={false}
-            style={{ fontSize: 10, letterSpacing: 1.1 }}
+            style={{ fontSize: 11.5, letterSpacing: 1.1 }}
             className="font-semibold uppercase text-ink"
           >
             {label}
@@ -907,9 +898,9 @@ function NudgeChevron({
 /**
  * One subsection, as a pill. Glyph and name; the balance is the big figure above.
  *
- * Selected is the same `green` fill the segmented controls use — this is a choice
- * that changes what the rest of the screen contains, so it has to be readable
- * without a tap.
+ * Selected wears the theme gradient with `onAcc` text — this is a choice that
+ * changes what the rest of the screen contains, so it has to be readable without
+ * a tap. 38 tall, the glow at c2 30 %; the others sit quiet at ink 3.5 %.
  */
 function AccountChip({
   account,
@@ -930,7 +921,7 @@ function AccountChip({
       onLongPress={onLongPress}
       delayLongPress={280}
       radius="pill"
-      bubbleColor={selected ? palette.ink : palette.greenBright}
+      bubbleColor={selected ? palette.onAcc : palette.greenBright}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
       accessibilityLabel={account.name}
@@ -938,9 +929,7 @@ function AccountChip({
       style={(state) => [
         pressedStyle(state),
         {
-          marginBottom: 8,
-          marginRight: 8,
-          height: 36,
+          height: 38,
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: 16,
@@ -953,21 +942,26 @@ function AccountChip({
               // The chip that is selected decides what every figure under it
               // means, so it is the one lit control on the screen. `boxShadow`
               // and not `elevation` — see `theme/tokens.ts`.
-              backgroundColor: palette.green,
-              borderColor: 'rgba(63,169,108,0.5)',
-              boxShadow: [
-                { offsetX: 0, offsetY: 0, blurRadius: 14, color: 'rgba(63,169,108,0.3)' },
-              ],
+              borderColor: tint(0.5),
+              boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.3) }],
             }
           : { backgroundColor: 'rgba(236,241,238,0.035)', borderColor: 'transparent' },
       ]}
     >
-      {selected ? <SpecularEdge color="rgba(236,241,238,0.2)" radius={radius.pill} /> : null}
+      {selected ? (
+        <>
+          <LinearGradient
+            {...gradientFill()}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <SpecularEdge color="rgba(236,241,238,0.2)" radius={radius.pill} />
+        </>
+      ) : null}
       <Text className="mr-sm text-label">{account.glyph}</Text>
       <Text
         className={[
           'text-label',
-          selected ? 'font-semibold text-ink' : 'font-medium text-ink-muted',
+          selected ? 'font-semibold text-on-acc' : 'font-medium text-ink-muted',
         ].join(' ')}
       >
         {account.name}
@@ -1014,11 +1008,11 @@ function CategoryTile({
       radius={radius.card}
       accessibilityRole="button"
       accessibilityLabel={`${category.name}, ${formatMoney(total, currency)}`}
-      accessibilityHint={t('Long press to edit the category')}
+      accessibilityHint={t('Tap to add an amount here. Long press to open the category.')}
       style={(state) => [
         pressedStyle(state),
         {
-          height: 154,
+          height: 160,
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: 12,
@@ -1026,7 +1020,7 @@ function CategoryTile({
           overflow: 'hidden',
           borderWidth: 1,
           backgroundColor: 'rgba(236,241,238,0.055)',
-          borderColor: total > 0 ? 'rgba(63,169,108,0.24)' : 'rgba(236,241,238,0.06)',
+          borderColor: total > 0 ? tint(0.24) : 'rgba(236,241,238,0.06)',
           boxShadow:
             total > 0
               ? [{ offsetX: 0, offsetY: 10, blurRadius: 26, color: 'rgba(0,0,0,0.42)' }]
@@ -1038,13 +1032,13 @@ function CategoryTile({
         color={total > 0 ? 'rgba(236,241,238,0.1)' : 'rgba(236,241,238,0.06)'}
         radius={radius.card}
       />
-      <ProgressRing fraction={share} size={60} stroke={3.5}>
-        <Text className="text-[23px]">{category.glyph}</Text>
+      <ProgressRing fraction={share} size={62} stroke={3.5}>
+        <Text className="text-[24px]">{category.glyph}</Text>
       </ProgressRing>
       <Text
         numberOfLines={1}
         allowFontScaling={false}
-        style={{ fontSize: 13, marginTop: 11 }}
+        style={{ fontSize: 14.5, marginTop: 11 }}
         className="w-full text-center font-medium text-ink"
       >
         {category.name}
@@ -1052,15 +1046,15 @@ function CategoryTile({
       {/* The total ROLLS to a new month's figure, with the ring beside it. */}
       <RollingNumber
         value={formatMoney(total, currency)}
-        lineHeight={17}
+        lineHeight={19}
         duration={700}
         containerStyle={{ marginTop: 2 }}
-        style={{ fontSize: 13 }}
+        style={{ fontSize: 14.5 }}
         className={['font-semibold', total > 0 ? 'text-green-bright' : 'text-ink-faint'].join(' ')}
       />
       <Text
         allowFontScaling={false}
-        style={{ fontSize: 10, letterSpacing: 1.1 }}
+        style={{ fontSize: 11.5, letterSpacing: 1.1 }}
         className="mt-[2px] font-semibold uppercase tabular-nums text-ink-faint"
       >
         {total > 0 ? `${Math.round(share * 100)}%` : '\u2014'}

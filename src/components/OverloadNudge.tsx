@@ -1,5 +1,5 @@
 /**
- * OverloadNudge — the app's one tinted surface.
+ * OverloadNudge — the stalled-weight offer, a line inside the exercise card.
  *
  *   ╭────────────────────────────────────────────────╮
  *   │ ↗  SAME +25 KG FOR 23 DAYS · 5 SESSIONS        │
@@ -21,8 +21,11 @@
  *     the engine judges the count where there is no weight, and this card names
  *     whichever axis the verdict is about. Time says "2:00", never "120".
  *
- * No border: `green-wash` against `bg` is a quiet enough step on its own, and a
- * hairline would make an advisory card look like a control.
+ * MOMENTUM v3 took it out of its own `green-wash` card and into the exercise
+ * card, as a line under the plan: the fact in `acc` beside `trending-up`, then
+ * the offer. A tinted box inside a glass card is a card inside a card, and the
+ * accent colour already says "this is the app talking". `Use` is the theme's
+ * gradient with `onAcc` text, the same filled control every commit is.
  */
 
 import { Pressable, Text, View } from 'react-native';
@@ -32,7 +35,9 @@ import { describeCount, type OverloadVerdict } from '../lib/progressiveOverload'
 import type { CountUnit, LoadMode, UnitSystem } from '../types/models';
 import { countUnitLabel, formatWeight, unitLabel } from '../lib/units';
 import { useLanguage, useT } from '../hooks/useT';
-import { palette } from '../theme/tokens';
+import { LinearGradient } from 'expo-linear-gradient';
+
+import { gradientFill, palette } from '../theme/tokens';
 import { Icon } from './Icon';
 
 interface OverloadNudgeProps {
@@ -101,35 +106,66 @@ export function OverloadNudge({
   };
 
   return (
-    <View className="mx-lg mb-sm flex-row items-center rounded-surface bg-green-wash py-[14px] pl-lg pr-[14px]">
-      <Icon name="trending-up" size={16} color={palette.greenBright} />
-
-      <View className="ml-md flex-1">
-        <Text className="text-micro font-semibold uppercase tabular-nums text-green-bright">
+    <View className="mt-sm">
+      {/* The fact, in `acc` with `trending-up` — the design's one line under the
+          plan. It wraps to a second line rather than clipping: the day count
+          and the session count are the argument, and both have to be read. */}
+      <View className="flex-row items-start" style={{ gap: 6 }}>
+        <View style={{ marginTop: 0 }}>
+          <Icon name="trending-up" size={16} color={palette.acc} />
+        </View>
+        <Text
+          numberOfLines={2}
+          style={{ fontSize: 11.5, lineHeight: 16, letterSpacing: 1.1 }}
+          className="flex-1 font-semibold uppercase tabular-nums text-acc"
+        >
           {fact}
         </Text>
-        <Text className="mt-xs text-body font-semibold tabular-nums text-ink">{suggestion}</Text>
       </View>
 
-      <Pressable
-        onPress={handleAccept}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={t('{suggestion} — apply to every remaining set', { suggestion })}
-        className="ml-md h-[36px] items-center justify-center rounded-pill bg-green px-lg"
-      >
-        <Text className="text-label font-semibold text-ink">{t('Use')}</Text>
-      </Pressable>
+      {/* The offer, under it: the number, `Use` on the gradient, and `×`. */}
+      <View className="mt-[6px] flex-row items-center pl-[22px]">
+        <Text
+          style={{ fontSize: 15, lineHeight: 20 }}
+          className="flex-1 font-semibold tabular-nums text-ink"
+        >
+          {suggestion}
+        </Text>
 
-      <Pressable
-        onPress={onDismiss}
-        hitSlop={12}
-        accessibilityRole="button"
-        accessibilityLabel={t('Dismiss suggestion')}
-        className="h-[36px] w-[28px] items-center justify-center"
-      >
-        <Icon name="x" size={14} color={palette.greenBright} />
-      </Pressable>
+        <Pressable
+          onPress={handleAccept}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t('{suggestion} — apply to every remaining set', { suggestion })}
+          style={{
+            marginLeft: 12,
+            height: 34,
+            paddingHorizontal: 16,
+            borderRadius: 9999,
+            overflow: 'hidden',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <LinearGradient
+            {...gradientFill()}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <Text style={{ color: palette.onAcc }} className="text-label font-semibold">
+            {t('Use')}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={onDismiss}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={t('Dismiss suggestion')}
+          className="h-[34px] w-[30px] items-center justify-center"
+        >
+          <Icon name="x" size={14} color={palette.inkMuted} />
+        </Pressable>
+      </View>
     </View>
   );
 }

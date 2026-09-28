@@ -143,7 +143,7 @@ export function CategoryDetailScreen({
   return (
     <View className="flex-1 bg-bg">
       <StatusBar style="light" />
-      <ScreenHeader kicker={t('Expenses')} onBack={leave} bordered={false} />
+      <ScreenHeader kicker={t('Finance')} onBack={leave} bordered={false} />
 
       <ScrollView
         className="flex-1"

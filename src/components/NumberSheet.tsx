@@ -19,14 +19,16 @@
  *
  * The keyboard is opened on mount and the current value is selected, so the first
  * keystroke replaces it: nobody opens this to append a digit.
+ *
+ * The chrome is `SheetFrame`'s — the same floating pane, handle and animated
+ * exits as every other sheet — rather than a docked copy of its own.
  */
 
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View } from 'react-native';
 
 import { useT } from '../hooks/useT';
-import { palette } from '../theme/tokens';
+import { SheetCancel, SheetFrame, SheetTitle } from './Sheet';
 import { FieldWell, PrimaryButton } from './primitives';
 
 interface NumberSheetProps {
@@ -59,7 +61,6 @@ export function NumberSheet({
   onCancel,
 }: NumberSheetProps) {
   const t = useT();
-  const insets = useSafeAreaInsets();
   // Defaulted here rather than in the parameter list, because the default is a
   // translation and a parameter default is evaluated before the hook can run.
   const save = confirmLabel ?? t('Save');
@@ -74,46 +75,38 @@ export function NumberSheet({
   const valid = Number.isFinite(parsed) && parsed >= min;
 
   return (
-    <View className="absolute inset-0" accessibilityViewIsModal>
-      <Pressable
-        onPress={onCancel}
-        accessibilityRole="button"
-        accessibilityLabel={keep}
-        className="flex-1"
-        style={{ backgroundColor: palette.scrim }}
-      />
+    <SheetFrame onDismiss={onCancel} dismissLabel={keep}>
+      <SheetTitle>{title}</SheetTitle>
+      {body ? (
+        <Text style={{ marginTop: 10, fontSize: 15.5, lineHeight: 23, color: '#AEB9B3' }}>
+          {body}
+        </Text>
+      ) : null}
 
-      <View
-        style={{ paddingBottom: insets.bottom + 16 }}
-        className="rounded-t-surface border-t border-t-hairline bg-surface px-lg pt-xl"
-      >
-        <Text className="text-title font-medium text-ink">{title}</Text>
-        {body ? <Text className="mt-sm text-body text-ink-muted">{body}</Text> : null}
-
-        <View className="mt-lg">
-          <FieldWell
-            value={text}
-            onChangeText={setText}
-            keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
-            autoFocus
-            selectAllOnFocus
-            placeholder={String(min)}
-            accessibilityLabel={title}
-          />
-        </View>
-
-        <View className="mt-xl">
-          {/* Inert rather than hidden while the field holds nothing usable: a
-              button that vanishes as you delete a digit is a moving target. */}
-          <PrimaryButton
-            label={save}
-            variant={valid ? 'primary' : 'ghost'}
-            onPress={valid ? () => onConfirm(parsed) : () => {}}
-          />
-          <View className="h-sm" />
-          <PrimaryButton label={keep} variant="ghost" onPress={onCancel} />
-        </View>
+      <View className="mt-lg">
+        <FieldWell
+          value={text}
+          onChangeText={setText}
+          keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
+          autoFocus
+          selectAllOnFocus
+          lit
+          placeholder={String(min)}
+          accessibilityLabel={title}
+        />
       </View>
-    </View>
+
+      <View className="mt-xl">
+        {/* Inert rather than hidden while the field holds nothing usable: a
+            button that vanishes as you delete a digit is a moving target. */}
+        <PrimaryButton
+          label={save}
+          variant={valid ? 'primary' : 'ghost'}
+          onPress={valid ? () => onConfirm(parsed) : () => {}}
+        />
+        <View className="h-sm" />
+        <SheetCancel label={keep} onDismiss={onCancel} variant="ghost" />
+      </View>
+    </SheetFrame>
   );
 }

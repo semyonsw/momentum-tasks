@@ -37,6 +37,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 
 import { celebrate } from '../lib/feedback';
+import { palette, tint } from '../theme/tokens';
 
 const COUNT = 14;
 const DURATION = 900;
@@ -84,8 +85,8 @@ function Spark({ index }: { index: number }) {
         height: 6,
         width: 6,
         borderRadius: 9999,
-        backgroundColor: '#3FA96C',
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 10, color: 'rgba(63,169,108,0.9)' }],
+        backgroundColor: palette.greenBright,
+        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 10, color: tint(0.9) }],
         opacity: run.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 1, 0] }),
         transform: [
           { translateX: run.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },

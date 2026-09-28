@@ -820,6 +820,7 @@ export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
 
       {confirming === 'history' ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Delete all workout history?')}
           body={t(
             'All {count} finished {workouts} go, and so do the sets in them — which is what the prefills and the overload suggestions read. This cannot be undone.',

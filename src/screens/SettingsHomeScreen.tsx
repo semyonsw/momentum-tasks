@@ -1,24 +1,32 @@
 /**
- * SettingsHomeScreen — three doors, one export, one import, one reset.
+ * SettingsHomeScreen — the look, three doors, one export, one import, one reset.
  *
  *   ┌──────────────────────────────────────────────┐
  *   │ SETTINGS                            РУ  EN   │
+ *   │ APPEARANCE                                   │
+ *   │ ┌──────────────────────────────────────────┐ │
+ *   │ │ ▓▓▓▓▓▓▓ Fintech Lime ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ ◐  │ │  ← the live gradient
+ *   │ │ PRESETS  [▓▓ Lime ✓] [▓▓ Emerald]        │ │
+ *   │ │          [▓▓ …     ] [▓▓ …      ]        │ │
+ *   │ │ Custom · pick your own three   ● ● ●     │ │
+ *   │ └──────────────────────────────────────────┘ │
  *   │ SECTIONS                                     │
  *   │ ┌──────────────────────────────────────────┐ │
- *   │ │ Workout settings                       › │ │
- *   │ │ Daily tasks settings                   › │ │
- *   │ │ Expenses settings                      › │ │
+ *   │ │ ▣ Workout settings                     › │ │
+ *   │ │ ▣ Daily tasks settings                 › │ │
+ *   │ │ ▣ Finance settings                     › │ │
  *   │ └──────────────────────────────────────────┘ │
- *   │ EVERYTHING, IN ONE FILE                      │
- *   │ ┌──────────────────────────────────────────┐ │
- *   │ │ Last backup                 2 days ago   │ │
- *   │ │ Back up automatically    Every 7 days    │ │
- *   │ │ Back up now                              │ │
- *   │ │ Export everything                        │ │
- *   │ │ Replace everything from a file           │ │
- *   │ │ Reset every setting to its default       │ │
- *   │ └──────────────────────────────────────────┘ │
+ *   │ AI · EVERYTHING, IN ONE FILE · reset         │
  *   └──────────────────────────────────────────────┘
+ *
+ * ── APPEARANCE FIRST, AND WHY ─────────────────────────────────────────────
+ *
+ * The theme is the one setting that changes every screen at once, and the only
+ * one whose effect can be SEEN from here — so it leads, as a preview of itself
+ * rather than as a row naming it. A preset is one tap. Custom's three dots open
+ * `ColorPickerSheet`, which writes nothing until `Apply`: a theme change remounts
+ * the whole app, and a picker that wrote per tap would close itself under the
+ * thumb. The theme names are data in `lib/theme.ts` and go through `t()` here.
  *
  * ── THREE ROWS AT THE TOP, AND WHY THEY ARE THE WHOLE STRUCTURE ────────────
  *
@@ -58,12 +66,16 @@
  * section root, which is where somebody who cannot read the app will look.
  */
 
-import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, ScrollView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 
+import { ColorPickerSheet } from '../components/ColorPickerSheet';
 import { ConfirmSheet } from '../components/ConfirmSheet';
-import { Icon, type IconName } from '../components/Icon';
+import { Icon } from '../components/Icon';
+import { MaterialSymbol, type SymbolName } from '../components/MaterialSymbol';
+import { FADE_ON, RunningText } from '../components/RunningText';
 import { LanguageToggle, SectionTopBar } from '../components/SectionTopBar';
 import { BubblePressable } from '../components/bubbles';
 import {
@@ -101,7 +113,8 @@ import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_NAMES, type Language } from '../li
 import { applyBackup, currentSnapshot, exportBackupText } from '../state/dataTransfer';
 import { SuccessPopup } from '../components/SuccessPopup';
 import { SETTING_LIMITS, useSettings } from '../state/settingsStore';
-import { danger, halo, palette, radius } from '../theme/tokens';
+import { THEME_PRESETS, themeColors, themeName, type ThemePreset } from '../lib/theme';
+import { ai, danger, gradientBar, palette, radius, tint } from '../theme/tokens';
 
 /** A file that has been read and understood, waiting for a yes. */
 interface PendingImport {
@@ -160,6 +173,8 @@ export function SettingsHomeScreen({
   };
   const [pending, setPending] = useState<PendingImport | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  /** Which of Custom's three dots has its picker open. */
+  const [picking, setPicking] = useState<0 | 1 | 2 | null>(null);
   /** A picker is open or a file is being read. Stops a second tap racing it. */
   const [busy, setBusy] = useState(false);
 
@@ -304,7 +319,7 @@ export function SettingsHomeScreen({
     }
   };
 
-  const asking = pending != null || confirmingReset;
+  const asking = pending != null || confirmingReset || picking != null;
 
   return (
     <View className="flex-1 bg-bg">
@@ -335,48 +350,99 @@ export function SettingsHomeScreen({
           showsVerticalScrollIndicator={false}
           scrollEnabled={!asking}
         >
-          <Kicker className="mx-lg mb-sm">{t('Sections')}</Kicker>
-          {/* The three rows that ARE the app, each behind its own section's
-              mark: the routine list, the tick, and the symbol amounts are counted
-              in. The badge is what makes this list read as a map.
+          {/* APPEARANCE — see the file header for why it leads. */}
+          <Kicker className="mx-lg mb-kicker-gap">{t('Appearance')}</Kicker>
+          <GlassSurface tier="card" radius={radius.card} shadow="e1" flat className="mx-lg">
+            <View style={{ padding: 14 }}>
+              <ThemePreview name={t(themeName(settings.themeId))} />
+              <Text
+                allowFontScaling={false}
+                style={{ marginTop: 14, fontSize: 12, letterSpacing: 1.1 }}
+                className="font-semibold uppercase text-ink-faint"
+              >
+                {t('Presets')}
+              </Text>
+              {/* Two columns, as rows of pairs: a flex-wrap grid cannot give
+                  two cards an exact half each with an 8 dp gutter between. */}
+              <View style={{ marginTop: 8, gap: 8 }}>
+                {pairs(THEME_PRESETS).map((pair) => (
+                  <View key={pair[0].id} className="flex-row" style={{ gap: 8 }}>
+                    {pair.map((preset) => (
+                      <PresetCard
+                        key={preset.id}
+                        preset={preset}
+                        selected={settings.themeId === preset.id}
+                        onPress={() => {
+                          if (settings.themeId === preset.id) return;
+                          tap();
+                          settings.setTheme(preset.id);
+                        }}
+                      />
+                    ))}
+                  </View>
+                ))}
+              </View>
+              <CustomCard
+                colors={settings.customColors}
+                selected={settings.themeId === 'custom'}
+                onSelect={() => {
+                  if (settings.themeId === 'custom') return;
+                  tap();
+                  settings.setTheme('custom');
+                }}
+                onPickDot={(index) => {
+                  tap();
+                  setPicking(index);
+                }}
+              />
+            </View>
+          </GlassSurface>
+          <Text
+            allowFontScaling={false}
+            style={{ marginTop: 8, fontSize: 14, lineHeight: 20 }}
+            className="mx-lg text-ink-faint"
+          >
+            {t(
+              'The three colours tint the buttons, the rings, the lit cards and the light behind every section. The AI button keeps its own colours so it always stands out.',
+            )}
+          </Text>
 
-              ONE card now, split by hairlines inset 64 so they start where the
-              words do — the motion pass's reading of it: three panes stacked with
-              air between them read as three separate things competing with the
-              hero below, and these are one map of the app. */}
+          <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Sections')}</Kicker>
+          {/* The three rows that ARE the app, each behind its own section's
+              mark — the same Material Symbol the nav bar draws for it. The
+              badge is what makes this list read as a map.
+
+              ONE card, split by hairlines inset 68 so they start where the
+              words do: three panes stacked with air between them read as three
+              separate things, and these are one map of the app. */}
           <GlassSurface tier="card" radius={radius.row} shadow="e1" flat className="mx-lg">
             <SectionRow
               label={t('Workout settings')}
               hint={t('Rest, plates, weekly targets')}
-              icon="routines"
+              symbol="fitness_center"
               onPress={onOpenWorkoutSettings}
             />
-            <View className="ml-[64px] h-hairline bg-hairline" />
+            <View className="ml-[68px] h-hairline bg-hairline" />
             <SectionRow
               label={t('Daily tasks settings')}
               hint={t('The automatic tick')}
-              icon="check"
+              symbol="task_alt"
               onPress={onOpenTaskSettings}
             />
-            <View className="ml-[64px] h-hairline bg-hairline" />
+            <View className="ml-[68px] h-hairline bg-hairline" />
             <SectionRow
-              label={t('Expenses settings')}
+              label={t('Finance settings')}
               hint={t('What amounts are counted in')}
-              icon="money"
+              symbol="account_balance_wallet"
               onPress={onOpenMoneySettings}
             />
           </GlassSurface>
-          <Text className="mx-lg mt-sm text-label text-ink-faint">
-            {t(
-              'Each one holds only what its own section reads. Rest, plates and weekly targets are training; the automatic tick is the daily tasks; what amounts are counted in is the expenses.',
-            )}
-          </Text>
 
           {/* THE ASSISTANT, between the sections it reads and the general
               block. One row, whose second line is the one fact about it that
               matters — whether a key has passed its test — and a lit dot when
               it has. */}
-          <Kicker className="mx-lg mb-sm mt-xxl">{t('AI')}</Kicker>
+          <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('AI')}</Kicker>
           <AiSettingsRow onPress={onOpenAiSettings} />
 
           {/* ----------------------------------------------------------
@@ -394,7 +460,7 @@ export function SettingsHomeScreen({
               is a granted directory, and the app's own sandbox dies with the app —
               which is one of the exact events a backup exists to survive. So the
               row states which of the two facts is missing. */}
-          <Kicker className="mx-lg mb-sm mt-xxl">{t('Everything, in one file')}</Kicker>
+          <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Everything, in one file')}</Kicker>
 
           {/* THE HERO. The one fact on this screen anybody opens it to check —
               how old the last copy is — at a size nothing else here comes near.
@@ -404,8 +470,8 @@ export function SettingsHomeScreen({
             tier="lit"
             radius={radius.card}
             className="mx-lg mb-sm"
-            tint="rgba(63,169,108,0.10)"
-            borderColor="rgba(63,169,108,0.24)"
+            tint={tint(0.1)}
+            borderColor={tint(0.24)}
             style={{
               boxShadow: [{ offsetX: 0, offsetY: 10, blurRadius: 28, color: 'rgba(0,0,0,0.44)' }],
             }}
@@ -415,7 +481,7 @@ export function SettingsHomeScreen({
               <Text
                 allowFontScaling={false}
                 numberOfLines={1}
-                style={{ fontSize: 26, lineHeight: 30, letterSpacing: -0.8 }}
+                style={{ fontSize: 28, lineHeight: 32, letterSpacing: -0.8 }}
                 className="mt-xs font-semibold tabular-nums text-ink"
               >
                 {describeBackupAge(settings.lastBackupAt, undefined, language)}
@@ -512,7 +578,7 @@ export function SettingsHomeScreen({
             style={(state) => [
               pressedStyle(state),
               {
-                marginTop: 26,
+                marginTop: 22,
                 marginHorizontal: 16,
                 paddingVertical: 14,
                 paddingHorizontal: 16,
@@ -525,14 +591,14 @@ export function SettingsHomeScreen({
           >
             <Text
               allowFontScaling={false}
-              style={{ fontSize: 13, color: danger }}
+              style={{ fontSize: 14.5, color: danger }}
               className="font-medium"
             >
               {t('Reset every setting to its default')}
             </Text>
             <Text
               allowFontScaling={false}
-              style={{ fontSize: 12, lineHeight: 16 }}
+              style={{ fontSize: 13.5, lineHeight: 18 }}
               className="mt-[2px] text-ink-faint"
             >
               {t('Nothing you have logged is touched.')}
@@ -552,7 +618,7 @@ export function SettingsHomeScreen({
 
           <Text className="mx-lg mt-md text-label text-ink-faint">
             {t(
-              'A backup is plain JSON, so you can read it, keep it anywhere, and move it to another phone. It holds all three sections — training, the daily tasks and the expenses — and every setting.',
+              'A backup is plain JSON, so you can read it, keep it anywhere, and move it to another phone. It holds all three sections — training, the daily tasks and the finance — and every setting.',
             )}{' '}
             {t('Your AI chats and past chats travel with it too; the AI key never does.')}{' '}
             <Text className="text-ink-muted">{t('Replace everything')}</Text>{' '}
@@ -578,13 +644,16 @@ export function SettingsHomeScreen({
           label={
             settings.autoBackupFolderUri == null ? t('Choose a backup folder') : t('Back up now')
           }
+          round
           variant="ghost"
+          symbol="cloud_upload"
           onPress={() => void backUpNow()}
         />
       )}
 
       {pending ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Replace everything with this file?')}
           body={[
             t('{file} holds {counts}.', {
@@ -605,6 +674,7 @@ export function SettingsHomeScreen({
 
       {confirmingReset ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Reset every setting?')}
           body={t(
             'Every duration, switch, target and default across all three sections goes back to how it shipped, and your bodyweight is cleared. Your exercises, routines, history, tasks and amounts are untouched.',
@@ -620,6 +690,20 @@ export function SettingsHomeScreen({
         />
       ) : null}
 
+      {picking != null ? (
+        <ColorPickerSheet
+          index={picking}
+          colors={settings.customColors}
+          onDismiss={() => setPicking(null)}
+          onDone={(hex) => {
+            const index = picking;
+            setPicking(null);
+            // The one write, and it remounts the app: see `ColorPickerSheet`.
+            useSettings.getState().setCustomColor(index, hex);
+          }}
+        />
+      ) : null}
+
       {popup ? (
         <SuccessPopup title={popup.title} detail={popup.detail} onDone={() => setPopup(null)} />
       ) : null}
@@ -628,7 +712,306 @@ export function SettingsHomeScreen({
 }
 
 /* ------------------------------------------------------------------ */
+/* Appearance                                                          */
+/* ------------------------------------------------------------------ */
 
+/** A list in twos, for the two-column preset grid. */
+function pairs<T>(list: readonly T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += 2) out.push(list.slice(i, i + 2));
+  return out;
+}
+
+/** The CSS a designer would write for the current theme — shown, not used. */
+function cssFor(colors: readonly [string, string, string]): string {
+  return `linear-gradient(90deg, ${colors[0]} 0%, ${colors[1]} 50%, ${colors[2]} 100%)`;
+}
+
+/**
+ * The live theme as a 96 dp bar: the 90° gradient, a sheen crossing it every
+ * 4 s, the name, and the gradient written out. The sheen is the one moving
+ * thing in the card, and it is what makes the bar read as the app's light
+ * rather than as a colour sample.
+ */
+function ThemePreview({ name }: { name: string }) {
+  const themeId = useSettings((s) => s.themeId);
+  const custom = useSettings((s) => s.customColors);
+  const [width, setWidth] = useState(0);
+  const sheen = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // `sheen` keyframes: -120% → 220% of its own width over the first 60% of
+    // 4 s, then out of sight until the next pass.
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sheen, {
+          toValue: 1,
+          duration: 2400,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.delay(1600),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [sheen]);
+
+  const sheenWidth = width * 0.35;
+  return (
+    <View
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      style={{
+        height: 96,
+        borderRadius: 18,
+        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 30, color: tint(0.35) }],
+      }}
+    >
+      <LinearGradient
+        {...gradientBar()}
+        style={{
+          flex: 1,
+          borderRadius: 18,
+          overflow: 'hidden',
+          paddingVertical: 14,
+          paddingHorizontal: 16,
+          justifyContent: 'space-between',
+        }}
+      >
+        {width > 0 ? (
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: -10,
+              bottom: -10,
+              left: 0,
+              width: sheenWidth,
+              transform: [
+                {
+                  translateX: sheen.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-1.2 * sheenWidth, 2.2 * sheenWidth],
+                  }),
+                },
+                { skewX: '-20deg' },
+              ],
+            }}
+          >
+            <LinearGradient
+              colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0)']}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={{ flex: 1 }}
+            />
+          </Animated.View>
+        ) : null}
+        <View className="flex-row items-center justify-between">
+          <Text
+            allowFontScaling={false}
+            numberOfLines={1}
+            style={{ flex: 1, fontSize: 19, fontWeight: '600', color: palette.onAcc }}
+          >
+            {name}
+          </Text>
+          <MaterialSymbol name="palette" size={24} color={palette.onAcc} filled />
+        </View>
+        <RunningText
+          text={cssFor(themeColors(themeId, custom))}
+          allowFontScaling={false}
+          fadeColor={FADE_ON.gradient}
+          style={{ fontFamily: 'monospace', fontSize: 11.5, color: palette.onAcc, opacity: 0.88 }}
+        />
+      </LinearGradient>
+    </View>
+  );
+}
+
+/** Behind a preset card's tag: the card's own wash over the outer card glass. */
+const PRESET_FADE = { selected: '#1A1E1D', idle: '#151918' } as const;
+
+/**
+ * One preset: its own gradient (not the live theme's — that is the point of a
+ * swatch), the name, and a running tag. The selected one is outlined in the
+ * accent and ticked.
+ */
+function PresetCard({
+  preset,
+  selected,
+  onPress,
+}: {
+  preset: ThemePreset;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const t = useT();
+  const name = t(preset.name);
+  return (
+    <BubblePressable
+      onPress={onPress}
+      radius={16}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${name}. ${t(preset.tag)}`}
+      style={(state) => [
+        pressedStyle(state),
+        {
+          flex: 1,
+          minWidth: 0,
+          padding: 10,
+          borderRadius: 16,
+          borderWidth: 1.5,
+          borderColor: selected ? palette.acc : 'rgba(236,241,238,0.045)',
+          backgroundColor: selected ? 'rgba(236,241,238,0.06)' : 'rgba(236,241,238,0.028)',
+        },
+      ]}
+    >
+      <View
+        style={{
+          height: 36,
+          borderRadius: 12,
+          ...(selected
+            ? {
+                boxShadow: [
+                  {
+                    offsetX: 0,
+                    offsetY: 0,
+                    blurRadius: 16,
+                    color: `${preset.colors[1]}66`,
+                  },
+                ],
+              }
+            : {}),
+        }}
+      >
+        <LinearGradient
+          colors={[...preset.colors]}
+          locations={[0, 0.5, 1]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={{ flex: 1, borderRadius: 12 }}
+        />
+      </View>
+      <View className="flex-row items-center" style={{ marginTop: 8, gap: 6 }}>
+        <Text
+          allowFontScaling={false}
+          numberOfLines={1}
+          style={{ flex: 1, fontSize: 14.5, lineHeight: 19 }}
+          className="font-medium text-ink"
+        >
+          {name}
+        </Text>
+        {selected ? <Icon name="check" size={16} color={palette.acc} /> : null}
+      </View>
+      <RunningText
+        text={t(preset.tag)}
+        allowFontScaling={false}
+        fadeColor={selected ? PRESET_FADE.selected : PRESET_FADE.idle}
+        containerStyle={{ marginTop: 1 }}
+        style={{ fontSize: 12.5, lineHeight: 16, color: '#6B766F' }}
+      />
+    </BubblePressable>
+  );
+}
+
+/**
+ * Custom: three dots that each open the picker, and a strip of the three.
+ * Solid accent outline when it is the theme in use; dashed when it is only an
+ * offer. Tapping the card itself (not a dot) selects it as it stands.
+ */
+function CustomCard({
+  colors,
+  selected,
+  onSelect,
+  onPickDot,
+}: {
+  colors: readonly [string, string, string];
+  selected: boolean;
+  onSelect: () => void;
+  onPickDot: (index: 0 | 1 | 2) => void;
+}) {
+  const t = useT();
+  return (
+    <BubblePressable
+      onPress={onSelect}
+      radius={16}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${t('Custom')}. ${t('Pick your own three colours')}`}
+      style={(state) => [
+        pressedStyle(state),
+        {
+          marginTop: 8,
+          padding: 12,
+          borderRadius: 16,
+          borderWidth: 1.5,
+          borderStyle: selected ? 'solid' : 'dashed',
+          borderColor: selected ? palette.acc : 'rgba(236,241,238,0.12)',
+          backgroundColor: selected ? 'rgba(236,241,238,0.06)' : 'rgba(236,241,238,0.028)',
+        },
+      ]}
+    >
+      <View className="flex-row items-center" style={{ gap: 10 }}>
+        <View className="flex-1" style={{ minWidth: 0 }}>
+          <Text
+            allowFontScaling={false}
+            numberOfLines={1}
+            style={{ fontSize: 15.5, lineHeight: 20 }}
+            className="font-medium text-ink"
+          >
+            {t('Custom')}
+          </Text>
+          <Text
+            allowFontScaling={false}
+            numberOfLines={2}
+            style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: '#6B766F' }}
+          >
+            {t('Pick your own three colours')}
+          </Text>
+        </View>
+        {([0, 1, 2] as const).map((index) => (
+          <BubblePressable
+            key={index}
+            onPress={() => onPickDot(index)}
+            radius="pill"
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel={t('Colour {n}', { n: index + 1 })}
+            style={(state) => [
+              pressedStyle(state),
+              {
+                width: 38,
+                height: 38,
+                borderRadius: radius.pill,
+                backgroundColor: colors[index],
+                borderWidth: 2,
+                borderColor: 'rgba(236,241,238,0.22)',
+                boxShadow: [
+                  { offsetX: 0, offsetY: 0, blurRadius: 12, color: `${colors[index]}55` },
+                ],
+              },
+            ]}
+          />
+        ))}
+      </View>
+      <LinearGradient
+        colors={[...colors]}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={{ marginTop: 10, height: 30, borderRadius: 10 }}
+      />
+    </BubblePressable>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * The assistant's door. Its dot and its line are the AI's own fixed colours
+ * (`tokens.ai`), not the theme's — the footnote above promises the AI keeps
+ * its colours so it always stands out, and this row is where that is seen.
+ */
 function AiSettingsRow({ onPress }: { onPress: () => void }) {
   const t = useT();
   const status = useAi((s) => s.status);
@@ -655,12 +1038,12 @@ function AiSettingsRow({ onPress }: { onPress: () => void }) {
         ]}
       >
         <View style={{ marginRight: 12 }}>
-          <SparkleCircle size={40} />
+          <SparkleCircle size={44} />
         </View>
         <View className="flex-1 pr-md">
           <Text
             allowFontScaling={false}
-            style={{ fontSize: 16, lineHeight: 21 }}
+            style={{ fontSize: 17, lineHeight: 22 }}
             className="font-medium text-ink"
           >
             {t('AI assistant')}
@@ -673,44 +1056,45 @@ function AiSettingsRow({ onPress }: { onPress: () => void }) {
                   height: 8,
                   borderRadius: 4,
                   marginRight: 6,
-                  backgroundColor: palette.greenBright,
-                  boxShadow: [...halo.repeating],
+                  backgroundColor: ai.ready,
+                  boxShadow: [
+                    { offsetX: 0, offsetY: 0, blurRadius: 10, color: 'rgba(244,114,182,0.7)' },
+                  ],
                 }}
               />
             ) : null}
             <Text
               allowFontScaling={false}
               numberOfLines={1}
-              style={{ fontSize: 12 }}
-              className={ready ? 'text-green-bright' : 'text-ink-faint'}
+              style={{ fontSize: 13.5, color: ready ? ai.subline[1] : palette.inkFaint }}
             >
               {line}
             </Text>
           </View>
         </View>
-        <Icon name="chevron-right" size={16} color={palette.inkFaint} />
+        <Icon name="chevron-right" size={18} color={palette.inkFaint} />
       </BubblePressable>
     </GlassSurface>
   );
 }
 
 /**
- * One of the three doors at the top, as a row of the one card.
+ * One of the three doors, as a row of the one card.
  *
- * The leading tile is the section's own mark, in the same green square the tab
- * it belongs to would draw — which is what makes this list read as the app's map
- * rather than as three more rows. A door inside a section does not get one;
- * there is nothing for it to be a mark of.
+ * The leading tile is the section's own Material Symbol in a 40 dp lit square —
+ * the glyph the nav bar and the Home tile draw for it — which is what makes
+ * this list read as the app's map rather than as three more rows. A door inside
+ * a section does not get one; there is nothing for it to be a mark of.
  */
 function SectionRow({
   label,
   hint,
-  icon,
+  symbol,
   onPress,
 }: {
   label: string;
   hint: string;
-  icon: IconName;
+  symbol: SymbolName;
   onPress: () => void;
 }) {
   return (
@@ -731,39 +1115,39 @@ function SectionRow({
       >
         <View
           style={{
-            height: 36,
-            width: 36,
+            height: 40,
+            width: 40,
             marginRight: 12,
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: 12,
+            borderRadius: 13,
             overflow: 'hidden',
             borderWidth: 1,
-            borderColor: 'rgba(63,169,108,0.24)',
-            backgroundColor: 'rgba(63,169,108,0.16)',
+            borderColor: tint(0.24),
+            backgroundColor: tint(0.16),
           }}
         >
-          <SpecularEdge color="rgba(236,241,238,0.12)" radius={12} />
-          <Icon name={icon} size={16} color={palette.greenBright} />
+          <SpecularEdge color="rgba(236,241,238,0.12)" radius={13} />
+          <MaterialSymbol name={symbol} size={22} color={palette.acc} filled />
         </View>
-        <View className="flex-1 pr-md">
+        <View className="flex-1 pr-md" style={{ minWidth: 0 }}>
           <Text
             allowFontScaling={false}
-            style={{ fontSize: 16, lineHeight: 21 }}
+            numberOfLines={1}
+            style={{ fontSize: 17, lineHeight: 22 }}
             className="font-medium text-ink"
           >
             {label}
           </Text>
-          <Text
+          <RunningText
+            text={hint}
             allowFontScaling={false}
-            numberOfLines={1}
-            style={{ fontSize: 12 }}
-            className="mt-[2px] text-ink-faint"
-          >
-            {hint}
-          </Text>
+            fadeColor={FADE_ON.card}
+            containerStyle={{ marginTop: 2 }}
+            style={{ fontSize: 13.5, lineHeight: 18, color: '#6B766F' }}
+          />
         </View>
-        <Icon name="chevron-right" size={16} color={palette.inkFaint} />
+        <Icon name="chevron-right" size={18} color={palette.inkFaint} />
       </BubblePressable>
     </View>
   );

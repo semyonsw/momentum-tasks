@@ -11,10 +11,10 @@
  *   SwitchRow   label, optional hint, and the app's one switch
  *   FieldWell   a 56-high text field with a green caret
  *   NumericWell a 96-high labelled number
- *   Segmented   a 44-high pill of equal segments
+ *   Segmented   a 52-high track of equal segments under one sliding lit pane
  *   SelectChip  a 36-high pill that is on or off, for sets of options
  *   Toggle      52 × 32, the only switch in the app
- *   PrimaryButton / GhostButton — 56 high, full width
+ *   PrimaryButton — 56 high, full width: gradient, ghost, or danger
  *
  * These exist so a new screen is a composition rather than a new set of
  * spacing decisions. Every value here is from the design; none of them are
@@ -33,18 +33,20 @@
  * control here.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, Text, TextInput, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from './Pressable';
 
 import { useT } from '../hooks/useT';
 import { tap } from '../lib/feedback';
 import { useMotionScale } from '../hooks/useMotionScale';
-import { curve, glass, motion, palette } from '../theme/tokens';
+import { curve, danger, glass, gradientFill, motion, palette, tint } from '../theme/tokens';
 import { BubblePressable } from './bubbles';
 import { Icon } from './Icon';
 import { pressedStyle } from './motion';
 import { FADE_ON, RunningText } from './RunningText';
+import { SlidingThumb } from './SlidingThumb';
 
 /* ------------------------------------------------------------------ */
 /* Structure                                                           */
@@ -66,8 +68,11 @@ export function Kicker({
   tone?: 'faint' | 'green' | 'dim';
   className?: string;
 }) {
+  // v3's kicker grey (#6B766F) sits one step above `ink-faint`: at 12.5 dp and
+  // uppercase the old #57615C was below what reads over the lamps. Margins stay
+  // the caller's — the section rhythm is `mt-kicker mb-kicker-gap` (22 / 10).
   const toneClass =
-    tone === 'green' ? 'text-green-bright' : tone === 'dim' ? 'text-green-dim' : 'text-ink-faint';
+    tone === 'green' ? 'text-acc' : tone === 'dim' ? 'text-green-dim' : 'text-[#6B766F]';
   return (
     <Text
       className={['text-micro font-semibold uppercase tabular-nums', toneClass, className].join(
@@ -472,6 +477,7 @@ export function FieldWell({
   selectAllOnFocus = false,
   keyboardType = 'default',
   onBlur,
+  lit = false,
   accessibilityLabel,
 }: {
   value: string;
@@ -502,17 +508,37 @@ export function FieldWell({
    * `Pull, short` would rebuild the screen under the keyboard. See `HistoryScreen`.
    */
   onBlur?: () => void;
+  /**
+   * The v3 sheet field: an 18 corner, a c2 edge and a 4 dp glow ring round it,
+   * 17 / 500 text. For the one field a sheet exists to fill — a new task's name.
+   */
+  lit?: boolean;
   accessibilityLabel: string;
 }) {
-  const box = [
-    'h-row flex-row items-center border border-hairline bg-surface-alt',
-    shape === 'pill' ? 'rounded-pill px-[20px]' : 'rounded-surface px-lg',
-  ].join(' ');
-  const textClass = size === 'title' ? 'text-title font-medium text-ink' : 'text-body text-ink';
+  const box = lit
+    ? 'h-row flex-row items-center rounded-[18px] border px-lg'
+    : [
+        'h-row flex-row items-center border border-hairline bg-surface-alt',
+        shape === 'pill' ? 'rounded-pill px-[20px]' : 'rounded-surface px-lg',
+      ].join(' ');
+  const litStyle = lit
+    ? {
+        borderColor: tint(0.34),
+        backgroundColor: 'rgba(236,241,238,0.04)',
+        boxShadow: [
+          { offsetX: 0, offsetY: 0, blurRadius: 0, spreadDistance: 4, color: tint(0.09) },
+        ],
+      }
+    : undefined;
+  const textClass = lit
+    ? 'text-[17px] font-medium text-ink'
+    : size === 'title'
+      ? 'text-title font-medium text-ink'
+      : 'text-body text-ink';
 
   if (onChangeText) {
     return (
-      <View className={box}>
+      <View className={box} style={litStyle}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -623,9 +649,15 @@ export function NumericWell({
 /* ------------------------------------------------------------------ */
 
 /**
- * Segmented control. Two to four options, equal width, selected on a `green`
- * fill. Used where the choice changes what the rest of the screen contains —
- * load mode, counted-in — so it has to be visible without a tap.
+ * Segmented control. Two to four options, equal width, and ONE lit pane under
+ * the chosen one that slides between them (`SlidingThumb`) — the v3 "Repeats"
+ * control, which every segmented choice in the app now is.
+ *
+ * Lit rather than filled: a `c2` fill with text on it needs `onAcc`, and on the
+ * light themes (Aurora, Fintech Lime) that is near-black text on a bright slab
+ * sitting in a dark sheet — the loudest thing on the screen for what is only a
+ * setting. A tinted pane with the label in `acc` says "this one" at the same
+ * volume as every other lit surface.
  */
 export function Segmented<T extends string>({
   options,
@@ -638,40 +670,62 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
   accessibilityLabel: string;
 }) {
+  const [width, setWidth] = useState(0);
+  const index = options.findIndex((option) => option.value === value);
   return (
     <View
       accessibilityRole="radiogroup"
       accessibilityLabel={accessibilityLabel}
-      style={{ backgroundColor: glass.sunken }}
-      className="h-hit flex-row items-center rounded-pill border border-hairline p-xs"
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width - 2)}
+      style={{
+        flexDirection: 'row',
+        padding: 4,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: 'rgba(236,241,238,0.05)',
+        backgroundColor: glass.sunken,
+      }}
     >
+      <SlidingThumb
+        index={index < 0 ? null : index}
+        count={options.length}
+        trackWidth={width}
+        duration={380}
+        bezier={SEGMENT_CURVE}
+        style={{
+          borderRadius: 14,
+          borderWidth: 1,
+          backgroundColor: tint(0.16),
+          borderColor: tint(0.34),
+          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.22) }],
+        }}
+      />
       {options.map((option) => {
         const selected = option.value === value;
         return (
           <BubblePressable
             key={option.value}
             onPress={() => onChange(option.value)}
-            radius="pill"
-            bubbleColor={selected ? palette.ink : palette.greenBright}
+            radius={14}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
             accessibilityLabel={option.label}
             style={pressedStyle}
-            className={[
-              'h-[36px] flex-1 items-center justify-center rounded-pill',
-              selected ? 'bg-green' : '',
-            ].join(' ')}
+            className="h-[42px] flex-1 items-center justify-center rounded-[14px] px-xs"
           >
             <Text
-              /* A segment is a fixed-height pill in a fixed-width row, and the
-                 labels are translated — `Выбранные дни` is half again the width
-                 of `Chosen days`. Wrapping would push the control past 36 and
-                 break the row it sits in, so it clips instead. */
+              /* A segment is a fixed-height cell in a fixed-width row, and the
+                 labels are translated — `Выбрать дни` is half again the width
+                 of `Pick days`. Wrapping would push the control past 42 and
+                 break the row it sits in, so it shrinks a little, then clips. */
               numberOfLines={1}
-              className={[
-                'text-label',
-                selected ? 'font-semibold text-ink' : 'font-medium text-ink-muted',
-              ].join(' ')}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={{
+                fontSize: 13.5,
+                fontWeight: '600',
+                color: selected ? palette.acc : palette.inkMuted,
+              }}
             >
               {option.label}
             </Text>
@@ -682,14 +736,18 @@ export function Segmented<T extends string>({
   );
 }
 
+/** `(.34,1.3,.64,1)` — the thumb's landing, from the design's `schedThumb`. */
+const SEGMENT_CURVE = [0.34, 1.3, 0.64, 1] as const;
+
 /**
  * A chip that is on or off.
  *
  * `Segmented` is for two to four mutually-exclusive options that must ALL be
  * visible without a tap. Chips are for the other shape: a SET of options — the
  * fourteen muscle groups, the five movement clusters — too many to sit in one
- * fixed-width control, and often more than one selected at a time. Same green
- * fill for "on" so the two controls read as the same system.
+ * fixed-width control, and often more than one selected at a time. "On" is the
+ * same lit tint as the segmented thumb so the two controls read as one system,
+ * and for the same reason: a solid `c2` chip is unreadable on the light themes.
  *
  * 36 high inside a 44 row (the parent supplies the padding), which keeps the
  * thumb target legal while letting a row of chips stay one line tall.
@@ -708,23 +766,21 @@ export function SelectChip({
       onPress={onPress}
       hitSlop={6}
       radius="pill"
-      bubbleColor={selected ? palette.ink : palette.greenBright}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={label}
       style={(state) => [
         pressedStyle(state),
-        selected ? undefined : { backgroundColor: glass.sunken },
+        selected
+          ? { backgroundColor: tint(0.16), borderColor: tint(0.3) }
+          : { backgroundColor: glass.sunken, borderColor: 'rgba(236,241,238,0.06)' },
       ]}
-      className={[
-        'mb-sm mr-sm h-[36px] items-center justify-center rounded-pill px-lg',
-        selected ? 'bg-green' : 'border border-hairline',
-      ].join(' ')}
+      className="mb-sm mr-sm h-[36px] items-center justify-center rounded-pill border px-lg"
     >
       <Text
         className={[
           'text-label',
-          selected ? 'font-semibold text-ink' : 'font-medium text-ink-muted',
+          selected ? 'font-semibold text-acc' : 'font-medium text-ink-muted',
         ].join(' ')}
       >
         {label}
@@ -732,6 +788,9 @@ export function SelectChip({
     </BubblePressable>
   );
 }
+
+/** `(.34,1.56,.64,1)` over 320 ms — the design's `remKnob`. */
+const KNOB_MS = 320;
 
 /**
  * The only switch in the app, and it earns it: `Requires weight` visibly adds
@@ -748,25 +807,27 @@ export function Toggle({
   accessibilityLabel: string;
 }) {
   /*
-   * THE KNOB SLIDES, 20 dp on the overshoot curve over 260 ms, and the track and
-   * the knob cross-fade to their other colours as it goes. The write happens on
-   * the press; the slide follows it — the switch is never the thing holding up
-   * the setting it controls.
+   * THE KNOB SLIDES, 20 dp on the overshoot curve over 320 ms, while the track
+   * cross-fades from the off wash to the theme's c1 → c2 gradient. The write
+   * happens on the press; the slide follows it — the switch is never the thing
+   * holding up the setting it controls.
    *
-   * Colours cross-fade as stacked layers because a colour cannot animate on the
-   * native driver and an opacity can; the whole switch stays off the JS thread.
+   * The gradient is a stacked layer whose OPACITY animates, because a colour
+   * cannot animate on the native driver and an opacity can; the whole switch
+   * stays off the JS thread.
    */
   const scale = useMotionScale();
   const on = useRef(new Animated.Value(value ? 1 : 0)).current;
   useEffect(() => {
     Animated.timing(on, {
       toValue: value ? 1 : 0,
-      duration: 260 * scale,
+      duration: KNOB_MS * scale,
       easing: curve(motion.pop),
       useNativeDriver: true,
     }).start();
   }, [on, scale, value]);
   const fade = on.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
+  const fill = gradientFill();
 
   return (
     <Pressable
@@ -779,7 +840,7 @@ export function Toggle({
       accessibilityLabel={accessibilityLabel}
       hitSlop={8}
       style={pressedStyle}
-      className="h-[32px] w-[52px] justify-center rounded-pill"
+      className="h-[32px] w-[52px] justify-center overflow-hidden rounded-pill"
     >
       <View
         pointerEvents="none"
@@ -790,7 +851,7 @@ export function Toggle({
           right: 0,
           bottom: 0,
           borderRadius: 9999,
-          backgroundColor: palette.hairline,
+          backgroundColor: 'rgba(236,241,238,0.1)',
         }}
       />
       <Animated.View
@@ -802,52 +863,49 @@ export function Toggle({
           right: 0,
           bottom: 0,
           borderRadius: 9999,
-          backgroundColor: palette.green,
+          overflow: 'hidden',
           opacity: fade,
         }}
-      />
+      >
+        <LinearGradient
+          colors={[fill.colors[0], fill.colors[1]]}
+          start={fill.start}
+          end={fill.end}
+          style={{ flex: 1 }}
+        />
+      </Animated.View>
       <Animated.View
         pointerEvents="none"
         style={{
-          width: 24,
-          height: 24,
-          marginLeft: 4,
+          width: 26,
+          height: 26,
+          marginLeft: 3,
           borderRadius: 9999,
+          backgroundColor: palette.ink,
+          boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 6, color: 'rgba(0,0,0,0.4)' }],
           transform: [{ translateX: on.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }],
         }}
-      >
-        <View
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            borderRadius: 9999,
-            backgroundColor: palette.inkFaint,
-          }}
-        />
-        <Animated.View
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            borderRadius: 9999,
-            backgroundColor: palette.ink,
-            opacity: fade,
-          }}
-        />
-      </Animated.View>
+      />
     </Pressable>
   );
 }
 
+/** The design's ghost pill: a wash of ink on a slightly stronger edge. */
+const GHOST_FILL = 'rgba(236,241,238,0.07)';
+const GHOST_EDGE = 'rgba(236,241,238,0.10)';
+/** Text on the danger fill — the design's near-black red. */
+const ON_DANGER = '#1A0B08';
+
 /**
- * 56-high full-width button. `primary` is a green fill with ink at 600;
- * `ghost` is surface-alt on a hairline. There is no third kind, and no red:
- * a destructive action is stated as a fact in the same green as every other.
+ * 56-high full-width pill.
+ *
+ *   primary  the theme gradient (135deg c1 → c2 55% → c3), text in `onAcc`
+ *   ghost    ink wash on a 10% edge, ink text
+ *   danger   `#E0735F` with its own glow — for an answer that deletes or
+ *            throws something away, and nothing else
+ *
+ * `onAcc` rather than ink on the gradient is load-bearing: the light themes
+ * put a near-white c2 under the label, and ink on it vanished.
  */
 export function PrimaryButton({
   label,
@@ -856,33 +914,68 @@ export function PrimaryButton({
 }: {
   label: string;
   onPress: () => void;
-  variant?: 'primary' | 'ghost';
+  variant?: 'primary' | 'ghost' | 'danger';
 }) {
   const primary = variant === 'primary';
+  const isDanger = variant === 'danger';
+  const textColor = primary ? palette.onAcc : isDanger ? ON_DANGER : palette.ink;
   return (
     <BubblePressable
       onPress={onPress}
       radius="pill"
-      // On a green fill the green ring is invisible; ink is the only colour on
-      // that surface that can be seen leaving.
-      bubbleColor={primary ? palette.ink : palette.greenBright}
+      // On a filled pill the accent ring is invisible; the fill's own text
+      // colour is the one that can be seen leaving.
+      bubbleColor={primary || isDanger ? textColor : palette.greenBright}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={pressedStyle}
-      className={[
-        'h-row items-center justify-center rounded-pill',
-        primary ? 'bg-green' : 'border border-hairline bg-surface-alt',
-      ].join(' ')}
+      style={(state) => [
+        pressedStyle(state),
+        primary
+          ? { boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 24, color: tint(0.3) }] }
+          : isDanger
+            ? {
+                backgroundColor: danger,
+                boxShadow: [
+                  { offsetX: 0, offsetY: 0, blurRadius: 24, color: 'rgba(224,115,95,0.35)' },
+                ],
+              }
+            : { backgroundColor: GHOST_FILL, borderColor: GHOST_EDGE, borderWidth: 1 },
+      ]}
+      className="h-row items-center justify-center rounded-pill px-lg"
     >
+      {primary ? <GradientFill /> : null}
       <Text
         // Same reason as `Segmented`: the label carries a routine name and a
         // translation, and this button is a fixed 56 high.
         numberOfLines={1}
-        className={`text-body ${primary ? 'font-semibold text-ink' : 'font-medium text-ink'}`}
+        style={{ color: textColor, fontSize: 16, fontWeight: '600' }}
       >
         {label}
       </Text>
     </BubblePressable>
+  );
+}
+
+/**
+ * The theme gradient as the background of a pill. Absolutely positioned — the
+ * first child of whatever it fills.
+ */
+export function GradientFill({ radius = 9999 }: { radius?: number }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: radius,
+        overflow: 'hidden',
+      }}
+    >
+      <LinearGradient {...gradientFill()} style={{ flex: 1 }} />
+    </View>
   );
 }
 

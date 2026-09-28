@@ -64,7 +64,7 @@ import { celebrate, commit, tap } from '../lib/feedback';
 import { useAi } from '../state/aiStore';
 import { useDebriefs } from '../state/debriefStore';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
-import { curve, glass, motion, palette, radius } from '../theme/tokens';
+import { curve, glass, motion, palette, radius, tint } from '../theme/tokens';
 
 /**
  * The sheet, wherever the app is. Mounted once, beside the shell rather than in
@@ -136,9 +136,9 @@ export function DebriefCard() {
               borderRadius: radius.pill,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: 'rgba(63,169,108,0.18)',
+              backgroundColor: tint(0.18),
               borderWidth: 1,
-              borderColor: 'rgba(63,169,108,0.3)',
+              borderColor: tint(0.3),
             }}
           >
             <Icon name="edit" size={18} color={palette.greenBright} />
@@ -588,20 +588,22 @@ function Choice({
             paddingHorizontal: 16,
             borderRadius: radius.pill,
             borderWidth: 1,
-            borderColor: selected ? 'rgba(63,169,108,0.6)' : palette.hairline,
+            borderColor: selected ? tint(0.6) : palette.hairline,
             backgroundColor: selected ? palette.green : glass.sunken,
           },
         ]}
       >
         {selected ? (
           <View style={{ marginRight: 6 }}>
-            <Icon name="check" size={13} color={palette.ink} />
+            <Icon name="check" size={13} color={palette.onAcc} />
           </View>
         ) : null}
         <Text
           numberOfLines={1}
           className={
-            selected ? 'text-label font-semibold text-ink' : 'text-label font-medium text-ink-muted'
+            selected
+              ? 'text-label font-semibold text-on-acc'
+              : 'text-label font-medium text-ink-muted'
           }
         >
           {label}

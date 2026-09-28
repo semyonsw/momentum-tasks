@@ -183,7 +183,8 @@ function Cell({
           className={[
             'text-label tabular-nums',
             selected
-              ? 'font-semibold text-ink'
+              ? // On the c2 fill: `onAcc`, since ink vanishes on a light theme's c2.
+                'font-semibold text-on-acc'
               : disabled
                 ? 'text-ink-faint/40'
                 : isToday

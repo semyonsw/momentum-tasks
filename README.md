@@ -1,4 +1,4 @@
-# Workout Tracker
+# Momentum
 
 [![Install](https://img.shields.io/badge/install-one%20double--click-2b8a3e)](INSTALL.md)
 [![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-3ddc84)](INSTALL.md)
@@ -6,8 +6,10 @@
 [![Tests](https://img.shields.io/badge/tests-700%2B-1f9d55)](#tests)
 [![Storage](https://img.shields.io/badge/storage-local--first-0b7285)](#what-it-does)
 
-A minimal, local-first Android workout tracker built around one rule: **logging a
-set that repeats last session costs one tap.**
+**Train · tick · count.** A local-first Android app for three logs — training,
+daily tasks and money — behind one landing screen. It was Workout Tracker until
+2.0.0, and the training log is still built around one rule: **logging a set that
+repeats last session costs one tap.**
 
 > ### Install it
 >
@@ -25,9 +27,10 @@ set that repeats last session costs one tap.**
 - **Stack** — Expo (React Native) + TypeScript + NativeWind + Zustand. The
   finished-workout log lives in SQLite; the library, routines and settings are a
   few dozen rows and stay in AsyncStorage. No account, no server, no cloud build.
-- **Design** — near-black + a single green scale, hairlines, tabular numerals,
-  five type sizes, two radii, and exactly one shadow (under the timer). Colour
-  means one thing: progressive overload.
+- **Design** — near-black glass, tabular numerals, and a three-colour theme
+  (eight presets plus your own three; Fintech Lime by default) that tints the
+  buttons, rings, lit cards and the light behind every section. The AI keeps its
+  own colours. Dark only; animations always on.
 
 ```bash
 npm ci                   # exactly the locked tree — see BUILD_ANDROID.md

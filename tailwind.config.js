@@ -31,6 +31,14 @@ module.exports = {
       'green-dim': 'rgb(var(--green-dim) / <alpha-value>)',
       green: 'rgb(var(--green) / <alpha-value>)',
       'green-bright': 'rgb(var(--green-bright) / <alpha-value>)',
+      // THE THEME, as named stops. `green-*` above are the same variables under
+      // their old names — every one of them is derived from these three now
+      // (`lib/theme.ts`), and `App.tsx` rewrites them all when the theme changes.
+      acc: 'rgb(var(--acc) / <alpha-value>)',
+      'on-acc': 'rgb(var(--on-acc) / <alpha-value>)',
+      c1: 'rgb(var(--c1) / <alpha-value>)',
+      c2: 'rgb(var(--c2) / <alpha-value>)',
+      c3: 'rgb(var(--c3) / <alpha-value>)',
     },
     // FOUR radii, 10 / 14 / 18 / 22, and each one names what it is for rather
     // than how big it is. `surface` was the only one for a long time; the
@@ -52,9 +60,13 @@ module.exports = {
       pill: '9999px',
     },
     fontSize: {
-      micro: ['11px', { lineHeight: '14px', letterSpacing: '1.1px' }],
-      label: ['13px', { lineHeight: '18px' }],
-      body: ['16px', { lineHeight: '22px' }],
+      // Momentum's +1.5 px: the three small steps grew so the running text and
+      // the kickers read at arm's length on a bench, not just in a hand.
+      micro: ['12.5px', { lineHeight: '16px', letterSpacing: '1.1px' }],
+      label: ['14.5px', { lineHeight: '20px' }],
+      body: ['17px', { lineHeight: '23px' }],
+      // The one step between label and body: a task's name, a toast.
+      task: ['16.5px', { lineHeight: '22px' }],
       title: ['22px', { lineHeight: '28px', letterSpacing: '-0.4px' }],
       // The SIXTH size, and it exists for exactly one thing: the numbers of the
       // set that is up next (`SetRow`). Title is what every other set row reads,
@@ -107,7 +119,11 @@ module.exports = {
       lg: '16px',
       xl: '24px',
       xxl: '40px',
+      // Momentum's block rhythm: card → section kicker is 22, kicker → list 10.
+      kicker: '22px',
+      'kicker-gap': '10px',
       hit: '44px', // minimum tap target
+      bar: '46px', // a top-bar button
       // THE THREE FOCUS-MODE TARGETS. Sized for a thumb that is not aiming: the
       // phone is flat on a bench, the hand is coming from above, and the screen is
       // read from two metres. `focus-done` is the widest circle that leaves the

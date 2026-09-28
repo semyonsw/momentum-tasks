@@ -195,7 +195,7 @@ export function MoneyHistoryScreen({
     <View className="flex-1 bg-bg">
       <StatusBar style="light" />
       <ScreenHeader
-        kicker={`${t('Expense history')} · ${account.name}`}
+        kicker={`${t('Finance history')} · ${account.name}`}
         onBack={onBack}
         bordered={false}
       />

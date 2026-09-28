@@ -42,18 +42,19 @@
  * sequence's next step and the overload verdicts behind its nudge count.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { BackHandler, Text, View, useWindowDimensions } from 'react-native';
+import { runOnJS, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { Toast, type ToastAction } from '../components/glass';
-import { useOverlayOpen } from '../components/overlay';
-import { PanelEnter, SlideIn } from '../components/motion';
+import { isOverlayOpen, useOverlayOpen } from '../components/overlay';
+import { SlideIn } from '../components/motion';
 import { PrimaryButton } from '../components/primitives';
 import { Segmented } from '../components/primitives';
 import { SwipePager } from '../components/SwipePager';
-import { TabBar, type TabName } from '../components/TabBar';
+import { NavBar } from '../components/NavBar';
 import { ActiveWorkoutScreen } from '../screens/ActiveWorkoutScreen';
 import { CreateExerciseScreen } from '../screens/CreateExerciseScreen';
 import { ExerciseHistoryScreen } from '../screens/ExerciseHistoryScreen';
@@ -71,6 +72,9 @@ import { RoutineEditorScreen } from '../screens/RoutineEditorScreen';
 import { RoutineListScreen } from '../screens/RoutineListScreen';
 import { SequenceScreen } from '../screens/SequenceScreen';
 import { SettingsHomeScreen } from '../screens/SettingsHomeScreen';
+import { LandingScreen, type TileRect } from '../screens/LandingScreen';
+import { ShellStage, TRANSITION_MS, type ShellTransition } from './ShellStage';
+import { PushHost } from './PushHost';
 import { WorkoutSettingsScreen } from '../screens/WorkoutSettingsScreen';
 import { TaskSettingsScreen } from '../screens/TaskSettingsScreen';
 import { MoneySettingsScreen } from '../screens/MoneySettingsScreen';
@@ -120,7 +124,15 @@ import { dayKey } from '../lib/days';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { useToday } from '../hooks/useToday';
 import type { Direction, Interval } from '../lib/money';
-import { stepSection } from '../lib/sectionNav';
+import {
+  SECTIONS,
+  backAction,
+  stepSection,
+  swipeDecision,
+  swipeFollow,
+  type SectionTab,
+  type ShellRoute,
+} from '../lib/sectionNav';
 import { seedUser } from '../data/seed';
 import type { CompletedWorkout } from '../lib/completedWorkout';
 import type { Exercise, ID, MuscleGroup, SetHistory, UnitSystem } from '../types/models';
@@ -196,6 +208,16 @@ type Route =
   | { name: 'aiChat'; section: AiSection; prompt?: string }
   | { name: 'aiReview'; proposalId: string };
 
+/**
+ * Where the shell was standing, outside React. The tree remounts when the theme
+ * changes (`App.tsx`), and this is what lands it back on the same screen rather
+ * than on Home — see `route` in the shell.
+ */
+const remembered: { route: ShellRoute; section: SectionTab } = {
+  route: 'Home',
+  section: 'Workout',
+};
+
 /** From Save to the debrief sheet: the sparks' run, and a breath. */
 const DEBRIEF_DELAY_MS = 1500;
 
@@ -241,7 +263,35 @@ export function AppShell() {
    * has played, so coming back to the section later is not a second celebration.
    */
   const [justSaved, setJustSaved] = useState<{ id: ID; at: number } | null>(null);
-  const [tab, setTab] = useState<TabName>('Workout');
+  /**
+   * Where the shell is: Home, or one of the four sections. Home is the landing
+   * (see `screens/LandingScreen.tsx`) and not a fifth tab — it is not on the
+   * swipe row, and `tab` below is the section the rest of the shell reads, which
+   * on Home is simply the last one visited.
+   *
+   * Seeded from module scope rather than a constant, because the tree under
+   * `App.tsx` REMOUNTS when the theme changes — and a theme is chosen in
+   * Settings, where the user should still be standing when the colours land.
+   */
+  const [route, setRoute] = useState<ShellRoute>(() => remembered.route);
+  const [lastSection, setLastSection] = useState<SectionTab>(() => remembered.section);
+  const tab: SectionTab = route === 'Home' ? lastSection : route;
+  useEffect(() => {
+    remembered.route = route;
+    if (route !== 'Home') {
+      remembered.section = route;
+      setLastSection(route);
+    }
+  }, [route]);
+  /** The tile each section last grew out of, so it can shrink back into it. */
+  const tileRects = useRef<Partial<Record<SectionTab, TileRect>>>({});
+  const [transition, setTransition] = useState<ShellTransition | null>(null);
+  const progress = useSharedValue(0);
+  const swipeX = useSharedValue(0);
+  const navDrag = useSharedValue(0);
+  const covered = useSharedValue(0);
+  const [rootsVisible, setRootsVisible] = useState(true);
+  const { width: screenWidth } = useWindowDimensions();
   /**
    * A workout somebody tapped somewhere else, waiting for the training history to open
    * it and scroll to it.
@@ -427,7 +477,7 @@ export function AppShell() {
     [exercisesById, workouts],
   );
 
-  const top = stack[stack.length - 1] ?? null;
+  const currentTop = stack[stack.length - 1] ?? null;
   const push = useCallback((route: Route) => setStack((s) => [...s, route]), []);
   /**
    * Swap the top of the stack for another route.
@@ -471,8 +521,9 @@ export function AppShell() {
    * free. Pushing a screen (the month grid, a task's own screen) is not leaving,
    * so the pin survives the trip that sets it.
    */
-  const selectTab = useCallback(
-    (next: TabName) => {
+  const navigate = useCallback(
+    (next: ShellRoute, options: { from?: TileRect | null; dragFrom?: number } = {}) => {
+      if (next === route) return;
       if (tab === 'Tasks' && next !== 'Tasks') setPinnedTaskDay(null);
       /* Same rule, same reason: the window is somewhere you walked to inside the
          section, not somewhere the app should still be standing next time it is
@@ -492,10 +543,40 @@ export function AppShell() {
           direction: settings.moneyDefaultDirection,
         }));
       }
-      setTab(next);
+      /* Which of the three transitions this is, and where it grows from. */
+      const section = next === 'Home' ? (route as SectionTab) : next;
+      if (next !== 'Home' && options.from) tileRects.current[next] = options.from;
+      const kind: ShellTransition['kind'] =
+        route === 'Home' ? 'open' : next === 'Home' ? 'close' : 'slide';
+      const dir: 1 | -1 =
+        kind === 'slide' && SECTIONS.indexOf(next as SectionTab) < SECTIONS.indexOf(tab) ? -1 : 1;
+      progress.value = 0;
+      swipeX.value = 0;
+      navDrag.value = 0;
+      setTransition({
+        kind,
+        from: route,
+        to: next,
+        dir,
+        rect: tileRects.current[section] ?? null,
+        dragFrom: options.dragFrom ?? 0,
+      });
+      setRoute(next);
+      progress.value = withTiming(
+        1,
+        { duration: TRANSITION_MS, easing: Easing.linear },
+        (finished) => {
+          if (finished) runOnJS(setTransition)(null);
+        },
+      );
     },
-    [tab],
+    [navDrag, progress, route, swipeX, tab],
   );
+  /** A section by name, from anywhere — the nav bar, a swipe, a deep jump. */
+  const selectTab = useCallback((next: SectionTab) => navigate(next), [navigate]);
+  /* The jumps that land in a section from UNDER a pushed screen: nothing on
+     stage to animate, so the route just changes. */
+  const setTab = useCallback((next: SectionTab) => setRoute(next), []);
 
   /**
    * Open one finished workout, wherever the tap came from: go to the workout
@@ -565,15 +646,44 @@ export function AppShell() {
     pop();
   };
 
-  /* Android hardware back pops the stack before it leaves the app. */
+  /*
+   * ANDROID BACK, in the design's order (`lib/sectionNav.backAction`): a sheet
+   * closes itself — overlays register their own handler, later and so first —
+   * then a pushed screen pops, then a section goes Home, and Home asks for a
+   * second press within two seconds before it lets the app go.
+   *
+   * Registered ONCE, at mount, so it is always the earliest listener and every
+   * sheet and focus mode registered after it gets the press first.
+   */
+  const exitArmedAt = useRef<number | null>(null);
+  const backState = useRef({ depth: stack.length, route });
+  backState.current = { depth: stack.length, route };
+  const goHomeRef = useRef<() => void>(() => {});
+  goHomeRef.current = () => navigate('Home');
+  const armExitRef = useRef<() => void>(() => {});
+  armExitRef.current = () => setToast(t('Press back again to exit'));
   useEffect(() => {
-    if (stack.length === 0) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      leaveTop.current();
+      const action = backAction({
+        sheetOpen: isOverlayOpen(),
+        stackDepth: backState.current.depth,
+        route: backState.current.route,
+        exitArmedAt: exitArmedAt.current,
+        now: Date.now(),
+      });
+      if (action === 'closeSheet') return true;
+      if (action === 'pop') leaveTop.current();
+      else if (action === 'home') goHomeRef.current();
+      else if (action === 'armExit') {
+        exitArmedAt.current = Date.now();
+        armExitRef.current();
+      } else {
+        BackHandler.exitApp();
+      }
       return true;
     });
     return () => sub.remove();
-  }, [stack.length]);
+  }, []);
 
   /*
    * A session claims the screen exactly ONCE per session — on the render after it
@@ -958,736 +1068,824 @@ export function AppShell() {
 
   /* An AI routine stops saying so once its editor has been opened, too. */
   useEffect(() => {
-    if (top?.name === 'routineEditor') useAi.getState().markRoutineSeen(top.routineId);
-  }, [top]);
+    if (currentTop?.name === 'routineEditor') {
+      useAi.getState().markRoutineSeen(currentTop.routineId);
+    }
+  }, [currentTop]);
 
   /* ------------------------------------------------------------------ */
   /* Pushed screens                                                      */
   /* ------------------------------------------------------------------ */
 
-  if (top?.name === 'aiSettings') {
-    const route = top;
-    return (
-      <AiSettingsScreen
-        from={route.from}
-        onBack={pop}
-        onOpenChat={(section) => {
-          /* The ready screen's button: the settings screen is REPLACED by the
-             chat, so back from the chat lands where the trip began. */
-          setTab(section);
-          replaceTop({ name: 'aiChat', section, prompt: route.prompt });
-        }}
-      />
-    );
-  }
-
-  if (top?.name === 'aiChat') {
-    const route = top;
-    return (
-      <View className="flex-1">
-        <AiChatScreen
-          key={route.section}
-          section={route.section}
-          prompt={route.prompt}
-          /* Dropped from the route once sent, so coming back from the review
-             screen does not ask it a second time. */
-          onPromptSent={() => replaceTop({ name: 'aiChat', section: route.section })}
+  /*
+   * One route, as its screen. A function rather than early returns now, because
+   * the stack is drawn OVER the sections (`PushHost`) and the screen under the
+   * top one is rendered too while it peeks out of a push or an edge drag.
+   */
+  const renderPushed = (top: Route | null): ReactNode => {
+    if (top?.name === 'aiSettings') {
+      const route = top;
+      return (
+        <AiSettingsScreen
+          from={route.from}
           onBack={pop}
-          onReview={(proposalId) => push({ name: 'aiReview', proposalId })}
-          onAccept={acceptProposal}
-          onApplySequence={(messageId) => {
-            const applied = applySequence(route.section, messageId);
-            if (applied) setToast(applied.message, { label: t('Undo'), onPress: applied.undo });
+          onOpenChat={(section) => {
+            /* The ready screen's button: the settings screen is REPLACED by the
+             chat, so back from the chat lands where the trip began. */
+            setTab(section);
+            replaceTop({ name: 'aiChat', section, prompt: route.prompt });
           }}
         />
-        {toast ? (
-          <Toast key={toast.key} label={toast.text} action={toast.action} bottom={132} />
-        ) : null}
-      </View>
-    );
-  }
+      );
+    }
 
-  if (top?.name === 'aiReview') {
-    const route = top;
-    return (
-      <AiReviewScreen
-        proposalId={route.proposalId}
-        onBack={pop}
-        onAccept={() => {
-          pop();
-          acceptProposal(route.proposalId);
-        }}
-        onDiscard={() => {
-          discardProposal(route.proposalId);
-          pop();
-          setToast(t('Suggestion discarded'));
-        }}
-      />
-    );
-  }
-
-  if (top?.name === 'session') {
-    return (
-      <View className="flex-1 bg-bg">
-        {/* No TabBar. See the file header. The session slides in from the right
-            — a workout is somewhere you GO, not a section you switch to. */}
-        <SlideIn>
-          <ActiveWorkoutScreen
-            unitSystem={unitSystem}
-            /* What this workout will be saved as — `#92` in its header. One past the
-             highest ordinal in the log, the same arithmetic Home uses. */
-            workoutNumber={nextWorkoutNumber}
-            /*
-             * The plan this session was built from, so the Finish sheet can offer to
-             * update it. Absent for a session with no routine behind it, which is
-             * also the answer to "is there a plan to update".
-             */
-            routineItems={session?.routineId ? routinesById[session.routineId]?.items : undefined}
-            onAddExercise={() => push({ name: 'addExercise', routineId: null, target: 'session' })}
-            /*
-             * `Edit exercise` on the open card. The same editor the Library tab
-             * pushes, and the same route — so there is one screen that knows what an
-             * exercise is, and it does not grow a second, session-flavoured copy. The
-             * write back into the live session happens where the editor is handled
-             * (`editExercise`, below), not here.
-             */
-            onEditExercise={(exerciseId) => push({ name: 'editExercise', exerciseId })}
-            onFinish={(finished, updatePlan) => {
-              /*
-               * The one write to permanent history. Everything downstream —
-               * the training history, the prefills, the overload verdicts — reads what
-               * this stores; nothing else in the app writes a logged set.
-               *
-               * A session with nothing logged stores nothing (`saveSession` returns
-               * null), so "start a workout, change your mind, finish" leaves no row
-               * claiming a workout happened.
-               */
-              const saved = saveSession(finished);
-              /*
-               * ...and Home, which is where this lands, says so: `Workout 92 saved`,
-               * with sparks from the hero and the new row growing into Recent. The
-               * number is read AFTER the save, from the log as it now is, so it is
-               * the number History will show rather than the one predicted for it.
-               */
-              if (saved) {
-                const history = useWorkoutHistory.getState();
-                const number = workoutNumbers(history.workouts, history.numbering)[saved.id];
-                setToast(
-                  number != null ? t('Workout {number} saved', { number }) : t('Workout saved'),
-                );
-                setJustSaved({ id: saved.id, at: Date.now() });
-              }
-
-              /*
-               * ...and a few questions about how it went (`lib/debrief.ts`), if
-               * the user has not switched them off. Filed NOW, so a phone locked
-               * straight after Save still has it waiting on Home; opened a beat
-               * later, so the sparks and the toast land first and the sheet does
-               * not arrive on top of the celebration it follows.
-               */
-              if (saved && useSettings.getState().askAfterWorkout) {
-                useDebriefs.getState().offer(saved, DEBRIEF_DELAY_MS);
-              }
-              // The queue only moves when a workout from the step it is on actually
-              // gets recorded. A session with nothing logged saves nothing, and a
-              // workout from some other routine is not this step being done.
-              if (saved) advanceSequence(saved.routineId);
-
-              /*
-               * ...and the day's `Gym / Boxing` task answers itself.
-               *
-               * On the day the workout STARTED, not today: a session begun at
-               * 23:40 and finished after midnight is Tuesday's training, and the
-               * tick belongs on the square the calendar will draw it on.
-               *
-               * It never overrules a day already answered — see
-               * `tasksStore.tickAuto` — so a day marked "missed on purpose" that
-               * then turns into a workout keeps the mark the user chose.
-               */
-              if (saved) useTasks.getState().tickAuto('workout', dayKey(saved.startedAt));
-
-              /*
-               * ...and the rest of the phone is told a workout happened, if the user
-               * has switched that on and granted it.
-               *
-               * FIRE AND FORGET, deliberately: it is a `void` on a promise nobody
-               * awaits, it can fail in half a dozen ordinary ways (Health Connect not
-               * installed, permission revoked, provider gone), and none of them are
-               * worth a word on screen because the log is already on disk by this
-               * line. `lib/healthConnect.ts` has the argument for why it writes a
-               * session and nothing else.
-               */
-              if (saved && useSettings.getState().shareToHealthConnect) {
-                void writeWorkoutToHealthConnect(saved);
-              }
-
-              /*
-               * ...and every ladder that met its target moves up, one rep, without
-               * being asked.
-               *
-               * AUTOMATIC, unlike the routine's set count below it, and the
-               * difference is what the two things are: a routine is a template the
-               * user wrote, so rewriting it is a question, while a ladder is a
-               * progression they switched on precisely so it would advance on its
-               * own. A dialog asking permission to add the rep after every workout
-               * would be the app asking whether the user meant to train.
-               *
-               * `ladderOutcomes` is the whole decision — which sessions count as met,
-               * which set earns the rep, when the max itself moves — and it produces
-               * nothing at all for a session that came up short. The write goes
-               * against the row as the STORE has it rather than the snapshot the
-               * session was built from, so an exercise renamed mid-workout keeps its
-               * new name and only its ladder changes.
-               */
-              for (const outcome of ladderOutcomes(finished.entries)) {
-                const current = exercisesById[outcome.exerciseId];
-                if (!current) continue;
-                updateExercise(current.id, { ...current, ladder: outcome.after });
-              }
-
-              /*
-               * ...and only if the user asked, the plan learns what actually
-               * happened. Recomputed here rather than passed down as a list, so the
-               * write is against the routine as the STORE has it: the sheet's copy
-               * was rendered from a snapshot, and between rendering it and this line
-               * the routine could have been edited on another screen. The diff is the
-               * same pure function either way.
-               */
-              const routine = finished.routineId ? routinesById[finished.routineId] : undefined;
-              if (updatePlan && routine) {
-                const changes = plannedSetDiff(routine.items, performedSetCounts(finished.entries));
-                if (changes.length > 0) {
-                  updateRoutine(routine.id, {
-                    name: routine.name,
-                    items: applyPlannedSetDiff(routine.items, changes),
-                  });
-                }
-              }
+    if (top?.name === 'aiChat') {
+      const route = top;
+      return (
+        <View className="flex-1">
+          <AiChatScreen
+            key={route.section}
+            section={route.section}
+            prompt={route.prompt}
+            /* Dropped from the route once sent, so coming back from the review
+             screen does not ask it a second time. */
+            onPromptSent={() => replaceTop({ name: 'aiChat', section: route.section })}
+            onBack={pop}
+            onReview={(proposalId) => push({ name: 'aiReview', proposalId })}
+            onAccept={acceptProposal}
+            onApplySequence={(messageId) => {
+              const applied = applySequence(route.section, messageId);
+              if (applied) setToast(applied.message, { label: t('Undo'), onPress: applied.undo });
             }}
-            onExit={leaveSession}
           />
-        </SlideIn>
-      </View>
-    );
-  }
+          {toast ? (
+            <Toast key={toast.key} label={toast.text} action={toast.action} bottom={132} />
+          ) : null}
+        </View>
+      );
+    }
 
-  if (top?.name === 'routineEditor') {
-    const route = top;
-    const routine = routinesById[route.routineId];
-    if (!routine) return <Fallback onBack={pop} />;
-    return (
-      <RoutineEditorScreen
-        /* Keyed by the routine: `Duplicate` swaps the route to the copy with
+    if (top?.name === 'aiReview') {
+      const route = top;
+      return (
+        <AiReviewScreen
+          proposalId={route.proposalId}
+          onBack={pop}
+          onAccept={() => {
+            pop();
+            acceptProposal(route.proposalId);
+          }}
+          onDiscard={() => {
+            discardProposal(route.proposalId);
+            pop();
+            setToast(t('Suggestion discarded'));
+          }}
+        />
+      );
+    }
+
+    if (top?.name === 'session') {
+      return (
+        <View className="flex-1 bg-bg">
+          {/* No nav bar. See the file header. The session slides in from the right
+            — a workout is somewhere you GO, not a section you switch to. */}
+          <SlideIn>
+            <ActiveWorkoutScreen
+              unitSystem={unitSystem}
+              /* What this workout will be saved as — `#92` in its header. One past the
+             highest ordinal in the log, the same arithmetic Home uses. */
+              workoutNumber={nextWorkoutNumber}
+              /*
+               * The plan this session was built from, so the Finish sheet can offer to
+               * update it. Absent for a session with no routine behind it, which is
+               * also the answer to "is there a plan to update".
+               */
+              routineItems={session?.routineId ? routinesById[session.routineId]?.items : undefined}
+              onAddExercise={() =>
+                push({ name: 'addExercise', routineId: null, target: 'session' })
+              }
+              /*
+               * `Edit exercise` on the open card. The same editor the Library tab
+               * pushes, and the same route — so there is one screen that knows what an
+               * exercise is, and it does not grow a second, session-flavoured copy. The
+               * write back into the live session happens where the editor is handled
+               * (`editExercise`, below), not here.
+               */
+              onEditExercise={(exerciseId) => push({ name: 'editExercise', exerciseId })}
+              onFinish={(finished, updatePlan) => {
+                /*
+                 * The one write to permanent history. Everything downstream —
+                 * the training history, the prefills, the overload verdicts — reads what
+                 * this stores; nothing else in the app writes a logged set.
+                 *
+                 * A session with nothing logged stores nothing (`saveSession` returns
+                 * null), so "start a workout, change your mind, finish" leaves no row
+                 * claiming a workout happened.
+                 */
+                const saved = saveSession(finished);
+                /*
+                 * ...and Home, which is where this lands, says so: `Workout 92 saved`,
+                 * with sparks from the hero and the new row growing into Recent. The
+                 * number is read AFTER the save, from the log as it now is, so it is
+                 * the number History will show rather than the one predicted for it.
+                 */
+                if (saved) {
+                  const history = useWorkoutHistory.getState();
+                  const number = workoutNumbers(history.workouts, history.numbering)[saved.id];
+                  setToast(
+                    number != null ? t('Workout {number} saved', { number }) : t('Workout saved'),
+                  );
+                  setJustSaved({ id: saved.id, at: Date.now() });
+                }
+
+                /*
+                 * ...and a few questions about how it went (`lib/debrief.ts`), if
+                 * the user has not switched them off. Filed NOW, so a phone locked
+                 * straight after Save still has it waiting on Home; opened a beat
+                 * later, so the sparks and the toast land first and the sheet does
+                 * not arrive on top of the celebration it follows.
+                 */
+                if (saved && useSettings.getState().askAfterWorkout) {
+                  useDebriefs.getState().offer(saved, DEBRIEF_DELAY_MS);
+                }
+                // The queue only moves when a workout from the step it is on actually
+                // gets recorded. A session with nothing logged saves nothing, and a
+                // workout from some other routine is not this step being done.
+                if (saved) advanceSequence(saved.routineId);
+
+                /*
+                 * ...and the day's `Gym / Boxing` task answers itself.
+                 *
+                 * On the day the workout STARTED, not today: a session begun at
+                 * 23:40 and finished after midnight is Tuesday's training, and the
+                 * tick belongs on the square the calendar will draw it on.
+                 *
+                 * It never overrules a day already answered — see
+                 * `tasksStore.tickAuto` — so a day marked "missed on purpose" that
+                 * then turns into a workout keeps the mark the user chose.
+                 */
+                if (saved) useTasks.getState().tickAuto('workout', dayKey(saved.startedAt));
+
+                /*
+                 * ...and the rest of the phone is told a workout happened, if the user
+                 * has switched that on and granted it.
+                 *
+                 * FIRE AND FORGET, deliberately: it is a `void` on a promise nobody
+                 * awaits, it can fail in half a dozen ordinary ways (Health Connect not
+                 * installed, permission revoked, provider gone), and none of them are
+                 * worth a word on screen because the log is already on disk by this
+                 * line. `lib/healthConnect.ts` has the argument for why it writes a
+                 * session and nothing else.
+                 */
+                if (saved && useSettings.getState().shareToHealthConnect) {
+                  void writeWorkoutToHealthConnect(saved);
+                }
+
+                /*
+                 * ...and every ladder that met its target moves up, one rep, without
+                 * being asked.
+                 *
+                 * AUTOMATIC, unlike the routine's set count below it, and the
+                 * difference is what the two things are: a routine is a template the
+                 * user wrote, so rewriting it is a question, while a ladder is a
+                 * progression they switched on precisely so it would advance on its
+                 * own. A dialog asking permission to add the rep after every workout
+                 * would be the app asking whether the user meant to train.
+                 *
+                 * `ladderOutcomes` is the whole decision — which sessions count as met,
+                 * which set earns the rep, when the max itself moves — and it produces
+                 * nothing at all for a session that came up short. The write goes
+                 * against the row as the STORE has it rather than the snapshot the
+                 * session was built from, so an exercise renamed mid-workout keeps its
+                 * new name and only its ladder changes.
+                 */
+                for (const outcome of ladderOutcomes(finished.entries)) {
+                  const current = exercisesById[outcome.exerciseId];
+                  if (!current) continue;
+                  updateExercise(current.id, { ...current, ladder: outcome.after });
+                }
+
+                /*
+                 * ...and only if the user asked, the plan learns what actually
+                 * happened. Recomputed here rather than passed down as a list, so the
+                 * write is against the routine as the STORE has it: the sheet's copy
+                 * was rendered from a snapshot, and between rendering it and this line
+                 * the routine could have been edited on another screen. The diff is the
+                 * same pure function either way.
+                 */
+                const routine = finished.routineId ? routinesById[finished.routineId] : undefined;
+                if (updatePlan && routine) {
+                  const changes = plannedSetDiff(
+                    routine.items,
+                    performedSetCounts(finished.entries),
+                  );
+                  if (changes.length > 0) {
+                    updateRoutine(routine.id, {
+                      name: routine.name,
+                      items: applyPlannedSetDiff(routine.items, changes),
+                    });
+                  }
+                }
+              }}
+              onExit={leaveSession}
+            />
+          </SlideIn>
+        </View>
+      );
+    }
+
+    if (top?.name === 'routineEditor') {
+      const route = top;
+      const routine = routinesById[route.routineId];
+      if (!routine) return <Fallback onBack={pop} />;
+      return (
+        <RoutineEditorScreen
+          /* Keyed by the routine: `Duplicate` swaps the route to the copy with
            `replaceTop`, and without a key React reused the editor — its draft name
            and items still the ORIGINAL's, which the next Save wrote over the copy. */
-        key={routine.id}
-        routine={routine}
-        exercisesById={exercisesById}
-        /* The whole library, for the die — see `RoutineEditorScreenProps`. */
-        library={exercises}
-        defaultRestSeconds={restSecondsBetweenSets}
-        isNew={route.isNew}
-        /*
-         * The rest row on a routine item edits the EXERCISE, so it writes to the
-         * library here rather than into the routine draft — there is nothing about
-         * it in the draft to save. Same shape as the removal above it: an edit that
-         * could be lost by backing out would be the only one on that screen that
-         * lies about what it did.
-         */
-        onPatchExercise={(exerciseId, fn) => {
-          const current = exercisesById[exerciseId];
-          if (current) updateExercise(exerciseId, fn(current));
-        }}
-        onBack={() => handleLeaveEditor(route)}
-        onSave={(draft) => {
-          updateRoutine(routine.id, draft);
-          pop();
-        }}
-        /*
-         * Both of these navigate, and this screen is rebuilt from the store when it
-         * comes back — so the working draft is committed on the way out. Without
-         * it, adding an exercise threw away a name that had just been typed while
-         * keeping the exercise, because `appendToRoutine` writes to the store and
-         * the name only lived in the screen. See the editor's file header.
-         */
-        onOpenItem={(item, draft) => {
-          updateRoutine(routine.id, draft);
-          push({ name: 'exerciseHistory', exerciseId: item.exerciseId });
-        }}
-        onAddExercise={(draft) => {
-          updateRoutine(routine.id, draft);
-          push({ name: 'addExercise', routineId: routine.id });
-        }}
-        /* Removing an exercise writes through immediately — see the editor. */
-        onCommit={(draft) => updateRoutine(routine.id, draft)}
-        /*
-         * The draft is written back BEFORE the copy is taken, so the copy is of
-         * what is on screen and not of what was on disk. Then the editor is
-         * REPLACED by one pointed at the copy — pushed rather than swapped would
-         * leave the original underneath, and backing out of the copy would land on
-         * the routine the user has just finished with.
-         */
-        onDuplicate={(draft) => {
-          updateRoutine(routine.id, draft);
-          const copy = duplicateRoutine(routine.id);
-          if (copy) replaceTop({ name: 'routineEditor', routineId: copy.id });
-        }}
-        onDelete={() => {
-          deleteRoutine(routine.id);
-          pop();
-        }}
-      />
-    );
-  }
+          key={routine.id}
+          routine={routine}
+          exercisesById={exercisesById}
+          /* The whole library, for the die — see `RoutineEditorScreenProps`. */
+          library={exercises}
+          defaultRestSeconds={restSecondsBetweenSets}
+          isNew={route.isNew}
+          /*
+           * The rest row on a routine item edits the EXERCISE, so it writes to the
+           * library here rather than into the routine draft — there is nothing about
+           * it in the draft to save. Same shape as the removal above it: an edit that
+           * could be lost by backing out would be the only one on that screen that
+           * lies about what it did.
+           */
+          onPatchExercise={(exerciseId, fn) => {
+            const current = exercisesById[exerciseId];
+            if (current) updateExercise(exerciseId, fn(current));
+          }}
+          onBack={() => handleLeaveEditor(route)}
+          onSave={(draft) => {
+            updateRoutine(routine.id, draft);
+            pop();
+          }}
+          /*
+           * Both of these navigate, and this screen is rebuilt from the store when it
+           * comes back — so the working draft is committed on the way out. Without
+           * it, adding an exercise threw away a name that had just been typed while
+           * keeping the exercise, because `appendToRoutine` writes to the store and
+           * the name only lived in the screen. See the editor's file header.
+           */
+          onOpenItem={(item, draft) => {
+            updateRoutine(routine.id, draft);
+            push({ name: 'exerciseHistory', exerciseId: item.exerciseId });
+          }}
+          onAddExercise={(draft) => {
+            updateRoutine(routine.id, draft);
+            push({ name: 'addExercise', routineId: routine.id });
+          }}
+          /* Removing an exercise writes through immediately — see the editor. */
+          onCommit={(draft) => updateRoutine(routine.id, draft)}
+          /*
+           * The draft is written back BEFORE the copy is taken, so the copy is of
+           * what is on screen and not of what was on disk. Then the editor is
+           * REPLACED by one pointed at the copy — pushed rather than swapped would
+           * leave the original underneath, and backing out of the copy would land on
+           * the routine the user has just finished with.
+           */
+          onDuplicate={(draft) => {
+            updateRoutine(routine.id, draft);
+            const copy = duplicateRoutine(routine.id);
+            if (copy) replaceTop({ name: 'routineEditor', routineId: copy.id });
+          }}
+          onDelete={() => {
+            deleteRoutine(routine.id);
+            pop();
+          }}
+        />
+      );
+    }
 
-  if (top?.name === 'addExercise') {
-    const { routineId, target, workoutId } = top;
-    return (
-      <LibraryTab
-        query={query}
-        kicker={
-          target === 'session'
-            ? t('Add to workout')
-            : target === 'history'
-              ? t('Add to that workout')
-              : t('Add exercise')
-        }
-        exercises={exercises}
-        matches={matches}
-        recentlyUsed={recentlyUsed}
-        expanded={expanded}
-        onToggleExpanded={toggleExpanded}
-        onBack={pop}
-        onChangeQuery={setQuery}
-        onPick={(exerciseId) => {
-          if (target === 'session') {
-            const exercise = exercisesById[exerciseId];
-            if (exercise) addExerciseToSession(exercise);
-            return popToSession();
+    if (top?.name === 'addExercise') {
+      const { routineId, target, workoutId } = top;
+      return (
+        <LibraryTab
+          query={query}
+          kicker={
+            target === 'session'
+              ? t('Add to workout')
+              : target === 'history'
+                ? t('Add to that workout')
+                : t('Add exercise')
           }
-          if (target === 'history') {
-            /*
-             * Into a workout that already happened, with one set. Back to the
-             * training history rather than to the picker, and the workout is already
-             * open there — `openWorkout` set `focusWorkoutId` on the way in, so
-             * the row the user was editing is the row they land on.
-             */
-            const exercise = exercisesById[exerciseId];
-            if (exercise && workoutId) addWorkoutExercise(workoutId, exercise);
+          exercises={exercises}
+          matches={matches}
+          recentlyUsed={recentlyUsed}
+          expanded={expanded}
+          onToggleExpanded={toggleExpanded}
+          onBack={pop}
+          onChangeQuery={setQuery}
+          onPick={(exerciseId) => {
+            if (target === 'session') {
+              const exercise = exercisesById[exerciseId];
+              if (exercise) addExerciseToSession(exercise);
+              return popToSession();
+            }
+            if (target === 'history') {
+              /*
+               * Into a workout that already happened, with one set. Back to the
+               * training history rather than to the picker, and the workout is already
+               * open there — `openWorkout` set `focusWorkoutId` on the way in, so
+               * the row the user was editing is the row they land on.
+               */
+              const exercise = exercisesById[exerciseId];
+              if (exercise && workoutId) addWorkoutExercise(workoutId, exercise);
+              return pop();
+            }
+            if (!routineId) return push({ name: 'exerciseHistory', exerciseId });
+            appendToRoutine(routineId, exerciseId);
             return pop();
-          }
-          if (!routineId) return push({ name: 'exerciseHistory', exerciseId });
-          appendToRoutine(routineId, exerciseId);
-          return pop();
-        }}
-        onCreate={handleCreate}
-        onDelete={setDeleting}
-        deleting={deleting}
-        onCancelDelete={() => setDeleting(null)}
-        onConfirmDelete={deleteExercise}
-        routineUses={(id) => routineUsageCount(routines, id)}
-      />
-    );
-  }
+          }}
+          onCreate={handleCreate}
+          onDelete={setDeleting}
+          deleting={deleting}
+          onCancelDelete={() => setDeleting(null)}
+          onConfirmDelete={deleteExercise}
+          routineUses={(id) => routineUsageCount(routines, id)}
+        />
+      );
+    }
 
-  if (top?.name === 'createExercise') {
-    const addToSession = top.addToSession === true;
-    return (
-      <CreateExerciseScreen
-        initial={top.draft}
-        settingsRestSeconds={restSecondsBetweenSets}
-        onBack={pop}
-        onSubmit={(draft) => {
-          const exercise = draftToExercise(draft, `ex_${Date.now().toString(36)}`, seedUser.id);
-          addExercise(exercise);
-          /*
-           * Created from the session's picker: it goes into the library AND into the
-           * workout, and the user lands back on the set rows rather than on the
-           * picker they no longer need. Both writes happen here so a new exercise
-           * cannot end up in one place and not the other.
-           */
-          if (addToSession) {
-            addExerciseToSession(exercise);
-            popToSession();
-            return;
-          }
-          pop();
-        }}
-      />
-    );
-  }
-
-  if (top?.name === 'editExercise') {
-    const exercise = exercisesById[top.exerciseId];
-    if (!exercise) return <Fallback onBack={pop} />;
-    return (
-      <CreateExerciseScreen
-        // Rebuilt from the row every time the screen opens, so what you see is what
-        // is stored — including anything changed from somewhere else since.
-        initial={exerciseToDraft(exercise, useSettings.getState().restSecondsBetweenSets)}
-        mode="edit"
-        settingsRestSeconds={restSecondsBetweenSets}
-        onBack={pop}
-        onSubmit={(draft) => {
-          // In place, keeping the id: every set ever logged points at it, so the
-          // history follows the rename instead of being orphaned by it.
-          const next = applyDraftToExercise(draft, exercise);
-          updateExercise(exercise.id, next);
-          /*
-           * ...AND INTO THE WORKOUT IN FLIGHT, if this movement is in one.
-           *
-           * The session carries its own copy of each exercise on purpose (see
-           * `DraftEntry`), which is what stops an edit made in another tab from
-           * repricing a workout under way. The edit made FROM that workout is the
-           * one case where that protection is the bug: the user changed this
-           * exercise's rest between two sets of it, and a rest that starts applying
-           * next Tuesday is a control that did nothing. A no-op when no session
-           * holds the movement.
-           */
-          useActiveWorkout.getState().syncExercise(exercise.id, next);
-          pop();
-        }}
-      />
-    );
-  }
-
-  if (top?.name === 'exerciseHistory') {
-    const exercise = exercisesById[top.exerciseId];
-    if (!exercise) return <Fallback onBack={pop} />;
-    return (
-      <ExerciseHistoryScreen
-        exercise={exercise}
-        history={historyById[exercise.id] ?? []}
-        verdict={verdicts[exercise.id]}
-        onBack={pop}
-        /*
-         * Tapping a session row here goes to that workout in History, which means
-         * leaving the stack: this screen is pushed over the tabs, and opening a
-         * row underneath it would be invisible. `popToRoot` rather than `pop`
-         * because the exercise-history screen can itself be reached from the
-         * routine editor, and History is not "back" from either of them.
-         */
-        onOpenSession={(sessionId) => {
-          popToRoot();
-          openWorkout(sessionId);
-        }}
-        onEdit={() => push({ name: 'editExercise', exerciseId: exercise.id })}
-      />
-    );
-  }
-
-  if (top?.name === 'sequence') {
-    return (
-      <SequenceScreen
-        sequence={sequence}
-        routines={routines}
-        onBack={pop}
-        onSetActive={setSequenceActive}
-        onAddStep={addSequenceStep}
-        onRemoveStep={removeSequenceStep}
-        onMoveStep={moveSequenceStep}
-        onSetCursor={setSequenceCursor}
-        /*
-         * Both of these land on the routine EDITOR, because "change what this step
-         * contains" is editing a routine and there is one screen for that. Neither
-         * passes `isNew`: a copy with six exercises in it is not an empty routine
-         * somebody opened by accident, so backing out of it must not delete it.
-         */
-        onEditStep={(routineId) => push({ name: 'routineEditor', routineId })}
-        onVaryStep={(index) => {
-          const copy = varySequenceStep(index);
-          if (copy) push({ name: 'routineEditor', routineId: copy.id });
-        }}
-      />
-    );
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* Pushed from a section root, and the two logs' own detail screens    */
-  /* ------------------------------------------------------------------ */
-
-  if (top?.name === 'routines') {
-    return (
-      <RoutineListScreen
-        routines={routines}
-        exercisesById={exercisesById}
-        sequence={sequence}
-        onOpen={(routineId) => push({ name: 'routineEditor', routineId })}
-        onStartWorkout={handleOpenWorkout}
-        onCreate={handleAddRoutine}
-        onOpenSequence={() => push({ name: 'sequence' })}
-        onBack={pop}
-      />
-    );
-  }
-
-  if (top?.name === 'library') {
-    return (
-      <LibraryTab
-        query={query}
-        exercises={exercises}
-        matches={matches}
-        recentlyUsed={recentlyUsed}
-        expanded={expanded}
-        onToggleExpanded={toggleExpanded}
-        onChangeQuery={setQuery}
-        onBack={pop}
-        onPick={(exerciseId) => push({ name: 'exerciseHistory', exerciseId })}
-        onCreate={handleCreate}
-        onDelete={setDeleting}
-        deleting={deleting}
-        onCancelDelete={() => setDeleting(null)}
-        onConfirmDelete={deleteExercise}
-        routineUses={(id) => routineUsageCount(routines, id)}
-      />
-    );
-  }
-
-  if (top?.name === 'workoutSettings') {
-    return <WorkoutSettingsScreen onBack={pop} />;
-  }
-
-  if (top?.name === 'taskSettings') {
-    return <TaskSettingsScreen onBack={pop} />;
-  }
-
-  if (top?.name === 'moneySettings') {
-    return <MoneySettingsScreen onBack={pop} />;
-  }
-
-  if (top?.name === 'taskDetail') {
-    const task = tasks.find((row) => row.id === top.taskId);
-    if (!task) return <Fallback onBack={pop} />;
-    return <TaskDetailScreen task={task} onBack={pop} />;
-  }
-
-  if (top?.name === 'moneyCategory') {
-    const category = categories.find((row) => row.id === top.categoryId);
-    const account = moneyAccounts.find((row) => row.id === top.accountId);
-    if (!category || !account) return <Fallback onBack={pop} />;
-    return (
-      <View className="flex-1">
-        <CategoryDetailScreen
-          category={category}
-          account={account}
-          interval={top.interval}
-          anchor={top.anchor}
+    if (top?.name === 'createExercise') {
+      const addToSession = top.addToSession === true;
+      return (
+        <CreateExerciseScreen
+          initial={top.draft}
+          settingsRestSeconds={restSecondsBetweenSets}
           onBack={pop}
-          onOpenAmount={(amountId) =>
-            push({ name: 'moneyAmount', amountId, categoryId: null, accountId: null })
-          }
-          /* The window this screen was opened with decides the day, exactly as the
+          onSubmit={(draft) => {
+            const exercise = draftToExercise(draft, `ex_${Date.now().toString(36)}`, seedUser.id);
+            addExercise(exercise);
+            /*
+             * Created from the session's picker: it goes into the library AND into the
+             * workout, and the user lands back on the set rows rather than on the
+             * picker they no longer need. Both writes happen here so a new exercise
+             * cannot end up in one place and not the other.
+             */
+            if (addToSession) {
+              addExerciseToSession(exercise);
+              popToSession();
+              return;
+            }
+            pop();
+          }}
+        />
+      );
+    }
+
+    if (top?.name === 'editExercise') {
+      const exercise = exercisesById[top.exerciseId];
+      if (!exercise) return <Fallback onBack={pop} />;
+      return (
+        <CreateExerciseScreen
+          // Rebuilt from the row every time the screen opens, so what you see is what
+          // is stored — including anything changed from somewhere else since.
+          initial={exerciseToDraft(exercise, useSettings.getState().restSecondsBetweenSets)}
+          mode="edit"
+          settingsRestSeconds={restSecondsBetweenSets}
+          onBack={pop}
+          onSubmit={(draft) => {
+            // In place, keeping the id: every set ever logged points at it, so the
+            // history follows the rename instead of being orphaned by it.
+            const next = applyDraftToExercise(draft, exercise);
+            updateExercise(exercise.id, next);
+            /*
+             * ...AND INTO THE WORKOUT IN FLIGHT, if this movement is in one.
+             *
+             * The session carries its own copy of each exercise on purpose (see
+             * `DraftEntry`), which is what stops an edit made in another tab from
+             * repricing a workout under way. The edit made FROM that workout is the
+             * one case where that protection is the bug: the user changed this
+             * exercise's rest between two sets of it, and a rest that starts applying
+             * next Tuesday is a control that did nothing. A no-op when no session
+             * holds the movement.
+             */
+            useActiveWorkout.getState().syncExercise(exercise.id, next);
+            pop();
+          }}
+        />
+      );
+    }
+
+    if (top?.name === 'exerciseHistory') {
+      const exercise = exercisesById[top.exerciseId];
+      if (!exercise) return <Fallback onBack={pop} />;
+      return (
+        <ExerciseHistoryScreen
+          exercise={exercise}
+          history={historyById[exercise.id] ?? []}
+          verdict={verdicts[exercise.id]}
+          onBack={pop}
+          /*
+           * Tapping a session row here goes to that workout in History, which means
+           * leaving the stack: this screen is pushed over the tabs, and opening a
+           * row underneath it would be invisible. `popToRoot` rather than `pop`
+           * because the exercise-history screen can itself be reached from the
+           * routine editor, and History is not "back" from either of them.
+           */
+          onOpenSession={(sessionId) => {
+            popToRoot();
+            openWorkout(sessionId);
+          }}
+          onEdit={() => push({ name: 'editExercise', exerciseId: exercise.id })}
+        />
+      );
+    }
+
+    if (top?.name === 'sequence') {
+      return (
+        <SequenceScreen
+          sequence={sequence}
+          routines={routines}
+          onBack={pop}
+          onSetActive={setSequenceActive}
+          onAddStep={addSequenceStep}
+          onRemoveStep={removeSequenceStep}
+          onMoveStep={moveSequenceStep}
+          onSetCursor={setSequenceCursor}
+          /*
+           * Both of these land on the routine EDITOR, because "change what this step
+           * contains" is editing a routine and there is one screen for that. Neither
+           * passes `isNew`: a copy with six exercises in it is not an empty routine
+           * somebody opened by accident, so backing out of it must not delete it.
+           */
+          onEditStep={(routineId) => push({ name: 'routineEditor', routineId })}
+          onVaryStep={(index) => {
+            const copy = varySequenceStep(index);
+            if (copy) push({ name: 'routineEditor', routineId: copy.id });
+          }}
+        />
+      );
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Pushed from a section root, and the two logs' own detail screens    */
+    /* ------------------------------------------------------------------ */
+
+    if (top?.name === 'routines') {
+      return (
+        <RoutineListScreen
+          routines={routines}
+          exercisesById={exercisesById}
+          sequence={sequence}
+          onOpen={(routineId) => push({ name: 'routineEditor', routineId })}
+          onStartWorkout={handleOpenWorkout}
+          onCreate={handleAddRoutine}
+          onOpenSequence={() => push({ name: 'sequence' })}
+          onBack={pop}
+        />
+      );
+    }
+
+    if (top?.name === 'library') {
+      return (
+        <LibraryTab
+          query={query}
+          exercises={exercises}
+          matches={matches}
+          recentlyUsed={recentlyUsed}
+          expanded={expanded}
+          onToggleExpanded={toggleExpanded}
+          onChangeQuery={setQuery}
+          onBack={pop}
+          onPick={(exerciseId) => push({ name: 'exerciseHistory', exerciseId })}
+          onCreate={handleCreate}
+          onDelete={setDeleting}
+          deleting={deleting}
+          onCancelDelete={() => setDeleting(null)}
+          onConfirmDelete={deleteExercise}
+          routineUses={(id) => routineUsageCount(routines, id)}
+        />
+      );
+    }
+
+    if (top?.name === 'workoutSettings') {
+      return <WorkoutSettingsScreen onBack={pop} />;
+    }
+
+    if (top?.name === 'taskSettings') {
+      return <TaskSettingsScreen onBack={pop} />;
+    }
+
+    if (top?.name === 'moneySettings') {
+      return <MoneySettingsScreen onBack={pop} />;
+    }
+
+    if (top?.name === 'taskDetail') {
+      const task = tasks.find((row) => row.id === top.taskId);
+      if (!task) return <Fallback onBack={pop} />;
+      return <TaskDetailScreen task={task} onBack={pop} />;
+    }
+
+    if (top?.name === 'moneyCategory') {
+      const category = categories.find((row) => row.id === top.categoryId);
+      const account = moneyAccounts.find((row) => row.id === top.accountId);
+      if (!category || !account) return <Fallback onBack={pop} />;
+      return (
+        <View className="flex-1">
+          <CategoryDetailScreen
+            category={category}
+            account={account}
+            interval={top.interval}
+            anchor={top.anchor}
+            onBack={pop}
+            onOpenAmount={(amountId) =>
+              push({ name: 'moneyAmount', amountId, categoryId: null, accountId: null })
+            }
+            /* The window this screen was opened with decides the day, exactly as the
              tile that opened it does. */
-          onAddAmount={(day) =>
-            push({
-              name: 'moneyAmount',
-              amountId: null,
-              categoryId: category.id,
-              accountId: account.id,
-              day,
-            })
-          }
-        />
-        {/* The keypad pops back HERE when it was opened from this screen, and the
+            onAddAmount={(day) =>
+              push({
+                name: 'moneyAmount',
+                amountId: null,
+                categoryId: category.id,
+                accountId: account.id,
+                day,
+              })
+            }
+          />
+          {/* The keypad pops back HERE when it was opened from this screen, and the
             toast the tab root renders is not on screen to say so. */}
-        {toast ? <Toast key={toast.key} label={toast.text} /> : null}
-      </View>
-    );
-  }
+          {toast ? <Toast key={toast.key} label={toast.text} /> : null}
+        </View>
+      );
+    }
 
-  if (top?.name === 'moneyAmount') {
-    const amount = top.amountId ? (amounts.find((row) => row.id === top.amountId) ?? null) : null;
-    if (top.amountId && !amount) return <Fallback onBack={pop} />;
-    return (
-      <AmountEditorScreen
-        amount={amount}
-        categoryId={top.categoryId}
-        accountId={top.accountId}
-        direction={top.direction}
-        day={top.day}
-        onBack={(saved, summary) => {
-          pop();
-          if (saved) setToast(summary ?? (amount ? t('Saved') : t('Written down')));
-        }}
-      />
-    );
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* The past of each section, behind its own ⟲                          */
-  /* ------------------------------------------------------------------ */
-
-  if (top?.name === 'workoutHistory') {
-    return (
-      <WorkoutHistory
-        workouts={workouts}
-        loadFailed={loadFailed}
-        numbers={numbers}
-        historyByExerciseId={historyById}
-        exercisesById={exercisesById}
-        focusWorkoutId={focusWorkoutId}
-        onFocusHandled={clearFocusWorkout}
-        unitSystem={unitSystem}
-        onBack={pop}
-        onDelete={deleteWorkout}
-        onSetNumber={setWorkoutNumber}
-        onEditSet={updateWorkoutSet}
-        onDeleteSet={deleteWorkoutSet}
-        onEditWorkout={editWorkout}
-        onAddSet={addWorkoutSet}
-        onRemoveExercise={deleteWorkoutExercise}
-        /*
-         * The one edit on that screen that needs navigation: the picker is another
-         * pushed route, so the screen cannot open it itself. `focusWorkoutId` is
-         * set on the way out so the workout is open again on the way back.
-         */
-        onAddExercise={(workoutId) => {
-          setFocusWorkoutId(workoutId);
-          push({ name: 'addExercise', routineId: null, target: 'history', workoutId });
-        }}
-      />
-    );
-  }
-
-  if (top?.name === 'tasksHistory') {
-    return (
-      <TasksHistoryScreen
-        selected={taskDay}
-        onBack={pop}
-        /* A square tapped is a day to ANSWER, so it lands on the screen where the
-           circles are rather than leaving the grid open over it. */
-        onPickDay={(day) => {
-          setPinnedTaskDay(day);
-          pop();
-        }}
-      />
-    );
-  }
-
-  if (top?.name === 'moneyHistory') {
-    const account = moneyAccounts.find((row) => row.id === top.accountId);
-    if (!account) return <Fallback onBack={pop} />;
-    return (
-      <View className="flex-1">
-        <MoneyHistoryScreen
-          account={account}
-          /* The day the money screen was reading when the ⟲ was tapped. */
+    if (top?.name === 'moneyAmount') {
+      const amount = top.amountId ? (amounts.find((row) => row.id === top.amountId) ?? null) : null;
+      if (top.amountId && !amount) return <Fallback onBack={pop} />;
+      return (
+        <AmountEditorScreen
+          amount={amount}
+          categoryId={top.categoryId}
+          accountId={top.accountId}
+          direction={top.direction}
           day={top.day}
-          /* On the route rather than in the screen, so a trip into the editor and
-             back returns to the day the list had stepped to. */
-          onChangeDay={(day) => replaceTop({ ...top, day })}
-          onBack={pop}
-          /* A row of the day list is an amount, and the editor is where an amount
-             is read and corrected — the same route the category screen pushes. */
-          onOpenAmount={(amountId) =>
-            push({ name: 'moneyAmount', amountId, categoryId: null, accountId: null })
-          }
+          onBack={(saved, summary) => {
+            pop();
+            if (saved) setToast(summary ?? (amount ? t('Saved') : t('Written down')));
+          }}
         />
-        {/* Same: an amount corrected from the day list lands back here. */}
-        {toast ? <Toast key={toast.key} label={toast.text} /> : null}
-      </View>
-    );
-  }
+      );
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* The past of each section, behind its own ⟲                          */
+    /* ------------------------------------------------------------------ */
+
+    if (top?.name === 'workoutHistory') {
+      return (
+        <WorkoutHistory
+          workouts={workouts}
+          loadFailed={loadFailed}
+          numbers={numbers}
+          historyByExerciseId={historyById}
+          exercisesById={exercisesById}
+          focusWorkoutId={focusWorkoutId}
+          onFocusHandled={clearFocusWorkout}
+          unitSystem={unitSystem}
+          onBack={pop}
+          onDelete={deleteWorkout}
+          onSetNumber={setWorkoutNumber}
+          onEditSet={updateWorkoutSet}
+          onDeleteSet={deleteWorkoutSet}
+          onEditWorkout={editWorkout}
+          onAddSet={addWorkoutSet}
+          onRemoveExercise={deleteWorkoutExercise}
+          /*
+           * The one edit on that screen that needs navigation: the picker is another
+           * pushed route, so the screen cannot open it itself. `focusWorkoutId` is
+           * set on the way out so the workout is open again on the way back.
+           */
+          onAddExercise={(workoutId) => {
+            setFocusWorkoutId(workoutId);
+            push({ name: 'addExercise', routineId: null, target: 'history', workoutId });
+          }}
+        />
+      );
+    }
+
+    if (top?.name === 'tasksHistory') {
+      return (
+        <TasksHistoryScreen
+          selected={taskDay}
+          onBack={pop}
+          /* A square tapped is a day to ANSWER, so it lands on the screen where the
+           circles are rather than leaving the grid open over it. */
+          onPickDay={(day) => {
+            setPinnedTaskDay(day);
+            pop();
+          }}
+        />
+      );
+    }
+
+    if (top?.name === 'moneyHistory') {
+      const account = moneyAccounts.find((row) => row.id === top.accountId);
+      if (!account) return <Fallback onBack={pop} />;
+      return (
+        <View className="flex-1">
+          <MoneyHistoryScreen
+            account={account}
+            /* The day the money screen was reading when the ⟲ was tapped. */
+            day={top.day}
+            /* On the route rather than in the screen, so a trip into the editor and
+             back returns to the day the list had stepped to. */
+            onChangeDay={(day) => replaceTop({ ...top, day })}
+            onBack={pop}
+            /* A row of the day list is an amount, and the editor is where an amount
+             is read and corrected — the same route the category screen pushes. */
+            onOpenAmount={(amountId) =>
+              push({ name: 'moneyAmount', amountId, categoryId: null, accountId: null })
+            }
+          />
+          {/* Same: an amount corrected from the day list lands back here. */}
+          {toast ? <Toast key={toast.key} label={toast.text} /> : null}
+        </View>
+      );
+    }
+
+    return null;
+  };
 
   /* ------------------------------------------------------------------ */
   /* Tab roots                                                           */
   /* ------------------------------------------------------------------ */
 
+  /* The landing's view of the training log: the routine whose turn it is. */
+  const landingNext = inProgress
+    ? { name: inProgress.title, focus: null }
+    : (sequenceView?.next ?? choices.find((c) => c.exerciseCount > 0) ?? null);
+
+  const renderRoot = (r: ShellRoute): ReactNode => {
+    if (r === 'Home') {
+      return (
+        <LandingScreen
+          nextWorkoutNumber={nextWorkoutNumber}
+          nextWorkout={landingNext}
+          workoutInProgress={inProgress != null}
+          onOpen={(section, from) => navigate(section, { from })}
+        />
+      );
+    }
+    if (r === 'Workout') {
+      return (
+        <HomeScreen
+          inProgress={inProgress}
+          onResume={() => push({ name: 'session' })}
+          sequence={sequenceView}
+          choices={choices}
+          recent={recent}
+          numbers={numbers}
+          onOpen={handleOpenWorkout}
+          onOpenSequence={() => push({ name: 'sequence' })}
+          // A past session opens where past sessions live. The history row is
+          // the detail view — it expands in place — so there is nothing to push
+          // beyond the history screen itself.
+          onOpenSession={openWorkout}
+          onOpenHistory={() => push({ name: 'workoutHistory' })}
+          onOpenRoutines={() => push({ name: 'routines' })}
+          onOpenLibrary={() => push({ name: 'library' })}
+          aiReady={aiReady}
+          onOpenAi={(prompt) => openAi('Workout', prompt)}
+          justSaved={justSaved}
+          onCelebrated={() => setJustSaved(null)}
+        />
+      );
+    }
+    if (r === 'Tasks') {
+      return (
+        <TasksScreen
+          onOpenTask={(taskId) => push({ name: 'taskDetail', taskId })}
+          onOpenHistory={() => push({ name: 'tasksHistory' })}
+          /* The day lives HERE rather than in the screen: the month grid is a
+                 pushed route, and a day picked in it has to survive the screen
+                 that picked it being unmounted. */
+          day={taskDay}
+          onChangeDay={setPinnedTaskDay}
+          aiReady={aiReady}
+          onOpenAi={(prompt) => openAi('Tasks', prompt)}
+        />
+      );
+    }
+    if (r === 'Expenses') {
+      return (
+        <MoneyScreen
+          /* The window lives here so a trip into the section's own past
+                 comes back to the day it left from. See `moneyWindow`. */
+          window={moneyWindow}
+          onChangeWindow={changeMoneyWindow}
+          onOpenCategory={(categoryId, accountId, interval, anchor) =>
+            push({ name: 'moneyCategory', categoryId, accountId, interval, anchor })
+          }
+          onAddAmount={(categoryId, accountId, direction, day) =>
+            push({
+              name: 'moneyAmount',
+              amountId: null,
+              categoryId,
+              accountId,
+              direction,
+              day,
+            })
+          }
+          onOpenHistory={(accountId, anchor) =>
+            push({ name: 'moneyHistory', accountId, day: anchor })
+          }
+          aiReady={aiReady}
+          onOpenAi={(prompt) => openAi('Expenses', prompt)}
+        />
+      );
+    }
+    return (
+      <SettingsHomeScreen
+        onOpenWorkoutSettings={() => push({ name: 'workoutSettings' })}
+        onOpenTaskSettings={() => push({ name: 'taskSettings' })}
+        onOpenMoneySettings={() => push({ name: 'moneySettings' })}
+        onOpenAiSettings={() => push({ name: 'aiSettings' })}
+      />
+    );
+  };
+
+  const top = stack[stack.length - 1] ?? null;
+  const pushed = renderPushed(top);
+  const beneath = () => renderPushed(stack[stack.length - 2] ?? null);
+  const topKey = top ? `${stack.length}:${top.name}` : 'none';
+
+  /* The section swipe: the screen follows, the blob stretches, release decides. */
+  const onSwipeDrag = (dx: number) => {
+    if (route === 'Home') return;
+    swipeX.value = swipeFollow(dx, route);
+    navDrag.value = Math.max(-1, Math.min(1, -dx / (screenWidth * 0.6)));
+  };
+  const onSwipeRelease = (dx: number, vx: number) => {
+    if (route === 'Home') return;
+    const step = swipeDecision(dx, vx, route);
+    if (step === 0) {
+      const spring = { duration: 460, easing: Easing.bezier(0.34, 1.3, 0.64, 1) };
+      swipeX.value = withTiming(0, spring);
+      navDrag.value = withTiming(0, spring);
+      return;
+    }
+    navigate(stepSection(route, step), { dragFrom: swipeFollow(dx, route) });
+  };
+
   return (
     <View className="flex-1 bg-bg">
       <StatusBar style="light" />
 
-      {/* A flick sideways is one section along. It claims a touch only for a
-          clearly horizontal gesture, so every scroll, every row and the
+      {/* A flick sideways is one section along, and the screen follows the
+          finger while it decides. It claims a touch only for a clearly
+          horizontal gesture, so every scroll, every row and the
           long-press-then-slide reorder inside these screens are untouched — see
           `components/SwipePager.tsx`. */}
-      <SwipePager onSwipe={(delta) => selectTab(stepSection(tab, delta))}>
-        {/* Keyed on the tab, so switching roots remounts this and the arrival
-            replays — the same panel never re-enters just because something inside
-            it re-rendered. The flick gets the same entrance the tap does. See
-            `components/motion.tsx`. */}
-        <PanelEnter key={tab} style={{ flex: 1 }}>
-          {tab === 'Workout' ? (
-            <HomeScreen
-              inProgress={inProgress}
-              onResume={() => push({ name: 'session' })}
-              sequence={sequenceView}
-              choices={choices}
-              recent={recent}
-              numbers={numbers}
-              onOpen={handleOpenWorkout}
-              onOpenSequence={() => push({ name: 'sequence' })}
-              // A past session opens where past sessions live. The history row is
-              // the detail view — it expands in place — so there is nothing to push
-              // beyond the history screen itself.
-              onOpenSession={openWorkout}
-              onOpenHistory={() => push({ name: 'workoutHistory' })}
-              onOpenRoutines={() => push({ name: 'routines' })}
-              onOpenLibrary={() => push({ name: 'library' })}
-              aiReady={aiReady}
-              onOpenAi={(prompt) => openAi('Workout', prompt)}
-              justSaved={justSaved}
-              onCelebrated={() => setJustSaved(null)}
-            />
-          ) : null}
+      <View style={{ flex: 1, display: rootsVisible || stack.length === 0 ? 'flex' : 'none' }}>
+        <SwipePager
+          enabled={route !== 'Home' && stack.length === 0 && transition == null}
+          onDrag={onSwipeDrag}
+          onRelease={onSwipeRelease}
+        >
+          <ShellStage
+            route={route}
+            transition={transition}
+            progress={progress}
+            drag={swipeX}
+            covered={covered}
+            render={renderRoot}
+          />
+        </SwipePager>
+      </View>
 
-          {tab === 'Tasks' ? (
-            <TasksScreen
-              onOpenTask={(taskId) => push({ name: 'taskDetail', taskId })}
-              onOpenHistory={() => push({ name: 'tasksHistory' })}
-              /* The day lives HERE rather than in the screen: the month grid is a
-                 pushed route, and a day picked in it has to survive the screen
-                 that picked it being unmounted. */
-              day={taskDay}
-              onChangeDay={setPinnedTaskDay}
-              aiReady={aiReady}
-              onOpenAi={(prompt) => openAi('Tasks', prompt)}
-            />
-          ) : null}
+      <NavBar
+        active={tab}
+        visible={route !== 'Home' && stack.length === 0 && !overlayOpen}
+        onSelect={selectTab}
+        onHome={() => navigate('Home')}
+        drag={navDrag}
+      />
 
-          {tab === 'Expenses' ? (
-            <MoneyScreen
-              /* The window lives here so a trip into the section's own past
-                 comes back to the day it left from. See `moneyWindow`. */
-              window={moneyWindow}
-              onChangeWindow={changeMoneyWindow}
-              onOpenCategory={(categoryId, accountId, interval, anchor) =>
-                push({ name: 'moneyCategory', categoryId, accountId, interval, anchor })
-              }
-              onAddAmount={(categoryId, accountId, direction, day) =>
-                push({
-                  name: 'moneyAmount',
-                  amountId: null,
-                  categoryId,
-                  accountId,
-                  direction,
-                  day,
-                })
-              }
-              onOpenHistory={(accountId, anchor) =>
-                push({ name: 'moneyHistory', accountId, day: anchor })
-              }
-              aiReady={aiReady}
-              onOpenAi={(prompt) => openAi('Expenses', prompt)}
-            />
-          ) : null}
-
-          {tab === 'Settings' ? (
-            <SettingsHomeScreen
-              onOpenWorkoutSettings={() => push({ name: 'workoutSettings' })}
-              onOpenTaskSettings={() => push({ name: 'taskSettings' })}
-              onOpenMoneySettings={() => push({ name: 'moneySettings' })}
-              onOpenAiSettings={() => push({ name: 'aiSettings' })}
-            />
-          ) : null}
-        </PanelEnter>
-      </SwipePager>
-
-      {overlayOpen ? null : <TabBar active={tab} onSelect={selectTab} />}
+      <PushHost
+        depth={stack.length}
+        topKey={topKey}
+        top={pushed}
+        renderBeneath={beneath}
+        covered={covered}
+        onRootsVisible={setRootsVisible}
+        onBack={() => leaveTop.current()}
+      />
 
       {/* Last child, over the nav pill, and non-interactive: pressing the
-          floating action twice in a row must still work while it is up. */}
-      {toast ? <Toast key={toast.key} label={toast.text} action={toast.action} /> : null}
+          floating action twice in a row must still work while it is up. The
+          pushed screens that raise toasts render their own. */}
+      {toast && stack.length === 0 ? (
+        <Toast key={toast.key} label={toast.text} action={toast.action} />
+      ) : null}
     </View>
   );
 }
@@ -1858,6 +2056,7 @@ function LibraryTab({
 
       {deleting ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Delete “{title}”?', { title: deleting.name })}
           body={[
             uses > 0

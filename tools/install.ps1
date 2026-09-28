@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 <#
-    Workout Tracker - installer
+    Momentum - installer
     ---------------------------
     Double-click Install.bat in the folder above instead of running this by hand.
 
@@ -22,10 +22,10 @@ param([switch]$NonInteractive)
 # ============================================================================
 
 $App = @{
-    Name          = 'Workout Tracker'
+    Name          = 'Momentum'
     Blurb         = 'A local-first Android workout tracker. One tap to log a repeat set.'
-    Repo          = 'https://github.com/semyonsw/workout_tracker.git'
-    Issues        = 'https://github.com/semyonsw/workout_tracker/issues'
+    Repo          = 'https://github.com/semyonsw/momentum-app.git'
+    Issues        = 'https://github.com/semyonsw/momentum-app/issues'
     WindowsOnly   = $false
 
     MinPython     = $null          # nothing here is Python
@@ -66,9 +66,13 @@ $App = @{
                param($PyExe)
                # Sorted as VERSIONS and not as names: by name, 1.9.0 sorts after
                # 1.10.0 and the phone would be handed the older APK.
-               $apk = Get-ChildItem -Path (Join-Path $Root 'workout-tracker-*.apk') -ErrorAction SilentlyContinue |
-                      Sort-Object { [version]($_.BaseName -replace '^workout-tracker-', '') } -Descending |
-                      Select-Object -First 1
+               # `momentum-*` first: the app was Workout Tracker until 2.0.0, and
+               # the older APKs stay beside the new one as rollbacks.
+               $apk = @('momentum-*.apk', 'workout-tracker-*.apk') | ForEach-Object {
+                          Get-ChildItem -Path (Join-Path $Root $_) -ErrorAction SilentlyContinue |
+                          Sort-Object { [version]($_.BaseName -replace '^(momentum|workout-tracker)-', '') } -Descending |
+                          Select-Object -First 1
+                      } | Select-Object -First 1
                if (-not $apk) {
                    Info 'no .apk in this folder - the signed build lives on the GitHub Releases page.'
                    OK 'skipping the phone step (nothing to install from here)'
@@ -151,7 +155,7 @@ $App = @{
 rem Written by Install.bat. Starts the Expo development server: scan the QR code
 rem with Expo Go, or press "a" to open the app on a connected Android phone.
 setlocal EnableExtensions
-title Workout Tracker - dev server
+title Momentum - dev server
 cd /d "%~dp0"
 
 if not exist "node_modules" (
@@ -197,10 +201,11 @@ if not exist "%ADB%" if not "%ADB%"=="adb" (
 )
 
 set "APK="
-for /f "delims=" %%f in ('dir /b /o-n "workout-tracker-*.apk" 2^>nul') do if not defined APK set "APK=%%f"
+for /f "delims=" %%f in ('dir /b /o-n "momentum-*.apk" 2^>nul') do if not defined APK set "APK=%%f"
+if not defined APK for /f "delims=" %%f in ('dir /b /o-n "workout-tracker-*.apk" 2^>nul') do if not defined APK set "APK=%%f"
 if not defined APK (
     echo.
-    echo  [ERROR] No workout-tracker-*.apk in this folder.
+    echo  [ERROR] No momentum-*.apk in this folder.
     echo          Download the signed build from the GitHub Releases page.
     echo.
     pause

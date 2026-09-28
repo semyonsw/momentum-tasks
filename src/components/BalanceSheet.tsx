@@ -30,11 +30,11 @@
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
-import { Sheet } from './Sheet';
-import { Kicker, PrimaryButton, TextButton } from './primitives';
+import { Sheet, SheetCancel } from './Sheet';
+import { Kicker, PrimaryButton } from './primitives';
 import { useT } from '../hooks/useT';
 import { formatValue } from '../lib/money';
-import { palette } from '../theme/tokens';
+import { palette, tint } from '../theme/tokens';
 
 interface BalanceSheetProps {
   /** The subsection being set — its name is the sheet's title. */
@@ -64,7 +64,16 @@ export function BalanceSheet({ title, balance, currency, onSave, onDismiss }: Ba
       <Kicker className="mb-sm">
         {t('What you have')} · {currency}
       </Kicker>
-      <View className="h-row flex-row items-center rounded-surface border border-hairline bg-surface-alt px-lg">
+      <View
+        className="h-row flex-row items-center rounded-[18px] border px-lg"
+        style={{
+          borderColor: tint(0.34),
+          backgroundColor: 'rgba(236,241,238,0.04)',
+          boxShadow: [
+            { offsetX: 0, offsetY: 0, blurRadius: 0, spreadDistance: 4, color: tint(0.09) },
+          ],
+        }}
+      >
         <TextInput
           value={shown}
           onChangeText={(text) => setDigits(parseSigned(text).digits)}
@@ -88,7 +97,7 @@ export function BalanceSheet({ title, balance, currency, onSave, onDismiss }: Ba
 
       <View className="mt-xl">
         <PrimaryButton label={t('Save')} onPress={() => onSave(parsed.value)} />
-        <TextButton label={t('Cancel')} onPress={onDismiss} />
+        <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
       </View>
     </Sheet>
   );

@@ -30,7 +30,7 @@ import { useIsOverlay } from './overlay';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
 import { celebrate } from '../lib/feedback';
-import { curve, glassTier, motion, palette, radius } from '../theme/tokens';
+import { curve, glassTier, motion, palette, radius, tint } from '../theme/tokens';
 
 /** Long enough to read two lines, short enough not to be in the way. */
 const HOLD_MS = 3200;
@@ -113,7 +113,7 @@ export function SuccessPopup({
           paddingHorizontal: 22,
           borderRadius: radius.hero,
           borderWidth: 1,
-          borderColor: 'rgba(63,169,108,0.35)',
+          borderColor: tint(0.35),
           backgroundColor: palette.surface,
           overflow: 'hidden',
           boxShadow: [{ offsetX: 0, offsetY: 18, blurRadius: 48, color: 'rgba(0,0,0,0.7)' }],

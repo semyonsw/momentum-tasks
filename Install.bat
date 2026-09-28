@@ -1,6 +1,6 @@
 @echo off
 rem ===========================================================================
-rem  Workout Tracker - one-click installer
+rem  Momentum - one-click installer
 rem
 rem  Double-click this file.  It installs everything the app needs and puts a
 rem  shortcut on your Desktop.  Safe to run again at any time.
@@ -9,7 +9,7 @@ rem  All it does is call tools\install.ps1, which writes install.log next to
 rem  this file.
 rem ===========================================================================
 setlocal EnableExtensions
-title Install Workout Tracker
+title Install Momentum
 chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 
@@ -21,7 +21,7 @@ if not exist "%~dp0tools\install.ps1" (
     echo  [ERROR] tools\install.ps1 is missing next to this file.
     echo.
     echo  This download is incomplete. Get the whole project again:
-    echo      git clone https://github.com/semyonsw/workout_tracker.git
+    echo      git clone https://github.com/semyonsw/momentum-app.git
     echo  or download the ZIP from GitHub and extract ALL of it.
     echo.
     pause

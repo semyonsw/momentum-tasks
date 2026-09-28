@@ -2,8 +2,8 @@
  * SectionTopBar — the strip at the top of a section root.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ WORKOUT                        ≡   📖    ⟲   │
- *   │ DAILY TASKS                              ⟲   │
+ *   │ WORKOUT                   (✦)  ≡   📖    ⟲   │
+ *   │ DAILY TASKS                        (✦)   ⟲   │
  *   │ SETTINGS                            РУ  EN   │
  *   └──────────────────────────────────────────────┘
  *
@@ -26,8 +26,8 @@
  * All three are "somewhere else in this section", none of them is content, and
  * two of the three were a scroll away while the third was a tap.
  *
- * So the corner takes a LIST of actions, laid out right to left in the order
- * they are declared, all at the same 36px. Same size is not a detail — it is
+ * So the corner takes a LIST of actions, laid out left to right in the order
+ * they are declared, then the ⟲ — all at the same 46 dp (v3; they were 36). Same size is not a detail — it is
  * what makes them read as one row of destinations rather than one button and two
  * things beside it. The ⟲ stays rightmost, under the thumb, because it is the
  * one every section has.
@@ -44,7 +44,7 @@
  *
  * Settings' corner holds `РУ` and `EN`, and they are letters rather than a flag
  * for the obvious reason — a flag names a country and this names a language —
- * and rather than a word ("Русский") because the corner is 36px tall and the
+ * and rather than a word ("Русский") because the corner is 38 dp tall and the
  * point of a language switch is that it is legible to somebody who cannot read
  * the language currently on screen. Two letters in their own script are.
  *
@@ -52,9 +52,18 @@
  *
  * Absolutely positioned, at the `bar` tier, with each section's scroll paying
  * `barInset.top` in padding rather than the bar claiming the space in the flow.
- * Together with the detached nav pill (`components/TabBar.tsx`) that is the
+ * Together with the detached nav pill (`components/NavBar.tsx`) that is the
  * load-bearing half of the redesign: a list that visibly passes behind glass is
  * the only thing that tells the eye a bar is a LAYER and not a strip of chrome.
+ *
+ * ── THE ONE BUTTON THAT IS NOT GHOST GLASS ────────────────────────────────
+ *
+ * The assistant's action is drawn as `AiOrb` — its own spinning conic ring and
+ * breathing sparkle, in fixed colours that no theme uses — instead of a ghost
+ * circle. It is the one destination in the corner that is a conversation rather
+ * than a place, and on eight themes it has to be findable on every one. An
+ * action is the assistant's when it says `ai: true`, or, for the callers written
+ * before that flag, when its glyph is the `sparkle` — nothing else uses it.
  *
  * ── WHY NOT `ScreenHeader` ─────────────────────────────────────────────────
  *
@@ -66,16 +75,25 @@
  */
 
 import type { ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { Animated, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AiOrb } from './AiOrb';
 import { Icon, type IconName } from './Icon';
 import { BubblePressable } from './bubbles';
 import { GlassBar, SpecularEdge } from './glass';
-import { pressedStyle } from './motion';
+import { usePressScale } from './motion';
 import { SlidingThumb } from './SlidingThumb';
 import { useT } from '../hooks/useT';
-import { glass, halo, palette, radius } from '../theme/tokens';
+import { ai, glass, halo, palette, radius, tint } from '../theme/tokens';
+
+/** The v3 top buttons: 46 dp circles, 23 dp glyphs, 8 apart. */
+const BUTTON = 46;
+const GLYPH = 23;
+const GAP = 8;
+/** The prototype's ghost glyph — between `ink` and `inkMuted`, so an idle row reads as live. */
+const GHOST_GLYPH = '#AEB9B3';
 
 export interface TopBarAction {
   /** Stable across renders, so a row of three does not re-key on every tick. */
@@ -92,10 +110,15 @@ export interface TopBarAction {
    * "this is switched on and waiting", which is what a connected assistant is.
    */
   lit?: boolean;
+  /**
+   * Drawn as the assistant's `AiOrb` rather than a ghost circle. Defaults to
+   * `icon === 'sparkle'` — see the file header.
+   */
+  ai?: boolean;
 }
 
 interface SectionTopBarProps {
-  /** Uppercase Micro kicker — the section's own name. */
+  /** The section's own name: 13 / ls 1.4 / 600, uppercase, ink-muted. */
   title: string;
   /** Second line, for a count or a total the section wants in the corner. */
   subtitle?: string;
@@ -133,14 +156,24 @@ export function SectionTopBar({
       style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
     >
       <GlassBar>
-        <View style={{ paddingTop: insets.top }} className="pb-sm pl-lg pr-md">
-          <View className="h-[56px] flex-row items-center">
-            <View className="flex-1 pr-sm">
+        {/* The prototype's `padding: 34px 12px 8px 16px` around a 60 tall row,
+            with its 34 of status bar being the real inset here. */}
+        <View
+          style={{ paddingTop: insets.top, paddingRight: 12, paddingBottom: 8, paddingLeft: 16 }}
+        >
+          <View style={{ height: 60, flexDirection: 'row', alignItems: 'center', gap: GAP }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <Text
                 numberOfLines={1}
                 allowFontScaling={false}
-                style={{ letterSpacing: 1.3 }}
-                className="text-micro font-semibold uppercase text-ink-muted"
+                style={{
+                  fontSize: 13,
+                  lineHeight: 16,
+                  letterSpacing: 1.4,
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  color: palette.inkMuted,
+                }}
               >
                 {title}
               </Text>
@@ -153,9 +186,13 @@ export function SectionTopBar({
 
             {trailing}
 
-            {actions.map((action) => (
-              <TopBarButton key={action.key} action={action} />
-            ))}
+            {actions.map((action) =>
+              (action.ai ?? action.icon === 'sparkle') ? (
+                <AiButton key={action.key} action={action} />
+              ) : (
+                <TopBarButton key={action.key} action={action} />
+              ),
+            )}
 
             {onOpenHistory ? (
               <TopBarButton
@@ -175,48 +212,82 @@ export function SectionTopBar({
 }
 
 /**
- * One 36px circle. The size is fixed here rather than passed, because the whole
+ * One 46 dp circle. The size is fixed here rather than passed, because the whole
  * argument for the row is that they are the same size — see the file header.
  */
 function TopBarButton({ action }: { action: TopBarAction }) {
+  const press = usePressScale(0.94);
   return (
     <BubblePressable
       onPress={action.onPress}
-      hitSlop={8}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      hitSlop={4}
       radius="pill"
       accessibilityRole="button"
       accessibilityState={{ selected: action.active }}
       accessibilityLabel={action.label}
-      style={(state) => [
-        pressedStyle(state),
-        {
-          marginLeft: 7,
-          height: 36,
-          width: 36,
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: radius.pill,
-          overflow: 'hidden',
-          borderWidth: 1,
-          borderColor: action.lit ? glass.greenEdge : 'rgba(236,241,238,0.07)',
-          backgroundColor: action.lit ? 'rgba(63,169,108,0.16)' : 'rgba(236,241,238,0.055)',
-          ...(action.lit ? { boxShadow: [...halo.repeating] } : {}),
-        },
-      ]}
+      style={{ height: BUTTON, width: BUTTON, borderRadius: radius.pill }}
     >
-      {/* No `BlurView` inside these. Three of them sit on a bar that is already
-          the heaviest blur in the app; blurring a 36 dp circle against a surface
-          that is itself blurred buys nothing the tint does not, and it would be
-          three more native layers on the one bar that is always on screen. */}
-      <SpecularEdge
-        color={action.lit ? 'rgba(236,241,238,0.12)' : 'rgba(236,241,238,0.10)'}
-        radius={radius.pill}
-      />
-      <Icon
-        name={action.icon}
-        size={18}
-        color={action.active || action.lit ? palette.greenBright : palette.inkMuted}
-      />
+      <Animated.View
+        style={[
+          {
+            height: BUTTON,
+            width: BUTTON,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: radius.pill,
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: action.lit ? glass.greenEdge : 'rgba(236,241,238,0.07)',
+            backgroundColor: action.lit ? tint(0.16) : 'rgba(236,241,238,0.055)',
+            ...(action.lit ? { boxShadow: [...halo.repeating] } : {}),
+          },
+          press.style,
+        ]}
+      >
+        {/* No `BlurView` inside these. Three of them sit on a bar that is already
+            the heaviest blur in the app; blurring a small circle against a
+            surface that is itself blurred buys nothing the tint does not, and it
+            would be more native layers on the one bar that is always on screen. */}
+        <SpecularEdge
+          color={action.lit ? 'rgba(236,241,238,0.12)' : 'rgba(236,241,238,0.10)'}
+          radius={radius.pill}
+        />
+        <Icon
+          name={action.icon}
+          size={GLYPH}
+          color={action.active || action.lit ? palette.acc : GHOST_GLYPH}
+        />
+      </Animated.View>
+    </BubblePressable>
+  );
+}
+
+/**
+ * The assistant's button: the same 46 dp and the same press, drawn as the
+ * `AiOrb` with its sheen and stars. `lit` is not shown — the orb is always
+ * alive, whether a key is connected or not, because the card under the hero is
+ * where "not connected yet" is said in words.
+ */
+function AiButton({ action }: { action: TopBarAction }) {
+  const press = usePressScale(0.94);
+  return (
+    <BubblePressable
+      onPress={action.onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      hitSlop={4}
+      radius="pill"
+      bubbleColor={ai.glyph}
+      accessibilityRole="button"
+      accessibilityLabel={action.label}
+      // Not clipped: the stars sit a few dp outside the circle.
+      style={{ height: BUTTON, width: BUTTON }}
+    >
+      <Animated.View style={press.style}>
+        <AiOrb size={BUTTON} glyph={22} sheen stars />
+      </Animated.View>
     </BubblePressable>
   );
 }
@@ -225,13 +296,15 @@ function TopBarButton({ action }: { action: TopBarAction }) {
  * The language switch: two letters, the one in force lit.
  *
  * A pair of buttons rather than a `Segmented`, because it has to fit in the same
- * band as the glyph row beside it and a segmented control is 44 with its own
- * track. It is still the same idea — one of two, the selected one on green — so
- * it reads as the app's vocabulary rather than as a new control.
+ * band as the glyph row beside it. It is still the same idea — one of two, the
+ * selected one on the theme's fill — so it reads as the app's vocabulary rather
+ * than as a new control.
  *
- * The green is ONE 44 × 26 pill that SLIDES between the two letters (300 ms, a
- * slight overshoot) rather than each letter lighting its own background: the
- * change of language is a change of position, and the pane says where it went.
+ * The fill is ONE 46 wide gradient thumb (c1 → c2, glowing at c2 30 %) that
+ * SLIDES between the letters (300 ms, `bezier(.34,1.3,.64,1)`) rather than each
+ * letter lighting its own background: the change of language is a change of
+ * position, and the pane says where it went. The letter on it is `onAcc`, since
+ * ink on a light theme's gradient would disappear.
  */
 export function LanguageToggle({
   options,
@@ -252,10 +325,15 @@ export function LanguageToggle({
       accessibilityRole="radiogroup"
       accessibilityLabel={t('Application language')}
       style={{
+        height: 38,
+        padding: 3,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: radius.pill,
+        borderWidth: 1,
         backgroundColor: 'rgba(236,241,238,0.04)',
         borderColor: 'rgba(236,241,238,0.07)',
       }}
-      className="h-[34px] flex-row items-center rounded-pill border p-[3px]"
     >
       <SlidingThumb
         index={index}
@@ -265,11 +343,24 @@ export function LanguageToggle({
         duration={300}
         bezier={[0.34, 1.3, 0.64, 1]}
         style={{
-          borderRadius: 9999,
-          backgroundColor: palette.green,
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: 'rgba(63,169,108,0.3)' }],
+          borderRadius: radius.pill,
+          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.3) }],
         }}
-      />
+      >
+        <LinearGradient
+          colors={[palette.c1, palette.c2]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: radius.pill,
+          }}
+        />
+      </SlidingThumb>
       {options.map((option) => {
         const selected = option.value === active;
         return (
@@ -280,15 +371,22 @@ export function LanguageToggle({
             accessibilityRole="radio"
             accessibilityState={{ selected }}
             accessibilityLabel={option.name}
-            style={pressedStyle}
-            className="h-[28px] w-[44px] items-center justify-center rounded-pill"
+            style={{
+              height: 30,
+              width: SEGMENT,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: radius.pill,
+            }}
           >
             <Text
               allowFontScaling={false}
-              className={[
-                'text-label',
-                selected ? 'font-semibold text-ink' : 'font-semibold text-ink-faint',
-              ].join(' ')}
+              style={{
+                fontSize: 14.5,
+                lineHeight: 20,
+                fontWeight: '600',
+                color: selected ? palette.onAcc : palette.inkFaint,
+              }}
             >
               {option.label}
             </Text>
@@ -300,4 +398,4 @@ export function LanguageToggle({
 }
 
 /** One letter's cell, and the width the thumb covers. */
-const SEGMENT = 44;
+const SEGMENT = 46;

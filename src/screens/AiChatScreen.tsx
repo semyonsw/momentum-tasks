@@ -42,7 +42,7 @@ import { AiProposalCard } from '../components/AiProposalCard';
 import { AiSequenceCard } from '../components/AiSequenceCard';
 import { BubblePressable } from '../components/bubbles';
 import { Sheet } from '../components/Sheet';
-import { COMMIT_GRADIENT, GlassBar, GlassSurface, Lamps } from '../components/glass';
+import { GlassBar, GlassSurface, Lamps } from '../components/glass';
 import { Icon } from '../components/Icon';
 import { Stagger, pressedStyle } from '../components/motion';
 import { useAiPrompts } from '../hooks/useAiPrompts';
@@ -52,7 +52,7 @@ import type { AiSection } from '../lib/ai/aiSchema';
 import { tap } from '../lib/feedback';
 import { discardSequence, sectionContext, sendMessage } from '../state/aiActions';
 import { useAi, type AiMessage } from '../state/aiStore';
-import { glassTier, halo, motion, palette, radius } from '../theme/tokens';
+import { glassTier, gradientFill, halo, motion, palette, radius } from '../theme/tokens';
 
 const META: Record<
   AiSection,
@@ -561,12 +561,12 @@ function SendButton({ live, onPress }: { live: boolean; onPress: () => void }) {
     >
       {live ? (
         <LinearGradient
-          colors={[...COMMIT_GRADIENT]}
+          {...gradientFill()}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
         />
       ) : null}
       {/* The one arrow in the app is the chevron; "send" is the chevron, forward. */}
-      <Icon name="chevron-right" size={20} color={live ? palette.ink : palette.inkMuted} />
+      <Icon name="chevron-right" size={20} color={live ? palette.onAcc : palette.inkMuted} />
     </BubblePressable>
   );
 }

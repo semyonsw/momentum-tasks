@@ -8,7 +8,7 @@
  * the bar, which was fine: the bar was never over the sheet because it was never
  * over anything.
  *
- * The pill floats now (`components/TabBar.tsx`), and it is a SIBLING of the
+ * The pill floats now (`components/NavBar.tsx`), and it is a SIBLING of the
  * whole section rather than a child of it — so it paints on top of everything a
  * section draws, including a sheet's scrim. `zIndex` cannot fix that: it orders
  * siblings, and the sheet is three levels deeper in a different subtree.

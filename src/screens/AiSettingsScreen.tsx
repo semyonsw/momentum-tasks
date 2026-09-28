@@ -53,7 +53,7 @@ import { formatClockTime } from '../lib/days';
 import { tap } from '../lib/feedback';
 import { disconnect, listModels, testKey } from '../state/aiActions';
 import { useAi } from '../state/aiStore';
-import { danger, glass, glassTier, palette, radius } from '../theme/tokens';
+import { danger, glass, glassTier, palette, radius, tint } from '../theme/tokens';
 
 /** How long the testing overlay stays up at the least, so its steps can be read. */
 const MIN_TEST_MS = 2500;
@@ -283,9 +283,7 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
             backgroundColor: glassTier.well.tint,
             ...(typed !== '' && !error
               ? {
-                  boxShadow: [
-                    { offsetX: 0, offsetY: 0, blurRadius: 16, color: 'rgba(63,169,108,0.14)' },
-                  ],
+                  boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.14) }],
                 }
               : {}),
           }}
@@ -526,11 +524,9 @@ function ProviderControl() {
             option.live
               ? {
                   borderWidth: 1,
-                  borderColor: 'rgba(63,169,108,0.28)',
-                  backgroundColor: 'rgba(63,169,108,0.16)',
-                  boxShadow: [
-                    { offsetX: 0, offsetY: 0, blurRadius: 16, color: 'rgba(63,169,108,0.22)' },
-                  ],
+                  borderColor: tint(0.28),
+                  backgroundColor: tint(0.16),
+                  boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.22) }],
                 }
               : null,
           ]}

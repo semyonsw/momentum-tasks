@@ -1,33 +1,328 @@
 /**
- * Sheet — the bottom-third surface everything that is not a question arrives on.
+ * Sheet — the floating glass pane everything that is not a whole screen arrives on.
  *
  *   ╭────────────────────────────────────────────╮
- *   │                  ▁▁▁▁                      │  ← the grab handle
+ *   │                  ▁▁▁▁                      │  ← the grab handle: drag it down
  *   │ Time interval                              │
  *   │ …                                          │
- *   ╰────────────────────────────────────────────╯
+ *   ╰────────────────────────────────────────────╯   8 dp off every edge
  *
- * `ConfirmSheet` is the same geometry with a fixed body: a question and two
- * answers. This is the empty version, for a sheet whose contents are a list or a
- * small form — picking the window the money screen reads through, writing a new
- * task. The chrome, the easing and the two entrances are deliberately identical
- * so the two never read as different objects.
+ * `ConfirmSheet` and `NumberSheet` are the same pane with a fixed body; they are
+ * built on `SheetFrame` below so the chrome, the curves and the three ways out
+ * are one implementation rather than three copies that drift. `Sheet` is the
+ * frame plus a title and a capped scroll, for a list or a small form.
+ *
+ * ── THE PANE FLOATS, IT DOES NOT DOCK ─────────────────────────────────────
+ *
+ * v3 lifts the sheet 8 dp off the left, right and bottom edges with a 34 corner
+ * all round. A docked sheet reads as the bottom of the screen growing; a floating
+ * one reads as an object that arrived and can leave — which is exactly what the
+ * handle then lets you do to it.
+ *
+ * ── EVERY WAY OUT ANIMATES, THEN ANSWERS ──────────────────────────────────
+ *
+ * Scrim tap, hardware back, the handle dragged past 110 dp, and a child's own
+ * `Cancel` (through `useSheetDismiss`) all run the same 340 ms fall before the
+ * caller's `onDismiss`. The caller unmounts on `onDismiss`, so calling it first
+ * would cut the exit off at frame one. A SAVE is deliberately not routed through
+ * this: the write happens on the press, and the caller closes the sheet itself.
  *
  * TAPPING THE SCRIM DISMISSES, and the caller's `onDismiss` is always the
  * NON-committal answer — nothing here is destructive, so the cheap gesture can
  * safely be the one that closes it.
+ *
+ * Two `BlurView`s while up (the scrim's 10 and the pane's 34). The nav pill hides
+ * under an overlay, so a screen with a sheet still stays inside the budget of 3.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
-import { Animated, Easing, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  Animated,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Pane } from './glass';
+import { PrimaryButton, TextButton } from './primitives';
 import { useIsOverlay } from './overlay';
 import { useT } from '../hooks/useT';
-import { palette } from '../theme/tokens';
+import { curve, tint } from '../theme/tokens';
 
-/** Matches `ConfirmSheet` and `FocusMode`. */
-const EASING = Easing.bezier(0.2, 0.8, 0.2, 1);
+/** The design's curves, spelled once. */
+const IN = { duration: 600, bezier: [0.32, 1.28, 0.5, 1] as const };
+const OUT = { duration: 340, bezier: [0.4, 0, 0.8, 0.4] as const };
+const SPRING_BACK = { duration: 460, bezier: [0.34, 1.3, 0.64, 1] as const };
+const SCRIM_IN_MS = 360;
+/** Past this, a released drag is a dismissal rather than a nudge. */
+const DISMISS_DRAG = 110;
+
+const SCRIM = 'rgba(6,8,7,0.55)';
+const PANE = 'rgba(20,26,24,0.86)';
+const EDGE = 'rgba(236,241,238,0.09)';
+const SPECULAR = 'rgba(236,241,238,0.16)';
+const HANDLE = 'rgba(236,241,238,0.22)';
+export const SHEET_RADIUS = 34;
+
+/**
+ * The animated way out, for a control INSIDE a sheet — its `Cancel`. Outside a
+ * sheet it is null, so a caller can fall back to its own prop.
+ */
+const DismissContext = createContext<(() => void) | null>(null);
+export function useSheetDismiss(): (() => void) | null {
+  return useContext(DismissContext);
+}
+
+/**
+ * The chrome alone: scrim, pane, handle, the entrance and every exit. No title,
+ * no scroll — the body is the caller's.
+ */
+export function SheetFrame({
+  onDismiss,
+  dismissLabel,
+  children,
+}: {
+  onDismiss: () => void;
+  /** The scrim's accessibility label — the non-committal answer's own name. */
+  dismissLabel?: string;
+  children: ReactNode;
+}) {
+  const t = useT();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+
+  /** 0 = off-screen below, 1 = resting. */
+  const enter = useRef(new Animated.Value(0)).current;
+  const scrim = useRef(new Animated.Value(0)).current;
+  /** The finger's contribution, added on top of `enter`. */
+  const drag = useRef(new Animated.Value(0)).current;
+  /** The pane's own height, for the design's `translateY(110%)`. */
+  const [height, setHeight] = useState(0);
+  const started = useRef(false);
+  const closing = useRef(false);
+
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+
+  const close = useCallback(() => {
+    if (closing.current) return;
+    closing.current = true;
+    const easing = curve(OUT.bezier);
+    Animated.parallel([
+      Animated.timing(enter, {
+        toValue: 0,
+        duration: OUT.duration,
+        easing,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scrim, {
+        toValue: 0,
+        duration: OUT.duration,
+        easing,
+        useNativeDriver: true,
+      }),
+    ]).start(() => dismissRef.current());
+  }, [enter, scrim]);
+
+  // The nav pill is a sibling of the whole section and would paint over this.
+  // See `components/overlay.ts`. Back dismisses, like the scrim — animated.
+  useIsOverlay(close);
+
+  // The entrance waits for the first measurement, so 110% is of the real pane.
+  useEffect(() => {
+    if (height <= 0 || started.current) return;
+    started.current = true;
+    Animated.timing(scrim, {
+      toValue: 1,
+      duration: SCRIM_IN_MS,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: IN.duration,
+      easing: curve(IN.bezier),
+      useNativeDriver: true,
+    }).start();
+  }, [enter, height, scrim]);
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (_, g) => {
+        if (!closing.current) drag.setValue(Math.max(0, g.dy));
+      },
+      onPanResponderRelease: (_, g) => {
+        if (closing.current) return;
+        if (g.dy > DISMISS_DRAG) {
+          closeRef.current();
+          return;
+        }
+        Animated.timing(drag, {
+          toValue: 0,
+          duration: SPRING_BACK.duration,
+          easing: curve(SPRING_BACK.bezier),
+          useNativeDriver: true,
+        }).start();
+      },
+    }),
+  ).current;
+  const closeRef = useRef(close);
+  closeRef.current = close;
+
+  // Before it is measured the pane waits a whole window below, out of sight.
+  const offscreen = (height > 0 ? height : windowHeight) * 1.1 + insets.bottom + 8;
+  const translateY = Animated.add(
+    enter.interpolate({ inputRange: [0, 1], outputRange: [offscreen, 0] }),
+    drag,
+  );
+
+  return (
+    <DismissContext.Provider value={close}>
+      <View className="absolute inset-0" accessibilityViewIsModal>
+        {/* `style`, not `className`: NativeWind's classes don't reach a node
+            wrapped by `Animated.createAnimatedComponent`. */}
+        <Animated.View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: scrim }}
+        >
+          <Pane intensity={10} />
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: SCRIM,
+            }}
+          />
+        </Animated.View>
+        <Pressable
+          onPress={close}
+          accessibilityRole="button"
+          accessibilityLabel={dismissLabel ?? t('Close')}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+
+        <Animated.View
+          onLayout={(event) => setHeight(event.nativeEvent.layout.height)}
+          style={{
+            position: 'absolute',
+            left: 8,
+            right: 8,
+            bottom: 8 + insets.bottom,
+            borderRadius: SHEET_RADIUS,
+            // The drop under the pane and the theme's glow round it. Outset
+            // shadows are drawn outside the box, so the clipping child below
+            // does not cut them.
+            boxShadow: [
+              { offsetX: 0, offsetY: -10, blurRadius: 50, color: 'rgba(0,0,0,0.6)' },
+              { offsetX: 0, offsetY: 0, blurRadius: 40, color: tint(0.14) },
+            ],
+            transform: [{ translateY }],
+          }}
+        >
+          <View
+            style={{
+              borderRadius: SHEET_RADIUS,
+              borderWidth: 1,
+              borderColor: EDGE,
+              overflow: 'hidden',
+              paddingHorizontal: 18,
+              paddingTop: 6,
+              paddingBottom: 22,
+            }}
+          >
+            <Pane intensity={34} />
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: PANE,
+              }}
+            />
+            {/* The 1 px specular along the top edge. */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 1,
+                backgroundColor: SPECULAR,
+              }}
+            />
+
+            {/* 28 tall so the thumb has something to hold; the bar is 44 × 5. */}
+            <View
+              {...pan.panHandlers}
+              style={{ height: 28, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <View style={{ width: 44, height: 5, borderRadius: 9999, backgroundColor: HANDLE }} />
+            </View>
+
+            {children}
+          </View>
+        </Animated.View>
+      </View>
+    </DismissContext.Provider>
+  );
+}
+
+/**
+ * A sheet's `Cancel`, running the frame's animated exit before `onDismiss`.
+ * It has to be a component rendered INSIDE the frame to reach it — the sheet
+ * component that renders the frame sits above the provider, not under it.
+ * `text` is the quiet row under a form's primary; `ghost` is the pill beside
+ * or under a confirm.
+ */
+export function SheetCancel({
+  label,
+  onDismiss,
+  variant = 'text',
+}: {
+  label: string;
+  onDismiss: () => void;
+  variant?: 'text' | 'ghost';
+}) {
+  const dismiss = useSheetDismiss() ?? onDismiss;
+  return variant === 'ghost' ? (
+    <PrimaryButton label={label} variant="ghost" onPress={dismiss} />
+  ) : (
+    <TextButton label={label} onPress={dismiss} />
+  );
+}
+
+/** The design's sheet title: 23 / 28, 600, ink. */
+export function SheetTitle({ children }: { children: ReactNode }) {
+  return (
+    <Text
+      className="text-ink"
+      style={{ fontSize: 23, lineHeight: 28, fontWeight: '600', letterSpacing: -0.3 }}
+    >
+      {children}
+    </Text>
+  );
+}
 
 interface SheetProps {
   title: string;
@@ -36,62 +331,15 @@ interface SheetProps {
 }
 
 export function Sheet({ title, onDismiss, children }: SheetProps) {
-  const t = useT();
-  const insets = useSafeAreaInsets();
-  // The nav pill is a sibling of the whole section and would paint over this.
-  // See `components/overlay.ts`. Back dismisses, like the scrim.
-  useIsOverlay(onDismiss);
-
-  const scrim = useRef(new Animated.Value(0)).current;
-  const sheet = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(scrim, {
-      toValue: 1,
-      duration: 180,
-      easing: EASING,
-      useNativeDriver: true,
-    }).start();
-    Animated.timing(sheet, {
-      toValue: 1,
-      duration: 260,
-      easing: EASING,
-      useNativeDriver: true,
-    }).start();
-  }, [scrim, sheet]);
-
   return (
-    <View className="absolute inset-0" accessibilityViewIsModal>
-      {/* `style`, not `className`: NativeWind's classes don't reach a node
-          wrapped by `Animated.createAnimatedComponent`. */}
-      <AnimatedPressable
-        onPress={onDismiss}
-        accessibilityRole="button"
-        accessibilityLabel={t('Close')}
-        style={{ flex: 1, backgroundColor: palette.scrim, opacity: scrim }}
-      />
-
-      <Animated.View
-        style={{
-          opacity: sheet,
-          transform: [
-            { translateY: sheet.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) },
-          ],
-        }}
-      >
-        <View
-          style={{ paddingBottom: insets.bottom + 16 }}
-          className="rounded-t-surface border-t border-t-hairline bg-surface px-lg pt-lg"
-        >
-          <View className="mb-lg h-xs w-[36px] self-center rounded-pill bg-hairline" />
-          <Text className="mb-lg text-title font-medium text-ink">{title}</Text>
-          {/* Capped, so a long list scrolls rather than growing past the screen. */}
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
-            {children}
-          </ScrollView>
-        </View>
-      </Animated.View>
-    </View>
+    <SheetFrame onDismiss={onDismiss}>
+      <View className="mb-lg">
+        <SheetTitle>{title}</SheetTitle>
+      </View>
+      {/* Capped, so a long list scrolls rather than growing past the screen. */}
+      <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
+        {children}
+      </ScrollView>
+    </SheetFrame>
   );
 }
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);

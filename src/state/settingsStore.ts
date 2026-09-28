@@ -21,6 +21,15 @@
  */
 
 import { create } from 'zustand';
+import {
+  DEFAULT_CUSTOM_COLORS,
+  DEFAULT_THEME_ID,
+  normalizeHex,
+  usableCustomColors,
+  usableThemeId,
+  type ThemeColors,
+  type ThemeId,
+} from '../lib/theme';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -176,6 +185,18 @@ export interface Settings {
    */
   languageChosen: boolean;
 
+  /* --- appearance: see `lib/theme.ts` -------------------------------- */
+  /**
+   * Which of the eight presets the app wears, or `custom`. Fintech Lime by
+   * default, which is also the colour the icon is exported in.
+   */
+  themeId: ThemeId;
+  /**
+   * The three stops Custom uses. Kept while a preset is selected, so switching
+   * back to Custom returns the colours somebody picked rather than the defaults.
+   */
+  customColors: ThemeColors;
+
   /* --- the workout reminder: see `screens/WorkoutSettingsScreen.tsx` --- */
   /**
    * Have the phone say "time to train" on the days you train.
@@ -294,6 +315,8 @@ export const DEFAULT_SETTINGS: Settings = {
   weeklySetTargets: {},
   language: 'ru',
   languageChosen: false,
+  themeId: DEFAULT_THEME_ID,
+  customColors: DEFAULT_CUSTOM_COLORS,
   workoutReminderEnabled: false,
   workoutReminderDays: [0, 2, 4],
   workoutReminderTime: '18:00',
@@ -430,6 +453,8 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     weeklySetTargets: sanitizeWeeklyTargets(raw.weeklySetTargets),
     language: usableLanguage(raw.language),
     languageChosen: raw.languageChosen === true,
+    themeId: usableThemeId(raw.themeId),
+    customColors: usableCustomColors(raw.customColors),
     workoutReminderEnabled: raw.workoutReminderEnabled === true,
     workoutReminderDays: sanitizeWeekdays(raw.workoutReminderDays),
     workoutReminderTime: usableClockTime(raw.workoutReminderTime),
@@ -577,6 +602,10 @@ interface SettingsState extends Settings {
    * asking them again on the next launch would be the app not listening.
    */
   setLanguage: (language: Language) => void;
+  /** Wear a preset. */
+  setTheme: (themeId: ThemeId) => void;
+  /** Change one of Custom's three dots — which also SELECTS Custom. */
+  setCustomColor: (index: 0 | 1 | 2, hex: string) => void;
   /** The workout reminder, as three writes because they are three questions. */
   setWorkoutReminderEnabled: (enabled: boolean) => void;
   toggleWorkoutReminderDay: (day: Weekday) => void;
@@ -655,6 +684,14 @@ export const useSettings = create<SettingsState>()(
       setUnitSystem: (unitSystem) => set({ unitSystem }),
 
       setLanguage: (language) => set({ language: usableLanguage(language), languageChosen: true }),
+
+      setTheme: (themeId) => set({ themeId: usableThemeId(themeId) }),
+
+      setCustomColor: (index, hex) => {
+        const next = [...get().customColors] as string[];
+        next[index] = normalizeHex(hex) ?? next[index];
+        set({ themeId: 'custom', customColors: usableCustomColors(next) });
+      },
 
       /*
        * Turning it on with no days picked would arm a reminder that can never
@@ -787,6 +824,10 @@ export const useSettings = create<SettingsState>()(
           ...DEFAULT_SETTINGS,
           language: get().language,
           languageChosen: get().languageChosen,
+          // Appearance is not a section setting either: the reset says "every
+          // duration, switch, target and default across all three sections".
+          themeId: get().themeId,
+          customColors: get().customColors,
           bodyweightKg: get().bodyweightKg,
           bodyweightLog: get().bodyweightLog,
           gyms: get().gyms,

@@ -60,7 +60,7 @@ import { tap } from '../lib/feedback';
 import { useAi } from '../state/aiStore';
 import { useLibrary } from '../state/libraryStore';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
-import { glass, glassTier, palette, radius, textGlow } from '../theme/tokens';
+import { glass, glassTier, palette, radius, textGlow, tint } from '../theme/tokens';
 
 export interface AiReviewScreenProps {
   proposalId: string;
@@ -303,7 +303,7 @@ function RowCard({
                 borderRadius: radius.pill,
                 borderWidth: 1,
                 borderColor: removed ? 'rgba(236,241,238,0.07)' : glass.greenEdge,
-                backgroundColor: removed ? 'rgba(236,241,238,0.04)' : 'rgba(63,169,108,0.16)',
+                backgroundColor: removed ? 'rgba(236,241,238,0.04)' : tint(0.16),
               }}
             >
               <Text
@@ -412,8 +412,8 @@ function Stepper({
         paddingVertical: 8,
         paddingHorizontal: 6,
         borderWidth: 1,
-        borderColor: differs ? 'rgba(63,169,108,0.28)' : glassTier.well.border,
-        backgroundColor: differs ? 'rgba(63,169,108,0.10)' : glassTier.well.tint,
+        borderColor: differs ? tint(0.28) : glassTier.well.border,
+        backgroundColor: differs ? tint(0.1) : glassTier.well.tint,
         opacity: locked ? 0.45 : 1,
       }}
     >
@@ -489,7 +489,7 @@ function StepButton({
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: radius.pill,
-          backgroundColor: plus ? 'rgba(63,169,108,0.16)' : 'rgba(236,241,238,0.06)',
+          backgroundColor: plus ? tint(0.16) : 'rgba(236,241,238,0.06)',
         },
       ]}
     >

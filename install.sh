@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-#  Workout Tracker - installer for Linux, macOS and WSL
+#  Momentum - installer for Linux, macOS and WSL
 #
 #      ./install.sh
 #
@@ -9,9 +9,9 @@
 #  On Windows, double-click Install.bat instead.
 # ---------------------------------------------------------------------------
 
-APP_NAME='Workout Tracker'
+APP_NAME='Momentum'
 APP_BLURB='A local-first Android workout tracker. One tap to log a repeat set.'
-APP_ISSUES='https://github.com/semyonsw/workout_tracker/issues'
+APP_ISSUES='https://github.com/semyonsw/momentum-app/issues'
 
 # ===========================================================================
 #  INSTALLER ENGINE - shared by all of the projects in this family.
@@ -375,7 +375,10 @@ fi
 step 'Putting the app on your phone'
 # `sort -V`, not `sort`: plain sort puts 1.10.0 BEFORE 1.9.0 and would push the
 # older APK to the phone the first time a minor version reached double digits.
-APK="$(ls -1 "$ROOT"/workout-tracker-*.apk 2>/dev/null | sort -V | tail -1)"
+# `momentum-*` first: the app was called Workout Tracker until 2.0.0, and the
+# older APKs stay beside the new one as rollbacks.
+APK="$(ls -1 "$ROOT"/momentum-*.apk 2>/dev/null | sort -V | tail -1)"
+[ -z "${APK:-}" ] && APK="$(ls -1 "$ROOT"/workout-tracker-*.apk 2>/dev/null | sort -V | tail -1)"
 if [ -z "${APK:-}" ]; then
     info 'no .apk in this folder - the signed build lives on the GitHub Releases page.'
     ok 'skipping the phone step (nothing to install from here)'

@@ -58,10 +58,11 @@
  * it.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppState, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+import { vars } from 'nativewind';
 
 import './global.css';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
@@ -72,6 +73,8 @@ import { LanguageChoiceScreen } from './src/screens/LanguageChoiceScreen';
 import { useSettingsHydrated } from './src/hooks/useHydrated';
 import { useSettings } from './src/state/settingsStore';
 import { prepareAudio } from './src/lib/beeper';
+import { rgbChannels, themeColors } from './src/lib/theme';
+import { applyTheme } from './src/theme/tokens';
 import {
   REMINDER_KIND,
   dismissTimerAlerts,
@@ -194,19 +197,67 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <View className="flex-1 bg-bg">
-        {/*
-          Inside the provider, outside the shell: a crash in any screen lands on a
-          readable error with a way out, instead of taking the process down. The
-          session is persisted, so without this a crash on the logging screen
-          repeats on every launch — see `ErrorBoundary`.
-        */}
-        <ErrorBoundary>
-          <Root />
-        </ErrorBoundary>
-        {launching ? <LaunchScreen onDone={() => setLaunching(false)} /> : null}
-      </View>
+      <Themed>
+        {(themeKey) => (
+          <>
+            {/*
+              Inside the provider, outside the shell: a crash in any screen lands on a
+              readable error with a way out, instead of taking the process down. The
+              session is persisted, so without this a crash on the logging screen
+              repeats on every launch — see `ErrorBoundary`.
+
+              KEYED ON THE THEME. Every colour in the app is read from the tokens at
+              render time (`theme/tokens.ts`), so a new theme is a remount of the
+              tree under this line and nothing else. The launch is outside the key,
+              so the one moment the theme changes on its own — settings hydrating
+              under the launch mark — does not restart the mark.
+            */}
+            <View key={themeKey} className="flex-1">
+              <ErrorBoundary>
+                <Root />
+              </ErrorBoundary>
+            </View>
+            {launching ? <LaunchScreen onDone={() => setLaunching(false)} /> : null}
+          </>
+        )}
+      </Themed>
     </SafeAreaProvider>
+  );
+}
+
+/**
+ * The theme, poured into the two places colour is read from: the token getters
+ * (`applyTheme`) and NativeWind's CSS variables (`vars`), so `text-green-bright`
+ * and `palette.greenBright` can never disagree about what the accent is.
+ *
+ * `applyTheme` runs during render, inside the memo, on purpose: it has to have
+ * happened before any child reads a token, and an effect would run after.
+ */
+function Themed({ children }: { children: (themeKey: string) => ReactNode }) {
+  const themeId = useSettings((s) => s.themeId);
+  const customColors = useSettings((s) => s.customColors);
+  const { themeKey, cssVars } = useMemo(() => {
+    const colors = themeColors(themeId, customColors);
+    const theme = applyTheme(colors);
+    return {
+      themeKey: `${themeId}:${colors.join(',')}`,
+      cssVars: vars({
+        '--green-wash': rgbChannels(theme.wash),
+        '--green-dim': rgbChannels(theme.dim),
+        '--green': rgbChannels(theme.c2),
+        '--green-bright': rgbChannels(theme.acc),
+        '--acc': rgbChannels(theme.acc),
+        '--on-acc': rgbChannels(theme.onAcc),
+        '--c1': rgbChannels(theme.c1),
+        '--c2': rgbChannels(theme.c2),
+        '--c3': rgbChannels(theme.c3),
+      }),
+    };
+  }, [themeId, customColors]);
+  return (
+    <View className="flex-1 bg-bg" style={cssVars}>
+      {children(themeKey)}
+    </View>
   );
 }
 

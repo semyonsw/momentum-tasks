@@ -1147,7 +1147,9 @@ function MaxChip({ on, onPress }: { on: boolean; onPress: () => void }) {
         on ? 'border-green bg-green' : 'border-hairline bg-surface-alt',
       ].join(' ')}
     >
-      <Text className="text-label font-semibold text-ink">{maxLabel(lang).toUpperCase()}</Text>
+      <Text className={['text-label font-semibold', on ? 'text-on-acc' : 'text-ink'].join(' ')}>
+        {maxLabel(lang).toUpperCase()}
+      </Text>
     </Pressable>
   );
 }

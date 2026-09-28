@@ -6,8 +6,8 @@
  *
  * Values are space-separated RGB channels so Tailwind can apply <alpha-value>.
  *
- * ONE palette, not two. This app is near-black only: an OLED-off page with a
- * faint green cast, and green as the single hue. A light theme would need a
+ * ONE palette, not two. This app is near-black only: an OLED-off page, and
+ * the three theme colours as the only hues. A light theme would need a
  * second set of contrast decisions for a screen that is only ever read in a
  * gym at arm's length, so there isn't one.
  */
@@ -25,9 +25,16 @@
     --ink: 236 241 238; /* #ECF1EE — primary text. never pure white */
     --ink-muted: 138 150 143; /* #8A968F — secondary text */
     --ink-faint: 87 97 92; /* #57615C — micro-labels, ghosted values */
-    --green-wash: 12 26 18; /* #0C1A12 — overload nudge card only */
-    --green-dim: 21 69 44; /* #15452C — tracks, connectors, drop rules */
-    --green: 30 122 76; /* #1E7A4C — primary fills */
-    --green-bright: 63 169 108; /* #3FA96C — green text/icons on black */
+    /* The theme. These are Fintech Lime's, the default — `App.tsx` overwrites
+       every one of them from `lib/theme.ts` before the first screen draws. */
+    --green-wash: 10 25 17; /* c2 at 8% over the page */
+    --green-dim: 23 72 45; /* c2 at 30% over the page */
+    --green: 61 220 132; /* c2 — primary fills */
+    --green-bright: 116 228 157; /* acc — accent text/icons on black */
+    --acc: 116 228 157;
+    --on-acc: 6 18 10;
+    --c1: 198 244 50;
+    --c2: 61 220 132;
+    --c3: 0 163 137;
   }
 }

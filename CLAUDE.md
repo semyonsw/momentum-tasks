@@ -9,7 +9,8 @@ follow-up**. After every change, without being asked:
 1. **Bump the version.** `app.json` (`version` and `android.versionCode`, both) and
    `package.json`. Patch bump unless the change is bigger than that.
 2. **Build the APK** (below) and copy it to the repo root as
-   `workout-tracker-<version>.apk`.
+   `momentum-<version>.apk` (the app was Workout Tracker until 2.0.0; the older
+   `workout-tracker-*.apk` files are the rollbacks from that era).
 3. **Commit and push to `main`.** Short, plain commit message — one line, no essay.
 
 The point of step 2 is that the user copies that file to the phone and installs it
@@ -178,7 +179,7 @@ other half of the proof.
 
 ## `.gitignore` has `*.apk`
 
-The committed APK is force-added. `git add -f workout-tracker-<version>.apk`, or the
+The committed APK is force-added. `git add -f momentum-<version>.apk`, or the
 release quietly contains no release.
 
 ## Before committing

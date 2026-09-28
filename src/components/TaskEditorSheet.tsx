@@ -7,16 +7,16 @@
  *   │ ┌────────────────────────────────────────┐ │
  *   │ │ Wash the dishes                        │ │
  *   │ └────────────────────────────────────────┘ │
- *   │ ASKS ON                                    │
- *   │ ╭ Every day ╮╭ Chosen days ╮╭ Just once ╮  │
+ *   │ REPEATS                                    │
+ *   │ ╭Every day╮ Weekdays  Pick days  Once      │  ← one lit pane, sliding
  *   │  Mon  Tue  Wed  Thu  Fri  Sat  Sun         │
  *   │ STARTS ON                    14 September ▾│
  *   │   ‹ September 2026 ›   (the grid)          │
- *   │ REMIND ME ABOUT THIS               [ ●━ ]  │
+ *   │ 🔔 Remind me                       [ ●━ ]  │
  *   │        06      28                          │
  *   │      ╭ 07  :  30 ╮                         │
  *   │        08      32                          │
- *   │ ╭────────────── Save ───────────────────╮  │
+ *   │ ╭──────────── ✓ Save task ──────────────╮  │
  *   ╰────────────────────────────────────────────╯
  *
  * ── FOUR FACTS, AND THREE OF THEM ARE FOLDED AWAY ─────────────────────────
@@ -41,6 +41,14 @@
  * weekday chips for a date, because those are the same slot answering the same
  * question: which day.
  *
+ * ── `WEEKDAYS` IS A PRESET, NOT A FOURTH KIND ─────────────────────────────
+ *
+ * v3's control has four answers, and the model still has three: `Weekdays` is
+ * `{ kind: 'weekdays', days: Mon–Fri }` with the chips folded away, because the
+ * commonest "chosen days" answer by far is the working week and it should not
+ * cost five taps. `Pick days` is the same kind with the chips open. A task saved
+ * as exactly Mon–Fri reopens on `Weekdays`; any other set reopens on `Pick days`.
+ *
  * ── STARTS ON DEFAULTS TO TODAY, AND THAT IS THE FEATURE ──────────────────
  *
  * A task written on Sunday evening must not appear on Saturday's list. Saturday
@@ -51,27 +59,38 @@
  * habit that genuinely began on the 1st can say so.
  */
 
-import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Text, View } from 'react-native';
 
+import { BubblePressable } from './bubbles';
 import { DayPicker } from './DayPicker';
-import { Sheet } from './Sheet';
+import { Icon } from './Icon';
+import { MaterialSymbol } from './MaterialSymbol';
+import { Sheet, SheetCancel } from './Sheet';
 import { TimeWheel } from './TimeWheel';
 import {
   FieldWell,
+  GradientFill,
   Kicker,
   PrimaryButton,
   Segmented,
   SelectChip,
-  SwitchRow,
-  TextButton,
+  Toggle,
 } from './primitives';
 import { dayKey, formatLongDay, shiftDay, weekdayLabels } from '../lib/days';
 import { ensureNotificationPermission } from '../lib/notify';
 import { useLanguage, useT } from '../hooks/useT';
 import type { TaskReminder, TaskSchedule, Weekday } from '../lib/tasks';
+import { curve, palette, tint } from '../theme/tokens';
 
-type Kind = 'daily' | 'weekdays' | 'once';
+/** What the segmented control shows. `workdays` and `pick` are both `weekdays`. */
+type Mode = 'daily' | 'workdays' | 'pick' | 'once';
+
+const WORKDAYS: readonly Weekday[] = [0, 1, 2, 3, 4];
+
+function isWorkdays(days: readonly Weekday[]): boolean {
+  return days.length === WORKDAYS.length && WORKDAYS.every((day) => days.includes(day));
+}
 
 /** Everything the sheet hands back. One object, because it is one act. */
 export interface TaskDraft {
@@ -118,10 +137,17 @@ export function TaskEditorSheet({
   const today = dayKey(new Date());
 
   const [name, setName] = useState(initialName);
-  const [kind, setKind] = useState<Kind>(initialSchedule.kind);
+  const [mode, setMode] = useState<Mode>(
+    initialSchedule.kind === 'weekdays'
+      ? isWorkdays(initialSchedule.days)
+        ? 'workdays'
+        : 'pick'
+      : initialSchedule.kind,
+  );
   const [days, setDays] = useState<readonly Weekday[]>(
     initialSchedule.kind === 'weekdays' ? initialSchedule.days : [0, 2, 4],
   );
+  const kind = mode === 'workdays' || mode === 'pick' ? 'weekdays' : mode;
   const [onceDay, setOnceDay] = useState(
     initialSchedule.kind === 'once' ? initialSchedule.day : shiftDay(today, 1),
   );
@@ -137,42 +163,45 @@ export function TaskEditorSheet({
       ? { kind: 'daily' }
       : kind === 'once'
         ? { kind: 'once', day: onceDay }
-        : { kind: 'weekdays', days };
+        : { kind: 'weekdays', days: mode === 'workdays' ? WORKDAYS : days };
 
   // A task with no name is not a task, and one that asks on no day never asks.
-  const savable = name.trim() !== '' && (kind !== 'weekdays' || days.length > 0);
+  const savable = name.trim() !== '' && (mode !== 'pick' || days.length > 0);
 
-  const KINDS = [
+  const MODES = [
     { value: 'daily' as const, label: t('Every day') },
-    { value: 'weekdays' as const, label: t('Chosen days') },
-    { value: 'once' as const, label: t('Just once') },
+    { value: 'workdays' as const, label: t('Weekdays') },
+    { value: 'pick' as const, label: t('Pick days') },
+    { value: 'once' as const, label: t('Once') },
   ];
 
   return (
     <Sheet title={title} onDismiss={onDismiss}>
+      <Kicker className="mb-sm">{t('Name')}</Kicker>
       <FieldWell
         value={name}
         size="body"
+        lit
         placeholder={t('What are you asking yourself to do?')}
         onChangeText={setName}
         autoFocus={initialName === ''}
         accessibilityLabel={t('Task name')}
       />
 
-      <Kicker className="mb-sm mt-xl">{t('Asks on')}</Kicker>
+      <Kicker className="mb-sm mt-lg">{t('Repeats')}</Kicker>
       <Segmented
-        options={KINDS}
-        value={kind}
+        options={MODES}
+        value={mode}
         onChange={(next) => {
-          setKind(next);
+          setMode(next);
           // The grid belongs to whichever date is in play; switching kind while
           // it is open would leave it editing a date the sheet no longer shows.
           setDatePicker(null);
         }}
-        accessibilityLabel={t('Asks on')}
+        accessibilityLabel={t('Repeats')}
       />
 
-      {kind === 'weekdays' ? (
+      {mode === 'pick' ? (
         <View className="mt-md flex-row flex-wrap">
           {weekdayLabels(lang).map((label, index) => {
             const weekday = index as Weekday;
@@ -231,11 +260,24 @@ export function TaskEditorSheet({
         </>
       )}
 
-      <Kicker className="mb-sm mt-xl">{t('Reminder')}</Kicker>
-      <View className="overflow-hidden rounded-surface border border-hairline bg-surface">
-        <SwitchRow
-          label={t('Remind me about this')}
-          hint={t('The phone will ask on the days this task asks.')}
+      <View
+        className="mt-md flex-row items-center rounded-[18px] border"
+        style={{
+          gap: 12,
+          paddingVertical: 12,
+          paddingHorizontal: 14,
+          backgroundColor: 'rgba(236,241,238,0.03)',
+          borderColor: 'rgba(236,241,238,0.05)',
+        }}
+      >
+        <MaterialSymbol name="notifications" size={22} color={palette.acc} filled />
+        <View className="flex-1">
+          <Text className="text-[16px] font-medium text-ink">{t('Remind me')}</Text>
+          <Text className="mt-[1px] text-[13.5px] text-[#6B766F]">
+            {reminder ? t('The phone will ask on the days this task asks.') : t('Off')}
+          </Text>
+        </View>
+        <Toggle
           value={reminder !== null}
           // 07:00 rather than the current time: a reminder is a thing you want
           // in the morning far more often than you want it at 14:36.
@@ -244,6 +286,7 @@ export function TaskEditorSheet({
             if (on)
               void ensureNotificationPermission().then((state) => setBlocked(state !== 'granted'));
           }}
+          accessibilityLabel={t('Remind me about this')}
         />
       </View>
 
@@ -269,9 +312,10 @@ export function TaskEditorSheet({
         </Text>
       )}
 
-      <View className="mt-xl">
-        <PrimaryButton
-          label={t('Save')}
+      <View style={{ marginTop: 18 }}>
+        <SaveButton
+          label={t('Save task')}
+          awake={savable}
           onPress={() => {
             if (!savable) return;
             onSave({
@@ -285,9 +329,74 @@ export function TaskEditorSheet({
             });
           }}
         />
-        <TextButton label={t('Cancel')} onPress={onDismiss} />
+        <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
       </View>
     </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/** `(.34,1.3,.64,1)` over 420 ms — the button waking when a name appears. */
+const WAKE_CURVE = [0.34, 1.3, 0.64, 1] as const;
+const WAKE_MS = 420;
+
+/**
+ * `✓ Save task`, 58 tall on the theme gradient — ASLEEP at half opacity and
+ * .94 scale until the task is savable, and waking on a spring the moment it is.
+ *
+ * Asleep rather than hidden or greyed-out-and-identical: the button stays where
+ * the thumb will look for it, and the wake is the sheet's way of saying "that is
+ * enough to save" without a word. It still answers a press while asleep — the
+ * hint text above it says why nothing happened.
+ */
+function SaveButton({
+  label,
+  awake,
+  onPress,
+}: {
+  label: string;
+  awake: boolean;
+  onPress: () => void;
+}) {
+  const wake = useRef(new Animated.Value(awake ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(wake, {
+      toValue: awake ? 1 : 0,
+      duration: WAKE_MS,
+      easing: curve(WAKE_CURVE),
+      useNativeDriver: true,
+    }).start();
+  }, [awake, wake]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: wake.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }),
+        transform: [{ scale: wake.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }],
+      }}
+    >
+      <BubblePressable
+        onPress={onPress}
+        radius="pill"
+        bubbleColor={palette.onAcc}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !awake }}
+        accessibilityLabel={label}
+        style={
+          awake
+            ? { boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 34, color: tint(0.45) }] }
+            : undefined
+        }
+        className="h-[58px] flex-row items-center justify-center rounded-pill"
+      >
+        <GradientFill />
+        <Icon name="check" size={20} color={palette.onAcc} />
+        <Text className="ml-sm text-[17px] font-semibold" style={{ color: palette.onAcc }}>
+          {label}
+        </Text>
+      </BubblePressable>
+    </Animated.View>
   );
 }
 

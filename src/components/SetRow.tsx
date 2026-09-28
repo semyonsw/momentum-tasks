@@ -10,16 +10,16 @@
  *   └──────────────────────────────────────────────┘
  *
  * Interaction contract:
- *   • THE SET THAT SHOULD HAPPEN NEXT IS RINGED IN GREEN. One row in the whole
- *     session carries it — the first unlogged row of the exercise the cursor is
- *     on — and it is the answer to "I pressed Start, now what". It is drawn as an
- *     ABSOLUTE overlay rather than as a border on the row, because a border is 2 dp
- *     of box the row does not have: the numbers under a thumb must not shift
- *     sideways when the ring arrives, and they must not shift back when the ✓
- *     lands and it moves to the row below.
- *   • AND THE RING IS NOT THE ONLY THING THAT SAYS SO. The ringed row is TALLER
- *     (64 rather than 56) and its set number, its weight and its count all go
- *     GREEN, two steps up the type scale, bold, with the app's one `glow` behind
+ *   • THE SET THAT SHOULD HAPPEN NEXT IS LIT. One row in the whole session
+ *     carries it — the PRIMED row — and it is the answer to "I pressed Start, now
+ *     what". Since Momentum v3 it is a lit pill (c2 fill, c2 edge, glow) inside the
+ *     exercise card rather than a ring drawn over a flat row. Every row carries a
+ *     1 dp border — transparent on all but this one — so the numbers under a thumb
+ *     do not shift sideways when the edge arrives, or back when the ✓ lands and
+ *     the light moves to the row below.
+ *   • AND THE LIGHT IS NOT THE ONLY THING THAT SAYS SO. The primed row is TALLER
+ *     and its set number, its weight and its count go `acc`, 30 dp against the
+ *     other rows' 21, with a glow behind
  *     them. A 2 dp outline is a detail you have to look for; the numbers you are
  *     about to do are the thing you read at arm's length, mid-set, through sweat,
  *     so they are the thing that grows. It costs 8 dp of layout on ONE row in the
@@ -88,7 +88,7 @@
  */
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, Text, View, type ViewStyle } from 'react-native';
 
 import { commit, tap, undo } from '../lib/feedback';
 import type { DraftSet } from '../lib/draft';
@@ -98,7 +98,10 @@ import { maxLabel, showsMaxLabel } from '../lib/maxReps';
 import { countUnitLabel, formatCount, formatWeight, unitLabel } from '../lib/units';
 import { useLanguage, useT } from '../hooks/useT';
 import { useMotionScale } from '../hooks/useMotionScale';
-import { danger, glow as GLOW, palette } from '../theme/tokens';
+import { LinearGradient } from 'expo-linear-gradient';
+
+import { danger, gradientFill, palette, tint } from '../theme/tokens';
+import { SpecularEdge } from './glass';
 import { Icon } from './Icon';
 import { Flash, Pop, usePressScale } from './motion';
 
@@ -116,7 +119,7 @@ interface SetRowProps {
   workingNumber: number | null;
   exercise: Exercise;
   unitSystem: UnitSystem;
-  /** The next uncompleted set — lifted onto `surface-alt` so the eye lands on it. */
+  /** The next uncompleted set of this card. Kept for callers; since Momentum v3 only `isUpNext` lights a row. */
   isNext: boolean;
   /**
    * THE next set of the whole session: this row is `isNext` AND its exercise is the
@@ -159,7 +162,7 @@ function SetRowComponent({
   workingNumber,
   exercise,
   unitSystem,
-  isNext,
+  isNext: _isNext,
   isUpNext = false,
   onOpenFocus,
   focusedField,
@@ -195,7 +198,9 @@ function SetRowComponent({
   const ghost = set.isPrefilled && !done;
   /** The count cell is standing in for a number nobody has yet. */
   const countsMax = showsMaxLabel(exercise, set);
-  const valueTone = ghost ? 'text-ink-faint' : 'text-ink';
+  // Logged numbers step back to muted (Momentum v3): the log is history, and the
+  // lit row below them is the one the eye should land on.
+  const valueTone = ghost ? 'text-ink-faint' : done ? 'text-ink-muted' : 'text-ink';
 
   /*
    * What goes on the bar. Null — and therefore no line — for a machine (no
@@ -232,17 +237,27 @@ function SetRowComponent({
   const openWeight = ring && onOpenFocus ? onOpenFocus : () => onFocusField('weight');
   const openCount = ring && onOpenFocus ? onOpenFocus : () => onFocusField('count');
 
-  const rowClass = [
-    // `min-h` rather than a fixed `h-row`: the plate line adds 14 dp and only
-    // on the rows that have one, so a barbell card grows and a machine card is
-    // exactly the height it has always been. The ringed row takes the taller
-    // 64 dp, because its numbers are a size up — see the file header.
-    ring ? 'min-h-row-lg py-sm' : plateLabel ? 'min-h-row py-sm' : 'h-row',
-    'flex-row items-center px-lg',
-    // The primed row is the only one that lifts. Logged and later rows sit
-    // flush on the card so "next" is unambiguous at a glance.
-    isNext && !done ? 'bg-surface-alt' : 'bg-transparent',
-  ].join(' ');
+  /*
+   * MOMENTUM v3: the rows are pills inside the exercise card, 6 apart, and the
+   * PRIMED row is the lit one — c2 @ 12 % fill, a c2 @ 32 % edge and a glow —
+   * with 10 dp of padding where the others have 6. Every row carries a 1 dp
+   * border, transparent on the rest, so the edge arriving on the primed row
+   * does not move the numbers under the thumb sideways; only its height grows.
+   * `isNext` alone (the first unlogged row of a card being READ) no longer lifts:
+   * one lit row per session is the whole point of lighting it.
+   */
+  const rowStyle: ViewStyle = {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 14,
+    paddingRight: 10,
+    paddingVertical: ring ? 10 : 6,
+    borderRadius: ROW_RADIUS,
+    borderWidth: 1,
+    borderColor: ring ? tint(0.32) : 'transparent',
+    backgroundColor: ring ? tint(0.12) : 'transparent',
+    boxShadow: ring ? [{ offsetX: 0, offsetY: 0, blurRadius: 22, color: tint(0.3) }] : undefined,
+  };
 
   /*
    * A LONG PRESS ON THE ROW ITSELF, and only the ringed one.
@@ -260,7 +275,7 @@ function SetRowComponent({
   const rowChildren = (
     <>
       {/* The flash. First child so everything paints over it; it takes nothing. */}
-      {loggedAt != null ? <Flash key={loggedAt} /> : null}
+      {loggedAt != null ? <Flash key={loggedAt} radius={ROW_RADIUS} /> : null}
 
       {/* EDIT MODE's own control, and the only thing in the row that moves the
           numbers: 38 dp in from the left, the row's content slides over by it. */}
@@ -271,11 +286,12 @@ function SetRowComponent({
           the numbers beside it: it is the label OF those numbers, and a micro
           `ink-faint` 3 next to a 30 dp green weight reads as a different row's. */}
       <Text
+        allowFontScaling={false}
         className={[
-          'w-[24px] font-semibold uppercase tabular-nums',
-          ring ? 'text-label text-green-bright' : 'text-micro text-ink-faint',
+          'w-[22px] font-semibold uppercase tabular-nums',
+          ring ? 'text-acc' : 'text-ink-faint',
         ].join(' ')}
-        style={ring ? NUMERAL_GLOW : undefined}
+        style={[{ fontSize: 14 }, ring ? NUMERAL_GLOW : null]}
       >
         {workingNumber == null ? 'W' : workingNumber}
       </Text>
@@ -308,7 +324,9 @@ function SetRowComponent({
               </Text>
             ) : null}
           </View>
-          <Text className="mx-sm text-label text-ink-faint">×</Text>
+          <Text style={{ fontSize: 16, marginHorizontal: 6 }} className="text-ink-faint">
+            ×
+          </Text>
         </>
       ) : null}
 
@@ -353,7 +371,7 @@ function SetRowComponent({
             isTiming ? 'bg-green' : 'border border-hairline',
           ].join(' ')}
         >
-          <Icon name="play" size={16} color={isTiming ? palette.ink : palette.greenBright} />
+          <Icon name="play" size={16} color={isTiming ? palette.onAcc : palette.acc} />
         </Pressable>
       ) : null}
 
@@ -364,35 +382,54 @@ function SetRowComponent({
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
         accessibilityLabel={done ? t('Undo set') : t('Complete set')}
-        className={[
-          'h-hit w-hit items-center justify-center rounded-pill',
-          done ? '' : 'border',
-        ].join(' ')}
-        style={done ? undefined : { borderColor: ring ? 'rgba(63,169,108,0.5)' : palette.hairline }}
+        /*
+          THE MARK, 46–50 dp. Logged: the theme's gradient with an `onAcc` ✓.
+          Primed: a 2 dp `acc` ring at 50 with an `acc` ✓ and a glow — the one
+          control on the screen the thumb is about to press. Anything else: an
+          empty 46 dp ring, because a ✓ drawn on a set not yet done is a claim.
+        */
+        style={
+          done
+            ? { width: 46, height: 46 }
+            : ring
+              ? {
+                  width: 50,
+                  height: 50,
+                  borderRadius: 9999,
+                  borderWidth: 2,
+                  borderColor: palette.acc,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: tint(0.45) }],
+                }
+              : {
+                  width: 46,
+                  height: 46,
+                  borderRadius: 9999,
+                  borderWidth: 1.5,
+                  borderColor: '#2A3330',
+                }
+        }
       >
         {done ? (
           /* The fill, caught: it pops in on the overshoot curve when THIS tap
              logged it, and simply is there on a row that was logged already. */
           loggedAt != null ? (
-            <Pop key={loggedAt} duration={340} style={DONE_FILL}>
-              <Icon name="check" size={20} color={palette.ink} />
+            <Pop key={loggedAt} duration={360} style={DONE_FILL}>
+              <DoneFill />
             </Pop>
           ) : (
             <View style={DONE_FILL}>
-              <Icon name="check" size={20} color={palette.ink} />
+              <DoneFill />
             </View>
           )
-        ) : (
-          <Icon name="check" size={20} color={ring ? palette.greenBright : palette.inkFaint} />
-        )}
+        ) : ring ? (
+          <Icon name="check" size={20} color={palette.acc} />
+        ) : null}
       </Pressable>
 
-      {/*
-        The ring. Last child so it paints over the row, `pointerEvents="none"` so it
-        takes nothing from the ✓ under it, and inset 6/4 so it reads as a ring
-        AROUND the row rather than as the card's own edge. Zero layout cost: see the
-        file header on why this is not a border.
-      */}
+      {/* The breath over the lit row's glow. Last child so it paints over the
+          row, `pointerEvents="none"` so it takes nothing from the ✓ under it. */}
       {ring ? <UpNextRing /> : null}
     </>
   );
@@ -402,24 +439,23 @@ function SetRowComponent({
       onLongPress={onOpenFocus}
       delayLongPress={280}
       accessibilityHint={t('Long press for focus mode')}
-      className={rowClass}
+      style={rowStyle}
     >
       {rowChildren}
     </Pressable>
   ) : (
-    <View className={rowClass}>{rowChildren}</View>
+    <View style={rowStyle}>{rowChildren}</View>
   );
 }
 
 /**
- * The ring around the up-next row, and its breath.
+ * The breath over the lit row.
  *
- * `halo.single`'s rule still holds — EXACTLY ONE of these per screen — and the
- * ring still has to bloom as much as the numerals inside it do. What the motion
- * pass adds is that the bloom BREATHES, 16 ↔ 30 dp and 0.45 ↔ 0.8 over 2.6 s: a
- * `boxShadow` cannot animate, so it is two fixed rings, the brighter one's opacity
- * swinging over the dimmer. Native-driven, so a rest ticking four times a second
- * on the JS thread cannot make it stutter. Still with reduced motion on.
+ * `halo.single`'s rule still holds — EXACTLY ONE of these per screen. The row's
+ * own 22 dp glow is fixed (a `boxShadow` cannot animate), so the breath is a
+ * second, wider glow whose opacity swings 0 ↔ 1 over 2.6 s on top of it.
+ * Native-driven, so a rest ticking four times a second on the JS thread cannot
+ * make it stutter.
  */
 function UpNextRing() {
   const scale = useMotionScale();
@@ -447,53 +483,48 @@ function UpNextRing() {
   }, [breath, scale]);
 
   return (
-    <>
-      <View
-        pointerEvents="none"
-        style={[
-          RING_BOX,
-          {
-            borderWidth: 2,
-            borderColor: palette.greenBright,
-            boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: 'rgba(63,169,108,0.45)' }],
-          },
-        ]}
-      />
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          RING_BOX,
-          {
-            opacity: breath,
-            boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 30, color: 'rgba(63,169,108,0.8)' }],
-          },
-        ]}
-      />
-    </>
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: -1,
+        right: -1,
+        top: -1,
+        bottom: -1,
+        borderRadius: ROW_RADIUS,
+        opacity: breath,
+        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 30, color: tint(0.4) }],
+      }}
+    />
   );
 }
 
-/** Inset 6/4 so the ring reads as AROUND the row rather than as the card's edge. */
-const RING_BOX = {
-  position: 'absolute',
-  left: 6,
-  right: 6,
-  top: 4,
-  bottom: 4,
-  borderRadius: 16,
-} as const;
+/** A set row's corner — the design's 18, `radius.row`. */
+const ROW_RADIUS = 18;
 
-/** The logged ✓'s fill — the commit gradient's end, on the 44 dp target. */
-const DONE_FILL = {
-  width: 44,
-  height: 44,
+/** The logged mark: 46 dp, clipped round, the gradient painted inside. */
+const DONE_FILL: ViewStyle = {
+  width: 46,
+  height: 46,
   borderRadius: 9999,
+  overflow: 'hidden',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: palette.green,
-  borderWidth: 1,
-  borderColor: 'rgba(63,169,108,0.5)',
-} as const;
+};
+
+/** The gradient and its `onAcc` ✓ — text on a gradient is never ink. */
+function DoneFill() {
+  return (
+    <>
+      <LinearGradient
+        {...gradientFill()}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      <SpecularEdge color="rgba(236,241,238,0.22)" radius={9999} />
+      <Icon name="check" size={20} color={palette.onAcc} />
+    </>
+  );
+}
 
 /**
  * Edit mode's `−`: 28 dp, a 1.5 dp coral ring, coral minus, 10 of air before the
@@ -540,10 +571,15 @@ function RemoveMark({ onPress }: { onPress: () => void }) {
  * weight and the count cannot bloom by different amounts.
  */
 const NUMERAL_GLOW = {
-  textShadowColor: GLOW,
+  get textShadowColor(): string {
+    return tint(0.55);
+  },
   textShadowOffset: { width: 0, height: 0 },
   textShadowRadius: 16,
 } as const;
+
+const PRIMED_NUMERAL = { fontSize: 30, lineHeight: 34, letterSpacing: -0.8 } as const;
+const ROW_NUMERAL = { fontSize: 21, lineHeight: 26, letterSpacing: -0.3 } as const;
 
 /**
  * One number + its micro unit, baseline-aligned.
@@ -592,14 +628,12 @@ function ValueCell({
         focused ? '-ml-sm rounded-surface bg-surface px-sm py-[2px]' : '',
       ].join(' ')}
     >
+      {/* 30 / 34 on the primed row, 21 / 26 everywhere else — the design's two
+          sizes, set in `style` so the release bundle cannot drop them. */}
       <Text
-        className={[
-          emphasis
-            ? 'text-title-xl font-bold text-green-bright'
-            : `text-title font-semibold ${tone}`,
-          'tabular-nums',
-        ].join(' ')}
-        style={emphasis ? NUMERAL_GLOW : undefined}
+        allowFontScaling={false}
+        className={['font-semibold tabular-nums', emphasis ? 'text-acc' : tone].join(' ')}
+        style={emphasis ? [PRIMED_NUMERAL, NUMERAL_GLOW] : ROW_NUMERAL}
       >
         {value}
       </Text>
@@ -610,7 +644,7 @@ function ValueCell({
           // colour: `KG` at micro beside a 30 dp numeral reads as a different
           // row's label, and `KG` in full green would compete with the number it
           // belongs to.
-          emphasis ? 'text-label text-green' : 'text-micro text-ink-faint',
+          emphasis ? 'text-label text-acc' : 'text-micro text-ink-faint',
         ].join(' ')}
       >
         {unit}

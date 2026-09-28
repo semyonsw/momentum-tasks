@@ -29,6 +29,16 @@
  * transform), so the thread it runs on is the same thread either way, and this
  * is one value changing over 760 ms on a screen whose list is idle.
  *
+ * ── THE STROKE IS THE THEME'S GRADIENT ────────────────────────────────────
+ *
+ * c1 → c2 → c3 on the diagonal, in `objectBoundingBox` units so the gradient
+ * rotates with the ring (the SVG is turned −90° to start at twelve o'clock, and
+ * the design's is too — the two agree on which end of the arc is c1). The track
+ * under it is c1 mixed 38% into `#0b1410`, a dark version of the colour the arc
+ * STARTS with, so an empty ring still reads as that theme's ring rather than as
+ * a grey one. Both are read in render: the tree remounts on a theme change, and
+ * a module-level colour would be the previous theme's.
+ *
  * ── THE HALO IS THE REWARD ────────────────────────────────────────────────
  *
  * It is the only thing on the tasks screen that says "the day went well" without
@@ -40,15 +50,19 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
-import { palette } from '../theme/tokens';
+import { mixSrgb } from '../lib/theme';
+import { palette, tint } from '../theme/tokens';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 /** The app's one curve, and the 760 ms the design gives a ring re-fill. */
 const DAY_DIAL_MS = 760;
 const EASING = Easing.bezier(0.2, 0.8, 0.2, 1);
+/** What the track's c1 is mixed into: the design's `color-mix(c1 38%, #0b1410)`. */
+const TRACK_BASE = '#0b1410';
+const GRADIENT_ID = 'dayDialGradient';
 
 export function DayDial({
   fraction,
@@ -91,12 +105,19 @@ export function DayDial({
         // round from the top and not from three o'clock.
         style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}
       >
+        <Defs>
+          <LinearGradient id={GRADIENT_ID} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={palette.c1} />
+            <Stop offset="0.5" stopColor={palette.c2} />
+            <Stop offset="1" stopColor={palette.c3} />
+          </LinearGradient>
+        </Defs>
         <Circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={palette.greenDim}
+          stroke={mixSrgb(palette.c1, TRACK_BASE, 0.38)}
           strokeWidth={stroke}
         />
         <AnimatedCircle
@@ -104,7 +125,7 @@ export function DayDial({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={palette.greenBright}
+          stroke={`url(#${GRADIENT_ID})`}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={length}
@@ -125,7 +146,7 @@ export function DayDial({
  * the value changes, and this is the same light for nothing.
  */
 function Halo({ size, fraction }: { size: number; fraction: number }) {
-  const alpha = (0.18 + fraction * 0.28).toFixed(3);
+  const alpha = 0.18 + fraction * 0.28;
   return (
     <View
       pointerEvents="none"
@@ -134,7 +155,7 @@ function Halo({ size, fraction }: { size: number; fraction: number }) {
         width: size,
         height: size,
         borderRadius: 9999,
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 60, color: `rgba(63,169,108,${alpha})` }],
+        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 60, color: tint(alpha) }],
       }}
     />
   );
