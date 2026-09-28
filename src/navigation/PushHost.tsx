@@ -91,7 +91,15 @@ export function PushHost({
       rootsUnder.value = depth === 0 ? 1 : 0;
       setPhase('pop');
     } else {
+      /* A replace, or the pop an edge drag already animated. Resetting `pos`
+         to 0 must not reach the roots: with `rootsUnder` still 1 from the
+         drag, the reaction below would turn it into covered = 1 AFTER the idle
+         effect wrote 0 — the reaction runs on the UI thread, a frame later —
+         and every root would stay parked at −26%, .94, 35% with nothing on
+         top of it. So detach the roots first and set their state outright. */
       exiting.current = null;
+      rootsUnder.value = 0;
+      covered.value = depth > 0 ? 1 : 0;
       pos.value = 0;
       setPhase('idle');
     }
@@ -126,12 +134,14 @@ export function PushHost({
   /* At rest the roots are covered exactly when something is pushed. */
   useEffect(() => {
     if (phase === 'idle') {
+      /* At rest nothing is moving, so nothing may drive the roots either. */
+      rootsUnder.value = 0;
       covered.value = depth > 0 ? 1 : 0;
       onRootsVisible(depth === 0);
     } else {
       onRootsVisible(depth <= 1 || (phase === 'pop' && depth === 0));
     }
-  }, [covered, depth, onRootsVisible, phase]);
+  }, [covered, depth, onRootsVisible, phase, rootsUnder]);
 
   /* The edge drag. Captured only for a clearly rightward move that STARTED at
      the edge, so every tap — the 46 dp back circle included — is untouched. */
