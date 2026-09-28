@@ -40,7 +40,11 @@ beforeEach(() => {
   storedKey = null;
   answers = [];
   calls.length = 0;
-  useAi.setState({ ...sanitizeAi({}), pending: { Workout: false, Tasks: false, Expenses: false } });
+  useAi.setState({
+    ...sanitizeAi({}),
+    pending: { Workout: false, Tasks: false, Expenses: false },
+    retrying: { Workout: false, Tasks: false, Expenses: false },
+  });
   useLibrary.getState().restoreSeedLibrary();
   useSettings.getState().resetToDefaults();
   useSettings.getState().setLanguage('en');
@@ -141,6 +145,67 @@ describe('asking a question', () => {
     answers = [gemini([{ type: 'text', text: 'Rent, mostly.' }])];
     await sendMessage('Expenses', 'Where did August go?', last.id);
     expect(useAi.getState().chats.Expenses.map((m) => m.role)).toEqual(['user', 'model']);
+  });
+
+  /** Run a turn whose retries wait on timers, without waiting for real. */
+  async function sendWithTimers(section: 'Workout' | 'Tasks', text: string) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const turn = sendMessage(section, text);
+      for (let i = 0; i < 10; i += 1) await vi.advanceTimersByTimeAsync(2000);
+      await turn;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it('asks again when Google has a bad moment, and shows only the answer', async () => {
+    await connect();
+    answers = [
+      { status: 503, body: { error: { message: 'The model is overloaded.' } } },
+      { status: 500, body: {} },
+      gemini([{ type: 'text', text: 'Mon, Wed, Fri.' }]),
+    ];
+    await sendWithTimers('Tasks', 'Suggest a better schedule');
+    expect(calls).toHaveLength(3);
+    expect(useAi.getState().chats.Tasks.map((m) => m.role)).toEqual(['user', 'model']);
+    expect(useAi.getState().retrying.Tasks).toBe(false);
+  });
+
+  it('falls back to the current Flash model when the chosen one keeps failing', async () => {
+    await connect();
+    answers = [
+      { status: 500, body: {} },
+      { status: 500, body: {} },
+      { status: 500, body: {} },
+      gemini([{ type: 'text', text: 'Hello.' }]),
+    ];
+    await sendWithTimers('Tasks', 'how are you');
+    expect(calls).toHaveLength(4);
+    expect(calls[3].url).toContain('gemini-flash-latest');
+    expect(useAi.getState().chats.Tasks.at(-1)?.role).toBe('model');
+  });
+
+  it('says overloaded only after every try failed', async () => {
+    await connect();
+    answers = [
+      { status: 503, body: {} },
+      { status: 503, body: {} },
+      { status: 503, body: {} },
+      { status: 503, body: {} },
+    ];
+    await sendWithTimers('Tasks', 'how are you');
+    expect(useAi.getState().chats.Tasks.at(-1)).toMatchObject({
+      role: 'error',
+      text: 'Gemini is overloaded right now. Try again in a minute.',
+    });
+  });
+
+  it('does not retry what is the key’s fault', async () => {
+    await connect();
+    answers = [{ status: 429, body: {} }];
+    await sendWithTimers('Tasks', 'hello');
+    expect(calls).toHaveLength(1);
   });
 
   it('says so when there is no signal', async () => {

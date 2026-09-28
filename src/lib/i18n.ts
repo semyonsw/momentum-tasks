@@ -1373,6 +1373,10 @@ const RU: Record<string, string> = {
   'A few taps on how it went, so the assistant knows more than the numbers':
     'Пара касаний о том, как всё прошло, — чтобы ассистент знал больше, чем цифры',
 
+  'Google is busy — asking again…': 'Google занят — спрашиваю ещё раз…',
+  'Gemini is overloaded right now. Try again in a minute.':
+    'Gemini сейчас перегружен. Попробуйте через минуту.',
+
   // Success popups
   'Export successful': 'Экспорт выполнен',
   'Import successful': 'Импорт выполнен',

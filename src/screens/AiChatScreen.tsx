@@ -105,6 +105,7 @@ export function AiChatScreen({
   const messages = useAi((s) => s.chats[section]);
   const proposals = useAi((s) => s.proposals);
   const pending = useAi((s) => s.pending[section]);
+  const retrying = useAi((s) => s.retrying[section]);
   const prompts = useAiPrompts(section);
   const [draft, setDraft] = useState('');
   const [confirmingNew, setConfirmingNew] = useState(false);
@@ -235,7 +236,9 @@ export function AiChatScreen({
           </Stagger>
         ))}
 
-        {pending ? <Typing caption={reading} /> : null}
+        {pending ? (
+          <Typing caption={retrying ? t('Google is busy — asking again…') : reading} />
+        ) : null}
       </ScrollView>
 
       <View

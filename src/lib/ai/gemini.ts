@@ -34,9 +34,59 @@ export const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 /** The default model id, kept in `aiStore` so it can be changed. */
 export const DEFAULT_MODEL = 'gemini-3.8-flash';
 
-/** 15 s for a chat turn, 10 s for each step of the key test. */
-export const CHAT_TIMEOUT_MS = 15_000;
+/**
+ * 30 s for a chat turn, 10 s for each step of the key test.
+ *
+ * A chat turn was 15 s, which a thinking model reading a 12,000-character
+ * context can spend before its first token on a busy afternoon — and a turn cut
+ * off at 15 s is a question the user has to ask again, which costs more than
+ * waiting.
+ */
+export const CHAT_TIMEOUT_MS = 30_000;
 export const TEST_TIMEOUT_MS = 10_000;
+
+/* ------------------------------------------------------------------ */
+/* When Google has a bad moment                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The model tried when the chosen one keeps failing on Google's side.
+ *
+ * `gemini-flash-latest` is Google's own alias for its current Flash model, so it
+ * is the one id that cannot go stale in a build nobody updates. It is only ever
+ * a fallback for a 5xx: a 404, a refused key or a quota is about the KEY, and a
+ * different model would not help.
+ */
+export const FALLBACK_MODEL = 'gemini-flash-latest';
+
+/**
+ * How long to wait before each retry of a chat turn: 1.2 s, then 3 s.
+ *
+ * ── WHY A 5xx IS RETRIED AND NOT SHOWN ─────────────────────────────────────
+ *
+ * `500 INTERNAL` and `503 UNAVAILABLE` ("the model is overloaded") are the two
+ * errors Gemini returns most, they are Google's and not the request's — the same
+ * body succeeds seconds later — and they came straight through to the chat as
+ * "Google had a problem answering" on the first try. Two quiet retries with a
+ * growing pause cover nearly all of them; the fallback model covers a model that
+ * is having a bad hour; only then is the sentence shown.
+ */
+export const RETRY_DELAYS_MS = [1200, 3000] as const;
+
+/** A failure worth asking again: Google's side, or a turn that ran out of time. */
+export function isRetryable(result: { kind: string; status?: number }): boolean {
+  if (result.kind === 'timeout') return true;
+  if (result.kind !== 'response' || result.status == null) return false;
+  return (
+    result.status === 500 || result.status === 502 || result.status === 503 || result.status === 504
+  );
+}
+
+/** A failure that another model might not have: a 5xx, not a timeout or the key. */
+export function wantsFallback(result: { kind: string; status?: number }, model: string): boolean {
+  if (result.kind !== 'response' || result.status == null || result.status < 500) return false;
+  return model.trim().replace(/^models\//, '') !== FALLBACK_MODEL;
+}
 
 /** How many earlier messages of this section's chat travel with a new question. */
 export const HISTORY_TURNS = 10;
@@ -275,6 +325,9 @@ export function mapError(status: number, body: unknown, model: string, lang: Lan
     return said
       ? t('Google said: {message}', lang, { message: said })
       : t('Google refused the key.', lang);
+  }
+  if (status === 503) {
+    return t('Gemini is overloaded right now. Try again in a minute.', lang);
   }
   if (status >= 500) return t('Google had a problem answering. Try again in a minute.', lang);
   const said = googleMessage(body);

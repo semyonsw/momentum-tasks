@@ -95,6 +95,8 @@ interface AiValue {
 interface AiState extends AiValue {
   /** A question in flight, per section. Not persisted: a killed app is not waiting. */
   pending: Record<AiSection, boolean>;
+  /** A pending turn is being asked again after Google failed — for the caption. */
+  retrying: Record<AiSection, boolean>;
 
   setModel: (model: string) => void;
   markTesting: () => void;
@@ -107,6 +109,7 @@ interface AiState extends AiValue {
   removeMessage: (section: AiSection, id: string) => void;
   clearChat: (section: AiSection) => void;
   setPending: (section: AiSection, pending: boolean) => void;
+  setRetrying: (section: AiSection, retrying: boolean) => void;
 
   putProposal: (id: string, proposal: ReviewProposal) => void;
   updateProposal: (id: string, proposal: ReviewProposal) => void;
@@ -149,6 +152,7 @@ export const useAi = create<AiState>()(
       proposals: {},
       unseenRoutineIds: [],
       pending: { Workout: false, Tasks: false, Expenses: false },
+      retrying: { Workout: false, Tasks: false, Expenses: false },
 
       setModel: (model) => {
         const trimmed = model.trim().replace(/^models\//, '');
@@ -181,7 +185,12 @@ export const useAi = create<AiState>()(
         set({ chats: next, proposals: prune(proposals, next) });
       },
       setPending: (section, pending) =>
-        set((state) => ({ pending: { ...state.pending, [section]: pending } })),
+        set((state) => ({
+          pending: { ...state.pending, [section]: pending },
+          ...(pending ? {} : { retrying: { ...state.retrying, [section]: false } }),
+        })),
+      setRetrying: (section, retrying) =>
+        set((state) => ({ retrying: { ...state.retrying, [section]: retrying } })),
 
       putProposal: (id, proposal) =>
         set((state) => ({

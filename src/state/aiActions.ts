@@ -31,16 +31,20 @@ import { normalizeProposal, planApply, type Library } from '../lib/ai/aiProposal
 import { validateBlocks, type AiSection } from '../lib/ai/aiSchema';
 import {
   CHAT_TIMEOUT_MS,
+  FALLBACK_MODEL,
+  RETRY_DELAYS_MS,
   TEST_TIMEOUT_MS,
   buildChatRequest,
   buildHelloRequest,
   buildListRequest,
   checkKeyShape,
+  isRetryable,
   mapError,
   mapParseFailure,
   mapTransportFailure,
   parseChatResponse,
   parseModelList,
+  wantsFallback,
   type HistoryTurn,
 } from '../lib/ai/gemini';
 import { clearKey, getKey, setKey } from '../lib/ai/secureKey';
@@ -58,6 +62,8 @@ import { useTasks } from './tasksStore';
 import { useWorkoutHistory } from './workoutHistoryStore';
 
 const lang = () => useSettings.getState().language;
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 let idSeed = 0;
 function nextId(prefix: string): string {
@@ -262,8 +268,8 @@ export async function sendMessage(
     }
 
     const context = sectionContext(section);
-    const model = useAi.getState().model;
-    const result = await send(
+    const chosen = useAi.getState().model;
+    const request = (model: string) =>
       buildChatRequest({
         key,
         model,
@@ -271,9 +277,33 @@ export async function sendMessage(
         context: context.json,
         history,
         userText: question,
-      }),
-      CHAT_TIMEOUT_MS,
-    );
+      });
+
+    /*
+     * Google's bad moments are retried before anything is said — see
+     * `RETRY_DELAYS_MS`. The chosen model twice more with a growing pause, then
+     * once on the fallback model; the answer that comes back is shown exactly as
+     * if the first try had worked.
+     */
+    let model = chosen;
+    let result = await send(request(model), CHAT_TIMEOUT_MS);
+    for (const [attempt, delay] of RETRY_DELAYS_MS.entries()) {
+      if (!isRetryable(result) || !stillAsked()) break;
+      // A timeout is retried once: two more 30-second waits is a minute of
+      // "typing" for an answer that is probably not coming.
+      if (result.kind === 'timeout' && attempt > 0) break;
+      useAi.getState().setRetrying(section, true);
+      await wait(delay);
+      result = await send(request(model), CHAT_TIMEOUT_MS);
+    }
+    if (wantsFallback(result, model) && stillAsked()) {
+      model = FALLBACK_MODEL;
+      const second = await send(request(model), CHAT_TIMEOUT_MS);
+      // A fallback that does not exist for this key is not news: the user is
+      // told about THEIR model's failure, not about one they never picked.
+      if (second.kind === 'response' && second.status === 200) result = second;
+      else model = chosen;
+    }
     if (result.kind !== 'response') {
       fail(section, mapTransportFailure(result.kind, language), question, stillAsked);
       return;

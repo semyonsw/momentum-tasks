@@ -13,6 +13,8 @@ import {
   mapTransportFailure,
   maskKey,
   parseChatResponse,
+  isRetryable,
+  wantsFallback,
   parseModelList,
 } from './gemini';
 import { responseSchema } from './aiSchema';
@@ -249,5 +251,31 @@ describe('failures are sentences', () => {
     expect(mapTransportFailure('network', 'ru')).not.toBe(mapTransportFailure('network', 'en'));
     expect(mapError(404, null, 'gemini-x', 'ru')).toContain('gemini-x');
     expect(mapParseFailure('safety', 'ru')).not.toBe(mapParseFailure('safety', 'en'));
+  });
+});
+
+describe('when Google has a bad moment', () => {
+  it('retries its own failures and a timeout, never the key’s', () => {
+    expect(isRetryable({ kind: 'response', status: 500 })).toBe(true);
+    expect(isRetryable({ kind: 'response', status: 503 })).toBe(true);
+    expect(isRetryable({ kind: 'timeout' })).toBe(true);
+    expect(isRetryable({ kind: 'response', status: 429 })).toBe(false);
+    expect(isRetryable({ kind: 'response', status: 400 })).toBe(false);
+    expect(isRetryable({ kind: 'network' })).toBe(false);
+  });
+
+  it('falls back only from a 5xx, and never to itself', () => {
+    expect(wantsFallback({ kind: 'response', status: 503 }, 'gemini-3.8-flash')).toBe(true);
+    expect(wantsFallback({ kind: 'response', status: 503 }, 'models/gemini-flash-latest')).toBe(
+      false,
+    );
+    expect(wantsFallback({ kind: 'response', status: 404 }, 'gemini-3.8-flash')).toBe(false);
+    expect(wantsFallback({ kind: 'timeout' }, 'gemini-3.8-flash')).toBe(false);
+  });
+
+  it('names an overload as one', () => {
+    expect(mapError(503, {}, 'm', 'en')).toBe(
+      'Gemini is overloaded right now. Try again in a minute.',
+    );
   });
 });
