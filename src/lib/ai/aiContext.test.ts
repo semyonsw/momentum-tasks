@@ -6,6 +6,8 @@ import {
   buildTasksContext,
   buildWorkoutContext,
   lastTopWeights,
+  withBriefs,
+  workoutBrief,
   workoutFacts,
 } from './aiContext';
 import { recomputeWorkout, type CompletedWorkout } from '../completedWorkout';
@@ -115,6 +117,30 @@ describe('the workout context', () => {
     expect(withDebriefs.json.length).toBeLessThanOrEqual(CONTEXT_CAP);
   });
 
+  it('carries all-time records, the weekly line, the bodyweight log and a richer library', () => {
+    const wide = JSON.parse(
+      buildWorkoutContext({
+        exercises: seedExercises,
+        routines: seedRoutines,
+        workouts,
+        unitSystem: 'metric',
+        lang: 'en',
+        now: NOW,
+        bodyweightLog: [
+          { at: '2026-07-01T08:00:00Z', kg: 80 },
+          { at: '2026-08-01T08:00:00Z', kg: 79.5 },
+        ],
+      }).json,
+    );
+    expect(wide.allTime.workouts).toBe(workouts.length);
+    expect(wide.sessionsPerWeek12w).toHaveLength(12);
+    expect(wide.bodyweightKgLog).toEqual(['2026-07-01:80', '2026-08-01:79.5']);
+    expect(wide.recordsAllTime.length).toBeGreaterThan(0);
+    expect(wide.recordsAllTime[0]).toHaveProperty('sessions');
+    expect(wide.recordsAllTime[0]).toHaveProperty('last');
+    expect(wide.library.some((row: string) => row.split(' | ').length >= 3)).toBe(true);
+  });
+
   it('carries the training loop in order, with what is next', () => {
     const [a, b] = seedRoutines;
     const looped = JSON.parse(
@@ -186,9 +212,9 @@ describe('the workout context', () => {
   });
 
   it('sheds old sessions rather than growing past the cap', () => {
-    // Forty copies of the log's heaviest session, a day apart.
+    // A hundred and fifty copies of the log's heaviest session, a day apart.
     const heavy = workouts[0];
-    const many = Array.from({ length: 40 }, (_, i) => ({
+    const many = Array.from({ length: 150 }, (_, i) => ({
       ...heavy,
       id: `copy_${i}`,
       startedAt: new Date(NOW.getTime() - i * 86_400_000).toISOString(),
@@ -202,7 +228,7 @@ describe('the workout context', () => {
       now: NOW,
     });
     expect(big.json.length).toBeLessThanOrEqual(CONTEXT_CAP);
-    expect(big.workoutCount).toBeLessThan(40);
+    expect(big.workoutCount).toBeLessThan(150);
     expect(big.workoutCount).toBeGreaterThan(0);
     // Newest kept, oldest shed.
     expect(JSON.parse(big.json).sessions[0].date).toBe('2026-08-10');
@@ -277,6 +303,27 @@ describe('the tasks context', () => {
     lang: 'en',
   });
   const json = JSON.parse(built.json);
+
+  it('carries the notes written on days, newest first, with the mark', () => {
+    const noted = JSON.parse(
+      buildTasksContext({
+        tasks: [task('read', { startedOn: '2026-09-24' })],
+        log: {
+          read: {
+            '2026-09-24': { mark: 'done', note: 'chapter 3' },
+            '2026-09-25': { mark: 'missed', note: '  sick   today ' },
+            '2026-01-01': { mark: 'done', note: 'too old' },
+          },
+        },
+        today: '2026-09-27',
+        lang: 'en',
+      }).json,
+    );
+    expect(noted.notes).toEqual([
+      '2026-09-25 read (excused): sick today',
+      '2026-09-24 read (done): chapter 3',
+    ]);
+  });
 
   it('counts an excused day as excused, never as a miss', () => {
     expect(json.tasks[0]).toMatchObject({ asked: 4, done: 2, excused: 1, missed: 0 });
@@ -451,5 +498,25 @@ describe('the expenses context', () => {
     expect(json.balances).toEqual([
       { account: 'Cash', balance: 1000 - 5350 + 9000, opening: 1000 },
     ]);
+  });
+});
+
+describe('the other sections, briefly', () => {
+  it('adds them under otherSections when they fit, and never cuts the section asked about', () => {
+    const base = JSON.stringify({ a: 1 });
+    const out = JSON.parse(withBriefs(base, { tasks: { last30Days: ['x'], recentNotes: ['n'] } }));
+    expect(out).toEqual({
+      a: 1,
+      otherSections: { tasks: { last30Days: ['x'], recentNotes: ['n'] } },
+    });
+
+    const huge = { tasks: { recentNotes: ['y'.repeat(CONTEXT_CAP)] } };
+    expect(JSON.parse(withBriefs(base, huge))).toEqual({ a: 1, otherSections: { tasks: {} } });
+  });
+
+  it('describes training in a few lines', () => {
+    const brief = workoutBrief({ workouts: fixtureWorkouts(), routines: seedRoutines, now: NOW });
+    expect(brief).toHaveProperty('workoutsLast30Days');
+    expect((brief.lastSessions as string[]).length).toBeLessThanOrEqual(5);
   });
 });

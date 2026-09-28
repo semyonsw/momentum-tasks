@@ -39,6 +39,7 @@
 
 import { serializeBackup, type BackupCounts, type BackupPayload } from '../lib/backup';
 import { t } from '../lib/i18n';
+import { chatsForBackup, useAi } from './aiStore';
 import { useDebriefs } from './debriefStore';
 import { useLibrary } from './libraryStore';
 import { sanitizeMoney, useMoney } from './moneyStore';
@@ -65,6 +66,7 @@ export function currentSnapshot(): BackupPayload {
     tasks: sanitizeTasks(useTasks.getState()),
     money: sanitizeMoney(useMoney.getState()),
     debriefs: useDebriefs.getState().debriefs,
+    aiChats: chatsForBackup(useAi.getState()),
   };
 }
 
@@ -151,6 +153,8 @@ export function applyBackup(payload: BackupPayload): AppliedCounts {
   const moneyApplied = payload.money != null;
   if (moneyApplied) useMoney.getState().importMoney(payload.money);
   if (payload.debriefs != null) useDebriefs.getState().importDebriefs(payload.debriefs);
+  const chatsApplied = payload.aiChats != null;
+  const chats = chatsApplied ? useAi.getState().importChats(payload.aiChats) : undefined;
 
   let sets = 0;
   for (const workout of useWorkoutHistory.getState().workouts) sets += workout.sets.length;
@@ -162,6 +166,7 @@ export function applyBackup(payload: BackupPayload): AppliedCounts {
     sets,
     tasks: tasksApplied ? useTasks.getState().tasks.length : undefined,
     amounts: moneyApplied ? useMoney.getState().amounts.length : undefined,
+    chats,
     settingsApplied,
   };
 }

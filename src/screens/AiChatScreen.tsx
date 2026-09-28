@@ -31,7 +31,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { Keyboard, ScrollView, Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +39,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SparkleCircle } from '../components/AiEntryCard';
 import { ErrorAnswer, SummaryCard, TextAnswer, Typing, UserBubble } from '../components/AiBlocks';
 import { AiProposalCard } from '../components/AiProposalCard';
+import { AiSequenceCard } from '../components/AiSequenceCard';
 import { BubblePressable } from '../components/bubbles';
 import { Sheet } from '../components/Sheet';
 import { COMMIT_GRADIENT, GlassBar, GlassSurface, Lamps } from '../components/glass';
@@ -49,7 +50,7 @@ import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { dayKey, formatShortDay } from '../lib/days';
 import type { AiSection } from '../lib/ai/aiSchema';
 import { tap } from '../lib/feedback';
-import { sectionContext, sendMessage } from '../state/aiActions';
+import { discardSequence, sectionContext, sendMessage } from '../state/aiActions';
 import { useAi, type AiMessage } from '../state/aiStore';
 import { glassTier, halo, motion, palette, radius } from '../theme/tokens';
 
@@ -89,6 +90,8 @@ export interface AiChatScreenProps {
   onBack: () => void;
   onReview: (proposalId: string) => void;
   onAccept: (proposalId: string) => void;
+  /** `Apply loop` on a suggested training loop — the shell shows the Undo. */
+  onApplySequence: (messageId: string) => void;
 }
 
 export function AiChatScreen({
@@ -98,6 +101,7 @@ export function AiChatScreen({
   onBack,
   onReview,
   onAccept,
+  onApplySequence,
 }: AiChatScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -162,6 +166,16 @@ export function AiChatScreen({
   const startNew = () => useAi.getState().clearChat(section);
 
   const composerHeight = 60;
+  /** From the composer's foot to the screen's — see the note on the field. */
+  const keyboardReach = insets.bottom + 12 + 8;
+
+  /* The keyboard opening is the moment the newest answer must be in view. */
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () =>
+      scrollRef.current?.scrollToEnd({ animated: true }),
+    );
+    return () => sub.remove();
+  }, []);
   const chipsHeight = messages.length > 0 ? 44 : 0;
 
   return (
@@ -242,6 +256,8 @@ export function AiChatScreen({
               }
               onReview={onReview}
               onAccept={onAccept}
+              onApplySequence={() => onApplySequence(message.id)}
+              onDiscardSequence={() => discardSequence(section, message.id)}
             />
           </Stagger>
         ))}
@@ -292,6 +308,16 @@ export function AiChatScreen({
 
         <GlassBar radius={radius.navPill}>
           <View style={{ height: composerHeight }} className="flex-row items-center pl-lg pr-sm">
+            {/*
+              THE KEYBOARD. The app runs Android's `pan` mode, which scrolls the
+              window just far enough to show the FOCUSED RECT of the field — and
+              for a text field that is its text line plus its bottom padding. With
+              no padding, the pan stopped at the text and left the bottom of the
+              pill (and its margin) under the keyboard. So the field's padding
+              reaches the foot of the screen, pulled back by a matching negative
+              margin so the pill looks the same: the rect Android reveals is now
+              the whole composer, and it sits flush on the keyboard.
+            */}
             <TextInput
               value={draft}
               onChangeText={setDraft}
@@ -302,7 +328,17 @@ export function AiChatScreen({
               blurOnSubmit={false}
               multiline={false}
               accessibilityLabel={t(meta.placeholder)}
-              style={{ flex: 1, fontSize: 16, color: palette.ink, padding: 0 }}
+              style={{
+                flex: 1,
+                alignSelf: 'stretch',
+                fontSize: 16,
+                color: palette.ink,
+                paddingHorizontal: 0,
+                paddingTop: 0,
+                paddingBottom: keyboardReach,
+                marginBottom: -keyboardReach,
+                textAlignVertical: 'center',
+              }}
             />
             <SendButton live={draft.trim() !== '' && !pending} onPress={() => ask(draft)} />
           </View>
@@ -353,7 +389,7 @@ export function AiChatScreen({
           ))}
           <Text className="mt-md text-label text-ink-faint">
             {t(
-              'Past chats stay on this phone only. Opening one puts the chat you have open now into this list.',
+              'Past chats are kept on this phone and in your backups. Opening one puts the chat you have open now into this list.',
             )}
           </Text>
         </Sheet>
@@ -368,12 +404,16 @@ function Message({
   onRetry,
   onReview,
   onAccept,
+  onApplySequence,
+  onDiscardSequence,
 }: {
   message: AiMessage;
   proposals: ReturnType<typeof useAi.getState>['proposals'];
   onRetry?: (message: Extract<AiMessage, { role: 'error' }>) => void;
   onReview: (proposalId: string) => void;
   onAccept: (proposalId: string) => void;
+  onApplySequence: () => void;
+  onDiscardSequence: () => void;
 }) {
   if (message.role === 'user') return <UserBubble text={message.text} />;
   if (message.role === 'error') {
@@ -389,6 +429,16 @@ function Message({
       {message.blocks.map((block, index) => {
         if (block.type === 'text') return <TextAnswer key={index} text={block.text} />;
         if (block.type === 'summary') return <SummaryCard key={index} block={block} />;
+        if (block.type === 'sequence') {
+          return (
+            <AiSequenceCard
+              key={index}
+              block={block}
+              onApply={onApplySequence}
+              onDiscard={onDiscardSequence}
+            />
+          );
+        }
         const stored = proposals[block.proposalId];
         if (!stored) return null;
         return (

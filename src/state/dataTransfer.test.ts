@@ -4,7 +4,7 @@ import { UnreadableLogError, applyBackup, currentSnapshot, exportBackupText } fr
 import { useLibrary } from './libraryStore';
 import { DEFAULT_SETTINGS, useSettings } from './settingsStore';
 import { useWorkoutHistory } from './workoutHistoryStore';
-import { useAi } from './aiStore';
+import { sanitizeAi, useAi } from './aiStore';
 import { useDebriefs } from './debriefStore';
 import { parseBackup } from '../lib/backup';
 import { buildDraftSession, type DraftSession } from '../lib/draft';
@@ -330,9 +330,22 @@ describe('a backup is refused when the log could not be read', () => {
 /* ------------------------------------------------------------------ */
 
 describe('what the assistant leaves out of a backup', () => {
-  it('carries neither a chat nor anything that looks like a key', () => {
+  /*
+   * Chats DO travel now — a restored phone should open on the conversations it
+   * had, past chats included. What must never travel is the key, the model
+   * choice or the connection state: a restored phone tests its own key.
+   */
+  it('carries the chats and past chats, and nothing that looks like a key', () => {
     const marker = 'CHAT-MARKER-7f3kQ2';
-    useAi.getState().clearChat('Workout');
+    const past = 'PAST-CHAT-MARKER-9x';
+    useAi.setState(sanitizeAi({}));
+    useAi.getState().appendMessage('Tasks', {
+      id: 'p1',
+      role: 'user',
+      text: past,
+      at: '2026-09-26T18:00:00.000Z',
+    });
+    useAi.getState().clearChat('Tasks');
     useAi.getState().appendMessage('Workout', {
       id: 'm1',
       role: 'user',
@@ -342,15 +355,41 @@ describe('what the assistant leaves out of a backup', () => {
     useAi.getState().markReady(800);
 
     const text = exportBackupText();
-
-    expect(text).not.toContain(marker);
+    expect(text).toContain(marker);
+    expect(text).toContain(past);
     expect(text).not.toContain('AIza');
     expect(text).not.toContain('gemini');
-    // And the store the chats live in has no field a key could be kept in.
+    expect(text).not.toContain('"status": "ready"');
     expect(Object.keys(useAi.getState())).not.toContain('key');
     expect(Object.keys(useAi.getState())).not.toContain('apiKey');
-    useAi.getState().clearChat('Workout');
-    useAi.getState().markOff();
+
+    // Restored onto a phone with nothing: both come back, and visible.
+    useAi.setState(sanitizeAi({}));
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.counts.chats).toBe(2);
+    const applied = applyBackup(parsed.envelope);
+    expect(applied.chats).toBe(2);
+    expect(useAi.getState().chats.Workout.map((m) => m.id)).toEqual(['m1']);
+    expect(useAi.getState().archive.Tasks[0].title).toBe(past);
+    // The connection is the phone's own, not the file's.
+    expect(useAi.getState().status).toBe('off');
+    useAi.setState(sanitizeAi({}));
+  });
+
+  it('leaves the chats alone when restoring a file from before they travelled', () => {
+    useAi.setState(sanitizeAi({}));
+    useAi.getState().appendMessage('Workout', {
+      id: 'keep',
+      role: 'user',
+      text: 'keep me',
+      at: '2026-09-27T18:00:00.000Z',
+    });
+    const parsed = parseBackup(JSON.stringify({ exercises: [], routines: [], workouts: [] }));
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useAi.getState().chats.Workout.map((m) => m.id)).toEqual(['keep']);
+    useAi.setState(sanitizeAi({}));
   });
 });
 

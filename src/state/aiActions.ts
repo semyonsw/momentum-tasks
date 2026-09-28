@@ -24,11 +24,15 @@ import {
   buildExpensesContext,
   buildTasksContext,
   buildWorkoutContext,
+  expensesBrief,
   lastTopWeights,
+  tasksBrief,
+  withBriefs,
+  workoutBrief,
 } from '../lib/ai/aiContext';
 import { systemPrompt } from '../lib/ai/aiPrompts';
 import { normalizeProposal, planApply, type Library } from '../lib/ai/aiProposal';
-import { validateBlocks, type AiSection } from '../lib/ai/aiSchema';
+import { AI_SECTIONS, validateBlocks, type AiSection } from '../lib/ai/aiSchema';
 import {
   CHAT_TIMEOUT_MS,
   FALLBACK_MODEL,
@@ -155,13 +159,41 @@ export function sectionContext(section: AiSection): {
 } {
   const language = lang();
   const today = dayKey(new Date());
+  const library = useLibrary.getState();
+  const history = useWorkoutHistory.getState();
+  const settings = useSettings.getState();
+  const { tasks, log } = useTasks.getState();
+  const money = useMoney.getState();
+  const routineIds = new Set(library.routines.map((r) => r.id));
+
+  /* What the OTHER two sections look like, briefly — see `withBriefs`. */
+  const briefs = {
+    Workout: () =>
+      workoutBrief({
+        workouts: history.workouts,
+        routines: library.routines,
+        sequence: library.sequence,
+      }),
+    Tasks: () => tasksBrief({ tasks, log, today }),
+    Expenses: () =>
+      expensesBrief({
+        amounts: money.amounts,
+        categories: money.categories,
+        accounts: money.accounts,
+        currency: settings.currencyCode,
+        today,
+      }),
+  };
+  const others = (skip: AiSection) =>
+    Object.fromEntries(
+      AI_SECTIONS.filter((s) => s !== skip).map((s) => [s.toLowerCase(), briefs[s]()]),
+    );
+
   if (section === 'Workout') {
-    const library = useLibrary.getState();
-    const history = useWorkoutHistory.getState();
-    const settings = useSettings.getState();
     const built = buildWorkoutContext({
       debriefs: useDebriefs.getState().debriefs,
       sequence: library.sequence,
+      bodyweightLog: settings.bodyweightLog,
       exercises: library.exercises,
       routines: library.routines,
       workouts: history.workouts,
@@ -171,26 +203,32 @@ export function sectionContext(section: AiSection): {
       lang: language,
     });
     return {
-      json: built.json,
+      json: withBriefs(built.json, others('Workout')),
       count: built.workoutCount,
-      routineIds: new Set(library.routines.map((r) => r.id)),
+      routineIds,
     };
   }
   if (section === 'Tasks') {
-    const { tasks, log } = useTasks.getState();
     const built = buildTasksContext({ tasks, log, today, lang: language });
-    return { json: built.json, count: built.dayCount, routineIds: new Set() };
+    return {
+      json: withBriefs(built.json, others('Tasks')),
+      count: built.dayCount,
+      routineIds: new Set(),
+    };
   }
-  const money = useMoney.getState();
   const built = buildExpensesContext({
     amounts: money.amounts,
     categories: money.categories,
     accounts: money.accounts,
-    currency: useSettings.getState().currencyCode,
+    currency: settings.currencyCode,
     today,
     lang: language,
   });
-  return { json: built.json, count: built.monthCount, routineIds: new Set() };
+  return {
+    json: withBriefs(built.json, others('Expenses')),
+    count: built.monthCount,
+    routineIds: new Set(),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -352,6 +390,10 @@ export async function sendMessage(
     const library = useLibrary.getState();
     const chatBlocks: ChatBlock[] = [];
     for (const block of blocks) {
+      if (block.type === 'sequence_proposal') {
+        chatBlocks.push({ type: 'sequence', ...block.sequence, status: 'pending' });
+        continue;
+      }
       if (block.type !== 'routine_proposal') {
         chatBlocks.push(block);
         continue;
@@ -435,4 +477,46 @@ export function applyProposal(id: string): Applied | null {
 export function discardProposal(id: string): void {
   const stored = useAi.getState().proposals[id];
   if (stored?.status === 'pending') useAi.getState().setProposalStatus(id, 'discarded');
+}
+
+/* ------------------------------------------------------------------ */
+/* Deciding a suggested loop                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `Apply loop`: the training sequence becomes the suggested one, switched on,
+ * pointing at the step the suggestion named — with an Undo that puts the old
+ * loop back exactly, cursor and on/off included. Null when there is nothing to
+ * apply: the message is gone, it was already decided, or every routine it named
+ * has been deleted since.
+ */
+export function applySequence(section: AiSection, messageId: string): Applied | null {
+  const message = useAi.getState().chats[section].find((m) => m.id === messageId);
+  const block =
+    message?.role === 'model' ? message.blocks.find((b) => b.type === 'sequence') : undefined;
+  if (!block || block.type !== 'sequence' || block.status !== 'pending') return null;
+
+  const library = useLibrary.getState();
+  const known = new Set(library.routines.map((r) => r.id));
+  const routineIds = block.routineIds.filter((id) => known.has(id));
+  if (routineIds.length === 0) return null;
+
+  const before = library.sequence;
+  library.replaceSequence({
+    isActive: true,
+    routineIds,
+    cursor: Math.min(block.next, routineIds.length - 1),
+  });
+  useAi.getState().setSequenceStatus(section, messageId, 'accepted');
+  return {
+    message: t('Training loop updated', lang()),
+    undo: () => {
+      useLibrary.getState().replaceSequence(before);
+      useAi.getState().setSequenceStatus(section, messageId, 'pending');
+    },
+  };
+}
+
+export function discardSequence(section: AiSection, messageId: string): void {
+  useAi.getState().setSequenceStatus(section, messageId, 'discarded');
 }

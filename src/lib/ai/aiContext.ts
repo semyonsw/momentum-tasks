@@ -54,6 +54,8 @@ import { asksOn, dayProgress, entryOf, streakOf, type Task, type TaskLog } from 
 import { totalsIn, type Amount, type MoneyAccount, type MoneyCategory } from '../money';
 import type { CompletedWorkout } from '../completedWorkout';
 import { debriefForAi, type WorkoutDebrief } from '../debrief';
+import type { BodyweightEntry } from '../bodyweightLog';
+import { exerciseBests } from '../records';
 import type { Language } from '../i18n';
 import type {
   Exercise,
@@ -67,14 +69,15 @@ import type {
 /**
  * The size every context is held under, in characters of JSON.
  *
- * 12,000 — about 3,000 tokens — since the contexts started carrying what the user
- * WROTE as well as what they logged: the notes on amounts, and the answers after
- * a workout. At 6,000 those were the first thing the shedding loops threw away,
- * which is exactly backwards: they are the one part of the context the model
- * cannot work out from the numbers. Still a rounding error against the model's
- * window, and still small enough that the oldest detail goes first.
+ * 24,000 — about 6,000 tokens. It was 6,000, then 12,000 once the contexts
+ * carried what the user WROTE (notes on amounts, answers after a workout), and
+ * now carries the all-time records, the bodyweight line, the task notes and a
+ * short brief of the other two sections. Each time the shedding loops were
+ * throwing away exactly the parts the model cannot work out from the numbers.
+ * Still a rounding error against the model's window, and the oldest detail
+ * still goes first.
  */
-export const CONTEXT_CAP = 12_000;
+export const CONTEXT_CAP = 24_000;
 
 export const LANGUAGE_NAME: Record<Language, string> = { ru: 'Russian', en: 'English' };
 
@@ -97,6 +100,8 @@ export interface WorkoutContextInput {
   debriefs?: readonly WorkoutDebrief[];
   /** The training sequence — the loop of routines the user trains in order. */
   sequence?: TrainingSequence;
+  /** Bodyweight readings, any order — the line the records are weighed against. */
+  bodyweightLog?: readonly BodyweightEntry[];
 }
 
 export interface WorkoutContext {
@@ -324,12 +329,101 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
       }),
   }));
 
+  /*
+   * The library, one line per exercise: id, name, where it files, and what kind
+   * of exercise it is — what it counts, how it is loaded, where it starts, its
+   * ladder. "Swap bench for something easier on the shoulder" needs to know
+   * what else is there and what each one IS, not only what it is called.
+   */
   const library = exercises
     .filter((e) => !e.isArchived)
     .map((e) => {
       const muscle = e.muscleGroups[0];
-      return `${e.id} | ${e.name}${muscle ? ` | ${MUSCLE_CLUSTER[muscle]} > ${muscle}` : ''}`;
+      const parts = [e.id, e.name];
+      if (muscle) parts.push(`${MUSCLE_CLUSTER[muscle]} > ${e.muscleGroups.join(', ')}`);
+      const kind: string[] = [e.countUnit];
+      if (e.loadMode !== 'external') kind.push(e.loadMode);
+      if (e.isUnilateral) kind.push('one side at a time');
+      if (e.requiresWeight && e.defaultWeightKg != null)
+        kind.push(`starts ${e.defaultWeightKg} kg`);
+      if (e.barWeightKg != null) kind.push(`bar ${e.barWeightKg} kg`);
+      const ladder = ladderOf(e);
+      if (ladder) kind.push(`rep ladder max ${ladder.max}`);
+      parts.push(kind.join(', '));
+      return parts.join(' | ');
     });
+
+  /*
+   * ALL-TIME, not the window: the heaviest set, the most reps, when it was last
+   * trained and how many sessions it has — the same bests the exercise screen
+   * shows, from the whole log, so "is this a PR?" has an answer.
+   */
+  const bodyweights = [...(input.bodyweightLog ?? [])].sort((a, b) => a.at.localeCompare(b.at));
+  const bodyweightOn = (at: string): number | null => {
+    let found: number | null = bodyweightKg ?? null;
+    for (const entry of bodyweights) {
+      if (entry.at > at) break;
+      found = entry.kg;
+    }
+    return found;
+  };
+  const allSets = workouts.flatMap((w) => w.sets);
+  const setsByExercise = new Map<ID, SetHistory[]>();
+  const sessionsByExercise = new Map<ID, Set<string>>();
+  const lastByExercise = new Map<ID, string>();
+  for (const set of allSets) {
+    if (set.isWarmup || !set.isCompleted) continue;
+    const bucket = setsByExercise.get(set.exerciseId);
+    if (bucket) bucket.push(set);
+    else setsByExercise.set(set.exerciseId, [set]);
+    const sessions = sessionsByExercise.get(set.exerciseId) ?? new Set<string>();
+    sessions.add(set.sessionId);
+    sessionsByExercise.set(set.exerciseId, sessions);
+    const last = lastByExercise.get(set.exerciseId);
+    if (!last || set.performedAt > last) lastByExercise.set(set.exerciseId, set.performedAt);
+  }
+  const records = [...setsByExercise.entries()]
+    .map(([id, sets]) => {
+      const exercise = byId[id];
+      if (!exercise) return null;
+      const bests = exerciseBests(sets, exercise, bodyweightOn);
+      const row: Record<string, unknown> = {
+        name: exercise.name,
+        sessions: sessionsByExercise.get(id)?.size ?? 0,
+        last: dayKey(lastByExercise.get(id) ?? ''),
+      };
+      if (bests.heaviest) {
+        row.heaviest = `${bests.heaviest.weightKg ?? bests.heaviest.value}x${bests.heaviest.count} on ${dayKey(bests.heaviest.at)}`;
+      }
+      if (bests.mostCount) {
+        row[`most_${exercise.countUnit}`] =
+          `${bests.mostCount.value} on ${dayKey(bests.mostCount.at)}`;
+      }
+      return row;
+    })
+    .filter((row): row is Record<string, unknown> => row != null)
+    .sort((a, b) => (b.sessions as number) - (a.sessions as number));
+  let recordLimit = records.length;
+
+  /* Sessions per week, the last twelve weeks, oldest first — the frequency line. */
+  const weekly: string[] = [];
+  for (let back = 11; back >= 0; back -= 1) {
+    const end = now.getTime() - back * 7 * DAY_MS;
+    const start = end - 7 * DAY_MS;
+    const count = workouts.filter((w) => {
+      const at = new Date(w.startedAt).getTime();
+      return at > start && at <= end;
+    }).length;
+    weekly.push(`${dayKey(new Date(start + DAY_MS))}:${count}`);
+  }
+
+  const ordered = [...workouts].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  const allTime = {
+    workouts: workouts.length,
+    ...(ordered[0] ? { firstWorkout: dayKey(ordered[0].startedAt) } : {}),
+    ...(ordered.length ? { lastWorkout: dayKey(ordered[ordered.length - 1].startedAt) } : {}),
+  };
+  const bodyweightLine = bodyweights.slice(-12).map((e) => `${dayKey(e.at)}:${e.kg}`);
 
   const sessionRows = inWindow.map((w) => {
     const row: Record<string, unknown> = { date: dayKey(w.startedAt) };
@@ -395,7 +489,7 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     ...rows.keys(),
     ...routines.flatMap((r) => r.items.map((i) => i.exerciseId)),
   ]);
-  let sessionLimit = Math.min(40, sessionRows.length);
+  let sessionLimit = Math.min(60, sessionRows.length);
   let libraryRows = library;
   let rollupLimit = rollups.length;
   const render = () =>
@@ -413,6 +507,10 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
       setsPerCluster4w,
       signals,
       ...(debriefLimit > 0 ? { debriefs: debriefRows.slice(0, debriefLimit) } : {}),
+      allTime,
+      sessionsPerWeek12w: weekly,
+      ...(bodyweightLine.length ? { bodyweightKgLog: bodyweightLine } : {}),
+      ...(recordLimit > 0 ? { recordsAllTime: records.slice(0, recordLimit) } : {}),
     });
 
   let json = render();
@@ -430,6 +528,10 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     rollupLimit = Math.max(5, rollupLimit - 5);
     json = render();
   }
+  while (json.length > CONTEXT_CAP && recordLimit > 10) {
+    recordLimit = Math.max(10, recordLimit - 5);
+    json = render();
+  }
   while (json.length > CONTEXT_CAP && debriefLimit > 3) {
     debriefLimit -= 1;
     json = render();
@@ -440,6 +542,10 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
   }
   while (json.length > CONTEXT_CAP && debriefLimit > 0) {
     debriefLimit -= 1;
+    json = render();
+  }
+  while (json.length > CONTEXT_CAP && recordLimit > 0) {
+    recordLimit -= 1;
     json = render();
   }
 
@@ -553,18 +659,52 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
     daily.push(`${day.slice(5)}:${Math.round(progress.fraction * 100)}`);
   }
 
+  /*
+   * THE NOTES written on answered days — "only 10 pages, tired", "did it at the
+   * gym instead" — newest first. The ticks say THAT a habit slipped; the notes
+   * are the only place that says why.
+   */
+  const names: Record<ID, string> = Object.fromEntries(tasks.map((task) => [task.id, task.name]));
+  const noted: string[] = [];
+  for (const [taskId, days] of Object.entries(log)) {
+    if (!names[taskId]) continue;
+    for (const [day, entry] of Object.entries(days)) {
+      if (day < first || day > today) continue;
+      const note = entry.note.trim().replace(/\s+/g, ' ');
+      if (note === '') continue;
+      const mark = entry.mark === 'done' ? 'done' : entry.mark === 'missed' ? 'excused' : 'open';
+      noted.push(`${day} ${names[taskId]} (${mark}): ${note.slice(0, 160)}`);
+    }
+  }
+  noted.sort((a, b) => b.localeCompare(a));
+  let noteLimit = noted.length;
+
   const base = {
     today,
     language: LANGUAGE_NAME[lang],
     window: `${first}..${today}`,
-    note: 'excused = the user chose not to on purpose, never a miss; missed = asked and left unanswered',
+    note: 'excused = the user chose not to on purpose, never a miss; missed = asked and left unanswered; notes are what the user wrote on a day, newest first',
     tasks: perTask,
   };
   let dailyRows = daily;
-  let json = JSON.stringify({ ...base, dailyDonePct: dailyRows });
+  const render = () =>
+    JSON.stringify({
+      ...base,
+      dailyDonePct: dailyRows,
+      ...(noteLimit > 0 ? { notes: noted.slice(0, noteLimit) } : {}),
+    });
+  let json = render();
+  while (json.length > CONTEXT_CAP && noteLimit > 20) {
+    noteLimit = Math.max(20, Math.floor(noteLimit * 0.8));
+    json = render();
+  }
   while (json.length > CONTEXT_CAP && dailyRows.length > 14) {
     dailyRows = dailyRows.slice(Math.ceil(dailyRows.length / 4));
-    json = JSON.stringify({ ...base, dailyDonePct: dailyRows });
+    json = render();
+  }
+  while (json.length > CONTEXT_CAP && noteLimit > 0) {
+    noteLimit -= 1;
+    json = render();
   }
   return { json, dayCount: daily.length };
 }
@@ -710,4 +850,110 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
     json = render();
   }
   return { json, monthCount, noteCount: noteLimit };
+}
+
+/* ------------------------------------------------------------------ */
+/* The other two sections, briefly                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ONE SECTION'S CHAT, THE WHOLE PERSON. A question about money is often about
+ * training ("am I spending too much on the gym?") and a question about habits is
+ * often about both, so every context also carries a short brief of the other two
+ * sections: a few numbers and the newest things the user wrote. Small on
+ * purpose — the section being asked about keeps the room.
+ */
+export function workoutBrief(input: {
+  workouts: readonly CompletedWorkout[];
+  routines: readonly Routine[];
+  sequence?: TrainingSequence;
+  now?: Date;
+}): Record<string, unknown> {
+  const now = (input.now ?? new Date()).getTime();
+  const recent = [...input.workouts].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const last30 = recent.filter((w) => now - new Date(w.startedAt).getTime() <= 30 * DAY_MS);
+  const names = new Map(input.routines.map((r) => [r.id, r.name]));
+  return {
+    workoutsLast30Days: last30.length,
+    minutesLast30Days: last30.reduce((sum, w) => sum + w.durationMinutes, 0),
+    lastSessions: recent.slice(0, 5).map((w) => {
+      const feel = w.effort ? `, felt ${w.effort}` : '';
+      return `${dayKey(w.startedAt)} ${w.title} (${w.durationMinutes} min${feel})`;
+    }),
+    routines: input.routines.map((r) => r.name),
+    ...(input.sequence?.isActive && input.sequence.routineIds.length
+      ? {
+          loop: input.sequence.routineIds.map((id) => names.get(id)).filter(Boolean),
+        }
+      : {}),
+  };
+}
+
+export function tasksBrief(input: {
+  tasks: readonly Task[];
+  log: TaskLog;
+  today: string;
+}): Record<string, unknown> {
+  const built = JSON.parse(
+    buildTasksContext({
+      tasks: input.tasks,
+      log: input.log,
+      today: input.today,
+      lang: 'en',
+      days: 30,
+    }).json,
+  ) as { tasks: Record<string, unknown>[]; notes?: string[] };
+  return {
+    last30Days: built.tasks.map((task) => {
+      const asked = (task.asked as number) - (task.excused as number);
+      const pct = asked > 0 ? Math.round(((task.done as number) / asked) * 100) : null;
+      return `${task.name}: ${pct == null ? 'n/a' : `${pct}% done`}, streak ${task.streak}`;
+    }),
+    recentNotes: (built.notes ?? []).slice(0, 10),
+  };
+}
+
+export function expensesBrief(input: {
+  amounts: readonly Amount[];
+  categories: readonly MoneyCategory[];
+  accounts: readonly MoneyAccount[];
+  currency: string;
+  today: string;
+}): Record<string, unknown> {
+  const built = JSON.parse(buildExpensesContext({ ...input, lang: 'en', months: 2 }).json) as {
+    months: { month: string; spent: number; income: number; byCategory: Record<string, number> }[];
+    notes?: string[];
+  };
+  const month = built.months[built.months.length - 1];
+  const top = Object.entries(month?.byCategory ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([name, total]) => `${name} ${total}`);
+  return {
+    currency: input.currency,
+    thisMonth: month ? { month: month.month, spent: month.spent, income: month.income } : null,
+    topCategoriesThisMonth: top,
+    recentNotes: (built.notes ?? []).slice(0, 10),
+  };
+}
+
+/**
+ * Add the other sections' briefs to a context, if they fit under the cap —
+ * notes first to go, then the brief whole. The section asked about is never cut
+ * to make room.
+ */
+export function withBriefs(json: string, briefs: Record<string, Record<string, unknown>>): string {
+  const base = JSON.parse(json) as Record<string, unknown>;
+  const attempt = (other: Record<string, unknown>) =>
+    JSON.stringify({ ...base, otherSections: other });
+  let out = attempt(briefs);
+  if (out.length <= CONTEXT_CAP) return out;
+  const trimmed = Object.fromEntries(
+    Object.entries(briefs).map(([key, brief]) => {
+      const { recentNotes: _notes, ...rest } = brief;
+      return [key, rest];
+    }),
+  );
+  out = attempt(trimmed);
+  return out.length <= CONTEXT_CAP ? out : json;
 }

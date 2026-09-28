@@ -554,6 +554,7 @@ export function SettingsHomeScreen({
             {t(
               'A backup is plain JSON, so you can read it, keep it anywhere, and move it to another phone. It holds all three sections — training, the daily tasks and the expenses — and every setting.',
             )}{' '}
+            {t('Your AI chats and past chats travel with it too; the AI key never does.')}{' '}
             <Text className="text-ink-muted">{t('Replace everything')}</Text>{' '}
             {t(
               'makes this phone look like the file, so export first if there is anything here you would miss. A backup written by an older version carries no tasks and no amounts, and restoring one leaves both of those exactly where they are rather than emptying them. A workout in progress is not part of a backup: it carries a running clock.',

@@ -1378,11 +1378,19 @@ const RU: Record<string, string> = {
     'Gemini сейчас перегружен. Попробуйте через минуту.',
 
   'Past chats': 'Прошлые чаты',
+  'Your AI chats and past chats travel with it too; the AI key never does.':
+    'Чаты с ИИ и прошлые чаты тоже сохраняются в копии; ключ ИИ — никогда.',
+  'Suggested training loop': 'Предложенный цикл тренировок',
+  'Now: {loop}': 'Сейчас: {loop}',
+  'Apply loop': 'Применить цикл',
+  'Training loop updated': 'Цикл тренировок обновлён',
+  'AI chat': 'чат с ИИ',
+  'AI chats': 'чатов с ИИ',
   'No past chats yet.': 'Прошлых чатов пока нет.',
   '{count} messages': 'сообщений: {count}',
   'Delete chat': 'Удалить чат',
-  'Past chats stay on this phone only. Opening one puts the chat you have open now into this list.':
-    'Прошлые чаты хранятся только на этом телефоне. Если открыть один из них, текущий чат попадёт в этот список.',
+  'Past chats are kept on this phone and in your backups. Opening one puts the chat you have open now into this list.':
+    'Прошлые чаты хранятся на этом телефоне и в резервных копиях. Если открыть один из них, текущий чат попадёт в этот список.',
 
   // Success popups
   'Export successful': 'Экспорт выполнен',

@@ -102,7 +102,24 @@ export interface ProposalBlock {
   proposal: RoutineProposal;
 }
 
-export type AiBlock = TextBlock | SummaryBlock | ProposalBlock;
+/**
+ * A new TRAINING LOOP: the whole list of routine ids in order (repeats allowed —
+ * Push at steps 1 and 4 is the point of a loop), and which step is up next.
+ * Applied only on a tap, like a routine proposal, and only in the Workout chat.
+ */
+export interface SequenceProposal {
+  routineIds: string[];
+  /** 0-based index of the step to train next. */
+  next: number;
+  why: string;
+}
+
+export interface SequenceBlock {
+  type: 'sequence_proposal';
+  sequence: SequenceProposal;
+}
+
+export type AiBlock = TextBlock | SummaryBlock | ProposalBlock | SequenceBlock;
 
 /* ------------------------------------------------------------------ */
 /* The limits                                                          */
@@ -126,6 +143,8 @@ export const LIMITS = {
   title: 80,
   name: 40,
   why: 400,
+  /** Steps in a suggested loop. Twelve is a quarter of training; 24 is room. */
+  sequence: 24,
 } as const;
 
 /** Every number that can reach the library, and the range it is held to. */
@@ -156,7 +175,10 @@ export const responseSchema = {
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['text', 'summary', 'routine_proposal'] },
+          type: {
+            type: 'string',
+            enum: ['text', 'summary', 'routine_proposal', 'sequence_proposal'],
+          },
           text: { type: 'string', description: 'The paragraph, for a "text" block.' },
           title: { type: 'string', description: 'The heading, for a "summary" block.' },
           stats: {
@@ -220,9 +242,34 @@ export const responseSchema = {
             },
             required: ['kind', 'name', 'why', 'exercises'],
           },
+          sequence: {
+            type: 'object',
+            description: 'For a "sequence_proposal" block: the WHOLE training loop.',
+            properties: {
+              routineIds: {
+                type: 'array',
+                description:
+                  'Routine ids from CONTEXT.routines, in training order. Repeats allowed.',
+                items: str,
+              },
+              next: { type: 'integer', description: '0-based index of the step to train next.' },
+              why: str,
+            },
+            required: ['routineIds', 'why'],
+          },
         },
         required: ['type'],
-        propertyOrdering: ['type', 'text', 'title', 'stats', 'rows', 'bars', 'notes', 'proposal'],
+        propertyOrdering: [
+          'type',
+          'text',
+          'title',
+          'stats',
+          'rows',
+          'bars',
+          'notes',
+          'proposal',
+          'sequence',
+        ],
       },
     },
   },
@@ -429,6 +476,20 @@ export function validateBlocks(raw: unknown, ctx: ValidateContext): AiBlock[] {
       continue;
     }
 
+    if (item.type === 'sequence_proposal' || (item.type == null && isRecord(item.sequence))) {
+      const sequence =
+        ctx.section === 'Workout' && !out.some((b) => b.type === 'sequence_proposal')
+          ? validateSequence(item.sequence, ctx)
+          : null;
+      if (sequence) {
+        out.push({ type: 'sequence_proposal', sequence });
+        continue;
+      }
+      const why = isRecord(item.sequence) ? text(item.sequence.why, LIMITS.text) : null;
+      if (why) out.push({ type: 'text', text: why });
+      continue;
+    }
+
     if (item.type === 'summary' || (item.type == null && hasSummaryParts(item))) {
       const block = validateSummary(item);
       if (block) {
@@ -444,6 +505,24 @@ export function validateBlocks(raw: unknown, ctx: ValidateContext): AiBlock[] {
     if (body) out.push({ type: 'text', text: body });
   }
   return out;
+}
+
+function validateSequence(raw: unknown, ctx: ValidateContext): SequenceProposal | null {
+  if (!isRecord(raw) || !Array.isArray(raw.routineIds)) return null;
+  const why = text(raw.why, LIMITS.why);
+  const routineIds: string[] = [];
+  for (const id of raw.routineIds) {
+    if (routineIds.length >= LIMITS.sequence) break;
+    // A step naming a routine the phone never described is a step into nothing.
+    if (typeof id === 'string' && ctx.routineIds.has(id.trim())) routineIds.push(id.trim());
+  }
+  if (!why || routineIds.length === 0) return null;
+  const next = finite(raw.next);
+  return {
+    routineIds,
+    next: next == null ? 0 : clampInt(next, 0, routineIds.length - 1),
+    why,
+  };
 }
 
 /** The list of blocks, from any of the shapes a model has been seen to send. */

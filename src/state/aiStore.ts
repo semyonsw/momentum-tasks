@@ -9,13 +9,16 @@
  * point reads: the sparkle lights on `ready`, and everything else routes to the
  * settings screen first.
  *
- * ── NOT IN THE BACKUP, ON PURPOSE ──────────────────────────────────────────
+ * ── THE CHATS ARE IN THE BACKUP; THE KEY NEVER IS ────────────────────────
  *
- * `state/dataTransfer.ts` names every store the backup file carries, and this is
- * not one of them. The chats are DERIVED — every answer can be asked again from
- * the log — and they hold the user's data restated in sentences, which is not
- * something they meant to export when they tapped "Export everything". A test in
- * `dataTransfer.test.ts` pins that neither a chat nor a key reaches the file.
+ * They used to be left out, as derived data. They are not derived once there is
+ * a history: last month's answer about the bench press, and the loop the user
+ * accepted from it, are a record of a conversation nobody can ask again word for
+ * word. So `Export everything` carries the open chats, the past chats and their
+ * suggestions (`chatsForBackup`), and a restore brings them back visible. What
+ * never travels is the key (the keystore, not this store), the model and the
+ * connection state: a restored phone tests its own key. `dataTransfer.test.ts`
+ * pins both halves.
  *
  * ── ONE CHAT PER SECTION, FORTY MESSAGES DEEP ──────────────────────────────
  *
@@ -51,8 +54,23 @@ import type { ID } from '../types/models';
 
 export type AiStatus = 'off' | 'testing' | 'ready' | 'error';
 
+/**
+ * A suggested training loop, as the chat keeps it: the steps, the step that is
+ * up next, the reason — and whether it was applied. Stored IN the message rather
+ * than as a separate record (a routine proposal is a record because it has an
+ * editor; a loop is applied or not, whole).
+ */
+export interface SequenceChatBlock {
+  type: 'sequence';
+  routineIds: ID[];
+  next: number;
+  why: string;
+  status: ProposalStatus;
+}
+
 /** A block as the chat stores it: a proposal is a reference, not a copy. */
-export type ChatBlock = TextBlock | SummaryBlock | { type: 'proposal'; proposalId: string };
+export type ChatBlock =
+  TextBlock | SummaryBlock | { type: 'proposal'; proposalId: string } | SequenceChatBlock;
 
 export type AiMessage =
   | { id: string; role: 'user'; text: string; at: string }
@@ -82,7 +100,7 @@ const EMPTY_CHATS: Chats = { Workout: [], Tasks: [], Expenses: [] };
  * `New chat` used to DELETE the conversation, which made the one button a user
  * presses to change the subject also the button that throws away last week's
  * answer about their bench press. Now it files it. The archive lives in the same
- * AsyncStorage blob as the chats, and like them it never goes into a backup.
+ * AsyncStorage blob as the chats, and travels in a backup with them.
  */
 export interface ArchivedChat {
   id: string;
@@ -161,6 +179,15 @@ interface AiState extends AiValue {
   putProposal: (id: string, proposal: ReviewProposal) => void;
   updateProposal: (id: string, proposal: ReviewProposal) => void;
   setProposalStatus: (id: string, status: ProposalStatus) => void;
+
+  /**
+   * Replace every chat, past chat and suggestion with a backup's. The key, the
+   * model and the connection state are the phone's own and are not touched.
+   * Returns how many chats (open and past) landed.
+   */
+  importChats: (raw: unknown) => number;
+  /** Mark a suggested loop applied, discarded, or (Undo) pending again. */
+  setSequenceStatus: (section: AiSection, messageId: string, status: ProposalStatus) => void;
 
   markRoutineAi: (routineId: ID) => void;
   markRoutineSeen: (routineId: ID) => void;
@@ -285,6 +312,27 @@ export const useAi = create<AiState>()(
           return { proposals: { ...state.proposals, [id]: { ...current, status } } };
         }),
 
+      setSequenceStatus: (section, messageId, status) =>
+        set((state) => ({
+          chats: {
+            ...state.chats,
+            [section]: state.chats[section].map((message) =>
+              message.id === messageId && message.role === 'model'
+                ? {
+                    ...message,
+                    blocks: message.blocks.map((block) =>
+                      block.type === 'sequence' ? { ...block, status } : block,
+                    ),
+                  }
+                : message,
+            ),
+          },
+        })),
+      importChats: (raw) => {
+        const clean = sanitizeAi(raw);
+        set({ chats: clean.chats, archive: clean.archive, proposals: clean.proposals });
+        return countChats(clean);
+      },
       markRoutineAi: (routineId) =>
         set((state) =>
           state.unseenRoutineIds.includes(routineId)
@@ -406,9 +454,27 @@ function sanitizeMessage(
       if (proposalId && proposals[proposalId]) blocks.push({ type: 'proposal', proposalId });
       continue;
     }
+    if (isRec(block) && block.type === 'sequence') {
+      const routineIds = Array.isArray(block.routineIds)
+        ? block.routineIds.filter((id): id is string => typeof id === 'string')
+        : [];
+      const why = str(block.why) ?? '';
+      if (routineIds.length === 0) continue;
+      const status: ProposalStatus =
+        block.status === 'accepted' || block.status === 'discarded' ? block.status : 'pending';
+      const next = num(block.next) ?? 0;
+      blocks.push({
+        type: 'sequence',
+        routineIds,
+        next: Math.min(Math.max(0, Math.round(next)), routineIds.length - 1),
+        why,
+        status,
+      });
+      continue;
+    }
     // Text and summary blocks go through the SAME validator a live answer does.
     const [valid] = validateBlocks([block], { section, routineIds: new Set() });
-    if (valid && valid.type !== 'routine_proposal') blocks.push(valid);
+    if (valid && (valid.type === 'text' || valid.type === 'summary')) blocks.push(valid);
   }
   return blocks.length > 0 ? { id, role: 'model', blocks, raw: str(raw.raw) ?? '', at } : null;
 }
@@ -474,4 +540,32 @@ export function sanitizeAi(input: unknown): AiValue {
       ? raw.unseenRoutineIds.filter((id): id is string => typeof id === 'string')
       : [],
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Backups                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The conversations as a backup carries them: the open chat of each section,
+ * the past chats, and the suggestions they point at. NEVER the key (that is in
+ * the keystore, not this store) and not the connection state — a restored phone
+ * has to test its own key.
+ */
+export function chatsForBackup(state: Pick<AiValue, 'chats' | 'archive' | 'proposals'>): {
+  chats: Chats;
+  archive: Archive;
+  proposals: Record<string, StoredProposal>;
+} {
+  return { chats: state.chats, archive: state.archive, proposals: state.proposals };
+}
+
+/** Open chats with anything in them, plus every past chat. */
+export function countChats(state: Pick<AiValue, 'chats' | 'archive'>): number {
+  let count = 0;
+  for (const section of AI_SECTIONS) {
+    if (state.chats[section].length > 0) count += 1;
+    count += state.archive[section].length;
+  }
+  return count;
 }

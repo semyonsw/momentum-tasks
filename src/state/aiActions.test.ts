@@ -18,7 +18,14 @@ vi.mock('../lib/ai/secureKey', () => ({
   },
 }));
 
-import { applyProposal, discardProposal, disconnect, sendMessage, testKey } from './aiActions';
+import {
+  applyProposal,
+  applySequence,
+  discardProposal,
+  disconnect,
+  sendMessage,
+  testKey,
+} from './aiActions';
 import { sanitizeAi, useAi } from './aiStore';
 import { useLibrary } from './libraryStore';
 import { useSettings } from './settingsStore';
@@ -334,5 +341,45 @@ describe('disconnecting', () => {
     expect(storedKey).toBeNull();
     expect(useAi.getState().status).toBe('off');
     expect(useAi.getState().chats.Tasks).toHaveLength(2);
+  });
+});
+
+describe('a suggested training loop', () => {
+  it('is applied only on the tap, and undone exactly', async () => {
+    await connect();
+    const [push, pull] = useLibrary.getState().routines;
+    const before = useLibrary.getState().sequence;
+    answers = [
+      gemini([
+        { type: 'text', text: 'Push twice a loop.' },
+        {
+          type: 'sequence_proposal',
+          sequence: { routineIds: [push.id, pull.id, push.id], next: 1, why: 'Push lags.' },
+        },
+      ]),
+    ];
+    await sendMessage('Workout', 'Put push twice in my loop');
+    const answer = useAi.getState().chats.Workout.at(-1)!;
+    expect(answer.role === 'model' && answer.blocks[1]).toMatchObject({
+      type: 'sequence',
+      status: 'pending',
+    });
+    // Nothing written yet.
+    expect(useLibrary.getState().sequence).toEqual(before);
+    // The context the model read carried the loop and the other sections.
+    expect(calls[0].body).toContain('otherSections');
+
+    const applied = applySequence('Workout', answer.id)!;
+    expect(useLibrary.getState().sequence).toEqual({
+      isActive: true,
+      routineIds: [push.id, pull.id, push.id],
+      cursor: 1,
+    });
+    expect(applySequence('Workout', answer.id)).toBeNull();
+
+    applied.undo();
+    expect(useLibrary.getState().sequence).toEqual(before);
+    const again = useAi.getState().chats.Workout.at(-1)!;
+    expect(again.role === 'model' && again.blocks[1]).toMatchObject({ status: 'pending' });
   });
 });

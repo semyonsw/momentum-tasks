@@ -263,3 +263,49 @@ describe('proposals', () => {
     expect(blocks).toHaveLength(1);
   });
 });
+
+describe('a suggested training loop', () => {
+  const loopCtx: ValidateContext = {
+    section: 'Workout',
+    routineIds: new Set(['r_push', 'r_pull']),
+  };
+  const loop = (sequence: unknown) => ({ type: 'sequence_proposal', sequence });
+
+  it('keeps the whole loop in order, repeats and all', () => {
+    expect(
+      validateBlocks(
+        {
+          blocks: [
+            loop({ routineIds: ['r_push', 'r_pull', 'r_push'], next: 2, why: 'Push twice.' }),
+          ],
+        },
+        loopCtx,
+      ),
+    ).toEqual([
+      {
+        type: 'sequence_proposal',
+        sequence: { routineIds: ['r_push', 'r_pull', 'r_push'], next: 2, why: 'Push twice.' },
+      },
+    ]);
+  });
+
+  it('drops steps naming a routine the phone never described, and clamps next', () => {
+    const [block] = validateBlocks(
+      { blocks: [loop({ routineIds: ['r_push', 'Push', 'r_gone'], next: 9, why: 'W.' })] },
+      loopCtx,
+    );
+    expect(block).toEqual({
+      type: 'sequence_proposal',
+      sequence: { routineIds: ['r_push'], next: 0, why: 'W.' },
+    });
+  });
+
+  it('is never a loop outside the Workout chat, nor with no valid step — only its reason', () => {
+    expect(
+      validateBlocks({ blocks: [loop({ routineIds: ['r_push'], why: 'W.' })] }, tasks),
+    ).toEqual([{ type: 'text', text: 'W.' }]);
+    expect(
+      validateBlocks({ blocks: [loop({ routineIds: ['nope'], why: 'W.' })] }, loopCtx),
+    ).toEqual([{ type: 'text', text: 'W.' }]);
+  });
+});

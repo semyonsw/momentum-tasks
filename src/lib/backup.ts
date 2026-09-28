@@ -88,6 +88,8 @@ export interface BackupCounts {
    */
   tasks?: number;
   amounts?: number;
+  /** AI conversations (open + past), when the file carries them. */
+  chats?: number;
 }
 
 /**
@@ -127,6 +129,11 @@ export interface BackupPayload {
    * existed leaves this phone's answers exactly where they are.
    */
   debriefs?: unknown;
+  /**
+   * The AI conversations: `{ chats, archive, proposals }`. Optional and
+   * absent-means-absent; never the key, which lives in the keystore.
+   */
+  aiChats?: unknown;
 }
 
 export interface BackupEnvelope extends BackupPayload {
@@ -158,6 +165,21 @@ function countList(section: unknown, key: string): number {
   return Array.isArray(rows) ? rows.length : 0;
 }
 
+/** Open chats with anything in them, plus past chats — total over `unknown`. */
+function countAiChats(section: unknown): number {
+  if (typeof section !== 'object' || section === null) return 0;
+  const { chats, archive } = section as { chats?: unknown; archive?: unknown };
+  let count = 0;
+  for (const group of [chats, archive]) {
+    if (typeof group !== 'object' || group === null) continue;
+    for (const list of Object.values(group as Record<string, unknown>)) {
+      if (!Array.isArray(list)) continue;
+      count += group === chats ? (list.length > 0 ? 1 : 0) : list.length;
+    }
+  }
+  return count;
+}
+
 /** Count what a payload actually holds, rather than what it claims to. */
 export function countPayload(payload: BackupPayload): BackupCounts {
   let sets = 0;
@@ -179,6 +201,7 @@ export function countPayload(payload: BackupPayload): BackupCounts {
    */
   if (payload.tasks != null) counts.tasks = countList(payload.tasks, 'tasks');
   if (payload.money != null) counts.amounts = countList(payload.money, 'amounts');
+  if (payload.aiChats != null) counts.chats = countAiChats(payload.aiChats);
   return counts;
 }
 
@@ -301,6 +324,7 @@ export function parseBackup(text: string, lang: Language = 'en'): ParseResult {
     tasks: source.tasks ?? undefined,
     money: source.money ?? undefined,
     debriefs: source.debriefs ?? undefined,
+    aiChats: source.aiChats ?? undefined,
   };
   const counts = countPayload(payload);
 
@@ -355,6 +379,15 @@ export function describeCounts(counts: BackupCounts, lang: Language = 'en'): str
   if (counts.amounts != null) {
     parts.push(
       counted(counts.amounts, { one: t('amount', lang), few: 'суммы', many: t('amounts', lang) }),
+    );
+  }
+  if (counts.chats != null && counts.chats > 0) {
+    parts.push(
+      counted(counts.chats, {
+        one: t('AI chat', lang),
+        few: 'чата с ИИ',
+        many: t('AI chats', lang),
+      }),
     );
   }
   return parts.join(' · ');

@@ -148,6 +148,12 @@ interface LibraryState {
    * cursor is on — starting something else never advances the queue.
    */
   advanceSequence: (routineId: ID | undefined) => void;
+  /**
+   * The whole loop at once — an AI suggestion applied, or its Undo. Validated
+   * like a restore: steps that name a routine this library does not have are
+   * dropped, and the cursor is kept in range.
+   */
+  replaceSequence: (next: TrainingSequence) => void;
   /** Back to the shipped library. The only way out of a library you've wrecked. */
   restoreSeedLibrary: () => void;
   /**
@@ -642,6 +648,8 @@ export const useLibrary = create<LibraryState>()(
         // The queue wraps: a sequence is a cycle, not a course you finish.
         set({ sequence: { ...sequence, cursor: (cursor + 1) % routineIds.length } });
       },
+
+      replaceSequence: (next) => set({ sequence: sanitizeSequence(next, get().routines) }),
 
       restoreSeedLibrary: () =>
         set({ exercises: seedExercises, routines: seedRoutines, sequence: NO_SEQUENCE }),
