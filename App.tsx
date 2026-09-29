@@ -147,12 +147,6 @@ export default function App() {
    * launches where the user never opens Settings, which is all of them.
    */
   useAutoBackup();
-  /*
-   * Same argument, for the same reason: a reminder the user set has to be armed
-   * on the launches where they never open the tasks section, which is most of
-   * them. `hooks/useReminders.ts` has the rest.
-   */
-  useReminders();
 
   useEffect(() => {
     void requestNotificationPermission();
@@ -197,6 +191,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
+      <Reminders />
       <Themed>
         {(themeKey) => (
           <>
@@ -306,6 +301,20 @@ function Root() {
       <DebriefHost />
     </>
   );
+}
+
+/**
+ * The reminder sync, mounted with `App` for the same reason the backup is: a
+ * reminder the user set has to be armed on the launches where they never open
+ * the tasks section, which is most of them. `hooks/useReminders.ts` has the rest.
+ *
+ * A sibling rendering nothing rather than a hook in `App`, because it subscribes
+ * to the tasks and the settings — and in `App` every tick of a task re-rendered
+ * the whole tree, shell and all, to arm a debounced timer.
+ */
+function Reminders() {
+  useReminders();
+  return null;
 }
 
 /**

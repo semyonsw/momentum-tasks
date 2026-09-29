@@ -34,7 +34,7 @@
  * layers cross-faded, because a shadow cannot be animated and an opacity can.
  */
 
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
@@ -117,7 +117,9 @@ function useLoop(make: (value: Animated.Value) => Animated.CompositeAnimation, d
   return value;
 }
 
-export function AiOrb({
+/* Memoised: every prop is a primitive, and it sits in top bars and cards whose
+   hosts re-render far more often than the orb changes. */
+export const AiOrb = memo(function AiOrb({
   size = 46,
   glyph = Math.round(size * 0.48),
   glow = true,
@@ -159,6 +161,16 @@ export function AiOrb({
     ]),
   );
   const inner = size - RING * 2;
+  // Built once: a fresh interpolation node per render makes each Animated.View
+  // detach and re-attach its native animation graph.
+  const nodes = useMemo(
+    () => ({
+      spin: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+      breathScale: breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] }),
+      breathRotate: breath.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '12deg'] }),
+    }),
+    [breath, spin],
+  );
 
   return (
     <View style={{ width: size, height: size }}>
@@ -177,9 +189,7 @@ export function AiOrb({
         style={[
           ROUND,
           {
-            transform: [
-              { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
-            ],
+            transform: [{ rotate: nodes.spin }],
           },
         ]}
       >
@@ -217,12 +227,7 @@ export function AiOrb({
         </Svg>
         <Animated.View
           style={{
-            transform: [
-              { scale: breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] }) },
-              {
-                rotate: breath.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '12deg'] }),
-              },
-            ],
+            transform: [{ scale: nodes.breathScale }, { rotate: nodes.breathRotate }],
           }}
         >
           <Icon name="sparkle" size={glyph} color={ai.glyph} />
@@ -243,7 +248,7 @@ export function AiOrb({
       ) : null}
     </View>
   );
-}
+});
 
 function Twinkle({
   glyphSize,
@@ -266,22 +271,25 @@ function Twinkle({
       }),
     delayMs,
   );
+  const nodes = useMemo(
+    () => ({
+      opacity: v.interpolate({ inputRange: TWINKLE_IN, outputRange: [0, 1, 0, 0] }),
+      scale: v.interpolate({ inputRange: TWINKLE_IN, outputRange: [0.3, 1, 0.4, 0.3] }),
+      rotate: v.interpolate({
+        inputRange: TWINKLE_IN,
+        outputRange: ['0deg', '90deg', '160deg', '0deg'],
+      }),
+    }),
+    [v],
+  );
   return (
     <Animated.View
       pointerEvents="none"
       style={{
         position: 'absolute',
         ...position,
-        opacity: v.interpolate({ inputRange: TWINKLE_IN, outputRange: [0, 1, 0, 0] }),
-        transform: [
-          { scale: v.interpolate({ inputRange: TWINKLE_IN, outputRange: [0.3, 1, 0.4, 0.3] }) },
-          {
-            rotate: v.interpolate({
-              inputRange: TWINKLE_IN,
-              outputRange: ['0deg', '90deg', '160deg', '0deg'],
-            }),
-          },
-        ],
+        opacity: nodes.opacity,
+        transform: [{ scale: nodes.scale }, { rotate: nodes.rotate }],
       }}
     >
       <Text

@@ -22,7 +22,7 @@
  * It plays `celebrate()` as it lands — this is a 100%, the whole log is safe.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 
 import { CommitMark } from './glass';
@@ -70,6 +70,16 @@ export function SuccessPopup({
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Built once: a fresh interpolation node per render makes each Animated.View
+  // detach and re-attach its native animation graph.
+  const nodes = useMemo(
+    () => ({
+      fade: enter.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+      pop: enter.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }),
+      drainWidth: drain.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+    }),
+    [drain, enter],
+  );
 
   return (
     <Pressable
@@ -96,11 +106,7 @@ export function SuccessPopup({
           right: 0,
           bottom: 0,
           backgroundColor: 'rgba(6,8,7,0.6)',
-          opacity: enter.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, 1],
-            extrapolate: 'clamp',
-          }),
+          opacity: nodes.fade,
         }}
       />
       <Animated.View
@@ -117,12 +123,8 @@ export function SuccessPopup({
           backgroundColor: palette.surface,
           overflow: 'hidden',
           boxShadow: [{ offsetX: 0, offsetY: 18, blurRadius: 48, color: 'rgba(0,0,0,0.7)' }],
-          opacity: enter.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, 1],
-            extrapolate: 'clamp',
-          }),
-          transform: [{ scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }],
+          opacity: nodes.fade,
+          transform: [{ scale: nodes.pop }],
         }}
       >
         <View
@@ -151,7 +153,7 @@ export function SuccessPopup({
             style={{
               height: 3,
               backgroundColor: palette.greenBright,
-              width: drain.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+              width: nodes.drainWidth,
             }}
           />
         </View>

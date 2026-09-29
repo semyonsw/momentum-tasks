@@ -47,7 +47,7 @@
  * drawn at its end state and it leaves the moment the stores are ready.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
@@ -265,6 +265,35 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
     }).start();
   }, [progress, scale, state.stage]);
 
+  /*
+   * Every interpolation built once. The 100 ms clock re-renders this whole tree
+   * ten times a second, and a fresh node per render makes each Animated.View
+   * detach and re-attach its native animation graph every time — which is also
+   * why the children below are memoised on their (primitive) props.
+   */
+  const nodes = useMemo(
+    () => ({
+      leaveOpacity: leave.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+      leaveScale: leave.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }),
+      lampsScale: lamps.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }),
+      dashOffset: progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [PROGRESS_LENGTH, 0],
+      }),
+      spinRotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+      beatScale: beat.interpolate({
+        inputRange: [0, 1, 2, 3],
+        outputRange: [1, 0.86, 1.06, 1],
+      }),
+      beatRotate: beat.interpolate({
+        inputRange: [0, 1, 2, 3],
+        outputRange: ['0deg', '-8deg', '4deg', '0deg'],
+      }),
+      taglineY: tagline.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }),
+    }),
+    [beat, lamps, leave, progress, spin, tagline],
+  );
+
   const chips: { store: LaunchStore; count: number; label: string }[] = [
     {
       store: 'history',
@@ -297,8 +326,8 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
-        opacity: leave.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
-        transform: [{ scale: leave.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }) }],
+        opacity: nodes.leaveOpacity,
+        transform: [{ scale: nodes.leaveScale }],
       }}
     >
       {/* The room lighting up: the theme's three stops, scaling in. */}
@@ -311,7 +340,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
           right: 0,
           bottom: 0,
           opacity: lamps,
-          transform: [{ scale: lamps.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }],
+          transform: [{ scale: nodes.lampsScale }],
         }}
       >
         <Lamps section="Launch" />
@@ -354,10 +383,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
             strokeWidth={PROGRESS_STROKE}
             strokeLinecap="round"
             strokeDasharray={PROGRESS_LENGTH}
-            strokeDashoffset={progress.interpolate({
-              inputRange: [0, 1],
-              outputRange: [PROGRESS_LENGTH, 0],
-            })}
+            strokeDashoffset={nodes.dashOffset}
           />
         </Svg>
 
@@ -369,9 +395,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
             position: 'absolute',
             width: RING_BOX,
             height: RING_BOX,
-            transform: [
-              { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
-            ],
+            transform: [{ rotate: nodes.spinRotate }],
           }}
         >
           <Svg width={RING_BOX} height={RING_BOX}>
@@ -421,20 +445,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
               overflow: 'hidden',
               alignItems: 'center',
               justifyContent: 'center',
-              transform: [
-                {
-                  scale: beat.interpolate({
-                    inputRange: [0, 1, 2, 3],
-                    outputRange: [1, 0.86, 1.06, 1],
-                  }),
-                },
-                {
-                  rotate: beat.interpolate({
-                    inputRange: [0, 1, 2, 3],
-                    outputRange: ['0deg', '-8deg', '4deg', '0deg'],
-                  }),
-                },
-              ],
+              transform: [{ scale: nodes.beatScale }, { rotate: nodes.beatRotate }],
             },
           ]}
         >
@@ -464,9 +475,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
           color: '#6B766F',
           textTransform: 'uppercase',
           opacity: tagline,
-          transform: [
-            { translateY: tagline.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) },
-          ],
+          transform: [{ translateY: nodes.taglineY }],
         }}
       >
         {t('Train · tick · count')}
@@ -520,56 +529,65 @@ function MorphGlyph({
   enter: Animated.Value;
   exit: Animated.Value;
 }) {
-  const rotate = Animated.add(
-    enter.interpolate({ inputRange: [0, 1], outputRange: [-200, 0] }),
-    exit.interpolate({ inputRange: [0, 1], outputRange: [0, 200] }),
-  ).interpolate({ inputRange: [-360, 360], outputRange: ['-360deg', '360deg'] });
+  const style = useMemo(
+    () => ({
+      position: 'absolute' as const,
+      opacity: Animated.multiply(
+        enter.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+        exit.interpolate({ inputRange: [0, 1], outputRange: [1, 0], extrapolate: 'clamp' }),
+      ),
+      transform: [
+        {
+          rotate: Animated.add(
+            enter.interpolate({ inputRange: [0, 1], outputRange: [-200, 0] }),
+            exit.interpolate({ inputRange: [0, 1], outputRange: [0, 200] }),
+          ).interpolate({ inputRange: [-360, 360], outputRange: ['-360deg', '360deg'] }),
+        },
+        {
+          scale: Animated.multiply(
+            enter.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
+            exit.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] }),
+          ),
+        },
+      ],
+    }),
+    [enter, exit],
+  );
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        opacity: Animated.multiply(
-          enter.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
-          exit.interpolate({ inputRange: [0, 1], outputRange: [1, 0], extrapolate: 'clamp' }),
-        ),
-        transform: [
-          { rotate },
-          {
-            scale: Animated.multiply(
-              enter.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
-              exit.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] }),
-            ),
-          },
-        ],
-      }}
-    >
+    <Animated.View pointerEvents="none" style={style}>
       <MaterialSymbol name={name} size={44} color={palette.onAcc} filled />
     </Animated.View>
   );
 }
 
 /** One 120 dp ring pulsing out from the mark: scale 1 → 2.2, fading. */
-function Wave({ value, color }: { value: Animated.Value; color: string }) {
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        width: 120,
-        height: 120,
-        borderRadius: radius.pill,
-        borderWidth: 1,
-        borderColor: color,
-        opacity: value.interpolate({ inputRange: [0, 1], outputRange: [0.7, 0] }),
-        transform: [{ scale: value.interpolate({ inputRange: [0, 1], outputRange: [1, 2.2] }) }],
-      }}
-    />
+const Wave = memo(function Wave({ value, color }: { value: Animated.Value; color: string }) {
+  const style = useMemo(
+    () => ({
+      position: 'absolute' as const,
+      width: 120,
+      height: 120,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: color,
+      opacity: value.interpolate({ inputRange: [0, 1], outputRange: [0.7, 0] }),
+      transform: [{ scale: value.interpolate({ inputRange: [0, 1], outputRange: [1, 2.2] }) }],
+    }),
+    [color, value],
   );
-}
+  return <Animated.View pointerEvents="none" style={style} />;
+});
 
 /** One letter of the wordmark arriving: opacity and a 14 dp rise, 520 ms. */
-function Letter({ letter, delay, reduced }: { letter: string; delay: number; reduced: boolean }) {
+const Letter = memo(function Letter({
+  letter,
+  delay,
+  reduced,
+}: {
+  letter: string;
+  delay: number;
+  reduced: boolean;
+}) {
   const v = useRef(new Animated.Value(reduced ? 1 : 0)).current;
   useEffect(() => {
     if (reduced) return;
@@ -582,6 +600,10 @@ function Letter({ letter, delay, reduced }: { letter: string; delay: number; red
     }).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const translateY = useMemo(
+    () => v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }),
+    [v],
+  );
   return (
     <Animated.Text
       allowFontScaling={false}
@@ -591,13 +613,13 @@ function Letter({ letter, delay, reduced }: { letter: string; delay: number; red
         fontWeight: '600',
         color: palette.ink,
         opacity: v,
-        transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+        transform: [{ translateY }],
       }}
     >
       {letter}
     </Animated.Text>
   );
-}
+});
 
 /**
  * One status chip: a spinner until its store is ready, then a popped ✓ in a
@@ -628,6 +650,17 @@ function StatusChip({
     }).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const translateY = useMemo(
+    () => arrive.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }),
+    [arrive],
+  );
+  /* RollingNumber is memoised; an inline style object would defeat it. Keyed on
+     the accent itself: this screen is outside the tree a new theme remounts. */
+  const accent = palette.acc;
+  const numberStyle = useMemo(
+    () => ({ fontSize: 13, color: done ? accent : palette.inkFaint }),
+    [accent, done],
+  );
 
   return (
     <Animated.View
@@ -643,9 +676,7 @@ function StatusChip({
         backgroundColor: done ? tint(0.14) : 'rgba(236,241,238,0.035)',
         borderColor: done ? tint(0.3) : 'rgba(236,241,238,0.06)',
         opacity: arrive,
-        transform: [
-          { translateY: arrive.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) },
-        ],
+        transform: [{ translateY }],
       }}
     >
       <View
@@ -678,7 +709,7 @@ function StatusChip({
         value={done ? String(count) : '0'}
         lineHeight={17}
         duration={600}
-        style={{ fontSize: 13, color: done ? palette.acc : palette.inkFaint }}
+        style={numberStyle}
         className="font-semibold"
       />
       <Text
@@ -708,6 +739,10 @@ function Spinner({ reduced }: { reduced: boolean }) {
     loop.start();
     return () => loop.stop();
   }, [reduced, turn]);
+  const rotate = useMemo(
+    () => turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+    [turn],
+  );
   return (
     <Animated.View
       style={{
@@ -717,9 +752,7 @@ function Spinner({ reduced }: { reduced: boolean }) {
         borderWidth: 2,
         borderColor: tint(0.3),
         borderTopColor: palette.acc,
-        transform: [
-          { rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
-        ],
+        transform: [{ rotate }],
       }}
     />
   );

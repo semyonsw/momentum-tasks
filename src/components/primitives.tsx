@@ -33,7 +33,7 @@
  * control here.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from './Pressable';
@@ -826,7 +826,13 @@ export function Toggle({
       useNativeDriver: true,
     }).start();
   }, [on, scale, value]);
-  const fade = on.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
+  // Built once: a fresh interpolation node per render makes each Animated.View
+  // detach and re-attach its native animation graph.
+  const fade = useMemo(
+    () => on.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+    [on],
+  );
+  const knobX = useMemo(() => on.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }), [on]);
   const fill = gradientFill();
 
   return (
@@ -883,7 +889,7 @@ export function Toggle({
           borderRadius: 9999,
           backgroundColor: palette.ink,
           boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 6, color: 'rgba(0,0,0,0.4)' }],
-          transform: [{ translateX: on.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }],
+          transform: [{ translateX: knobX }],
         }}
       />
     </Pressable>

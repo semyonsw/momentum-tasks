@@ -52,6 +52,8 @@ import { formatElapsed } from '../lib/units';
 const KICKER = { fontSize: 13, lineHeight: 16, letterSpacing: 1.4 } as const;
 /** The pushed-screen subline: 14.5 / 19, ink. */
 const SUBLINE = { fontSize: 14.5, lineHeight: 19 } as const;
+/** Hoisted: it reaches the memoized `RollingNumber` inside the phrase. */
+const PHRASE_STYLE = { fontSize: 14.5 } as const;
 
 export function SessionHeader({
   title,
@@ -142,7 +144,7 @@ export function SessionHeader({
                     values={{ done }}
                     lineHeight={19}
                     duration={450}
-                    style={{ fontSize: 14.5 }}
+                    style={PHRASE_STYLE}
                     className="text-ink"
                   />
                   <Text allowFontScaling={false} style={SUBLINE} className="tabular-nums text-ink">
@@ -213,13 +215,19 @@ function ProgressLine({ fraction }: { fraction: number }) {
       useNativeDriver: false,
     }).start();
   }, [clamped, scale, width]);
+  /* Memoized: the header re-renders on every ✓, and a fresh interpolation is a
+     fresh animated node for the view to detach and re-attach. */
+  const fill = useMemo(
+    () => width.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+    [width],
+  );
 
   return (
     <View style={{ height: 2, backgroundColor: tint(0.22) }}>
       <Animated.View
         style={{
           height: 2,
-          width: width.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+          width: fill,
           backgroundColor: palette.greenBright,
           boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 8, color: tint(0.8) }],
         }}

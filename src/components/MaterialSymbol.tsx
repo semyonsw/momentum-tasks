@@ -9,13 +9,16 @@
  * filled in — so they come from the symbol set rather than being redrawn here.
  */
 
+import { memo } from 'react';
 import Svg, { Path } from 'react-native-svg';
 
 import { SYMBOL_PATHS, type SymbolName } from './symbolPaths';
 
 export type { SymbolName } from './symbolPaths';
 
-export function MaterialSymbol({
+/* Memoised: primitive props only, and the nav bar and tiles that draw it
+   re-render far more often than the glyph changes. */
+export const MaterialSymbol = memo(function MaterialSymbol({
   name,
   size,
   color,
@@ -32,4 +35,4 @@ export function MaterialSymbol({
       <Path d={filled ? paths.fill : paths.outline} fill={color} />
     </Svg>
   );
-}
+});

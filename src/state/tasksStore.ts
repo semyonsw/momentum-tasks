@@ -28,9 +28,9 @@
  * user's list, seeds included or deleted.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
+import { persistedStorage } from './persistStorage';
 
 import { clampHour, clampMinute, dayKey } from '../lib/days';
 import { t } from '../lib/i18n';
@@ -403,7 +403,7 @@ export const useTasks = create<TasksState>()(
        */
       version: 2,
       migrate: renameSeedTasks,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistedStorage(),
       partialize: (state) => ({ tasks: state.tasks, log: state.log }),
       // `undefined` on a first launch: keep the seeds rather than sanitise nothing.
       merge: (persisted, current) =>

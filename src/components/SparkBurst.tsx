@@ -33,7 +33,7 @@
  * 900 ms, staggered 18 ms apiece.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 
 import { celebrate } from '../lib/feedback';
@@ -77,6 +77,17 @@ function Spark({ index }: { index: number }) {
       useNativeDriver: true,
     }).start();
   }, [index, run]);
+  // Built once: a fresh interpolation node per render makes the Animated.View
+  // detach and re-attach its native animation graph.
+  const nodes = useMemo(
+    () => ({
+      opacity: run.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 1, 0] }),
+      x: run.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }),
+      y: run.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }),
+      scale: run.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0.4, 1, 0.2] }),
+    }),
+    [dx, dy, run],
+  );
 
   return (
     <Animated.View
@@ -87,12 +98,8 @@ function Spark({ index }: { index: number }) {
         borderRadius: 9999,
         backgroundColor: palette.greenBright,
         boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 10, color: tint(0.9) }],
-        opacity: run.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 1, 0] }),
-        transform: [
-          { translateX: run.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },
-          { translateY: run.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) },
-          { scale: run.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0.4, 1, 0.2] }) },
-        ],
+        opacity: nodes.opacity,
+        transform: [{ translateX: nodes.x }, { translateY: nodes.y }, { scale: nodes.scale }],
       }}
     />
   );

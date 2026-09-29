@@ -159,7 +159,6 @@ export interface WorkoutInProgress {
   startedAt: string;
   done: number;
   total: number;
-  minutes: number;
 }
 
 interface HomeScreenProps {
@@ -237,8 +236,10 @@ export function HomeScreen({
    * button that lies. Empty ones live in the `Routines` tab, which is where they
    * get filled in. The hero routine already has the floating slot.
    */
-  const others = choices.filter(
-    (choice) => choice.routineId !== next?.routineId && choice.exerciseCount > 0,
+  const others = useMemo(
+    () =>
+      choices.filter((choice) => choice.routineId !== next?.routineId && choice.exerciseCount > 0),
+    [choices, next?.routineId],
   );
 
   /*
@@ -288,6 +289,97 @@ export function HomeScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /*
+   * THE LIST, MEMOIZED ON EVERYTHING BUT THE BUBBLE. The bubble's flag is this
+   * screen's own state and it flips mid-fling, twice per trip down the page; as
+   * plain JSX, each flip re-rendered every row, marquee and card under the thumb
+   * in the frame the bubble's entrance starts. Nothing in here reads it.
+   */
+  const list = useMemo(
+    () =>
+      !ready ? (
+        <Skeleton />
+      ) : (
+        <>
+          {inProgress ? (
+            <Animated.View style={next ? undefined : heroRecede}>
+              <InProgressCard progress={inProgress} onPress={onResume} />
+            </Animated.View>
+          ) : null}
+
+          {sequence ? <SequenceStrip sequence={sequence} onPress={onOpenSequence} /> : null}
+
+          {next ? (
+            <Animated.View style={heroRecede}>
+              <Hero plan={next} number={nextNumber} plural={plural} />
+            </Animated.View>
+          ) : null}
+
+          <DebriefCard />
+
+          <AiEntryCard section="Workout" ready={aiReady} onOpen={onOpenAi} />
+
+          {others.length > 0 ? (
+            <>
+              <Kicker className="mx-lg mb-kicker-gap mt-kicker">
+                {next ? t('Other routines') : t('Start a workout')}
+              </Kicker>
+              <View className="mx-lg" style={{ gap: 8 }}>
+                {others.map((choice, index) => (
+                  <Stagger key={choice.routineId} delay={120 + index * 70}>
+                    <ChoiceRow choice={choice} onPress={() => onOpen(choice.routineId)} />
+                  </Stagger>
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {others.length === 0 && !next ? <Empty /> : null}
+
+          {recent.length > 0 ? (
+            <>
+              <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Recent')}</Kicker>
+              {/* One `well` holding all of them, and the only surface on this
+                screen that is a container rather than a card: the past is
+                context, and eight lit panes of it would out-shout the hero. */}
+              <GlassSurface tier="well" radius={radius.row} flat className="mx-lg">
+                {recent.map((session, index) => (
+                  <GrowIn key={session.id} appear={session.id === celebrating} duration={500}>
+                    <RecentRow
+                      session={session}
+                      number={numbers[session.id]}
+                      divided={index > 0}
+                      onPress={() => onOpenSession(session.id)}
+                    />
+                  </GrowIn>
+                ))}
+              </GlassSurface>
+            </>
+          ) : null}
+        </>
+      ),
+    [
+      aiReady,
+      celebrating,
+      heroRecede,
+      inProgress,
+      next,
+      nextNumber,
+      numbers,
+      onOpen,
+      onOpenAi,
+      onOpenSequence,
+      onOpenSession,
+      onResume,
+      others,
+      plural,
+      ready,
+      recent,
+      sequence,
+      t,
+    ],
+  );
+
   return (
     <View className="flex-1 bg-bg">
       <StatusBar style="light" />
@@ -331,67 +423,7 @@ export function HomeScreen({
         contentContainerStyle={{ paddingTop: bars.top, paddingBottom: bars.bottom }}
         showsVerticalScrollIndicator={false}
       >
-        {!ready ? (
-          <Skeleton />
-        ) : (
-          <>
-            {inProgress ? (
-              <Animated.View style={next ? undefined : heroRecede}>
-                <InProgressCard progress={inProgress} onPress={onResume} />
-              </Animated.View>
-            ) : null}
-
-            {sequence ? <SequenceStrip sequence={sequence} onPress={onOpenSequence} /> : null}
-
-            {next ? (
-              <Animated.View style={heroRecede}>
-                <Hero plan={next} number={nextNumber} plural={plural} />
-              </Animated.View>
-            ) : null}
-
-            <DebriefCard />
-
-            <AiEntryCard section="Workout" ready={aiReady} onOpen={onOpenAi} />
-
-            {others.length > 0 ? (
-              <>
-                <Kicker className="mx-lg mb-kicker-gap mt-kicker">
-                  {next ? t('Other routines') : t('Start a workout')}
-                </Kicker>
-                <View className="mx-lg" style={{ gap: 8 }}>
-                  {others.map((choice, index) => (
-                    <Stagger key={choice.routineId} delay={120 + index * 70}>
-                      <ChoiceRow choice={choice} onPress={() => onOpen(choice.routineId)} />
-                    </Stagger>
-                  ))}
-                </View>
-              </>
-            ) : null}
-
-            {others.length === 0 && !next ? <Empty /> : null}
-
-            {recent.length > 0 ? (
-              <>
-                <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Recent')}</Kicker>
-                {/* One `well` holding all of them, and the only surface on this
-                    screen that is a container rather than a card: the past is
-                    context, and eight lit panes of it would out-shout the hero. */}
-                <GlassSurface tier="well" radius={radius.row} flat className="mx-lg">
-                  {recent.map((session, index) => (
-                    <GrowIn key={session.id} appear={session.id === celebrating} duration={500}>
-                      <RecentRow
-                        session={session}
-                        number={numbers[session.id]}
-                        divided={index > 0}
-                        onPress={() => onOpenSession(session.id)}
-                      />
-                    </GrowIn>
-                  ))}
-                </GlassSurface>
-              </>
-            ) : null}
-          </>
-        )}
+        {list}
       </ScrollView>
 
       {/* The workout just saved, celebrated from the hero's band. */}
@@ -495,6 +527,10 @@ function Shimmer({
   }, [delay, scale, sweep]);
 
   const strip = 300;
+  const sweepX = useMemo(
+    () => sweep.interpolate({ inputRange: [0, 1], outputRange: [-strip, width] }),
+    [strip, sweep, width],
+  );
   return (
     <View
       style={{
@@ -514,7 +550,7 @@ function Shimmer({
           width: strip,
           transform: [
             {
-              translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-strip, width] }),
+              translateX: sweepX,
             },
           ],
         }}
@@ -668,6 +704,10 @@ function ProgressDial({
       useNativeDriver: false,
     }).start();
   }, [clamped, scale, v]);
+  const ringOffset = useMemo(
+    () => v.interpolate({ inputRange: [0, 1], outputRange: [length, 0] }),
+    [length, v],
+  );
   return (
     <View style={{ width: size, height: size }} className="items-center justify-center">
       <Svg
@@ -694,7 +734,7 @@ function ProgressDial({
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={length}
-          strokeDashoffset={v.interpolate({ inputRange: [0, 1], outputRange: [length, 0] })}
+          strokeDashoffset={ringOffset}
         />
       </Svg>
       {children}

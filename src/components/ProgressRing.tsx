@@ -29,12 +29,28 @@
  * rest day would be the same lie the bar told.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
-import { Animated, View } from 'react-native';
+import { useEffect, type ReactNode } from 'react';
+import { View } from 'react-native';
+import Animated, {
+  Easing,
+  interpolate,
+  ReduceMotion,
+  useAnimatedProps,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 
 import { useMotionScale } from '../hooks/useMotionScale';
-import { curve, motion, palette } from '../theme/tokens';
+import { motion, palette } from '../theme/tokens';
+
+/*
+ * `ReduceMotion.Never` on every timing here: Reanimated follows Android's
+ * "Remove animations" by default and would jump each one to its end, where the
+ * RN Animated these replaced always ran them. `useMotionScale` is the app's own
+ * switch for that, and it is applied to the durations exactly as before.
+ */
+const EASE = Easing.bezier(...motion.ease);
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -52,23 +68,29 @@ interface ProgressRingProps {
 /**
  * THE ARC TRAVELS to a new share over `motion.ring` (700 ms) — stepping a month,
  * switching direction, saving an amount — rather than redrawing. Six tiles whose
- * rings all move at once is how a new month reads as a new month. JS-driven:
- * `strokeDashoffset` is an SVG prop, not a transform.
+ * rings all move at once is how a new month reads as a new month. On Reanimated,
+ * because `strokeDashoffset` is an SVG prop and not a transform: the classic
+ * native driver cannot run it, and six rings on the JS driver were six props
+ * pushed from JS and six canvases redrawn on every frame of the step.
  */
 export function ProgressRing({ fraction, size, stroke, children }: ProgressRingProps) {
   const clamped = Math.max(0, Math.min(1, fraction));
   const radius = (size - stroke) / 2;
   const length = 2 * Math.PI * radius;
   const scale = useMotionScale();
-  const v = useRef(new Animated.Value(clamped)).current;
+  const v = useSharedValue(clamped);
   useEffect(() => {
-    Animated.timing(v, {
-      toValue: clamped,
+    v.value = withTiming(clamped, {
       duration: motion.ring * scale,
-      easing: curve(motion.ease),
-      useNativeDriver: false,
-    }).start();
+      easing: EASE,
+      reduceMotion: ReduceMotion.Never,
+    });
   }, [clamped, scale, v]);
+  const arcProps = useAnimatedProps(() => ({
+    strokeDashoffset: length * (1 - v.value),
+    // An empty share draws no cap: a round cap on a zero-length arc is a dot.
+    strokeOpacity: interpolate(v.value, [0, 0.001, 1], [0, 1, 1]),
+  }));
 
   return (
     <View style={{ width: size, height: size }} className="items-center justify-center">
@@ -97,12 +119,7 @@ export function ProgressRing({ fraction, size, stroke, children }: ProgressRingP
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={length}
-          strokeDashoffset={v.interpolate({ inputRange: [0, 1], outputRange: [length, 0] })}
-          // An empty share draws no cap: a round cap on a zero-length arc is a dot.
-          strokeOpacity={v.interpolate({
-            inputRange: [0, 0.001, 1],
-            outputRange: [0, 1, 1],
-          })}
+          animatedProps={arcProps}
         />
       </Svg>
       {children}

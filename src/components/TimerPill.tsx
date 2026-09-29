@@ -109,7 +109,7 @@
  * because `acc` is c2 lifted toward white.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
@@ -382,6 +382,12 @@ export function PillClock({
 }) {
   const fontSize = variant === 'count' ? 104 : 68;
   const lineHeight = variant === 'count' ? 108 : 70;
+  /* Memoized: the pill re-renders every second, and `RollingNumber` is memoized
+     on its props — an inline style re-rendered all forty of its digit `Text`s. */
+  const clockStyle = useMemo(
+    () => ({ fontSize, letterSpacing: -2.5, fontWeight: '600' as const, color: tone.clock }),
+    [fontSize, tone.clock],
+  );
   return (
     <View style={{ marginTop: 6, marginBottom: 12, alignSelf: 'flex-start' }}>
       <ClockBloom glow={glow} height={lineHeight} />
@@ -396,7 +402,7 @@ export function PillClock({
             lineHeight={lineHeight}
             duration={320}
             accessibilityLabel={accessibilityLabel}
-            style={{ fontSize, letterSpacing: -2.5, fontWeight: '600', color: tone.clock }}
+            style={clockStyle}
           />
         ) : (
           <Text
@@ -424,7 +430,13 @@ export function PillClock({
  * The light behind the numerals. Opacity and scale are native-driven and travel
  * over 300 ms between the two strengths — the design's `text-shadow` transition.
  */
-function ClockBloom({ glow, height }: { glow: 'rest' | 'near' | 'none'; height: number }) {
+const ClockBloom = memo(function ClockBloom({
+  glow,
+  height,
+}: {
+  glow: 'rest' | 'near' | 'none';
+  height: number;
+}) {
   const target = glow === 'near' ? 1 : glow === 'rest' ? 0.55 : 0;
   const v = useRef(new Animated.Value(target)).current;
   useEffect(() => {
@@ -437,6 +449,10 @@ function ClockBloom({ glow, height }: { glow: 'rest' | 'near' | 'none'; height: 
   }, [target, v]);
   const w = 260;
   const h = height + 60;
+  const bloom = useMemo(
+    () => [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.12] }) }],
+    [v],
+  );
   return (
     <Animated.View
       pointerEvents="none"
@@ -447,7 +463,7 @@ function ClockBloom({ glow, height }: { glow: 'rest' | 'near' | 'none'; height: 
         width: w,
         height: h,
         opacity: v,
-        transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.12] }) }],
+        transform: bloom,
       }}
     >
       <Svg width={w} height={h}>
@@ -461,7 +477,7 @@ function ClockBloom({ glow, height }: { glow: 'rest' | 'near' | 'none'; height: 
       </Svg>
     </Animated.View>
   );
-}
+});
 
 /**
  * One control chip on the card: 44 tall, a glass pill, 15 / 600 text. `flex`

@@ -36,6 +36,7 @@
  * decorative glyph in this app.
  */
 
+import { memo } from 'react';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 export type IconName =
@@ -217,7 +218,9 @@ const PATHS: Record<IconName, string[]> = {
   ],
 };
 
-export function Icon({ name, size, color }: IconProps) {
+/* Memoised: three primitive props, drawn inside rows and bars that re-render
+   far more often than a glyph changes, and each one is an SVG subtree. */
+export const Icon = memo(function Icon({ name, size, color }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       {PATHS[name].map((d) => (
@@ -235,7 +238,7 @@ export function Icon({ name, size, color }: IconProps) {
       ))}
     </Svg>
   );
-}
+});
 
 /**
  * DragHandle — three 1.5px lines in a 16×16 box.

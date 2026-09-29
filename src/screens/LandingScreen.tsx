@@ -277,11 +277,12 @@ function Rise({ children }: { children: React.ReactNode }) {
       useNativeDriver: true,
     }).start();
   }, [v]);
+  const riseY = useMemo(() => v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }), [v]);
   return (
     <Animated.View
       style={{
         opacity: v,
-        transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+        transform: [{ translateY: riseY }],
       }}
     >
       {children}
@@ -350,16 +351,20 @@ function Tile({
     bottomRight: { bottom: -70, right: -50 },
   };
 
+  const enterY = useMemo(
+    () => enter.interpolate({ inputRange: [0, 1], outputRange: [26, 0] }),
+    [enter],
+  );
+  const enterScale = useMemo(
+    () => enter.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
+    [enter],
+  );
   return (
     <Animated.View
       style={{
         width: tileWidth,
         opacity: enter,
-        transform: [
-          { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [26, 0] }) },
-          { scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
-          ...press.style.transform,
-        ],
+        transform: [{ translateY: enterY }, { scale: enterScale }, ...press.style.transform],
       }}
     >
       <View

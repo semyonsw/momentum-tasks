@@ -229,6 +229,16 @@ export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
       useNativeDriver: false,
     }).start();
   }, [fill, finished, index, questions.length, scale]);
+  // Built once: a fresh interpolation node per render (every chip tap, every
+  // keystroke in a note) makes each Animated.View re-attach its native graph.
+  const rise = useMemo(
+    () => enter.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }),
+    [enter],
+  );
+  const fillWidth = useMemo(
+    () => fill.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+    [fill],
+  );
 
   const setAnswer = (next: DebriefAnswer) => setAnswers((all) => ({ ...all, [question.id]: next }));
 
@@ -277,9 +287,7 @@ export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
           right: 0,
           bottom: 0,
           opacity: enter,
-          transform: [
-            { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) },
-          ],
+          transform: [{ translateY: rise }],
         }}
       >
         <View
@@ -326,7 +334,7 @@ export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
                   height: 6,
                   borderRadius: radius.pill,
                   backgroundColor: palette.greenBright,
-                  width: fill.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+                  width: fillWidth,
                 }}
               />
             </View>
@@ -458,21 +466,13 @@ function QuestionPane({
     }).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slide]);
+  const translateX = useMemo(
+    () => slide.interpolate({ inputRange: [0, 1], outputRange: [28 * direction, 0] }),
+    [direction, slide],
+  );
 
   return (
-    <Animated.View
-      style={{
-        opacity: slide,
-        transform: [
-          {
-            translateX: slide.interpolate({
-              inputRange: [0, 1],
-              outputRange: [28 * direction, 0],
-            }),
-          },
-        ],
-      }}
-    >
+    <Animated.View style={{ opacity: slide, transform: [{ translateX }] }}>
       <Text className="mt-xl text-title font-medium text-ink">{t(question.prompt)}</Text>
       {question.kind === 'multi' ? (
         <Text className="mt-xs text-label text-ink-faint">{t('Pick all that apply')}</Text>

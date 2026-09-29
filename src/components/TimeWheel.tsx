@@ -254,8 +254,11 @@ function Column({
    * number that changes with the value — but a translate of one small strip is
    * the cheapest thing the JS driver can be asked to do, and it only runs while
    * a finger is down.
+   *
+   * Memoised on the index: the drag itself re-renders (`dragging`), and a fresh
+   * `add` node then would re-attach the strip's animated graph mid-gesture.
    */
-  const translateY = Animated.add(drag, ROW * WINGS - index * ROW);
+  const translateY = useMemo(() => Animated.add(drag, ROW * WINGS - index * ROW), [drag, index]);
 
   return (
     <View style={{ width: COLUMN, height: HEIGHT, overflow: 'hidden' }} {...responder.panHandlers}>

@@ -66,7 +66,7 @@
  * section root, which is where somebody who cannot read the app will look.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, ScrollView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -782,6 +782,14 @@ function ThemePreview({ name }: { name: string }) {
   }, [sheen]);
 
   const sheenWidth = width * 0.35;
+  const sheenX = useMemo(
+    () =>
+      sheen.interpolate({
+        inputRange: [0, 1],
+        outputRange: [-1.2 * sheenWidth, 2.2 * sheenWidth],
+      }),
+    [sheen, sheenWidth],
+  );
   return (
     <View
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
@@ -813,10 +821,7 @@ function ThemePreview({ name }: { name: string }) {
               width: sheenWidth,
               transform: [
                 {
-                  translateX: sheen.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-1.2 * sheenWidth, 2.2 * sheenWidth],
-                  }),
+                  translateX: sheenX,
                 },
                 { skewX: '-20deg' },
               ],

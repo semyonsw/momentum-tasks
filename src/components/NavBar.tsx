@@ -31,11 +31,12 @@
  * a JS-thread animation there is a nav bar that stutters whenever a list renders.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -48,7 +49,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { BubblePressable } from './bubbles';
-import { GlassBar } from './glass';
+import { BlurGate, GlassBar } from './glass';
+import { useOverlayOpen } from './overlay';
 import { MaterialSymbol, type SymbolName } from './MaterialSymbol';
 import { useT } from '../hooks/useT';
 import { BLOB_HALF, BLOB_STRETCH, NAV_SLOTS, SECTIONS, type SectionTab } from '../lib/sectionNav';
@@ -78,7 +80,12 @@ export const NAV_BOTTOM = 14;
 
 interface NavBarProps {
   active: SectionTab;
-  /** False on Home and under a pushed screen. */
+  /**
+   * False on Home and under a pushed screen. A sheet being up hides it too, but
+   * that is read here rather than passed in: the overlay count is subscribed to
+   * by THIS component, so a sheet opening re-renders the pill and not the shell
+   * and the whole screen under it.
+   */
   visible: boolean;
   onSelect: (tab: SectionTab) => void;
   onHome: () => void;
@@ -86,16 +93,30 @@ interface NavBarProps {
   drag: SharedValue<number>;
 }
 
-export function NavBar({ active, visible, onSelect, onHome, drag }: NavBarProps) {
+function NavBarComponent({ active, visible: onRoute, onSelect, onHome, drag }: NavBarProps) {
   const insets = useSafeAreaInsets();
   const t = useT();
   const [width, setWidth] = useState(0);
+  const overlayOpen = useOverlayOpen();
+  const visible = onRoute && !overlayOpen;
+
+  /*
+   * WHETHER THE BLUR IS MOUNTED — true from the moment the bar is asked for until
+   * its drop has finished. A hidden bar is only at opacity 0, and a Dimezis blur
+   * at opacity 0 still redraws the whole window into its bitmap on every frame:
+   * on Home, under every pushed screen, for the whole of a workout. Set during
+   * render on the way up, so the blur is there before the 160 ms delay ends.
+   */
+  const [blurLive, setBlurLive] = useState(visible);
+  if (visible && !blurLive) setBlurLive(true);
 
   const shown = useSharedValue(visible ? 1 : 0);
   useEffect(() => {
     shown.value = visible
       ? withDelay(160, withTiming(1, { duration: 620, easing: RISE }))
-      : withTiming(0, { duration: 380, easing: DROP });
+      : withTiming(0, { duration: 380, easing: DROP }, (finished) => {
+          if (finished) runOnJS(setBlurLive)(false);
+        });
   }, [shown, visible]);
 
   /* The blob's two edges, each on its own clock. See the file header. */
@@ -127,7 +148,9 @@ export function NavBar({ active, visible, onSelect, onHome, drag }: NavBarProps)
     previous.value = activeIndex;
   }, [activeIndex, centre, left, previous, right, width]);
 
-  const centres = SECTIONS.map((s) => NAV_SLOTS[s] * width);
+  /* Memoized: the blob's worklet captures it, and a new array is a new worklet
+     closure — a restarted mapper on the UI thread on every render. */
+  const centres = useMemo(() => SECTIONS.map((s) => NAV_SLOTS[s] * width), [width]);
 
   const barStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, shown.value * 1.4),
@@ -170,38 +193,40 @@ export function NavBar({ active, visible, onSelect, onHome, drag }: NavBarProps)
           boxShadow: [{ offsetX: 0, offsetY: -2, blurRadius: 30, color: 'rgba(0,0,0,0.6)' }],
         }}
       >
-        <GlassBar radius={30} style={{ flex: 1 }}>
-          <View style={{ flex: 1 }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-            {width > 0 ? (
-              <Animated.View
-                style={[
-                  {
-                    position: 'absolute',
-                    top: 9,
-                    bottom: 9,
-                    borderRadius: 22,
-                    borderWidth: 1,
-                    borderColor: tint(0.3),
-                    backgroundColor: tint(0.18),
-                    boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: tint(0.26) }],
-                  },
-                  blobStyle,
-                ]}
-              />
-            ) : null}
-          </View>
-        </GlassBar>
+        <BlurGate.Provider value={blurLive}>
+          <GlassBar radius={30} style={{ flex: 1 }}>
+            <View style={{ flex: 1 }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+              {width > 0 ? (
+                <Animated.View
+                  style={[
+                    {
+                      position: 'absolute',
+                      top: 9,
+                      bottom: 9,
+                      borderRadius: 22,
+                      borderWidth: 1,
+                      borderColor: tint(0.3),
+                      backgroundColor: tint(0.18),
+                      boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: tint(0.26) }],
+                    },
+                    blobStyle,
+                  ]}
+                />
+              ) : null}
+            </View>
+          </GlassBar>
+        </BlurGate.Provider>
       </View>
 
       {width > 0
         ? SECTIONS.map((section, i) => (
             <NavItem
               key={section}
-              glyph={GLYPH[section]}
+              section={section}
               label={t(LABEL[section])}
               active={section === active}
               centre={centres[i]}
-              onPress={() => onSelect(section)}
+              onSelect={onSelect}
             />
           ))
         : null}
@@ -211,19 +236,26 @@ export function NavBar({ active, visible, onSelect, onHome, drag }: NavBarProps)
   );
 }
 
-function NavItem({
-  glyph,
+/**
+ * Memoized, and handed the section rather than a bound closure, so the four
+ * items only re-render when one of them changes state.
+ */
+export const NavBar = memo(NavBarComponent);
+
+const NavItem = memo(function NavItem({
+  section,
   label,
   active,
   centre,
-  onPress,
+  onSelect,
 }: {
-  glyph: SymbolName;
+  section: SectionTab;
   label: string;
   active: boolean;
   centre: number;
-  onPress: () => void;
+  onSelect: (tab: SectionTab) => void;
 }) {
+  const glyph = GLYPH[section];
   const on = useSharedValue(active ? 1 : 0);
   useEffect(() => {
     on.value = withTiming(active ? 1 : 0, {
@@ -238,7 +270,7 @@ function NavItem({
 
   return (
     <BubblePressable
-      onPress={onPress}
+      onPress={() => onSelect(section)}
       radius={22}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
@@ -278,7 +310,7 @@ function NavItem({
       />
     </BubblePressable>
   );
-}
+});
 
 /**
  * The raised 66 dp gradient circle. A 6 dp ring of the bar's own near-black

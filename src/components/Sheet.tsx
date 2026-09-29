@@ -40,6 +40,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -185,9 +186,12 @@ export function SheetFrame({
 
   // Before it is measured the pane waits a whole window below, out of sight.
   const offscreen = (height > 0 ? height : windowHeight) * 1.1 + insets.bottom + 8;
-  const translateY = Animated.add(
-    enter.interpolate({ inputRange: [0, 1], outputRange: [offscreen, 0] }),
-    drag,
+  // Memoised on what the range reads: a fresh node per render (every keystroke
+  // in a sheet's field) makes the pane detach and re-attach its native graph.
+  const translateY = useMemo(
+    () =>
+      Animated.add(enter.interpolate({ inputRange: [0, 1], outputRange: [offscreen, 0] }), drag),
+    [drag, enter, offscreen],
   );
 
   return (

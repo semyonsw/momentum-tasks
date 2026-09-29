@@ -55,6 +55,10 @@ import { SlidingThumb } from './SlidingThumb';
 const BUBBLE_WIDTH = 326;
 /** The unselected half's name: between `inkMuted` and `inkFaint`, as drawn. */
 const QUIET_KICKER = '#6B766F';
+/* `RollingNumber` is memoised; inline style objects here would be new every
+   render and defeat it. Both are theme-free, so module scope is safe. */
+const BALANCE_CONTAINER = { marginTop: 1 };
+const BALANCE_TEXT = { fontSize: 18 };
 
 export interface BubbleAccount {
   id: string;
@@ -177,8 +181,8 @@ export function BalanceBubble({
                 value={formatValue(account.balance)}
                 lineHeight={22}
                 duration={800}
-                containerStyle={{ marginTop: 1 }}
-                style={{ fontSize: 18 }}
+                containerStyle={BALANCE_CONTAINER}
+                style={BALANCE_TEXT}
                 className={['font-semibold', selected ? 'text-ink' : 'text-ink-muted'].join(' ')}
               />
             </View>

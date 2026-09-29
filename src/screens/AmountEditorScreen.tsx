@@ -89,7 +89,7 @@
  * lie every time you open it. See `lib/money.ts`.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from '../components/Pressable';
@@ -708,6 +708,10 @@ function SavePill({
     ]).start();
   }, [asleep, fade, wake]);
 
+  const wakeScale = useMemo(
+    () => wake.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
+    [wake],
+  );
   return (
     <Animated.View
       style={{
@@ -717,10 +721,7 @@ function SavePill({
         borderRadius: radius.pill,
         boxShadow: [...(asleep ? [] : halo.floating), ...elevation.e2],
         opacity: fade,
-        transform: [
-          { scale: wake.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
-          ...press.style.transform,
-        ],
+        transform: [{ scale: wakeScale }, ...press.style.transform],
       }}
     >
       <BubblePressable

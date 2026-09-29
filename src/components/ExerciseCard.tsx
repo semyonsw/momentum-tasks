@@ -99,7 +99,7 @@
  * language as the routine editor's reorder, deliberately.
  */
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -324,6 +324,38 @@ function ExerciseCardComponent({
     setLeaving((current) => new Set(current).add(setId));
   };
 
+  /*
+   * Each row's handlers, made once per set and reading the card's latest state
+   * through `live` when pressed. `SetRow` is memoized, and four fresh closures
+   * per row per render meant every row of the open card repainted on every ✓
+   * and every ± chip, plate line and all.
+   */
+  const live = useRef({ removeRow, onPressTimer, onToggleSet });
+  live.current = { removeRow, onPressTimer, onToggleSet };
+  const rowHandlers = useRef(new Map<ID, RowHandlers>()).current;
+  const handlersFor = (setId: ID): RowHandlers => {
+    const known = rowHandlers.get(setId);
+    if (known) return known;
+    const handlers: RowHandlers = {
+      onRemove: () => live.current.removeRow(setId),
+      onPressTimer: () => {
+        setFocus(null); // the clock and the editor never share the row
+        live.current.onPressTimer(setId);
+      },
+      onFocusField: (field) =>
+        setFocus((current) =>
+          // Tapping the open field again closes the panel.
+          current?.setId === setId && current.field === field ? null : { setId, field },
+        ),
+      onToggleComplete: () => {
+        setFocus(null); // committing a set always closes the editor
+        live.current.onToggleSet(setId);
+      },
+    };
+    rowHandlers.set(setId, handlers);
+    return handlers;
+  };
+
   /* ---------------------------------------------------------------- */
   /* Collapsed                                                         */
   /* ---------------------------------------------------------------- */
@@ -406,7 +438,7 @@ function ExerciseCardComponent({
             value={`${completed}/${total}`}
             lineHeight={20}
             duration={450}
-            containerStyle={{ marginLeft: 10 }}
+            containerStyle={COUNTER_STYLE}
             className="text-label font-semibold text-ink-muted"
           />
           <View className="ml-sm">
@@ -613,23 +645,10 @@ function ExerciseCardComponent({
                   isTiming={timingSetId === set.localId}
                   availablePlatesKg={availablePlatesKg}
                   /* Edit mode's `−`, on every row — see the file header. */
-                  onRemove={isEditing ? () => removeRow(set.localId) : undefined}
-                  onPressTimer={() => {
-                    setFocus(null); // the clock and the editor never share the row
-                    onPressTimer(set.localId);
-                  }}
-                  onFocusField={(field) =>
-                    setFocus((current) =>
-                      // Tapping the open field again closes the panel.
-                      current?.setId === set.localId && current.field === field
-                        ? null
-                        : { setId: set.localId, field },
-                    )
-                  }
-                  onToggleComplete={() => {
-                    setFocus(null); // committing a set always closes the editor
-                    onToggleSet(set.localId);
-                  }}
+                  onRemove={isEditing ? handlersFor(set.localId).onRemove : undefined}
+                  onPressTimer={handlersFor(set.localId).onPressTimer}
+                  onFocusField={handlersFor(set.localId).onFocusField}
+                  onToggleComplete={handlersFor(set.localId).onToggleComplete}
                 />
               </View>
 
@@ -806,6 +825,17 @@ function ExerciseCardComponent({
 }
 
 /* ------------------------------------------------------------------ */
+
+/** A row's handlers, bound to its set once — see `handlersFor`. */
+interface RowHandlers {
+  onRemove: () => void;
+  onPressTimer: () => void;
+  onFocusField: (field: SetField) => void;
+  onToggleComplete: () => void;
+}
+
+/** Hoisted: `RollingNumber` is memoized, and an inline object is a new prop. */
+const COUNTER_STYLE = { marginLeft: 10 };
 
 /** The expanded card's corner — the design's 22. */
 const EXPANDED_RADIUS = 22;
@@ -1042,6 +1072,10 @@ function MiniRing({ fraction, done }: { fraction: number; done: boolean }) {
       useNativeDriver: false,
     }).start();
   }, [clamped, scale, v]);
+  const offset = useMemo(
+    () => v.interpolate({ inputRange: [0, 1], outputRange: [RING_LENGTH, 0] }),
+    [v],
+  );
   return (
     <Svg
       width={RING_SIZE}
@@ -1067,7 +1101,7 @@ function MiniRing({ fraction, done }: { fraction: number; done: boolean }) {
         strokeWidth={RING_STROKE}
         strokeLinecap="round"
         strokeDasharray={RING_LENGTH}
-        strokeDashoffset={v.interpolate({ inputRange: [0, 1], outputRange: [RING_LENGTH, 0] })}
+        strokeDashoffset={offset}
       />
     </Svg>
   );

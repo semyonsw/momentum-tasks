@@ -30,8 +30,8 @@
  */
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { persist } from 'zustand/middleware';
+import { persistedStorage } from './persistStorage';
 
 import { defaultTargetCount, defaultTargetSets } from '../lib/draft';
 import { autoLadderFor, isAutoLadder, ladderOf } from '../lib/repLadder';
@@ -707,7 +707,7 @@ export const useLibrary = create<LibraryState>()(
       version: 3,
       migrate: (persisted, from) =>
         renameSeededToRussian(from < 2 ? stripInheritedRest(persisted) : persisted),
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistedStorage(),
       partialize: (state) => ({
         exercises: state.exercises,
         routines: state.routines,

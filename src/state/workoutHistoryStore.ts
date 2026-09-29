@@ -663,11 +663,17 @@ function writeEdited(
    */
   writeWorkouts([next]);
 
-  set({
-    workouts: get()
-      .workouts.map((w) => (w.id === next.id ? next : w))
-      .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()),
-  });
+  /*
+   * Each start parsed ONCE. This runs on every ± tap in a history correction, and
+   * a comparator that builds two `Date`s per comparison parsed the whole log's
+   * timestamps n·log n times over to keep an order that almost never changes.
+   * Same comparison, same stable sort, same order.
+   */
+  const timed = get()
+    .workouts.map((w) => (w.id === next.id ? next : w))
+    .map((workout) => ({ workout, at: new Date(workout.startedAt).getTime() }));
+  timed.sort((a, b) => b.at - a.at);
+  set({ workouts: timed.map((entry) => entry.workout) });
   return true;
 }
 

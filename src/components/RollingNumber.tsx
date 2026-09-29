@@ -97,7 +97,12 @@ function RollingNumberComponent({
   );
 }
 
-function DigitColumn({
+/*
+ * Memoized too, on primitives and the caller's style: a clock going 1:05 → 1:04
+ * moves one column, and the other columns' ten `Text` nodes each must not
+ * re-render to stay where they are.
+ */
+const DigitColumn = memo(function DigitColumn({
   digit,
   lineHeight,
   style,
@@ -140,7 +145,7 @@ function DigitColumn({
       </Animated.View>
     </View>
   );
-}
+});
 
 /**
  * Memoized: the session header and the rest pill re-render four times a second,

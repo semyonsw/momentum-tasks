@@ -13,9 +13,9 @@
  * debrief itself stays `pending`, and Home offers it again.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
+import { persistedStorage } from './persistStorage';
 
 import type { CompletedWorkout } from '../lib/completedWorkout';
 import {
@@ -143,7 +143,7 @@ export const useDebriefs = create<DebriefState>()(
     {
       name: 'debriefs',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistedStorage(),
       partialize: (state) => ({ debriefs: state.debriefs }),
       merge: (persisted, current) => ({
         ...current,

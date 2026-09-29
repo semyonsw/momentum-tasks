@@ -59,7 +59,7 @@
  * habit that genuinely began on the 1st can say so.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Text, View } from 'react-native';
 
 import { BubblePressable } from './bubbles';
@@ -368,14 +368,18 @@ function SaveButton({
       useNativeDriver: true,
     }).start();
   }, [awake, wake]);
+  // Built once: the sheet re-renders on every keystroke in the name field, and
+  // a fresh interpolation node per render makes this view re-attach its graph.
+  const style = useMemo(
+    () => ({
+      opacity: wake.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }),
+      transform: [{ scale: wake.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }],
+    }),
+    [wake],
+  );
 
   return (
-    <Animated.View
-      style={{
-        opacity: wake.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }),
-        transform: [{ scale: wake.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }],
-      }}
-    >
+    <Animated.View style={style}>
       <BubblePressable
         onPress={onPress}
         radius="pill"

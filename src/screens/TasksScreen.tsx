@@ -105,7 +105,7 @@
  *     back up.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, ScrollView, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Pressable } from '../components/Pressable';
@@ -284,6 +284,17 @@ export function TasksScreen({
     (id, toIndex) => reorderTasks(rowIds, id, toIndex),
   );
   const liftedTask = lifted ? (rows.find((row) => row.id === lifted) ?? null) : null;
+
+  /*
+   * The rows' handlers, stable and handed the task's id, so `TaskRow` can be
+   * memoized: a mark re-renders the row it landed on rather than every row with
+   * its flame, its marquee and its press spring. `onOpenTask` comes from the
+   * shell as a fresh closure on each of its renders, so it is read through a ref.
+   */
+  const openTask = useRef(onOpenTask);
+  openTask.current = onOpenTask;
+  const toggleRow = useCallback((taskId: ID) => cycleMark(taskId, day), [cycleMark, day]);
+  const openRow = useCallback((taskId: ID) => openTask.current(taskId), []);
 
   /* The day bubble, and the dial stepping back while it is up. */
   // Tasks' own line: 250 is where the dial has fully left the top bar. The
@@ -492,11 +503,11 @@ export function TasksScreen({
                     streak={streak}
                     detail={detail}
                     dimmed={lifted != null && !isLifted}
-                    onToggle={() => cycleMark(task.id, day)}
-                    onOpen={() => onOpenTask(task.id)}
+                    onToggle={toggleRow}
+                    onOpen={openRow}
                     // One row cannot be reordered, and the gesture would only
                     // ever end where it started.
-                    onLongPress={rows.length > 1 ? () => lift(task.id) : undefined}
+                    onLongPress={rows.length > 1 ? lift : undefined}
                   />
                 </View>
               </ReorderRow>
@@ -647,7 +658,7 @@ function CountPill({
   );
 }
 
-function TaskRow({
+const TaskRow = memo(function TaskRow({
   task,
   mark,
   streak,
@@ -662,9 +673,9 @@ function TaskRow({
   streak: number;
   detail: string;
   dimmed: boolean;
-  onToggle: () => void;
-  onOpen: () => void;
-  onLongPress?: () => void;
+  onToggle: (taskId: ID) => void;
+  onOpen: (taskId: ID) => void;
+  onLongPress?: (taskId: ID) => void;
 }) {
   const t = useT();
   const done = mark === 'done';
@@ -694,10 +705,10 @@ function TaskRow({
     >
       <View style={{ height: ROW_HEIGHT, flexDirection: 'row', alignItems: 'center' }}>
         <Pressable
-          onPress={onToggle}
+          onPress={() => onToggle(task.id)}
           onPressIn={press.onPressIn}
           onPressOut={press.onPressOut}
-          onLongPress={onLongPress}
+          onLongPress={onLongPress ? () => onLongPress(task.id) : undefined}
           delayLongPress={280}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: done }}
@@ -714,8 +725,8 @@ function TaskRow({
         </Pressable>
 
         <Pressable
-          onPress={onOpen}
-          onLongPress={onLongPress}
+          onPress={() => onOpen(task.id)}
+          onLongPress={onLongPress ? () => onLongPress(task.id) : undefined}
           delayLongPress={280}
           accessibilityRole="button"
           accessibilityLabel={`${task.name}. ${detail}. ${t('Open the month.')}`}
@@ -752,7 +763,7 @@ function TaskRow({
       </View>
     </GlassSurface>
   );
-}
+});
 
 /** Taller by two than the old 72: the name grew to 16.5/22 and kept its air. */
 const ROW_HEIGHT = 74;
@@ -933,6 +944,14 @@ function DayBubble({
   const kicker = isToday ? `${t('Today')} · ${weekday}` : weekday;
   const bubbleFade = FADE_ON.bar;
 
+  const ringOffset = useMemo(
+    () =>
+      ring.interpolate({
+        inputRange: [0, 1],
+        outputRange: [MINI_LENGTH, 0],
+      }),
+    [ring],
+  );
   return (
     <FloatingBubble
       visible={visible}
@@ -973,10 +992,7 @@ function DayBubble({
             strokeWidth={MINI_STROKE}
             strokeLinecap="round"
             strokeDasharray={MINI_LENGTH}
-            strokeDashoffset={ring.interpolate({
-              inputRange: [0, 1],
-              outputRange: [MINI_LENGTH, 0],
-            })}
+            strokeDashoffset={ringOffset}
           />
         </Svg>
         <Text

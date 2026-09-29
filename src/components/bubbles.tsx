@@ -79,6 +79,13 @@ interface Bubble {
   x: number;
   y: number;
   progress: Animated.Value;
+  /**
+   * Its two interpolations, built once with the bubble. Built in render they
+   * would be new nodes on every press-in/press-out re-render, and a new node
+   * makes the Animated.View detach and re-attach its native animation graph.
+   */
+  opacity: Animated.AnimatedInterpolation<number>;
+  scale: Animated.AnimatedInterpolation<number>;
 }
 
 export interface BubblePressableProps extends Omit<PressableProps, 'children'> {
@@ -157,11 +164,23 @@ export function BubblePressable({
 
   const burst = useCallback((event: GestureResponderEvent) => {
     const { locationX, locationY } = event.nativeEvent;
+    const progress = new Animated.Value(0);
     const bubble: Bubble = {
       key: nextKey.current++,
       x: Number.isFinite(locationX) ? locationX : box.current.width / 2,
       y: Number.isFinite(locationY) ? locationY : box.current.height / 2,
-      progress: new Animated.Value(0),
+      progress,
+      // Starts as a dot under the thumb and opens outwards. The fill fades
+      // faster than the ring, so what is left at the end is an outline leaving
+      // rather than a wash sitting on the button.
+      opacity: progress.interpolate({
+        inputRange: [0, 0.25, 1],
+        outputRange: [0.34, 0.2, 0],
+      }),
+      scale: progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.06, 1],
+      }),
     };
     setLive((current) => [...current.slice(-(MAX_BUBBLES - 1)), bubble]);
     Animated.timing(bubble.progress, {
@@ -236,21 +255,8 @@ export function BubblePressable({
                 borderWidth: 2,
                 borderColor: bubbleColor,
                 backgroundColor: bubbleColor,
-                // Starts as a dot under the thumb and opens outwards. The fill
-                // fades faster than the ring, so what is left at the end is an
-                // outline leaving rather than a wash sitting on the button.
-                opacity: bubble.progress.interpolate({
-                  inputRange: [0, 0.25, 1],
-                  outputRange: [0.34, 0.2, 0],
-                }),
-                transform: [
-                  {
-                    scale: bubble.progress.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.06, 1],
-                    }),
-                  },
-                ],
+                opacity: bubble.opacity,
+                transform: [{ scale: bubble.scale }],
               }}
             />
           ))}

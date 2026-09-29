@@ -37,9 +37,9 @@
  * a half-written one must rehydrate to something renderable.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
+import { persistedStorage } from './persistStorage';
 
 import { DEFAULT_MODEL } from '../lib/ai/gemini';
 import {
@@ -350,17 +350,19 @@ export const useAi = create<AiState>()(
             ? {}
             : { unseenRoutineIds: [...state.unseenRoutineIds, routineId] },
         ),
-      markRoutineSeen: (routineId) =>
-        set((state) =>
-          state.unseenRoutineIds.includes(routineId)
-            ? { unseenRoutineIds: state.unseenRoutineIds.filter((id) => id !== routineId) }
-            : {},
-        ),
+      /* Called on every routine opened, nearly always for one already seen — so
+         that case does not `set` at all, rather than notifying every subscriber. */
+      markRoutineSeen: (routineId) => {
+        if (!get().unseenRoutineIds.includes(routineId)) return;
+        set((state) => ({
+          unseenRoutineIds: state.unseenRoutineIds.filter((id) => id !== routineId),
+        }));
+      },
     }),
     {
       name: 'ai',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistedStorage(),
       partialize: (state): AiValue => ({
         provider: state.provider,
         model: state.model,

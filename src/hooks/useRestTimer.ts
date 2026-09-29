@@ -155,7 +155,21 @@ export function useRestTimer(): RestTimerApi {
 
     const interval = setInterval(() => {
       const next = remainingSeconds(endsAt);
-      setClock({ forEndsAt: endsAt, left: next });
+      /*
+       * Only a tick that changes something re-renders. Everything downstream reads
+       * the remainder rounded (the clock) or ceiled (the count-in, the final ten,
+       * the spoken label); the drains read it only on a new deadline, which is a
+       * store change and a render of its own. So three ticks in four were
+       * re-rendering the pill — and all of focus mode — to draw the same frame.
+       */
+      setClock((current) =>
+        current.forEndsAt === endsAt &&
+        next > 0 &&
+        Math.ceil(next) === Math.ceil(current.left) &&
+        Math.round(next) === Math.round(current.left)
+          ? current
+          : { forEndsAt: endsAt, left: next },
+      );
       // Nothing left to recompute; the deadline stays in the store so the pill
       // keeps showing 0:00 until the user moves on.
       if (next <= 0) clearInterval(interval);

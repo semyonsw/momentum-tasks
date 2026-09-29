@@ -62,7 +62,8 @@ import {
 } from '../lib/calendar';
 import type { CompletedWorkout } from '../lib/completedWorkout';
 import { formatMonth, weekdayInitials } from '../lib/days';
-import { useLanguage, usePlural, useT } from '../hooks/useT';
+import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
+import type { PluralForms } from '../lib/i18n';
 
 interface CalendarScreenProps {
   workouts: CompletedWorkout[];
@@ -153,6 +154,10 @@ export function CalendarScreen({ workouts, toolbar, onBack }: CalendarScreenProp
 
 function Month({ month }: { month: CalendarMonth }) {
   const lang = useLanguage();
+  /* Read once per month and handed down: in each `Day` they were two store
+     subscriptions per square — up to two thousand, mounted in one pass. */
+  const t = useT();
+  const countedWorkouts = usePlural();
   const summary = describeMonth(month, lang);
 
   return (
@@ -178,7 +183,12 @@ function Month({ month }: { month: CalendarMonth }) {
         {month.weeks.map((week, weekIndex) => (
           <View key={weekIndex} className="flex-row">
             {week.map((cell, dayIndex) => (
-              <Day key={`${weekIndex}-${dayIndex}`} cell={cell} />
+              <Day
+                key={`${weekIndex}-${dayIndex}`}
+                cell={cell}
+                t={t}
+                countedWorkouts={countedWorkouts}
+              />
             ))}
             {/*
               The last week is SHORT rather than padded. A trailing pad would draw
@@ -206,10 +216,15 @@ function Month({ month }: { month: CalendarMonth }) {
  * An untrained day is the bare page with a faint numeral, which is what "nothing
  * here" should look like when most of a month is nothing.
  */
-function Day({ cell }: { cell: CalendarCell }) {
-  const t = useT();
-  const countedWorkouts = usePlural();
-
+function Day({
+  cell,
+  t,
+  countedWorkouts,
+}: {
+  cell: CalendarCell;
+  t: Translate;
+  countedWorkouts: (n: number, forms: PluralForms) => string;
+}) {
   if (cell.day == null) return <View className="flex-1 py-xs" />;
 
   const trained = cell.workouts > 0;

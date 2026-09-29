@@ -30,7 +30,7 @@
  * raised by something that outlives this screen.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Keyboard, ScrollView, Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -113,7 +113,8 @@ export function AiChatScreen({
   const pending = useAi((s) => s.pending[section]);
   const retrying = useAi((s) => s.retrying[section]);
   const prompts = useAiPrompts(section);
-  const [draft, setDraft] = useState('');
+  /* Filled in by the composer, which owns the draft — see `Composer`. */
+  const clearDraft = useRef<() => void>(() => undefined);
   const [showingHistory, setShowingHistory] = useState(false);
   const archived = useAi((s) => s.archive[section]);
   const scrollRef = useRef<ScrollView>(null);
@@ -153,7 +154,7 @@ export function AiChatScreen({
     const question = text.trim();
     if (!question || pending) return;
     tap();
-    setDraft('');
+    clearDraft.current();
     void sendMessage(section, question);
   };
 
@@ -306,43 +307,14 @@ export function AiChatScreen({
           </ScrollView>
         ) : null}
 
-        <GlassBar radius={radius.navPill}>
-          <View style={{ height: composerHeight }} className="flex-row items-center pl-lg pr-sm">
-            {/*
-              THE KEYBOARD. The app runs Android's `pan` mode, which scrolls the
-              window just far enough to show the FOCUSED RECT of the field — and
-              for a text field that is its text line plus its bottom padding. With
-              no padding, the pan stopped at the text and left the bottom of the
-              pill (and its margin) under the keyboard. So the field's padding
-              reaches the foot of the screen, pulled back by a matching negative
-              margin so the pill looks the same: the rect Android reveals is now
-              the whole composer, and it sits flush on the keyboard.
-            */}
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={t(meta.placeholder)}
-              placeholderTextColor={palette.inkFaint}
-              onSubmitEditing={() => ask(draft)}
-              returnKeyType="send"
-              blurOnSubmit={false}
-              multiline={false}
-              accessibilityLabel={t(meta.placeholder)}
-              style={{
-                flex: 1,
-                alignSelf: 'stretch',
-                fontSize: 16,
-                color: palette.ink,
-                paddingHorizontal: 0,
-                paddingTop: 0,
-                paddingBottom: keyboardReach,
-                marginBottom: -keyboardReach,
-                textAlignVertical: 'center',
-              }}
-            />
-            <SendButton live={draft.trim() !== '' && !pending} onPress={() => ask(draft)} />
-          </View>
-        </GlassBar>
+        <Composer
+          placeholder={t(meta.placeholder)}
+          pending={pending}
+          height={composerHeight}
+          keyboardReach={keyboardReach}
+          onAsk={ask}
+          clearRef={clearDraft}
+        />
       </View>
 
       {showingHistory ? (
@@ -533,6 +505,74 @@ function RoundButton({
     >
       <Icon name={icon} size={18} color={palette.inkMuted} />
     </BubblePressable>
+  );
+}
+
+/**
+ * The field and ➤, and the one piece of state that changes on every keystroke.
+ *
+ * Its own component so that typing re-renders the composer and nothing else: with
+ * the draft in the screen, every character re-rendered the whole conversation —
+ * each message, each proposal card, each entrance — and a long chat typed like a
+ * slow one. `clearRef` is how the screen empties it: a chip or a suggestion asked
+ * from the thread clears the draft in the same batch as it always did.
+ */
+function Composer({
+  placeholder,
+  pending,
+  height,
+  keyboardReach,
+  onAsk,
+  clearRef,
+}: {
+  placeholder: string;
+  pending: boolean;
+  height: number;
+  keyboardReach: number;
+  onAsk: (text: string) => void;
+  clearRef: MutableRefObject<() => void>;
+}) {
+  const [draft, setDraft] = useState('');
+  const clear = useCallback(() => setDraft(''), []);
+  clearRef.current = clear;
+  return (
+    <GlassBar radius={radius.navPill}>
+      <View style={{ height }} className="flex-row items-center pl-lg pr-sm">
+        {/*
+          THE KEYBOARD. The app runs Android's `pan` mode, which scrolls the
+          window just far enough to show the FOCUSED RECT of the field — and
+          for a text field that is its text line plus its bottom padding. With
+          no padding, the pan stopped at the text and left the bottom of the
+          pill (and its margin) under the keyboard. So the field's padding
+          reaches the foot of the screen, pulled back by a matching negative
+          margin so the pill looks the same: the rect Android reveals is now
+          the whole composer, and it sits flush on the keyboard.
+        */}
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder={placeholder}
+          placeholderTextColor={palette.inkFaint}
+          onSubmitEditing={() => onAsk(draft)}
+          returnKeyType="send"
+          blurOnSubmit={false}
+          multiline={false}
+          accessibilityLabel={placeholder}
+          style={{
+            flex: 1,
+            alignSelf: 'stretch',
+            fontSize: 16,
+            color: palette.ink,
+            paddingHorizontal: 0,
+            paddingTop: 0,
+            paddingBottom: keyboardReach,
+            marginBottom: -keyboardReach,
+            textAlignVertical: 'center',
+          }}
+        />
+        <SendButton live={draft.trim() !== '' && !pending} onPress={() => onAsk(draft)} />
+      </View>
+    </GlassBar>
   );
 }
 

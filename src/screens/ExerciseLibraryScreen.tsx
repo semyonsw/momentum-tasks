@@ -54,7 +54,7 @@
  * muscles are said by the group above it instead of being repeated on every row.
  */
 
-import { useMemo } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Pressable } from '../components/Pressable';
 
@@ -115,6 +115,16 @@ export function ExerciseLibraryScreen({
   onDelete,
 }: ExerciseLibraryScreenProps) {
   const t = useT();
+  /*
+   * The rows' two handlers, stable across renders so `ExerciseRow` can be
+   * memoized: the query lives in the shell, so every keystroke re-rendered every
+   * matching row — name marquee, shape line and all — to type one letter. The
+   * shell's own handlers are fresh on each of its renders, hence the ref.
+   */
+  const rowActions = useRef({ onPick, onDelete });
+  rowActions.current = { onPick, onDelete };
+  const pickRow = useCallback((id: ID) => rowActions.current.onPick(id), []);
+  const deleteRow = useCallback((exercise: Exercise) => rowActions.current.onDelete(exercise), []);
   const counted = usePlural();
   const lang = useLanguage();
   const trimmed = query.trim();
@@ -169,8 +179,8 @@ export function ExerciseLibraryScreen({
                     <ExerciseRow
                       exercise={exercise}
                       indent={0}
-                      onPress={() => onPick(exercise.id)}
-                      onDelete={() => onDelete(exercise)}
+                      onPick={pickRow}
+                      onDelete={deleteRow}
                     />
                   </View>
                 ))}
@@ -233,8 +243,8 @@ export function ExerciseLibraryScreen({
                                     <ExerciseRow
                                       exercise={exercise}
                                       indent={2}
-                                      onPress={() => onPick(exercise.id)}
-                                      onDelete={() => onDelete(exercise)}
+                                      onPick={pickRow}
+                                      onDelete={deleteRow}
                                     />
                                   </View>
                                 ))}
@@ -276,8 +286,8 @@ export function ExerciseLibraryScreen({
                         <ExerciseRow
                           exercise={exercise}
                           indent={1}
-                          onPress={() => onPick(exercise.id)}
-                          onDelete={() => onDelete(exercise)}
+                          onPick={pickRow}
+                          onDelete={deleteRow}
                         />
                       </View>
                     ))}
@@ -425,16 +435,16 @@ function DisclosureRow({
  * row's own press area — picking an exercise and deleting one are one mis-tap
  * apart otherwise, and only one of them is reversible.
  */
-function ExerciseRow({
+const ExerciseRow = memo(function ExerciseRow({
   exercise,
   indent,
-  onPress,
+  onPick,
   onDelete,
 }: {
   exercise: Exercise;
   indent: 0 | 1 | 2;
-  onPress: () => void;
-  onDelete: () => void;
+  onPick: (id: ID) => void;
+  onDelete: (exercise: Exercise) => void;
 }) {
   const t = useT();
   const lang = useLanguage();
@@ -443,7 +453,7 @@ function ExerciseRow({
   return (
     <View className={['h-row-lg flex-row items-center pr-xs', INDENT[indent]].join(' ')}>
       <Pressable
-        onPress={onPress}
+        onPress={() => onPick(exercise.id)}
         accessibilityRole="button"
         accessibilityLabel={`${exercise.name}. ${shape}.`}
         className="flex-1 justify-center"
@@ -463,7 +473,7 @@ function ExerciseRow({
       </Pressable>
 
       <Pressable
-        onPress={onDelete}
+        onPress={() => onDelete(exercise)}
         hitSlop={6}
         accessibilityRole="button"
         accessibilityLabel={t('Delete {name}', { name: exercise.name })}
@@ -474,7 +484,7 @@ function ExerciseRow({
       </Pressable>
     </View>
   );
-}
+});
 
 /**
  * `+ Add exercise to chest` — the footer of an open muscle group.

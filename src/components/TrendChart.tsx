@@ -27,8 +27,16 @@
  * is structure, not data.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { View } from 'react-native';
+import Animated, {
+  Easing,
+  ReduceMotion,
+  useAnimatedProps,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, {
   Circle,
   Defs,
@@ -88,37 +96,42 @@ export function TrendChart({ points, formatValue = defaultFormat }: TrendChartPr
    * gains its second point mid-session still gets an entrance the first time it
    * actually draws.
    */
-  const draw = useRef(new Animated.Value(0)).current;
-  const dotAnims = useMemo(() => points.map(() => new Animated.Value(0)), [points]);
+  const draw = useSharedValue(0);
+  /*
+   * Which series this is, counted. Part of each dot's key, so a new series mounts
+   * fresh dots that are hidden on the very frame it lands — as the fresh
+   * `Animated.Value(0)`s built in render used to be — instead of showing the old
+   * dots for a frame until an effect resets them.
+   */
+  const series = useRef({ points, run: 0 });
+  if (series.current.points !== points) series.current = { points, run: series.current.run + 1 };
+  const run = series.current.run;
 
+  /*
+   * ON THE UI THREAD. `strokeDashoffset` and an SVG `opacity` are not properties
+   * the classic native driver can patch, so this entrance used to run on the JS
+   * driver: a timer per point — a hundred workouts is a hundred timers, staggered
+   * over ten seconds — each pushing a prop and redrawing the whole canvas every
+   * frame, three charts at once on the graphs page, exactly while it is being
+   * scrolled. Reanimated runs the same curves, same delays, off the JS thread.
+   *
+   * Replays whenever `points` is a new series, as it always has; the dots do the
+   * same by remounting under the new `run`.
+   */
   useEffect(() => {
     if (points.length < 2) return;
-    /*
-     * JS-driven, not native: `strokeDashoffset` and an SVG `opacity` prop are
-     * not transform/style properties the native animated module can patch, so
-     * asking for `useNativeDriver: true` here throws rather than animates.
-     */
-    draw.setValue(0);
-    Animated.timing(draw, {
-      toValue: 1,
+    draw.value = 0;
+    draw.value = withTiming(1, {
       duration: 900,
       easing: EASING,
-      useNativeDriver: false,
-    }).start();
-
-    dotAnims.forEach((value, index) => {
-      value.setValue(0);
-      Animated.timing(value, {
-        toValue: 1,
-        duration: 260,
-        delay: 500 + index * 90,
-        easing: EASING,
-        useNativeDriver: false,
-      }).start();
+      // Reanimated would skip it under Android's "Remove animations"; the RN
+      // Animated this replaced never did.
+      reduceMotion: ReduceMotion.Never,
     });
-    // Runs once per mount and again only if the point count changes — see
-    // `dotAnims`'s own memo above.
-  }, [dotAnims, draw, points.length]);
+  }, [draw, points]);
+  const lineProps = useAnimatedProps(() => ({
+    strokeDashoffset: DRAW_LENGTH * (1 - draw.value),
+  }));
 
   if (points.length < 2) return null;
 
@@ -211,38 +224,21 @@ export function TrendChart({ points, formatValue = defaultFormat }: TrendChartPr
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeDasharray={DRAW_LENGTH}
-          strokeDashoffset={draw.interpolate({
-            inputRange: [0, 1],
-            outputRange: [DRAW_LENGTH, 0],
-          })}
+          animatedProps={lineProps}
         />
 
         {/* Hollow dots for history, one solid dot for the latest session — the
             only point that is still a live fact rather than a record. Each pops
             in after the line reaches it, left to right. */}
-        {points.map((point, index) =>
-          index === lastIndex ? (
-            <AnimatedCircle
-              key={`${point.at}-${index}`}
-              cx={x(index)}
-              cy={y(point.value)}
-              r={4}
-              fill={palette.greenBright}
-              opacity={dotAnims[index]}
-            />
-          ) : (
-            <AnimatedCircle
-              key={`${point.at}-${index}`}
-              cx={x(index)}
-              cy={y(point.value)}
-              r={3}
-              fill={palette.bg}
-              stroke={palette.greenBright}
-              strokeWidth={2}
-              opacity={dotAnims[index]}
-            />
-          ),
-        )}
+        {points.map((point, index) => (
+          <TrendDot
+            key={`${run}-${point.at}-${index}`}
+            index={index}
+            cx={x(index)}
+            cy={y(point.value)}
+            latest={index === lastIndex}
+          />
+        ))}
 
         {labelled.map((index) => (
           <SvgText
@@ -260,5 +256,44 @@ export function TrendChart({ points, formatValue = defaultFormat }: TrendChartPr
         ))}
       </Svg>
     </View>
+  );
+}
+
+/**
+ * One dot, popping in after the line reaches it: 260 ms from `500 + 90·index`.
+ * Hollow for history, solid for the latest session.
+ */
+function TrendDot({
+  index,
+  cx,
+  cy,
+  latest,
+}: {
+  index: number;
+  cx: number;
+  cy: number;
+  latest: boolean;
+}) {
+  const shown = useSharedValue(0);
+  useEffect(() => {
+    shown.value = withDelay(
+      500 + index * 90,
+      withTiming(1, { duration: 260, easing: EASING, reduceMotion: ReduceMotion.Never }),
+      ReduceMotion.Never,
+    );
+  }, [index, shown]);
+  const dotProps = useAnimatedProps(() => ({ opacity: shown.value }));
+  return latest ? (
+    <AnimatedCircle cx={cx} cy={cy} r={4} fill={palette.greenBright} animatedProps={dotProps} />
+  ) : (
+    <AnimatedCircle
+      cx={cx}
+      cy={cy}
+      r={3}
+      fill={palette.bg}
+      stroke={palette.greenBright}
+      strokeWidth={2}
+      animatedProps={dotProps}
+    />
   );
 }

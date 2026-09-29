@@ -31,9 +31,9 @@
  * `ink-faint` like every other zero in the app.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
+import { persistedStorage } from './persistStorage';
 
 import { dayKey } from '../lib/days';
 import {
@@ -388,7 +388,7 @@ export const useMoney = create<MoneyState>()(
        */
       version: 2,
       migrate: (persisted) => persisted,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistedStorage(),
       partialize: (state) => ({
         accounts: state.accounts,
         categories: state.categories,

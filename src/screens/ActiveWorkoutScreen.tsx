@@ -201,6 +201,23 @@ const CARD_TOP_GAP = 8;
  */
 const LAYOUT_SETTLE_MS = 350;
 
+/** What one card is handed, bound to its entry once — see `handlersFor`. */
+interface CardHandlers {
+  onToggleExpanded: () => void;
+  onLift: () => void;
+  onPressTimer: (setId: ID) => void;
+  onToggleSet: (setId: ID) => void;
+  onPatchSet: (setId: ID, patch: Partial<DraftSet>) => void;
+  onAddWarmup: () => void;
+  onAddSet: () => void;
+  onRemoveSet: (setId: ID) => void;
+  onAcceptOverload: () => void;
+  onDismissOverload: () => void;
+  onRemoveExercise: () => void;
+  onToggleEditing: () => void;
+  onEditExercise: () => void;
+}
+
 interface ActiveWorkoutScreenProps {
   unitSystem: UnitSystem;
   /**
@@ -635,10 +652,10 @@ export function ActiveWorkoutScreen({
    */
   const planChanges = useMemo(
     () =>
-      session?.routineId && routineItems
+      confirming === 'finish' && session?.routineId && routineItems
         ? plannedSetDiff(routineItems, performedSetCounts(session.entries))
         : [],
-    [routineItems, session?.entries, session?.routineId],
+    [confirming, routineItems, session?.entries, session?.routineId],
   );
 
   /**
@@ -683,6 +700,86 @@ export function ActiveWorkoutScreen({
     },
     [finishSession, onExit, onFinish, t],
   );
+
+  /**
+   * Remove an exercise: start its card leaving, and remember enough to put it
+   * back. It leaves the STORE in `finishRemoval`, once it has left the screen.
+   */
+  const handleRemoveEntry = useCallback(
+    (entryId: ID) => {
+      if (removing) return;
+      const entries = useActiveWorkout.getState().session?.entries ?? [];
+      const index = entries.findIndex((e) => e.localId === entryId);
+      if (index === -1) return;
+      setRemoving({ entry: entries[index], index });
+    },
+    [removing],
+  );
+
+  const openFocus = useCallback(() => setFocusOpen(true), []);
+
+  /*
+   * THE CARDS' HANDLERS, ONE STABLE SET PER ENTRY.
+   *
+   * `ExerciseCard` is memoized, and it used to be handed fourteen fresh closures
+   * per render — so a ✓ on one card re-rendered every card in the list, each with
+   * its rolling counter, ring and marquee, three or four times over as the cursor
+   * advanced. Now each entry keeps the same functions for its whole life, and they
+   * read what they need (the open card, the warm-up plan, the set's own state) at
+   * the moment they are pressed, from `live` and the store. The store keeps
+   * untouched entries by identity, so a ✓ re-renders the card it landed on.
+   */
+  const live = useRef({
+    handleToggleCard,
+    handleToggleSet,
+    handlePressTimer,
+    handleRemoveEntry,
+    lift,
+    warmupPlans,
+    onEditExercise,
+  });
+  live.current = {
+    handleToggleCard,
+    handleToggleSet,
+    handlePressTimer,
+    handleRemoveEntry,
+    lift,
+    warmupPlans,
+    onEditExercise,
+  };
+  const cardHandlers = useRef(new Map<ID, CardHandlers>()).current;
+  const handlersFor = (entryId: ID): CardHandlers => {
+    const known = cardHandlers.get(entryId);
+    if (known) return known;
+    const entryNow = () =>
+      useActiveWorkout.getState().session?.entries.find((e) => e.localId === entryId);
+    const handlers: CardHandlers = {
+      onToggleExpanded: () => live.current.handleToggleCard(entryId),
+      onLift: () => live.current.lift(entryId),
+      onPressTimer: (setId) => live.current.handlePressTimer(entryId, setId),
+      onToggleSet: (setId) => {
+        const target = entryNow()?.sets.find((set) => set.localId === setId);
+        live.current.handleToggleSet(entryId, setId, target?.isCompleted ?? false);
+      },
+      onPatchSet: (setId, patch) => patchSet(entryId, setId, patch),
+      onAddWarmup: () => {
+        const plan = live.current.warmupPlans[entryId];
+        if (plan) addWarmupSets(entryId, plan.sets);
+      },
+      onAddSet: () => addSet(entryId),
+      onRemoveSet: (setId) => removeSet(entryId, setId),
+      onAcceptOverload: () => acceptOverload(entryId),
+      onDismissOverload: () => dismissOverload(entryId),
+      onRemoveExercise: () => live.current.handleRemoveEntry(entryId),
+      onToggleEditing: () => setEditingEntryId((current) => (current === entryId ? null : entryId)),
+      onEditExercise: () => {
+        const entry = entryNow();
+        if (entry) live.current.onEditExercise?.(entry.exercise.id);
+      },
+    };
+    cardHandlers.set(entryId, handlers);
+    return handlers;
+  };
 
   /** ▶ Start — the workout is happening as of now. */
   const handleStart = useCallback(() => {
@@ -769,17 +866,6 @@ export function ActiveWorkoutScreen({
       </View>
     );
   }
-
-  /**
-   * Remove an exercise: start its card leaving, and remember enough to put it
-   * back. It leaves the STORE in `finishRemoval`, once it has left the screen.
-   */
-  const handleRemoveEntry = (entry: DraftEntry) => {
-    if (removing) return;
-    const index = session.entries.findIndex((e) => e.localId === entry.localId);
-    if (index === -1) return;
-    setRemoving({ entry, index });
-  };
 
   const finishRemoval = () => {
     if (!removing) return;
@@ -892,6 +978,7 @@ export function ActiveWorkoutScreen({
           >
             {session.entries.map((entry, index) => {
               const isLifted = entry.localId === lifted;
+              const handlers = handlersFor(entry.localId);
               return (
                 <ReorderRow
                   key={entry.localId}
@@ -928,9 +1015,7 @@ export function ActiveWorkoutScreen({
                       /* And the door into focus mode, on that same card only —
                        focus mode always shows the work, so the row that opens it
                        belongs where the work is. */
-                      onOpenFocus={
-                        upNext?.entryId === entry.localId ? () => setFocusOpen(true) : undefined
-                      }
+                      onOpenFocus={upNext?.entryId === entry.localId ? openFocus : undefined}
                       unitSystem={unitSystem}
                       /* The bracket down a superset's left edge. Computed here
                        because only the screen can see the cards either side. */
@@ -941,32 +1026,21 @@ export function ActiveWorkoutScreen({
                       dimmed={lifted != null && !isLifted}
                       restSeconds={resolveRest(entry.exercise, restSeconds).seconds}
                       onStartRest={entry.localId === activeEntryId ? startRestNow : undefined}
-                      onRemoveExercise={() => handleRemoveEntry(entry)}
+                      onRemoveExercise={handlers.onRemoveExercise}
                       /* SESSION EDIT MODE — one card at a time, ended only by
                        `Done`. See `ExerciseCard`. */
                       isEditing={editingEntryId === entry.localId}
-                      onToggleEditing={() =>
-                        setEditingEntryId((current) =>
-                          current === entry.localId ? null : entry.localId,
-                        )
-                      }
+                      onToggleEditing={handlers.onToggleEditing}
                       /* Only on the open card, like `Rest` and `Focus`: it is a
                        control you press about the exercise you are doing. */
-                      onEditExercise={
-                        onEditExercise ? () => onEditExercise(entry.exercise.id) : undefined
-                      }
-                      onToggleExpanded={() => handleToggleCard(entry.localId)}
+                      onEditExercise={onEditExercise ? handlers.onEditExercise : undefined}
+                      onToggleExpanded={handlers.onToggleExpanded}
                       // One exercise cannot be reordered, and the gesture would only
                       // ever end where it started.
-                      onLift={entryIds.length > 1 ? () => lift(entry.localId) : undefined}
-                      onPressTimer={(setId) => handlePressTimer(entry.localId, setId)}
-                      onToggleSet={(setId) => {
-                        const target = entry.sets.find((s) => s.localId === setId);
-                        handleToggleSet(entry.localId, setId, target?.isCompleted ?? false);
-                      }}
-                      onPatchSet={(setId: ID, patch: Partial<DraftSet>) =>
-                        patchSet(entry.localId, setId, patch)
-                      }
+                      onLift={entryIds.length > 1 ? handlers.onLift : undefined}
+                      onPressTimer={handlers.onPressTimer}
+                      onToggleSet={handlers.onToggleSet}
+                      onPatchSet={handlers.onPatchSet}
                       /*
                       WARM-UP. Decided here rather than in the card because it
                       needs the gym's plates and `lib/warmup.ts` — the card renders
@@ -977,15 +1051,11 @@ export function ActiveWorkoutScreen({
                       bestLine={bestLines[entry.localId] ?? null}
                       deloadMessage={deloadMessages[entry.localId] ?? null}
                       warmupSummary={warmupPlans[entry.localId]?.summary ?? null}
-                      onAddWarmup={
-                        warmupPlans[entry.localId]
-                          ? () => addWarmupSets(entry.localId, warmupPlans[entry.localId].sets)
-                          : undefined
-                      }
-                      onAddSet={() => addSet(entry.localId)}
-                      onRemoveSet={(setId) => removeSet(entry.localId, setId)}
-                      onAcceptOverload={() => acceptOverload(entry.localId)}
-                      onDismissOverload={() => dismissOverload(entry.localId)}
+                      onAddWarmup={warmupPlans[entry.localId] ? handlers.onAddWarmup : undefined}
+                      onAddSet={handlers.onAddSet}
+                      onRemoveSet={handlers.onRemoveSet}
+                      onAcceptOverload={handlers.onAcceptOverload}
+                      onDismissOverload={handlers.onDismissOverload}
                     />
                   </GrowIn>
                 </ReorderRow>

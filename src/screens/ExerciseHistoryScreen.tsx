@@ -76,8 +76,11 @@ export function ExerciseHistoryScreen({
 }: ExerciseHistoryScreenProps) {
   const t = useT();
   const lang = useLanguage();
-  const rows = sessionRows(history, exercise, lang);
-  const series = topWeightSeries(rows);
+  /* Memoized: the chart replays its entrance for every new `series`, so a series
+     rebuilt on each render of this screen redrew the line from nothing on every
+     unrelated settings write. */
+  const rows = useMemo(() => sessionRows(history, exercise, lang), [exercise, history, lang]);
+  const series = useMemo(() => topWeightSeries(rows), [rows]);
   /*
    * The staleness clause is a fact about the data, not a nag, so it appears as
    * soon as the same weight has been hit twice — well before the engine is

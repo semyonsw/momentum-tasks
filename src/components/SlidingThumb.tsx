@@ -24,7 +24,7 @@
  * bubble passes measured `offsets` because its pills are as wide as their names.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Animated, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useMotionScale } from '../hooks/useMotionScale';
@@ -116,6 +116,9 @@ export function SlidingThumb({
       useNativeDriver: native,
     }).start();
   }, [index, native, scale, shown]);
+  // Built once per inset, above the early return: a fresh `add` node per render
+  // makes the pane detach and re-attach its native animation graph.
+  const insetLeft = useMemo(() => Animated.add(left, inset), [inset, left]);
 
   if (trackWidth <= 0) return null;
 
@@ -137,7 +140,7 @@ export function SlidingThumb({
               position: 'absolute',
               top: inset,
               bottom: inset,
-              left: Animated.add(left, inset),
+              left: insetLeft,
               width: size,
               opacity: shown,
             },

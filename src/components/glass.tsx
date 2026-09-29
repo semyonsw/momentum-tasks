@@ -40,7 +40,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Easing,
@@ -111,7 +111,22 @@ import {
 /** The ghost round action's glyph: softer than ink, so it reads as maintenance. */
 const INK_SOFT = '#AEB9B3';
 
+/**
+ * Whether a `Pane` under this point may mount its blur. True everywhere by
+ * default; false only where the shell KNOWS the glass cannot be seen — the roots
+ * while a pushed screen covers them, the nav pill once it has dropped away.
+ *
+ * Needed because a hidden blur is not an idle one. The Dimezis view hooks the
+ * window's pre-draw and re-renders the whole app into its bitmap on every frame
+ * anything moves, and `display: none` or opacity 0 leaves that hook attached —
+ * so a workout ran three to five invisible full-window blurs per frame behind
+ * the two it was showing. Unmounting is the only switch the library has.
+ */
+export const BlurGate = createContext(true);
+
 export function Pane({ intensity }: { intensity: number }) {
+  const live = useContext(BlurGate);
+  if (!live) return null;
   return (
     <BlurView
       tint="dark"
@@ -142,6 +157,12 @@ const BREATH_MS = 7000;
  * the dependency the rest of the file's gradients come from. It also stays
  * tunable — the alternative the design offers is a pre-exported PNG at 2×/3×,
  * and a lamp you cannot move is a lamp that will be wrong on the next screen.
+ *
+ * The drawing is memoised on what it is drawn from — the window, the section's
+ * lamps and the theme's three stops — because it sits under every section root,
+ * and those re-render far more often than the lamps change. On the colours and
+ * not on the props alone: the launch screen is outside the tree that remounts on
+ * a new theme, and the theme arriving under the launch mark has to relight it.
  */
 export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
   const specs = LAMPS[section] ?? LAMPS.Workout;
@@ -168,34 +189,30 @@ export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
     loop.start();
     return () => loop.stop();
   }, [breath]);
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        top: 0,
-        bottom: 0,
-        opacity: breath.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }),
-      }}
-    >
+  // Built once: a fresh interpolation node per render makes the Animated.View
+  // detach and re-attach its native animation graph every time.
+  const opacity = useMemo(
+    () => breath.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }),
+    [breath],
+  );
+  const { c1, c2, c3 } = palette;
+  const art = useMemo(
+    () => (
       <Svg width={width} height={height}>
         <Defs>
           {/* One gradient per theme stop: the lamps are the three colours of
               the theme, not one green at two strengths. */}
           <RadialGradient id="lampBright" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={palette.c2} stopOpacity={1} />
-            <Stop offset="70%" stopColor={palette.c2} stopOpacity={0} />
+            <Stop offset="0%" stopColor={c2} stopOpacity={1} />
+            <Stop offset="70%" stopColor={c2} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id="lampDim" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={palette.c1} stopOpacity={1} />
-            <Stop offset="70%" stopColor={palette.c1} stopOpacity={0} />
+            <Stop offset="0%" stopColor={c1} stopOpacity={1} />
+            <Stop offset="70%" stopColor={c1} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id="lampThird" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={palette.c3} stopOpacity={1} />
-            <Stop offset="70%" stopColor={palette.c3} stopOpacity={0} />
+            <Stop offset="0%" stopColor={c3} stopOpacity={1} />
+            <Stop offset="70%" stopColor={c3} stopOpacity={0} />
           </RadialGradient>
         </Defs>
         {specs.map((lamp: LampSpec, index: number) => (
@@ -217,6 +234,23 @@ export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
           />
         ))}
       </Svg>
+    ),
+    [c1, c2, c3, height, specs, width],
+  );
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        opacity,
+      }}
+    >
+      {art}
     </Animated.View>
   );
 }
@@ -523,6 +557,15 @@ export function FloatingAction({
       useNativeDriver: true,
     }).start();
   }, [asleep, motionScale, wake]);
+  const opacity = useMemo(() => Animated.multiply(arrive, wake), [arrive, wake]);
+  const translateY = useMemo(
+    () => arrive.interpolate({ inputRange: [0, 1], outputRange: [round ? 18 : 10, 0] }),
+    [arrive, round],
+  );
+  const popScale = useMemo(
+    () => arrive.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }),
+    [arrive],
+  );
 
   return (
     <Animated.View
@@ -542,17 +585,10 @@ export function FloatingAction({
         // that cap instead of being cut — see `RunningText`.
         maxWidth: '76%',
         boxShadow: [...(filled ? halo.floating : []), ...elevation.e2],
-        opacity: Animated.multiply(arrive, wake),
+        opacity,
         transform: [
-          {
-            translateY: arrive.interpolate({
-              inputRange: [0, 1],
-              outputRange: [round ? 18 : 10, 0],
-            }),
-          },
-          ...(round
-            ? [{ scale: arrive.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }]
-            : []),
+          { translateY },
+          ...(round ? [{ scale: popScale }] : []),
           ...press.style.transform,
         ],
       }}
@@ -869,6 +905,10 @@ export function Toast({
     }).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enter]);
+  const translateY = useMemo(
+    () => enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }),
+    [enter],
+  );
 
   return (
     <Animated.View
@@ -880,9 +920,7 @@ export function Toast({
         bottom: bottom + insets.bottom,
         alignItems: 'center',
         opacity: enter,
-        transform: [
-          { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
-        ],
+        transform: [{ translateY }],
       }}
     >
       <View

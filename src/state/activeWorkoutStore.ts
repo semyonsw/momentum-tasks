@@ -42,9 +42,9 @@
  */
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
+import { persistedStorage } from './persistStorage';
 import { useShallow } from 'zustand/react/shallow';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { DraftEntry, DraftSession, DraftSet } from '../lib/draft';
 import { buildDraftSession, uid, type BuildDraftParams } from '../lib/draft';
@@ -1088,7 +1088,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
     {
       name: 'active-workout',
       version: 2,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistedStorage(),
       /*
        * Persisting the session means a crash, a phone call or a swipe-to-close
        * mid-workout costs the user nothing. `rest` and `setTimer` persist too —

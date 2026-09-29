@@ -26,7 +26,7 @@
  * thing that day's row is about.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 
 import { Icon } from './Icon';
@@ -63,6 +63,17 @@ export function StreakFlame({ streak }: { streak: number }) {
     loop.start();
     return () => loop.stop();
   }, [breathe, hot]);
+  // Built once: a fresh interpolation node per render makes the flame detach and
+  // re-attach its native graph, and a fresh style object defeats RollingNumber's
+  // memo. Both above the early return, for the rules of hooks.
+  const flameScale = useMemo(
+    () => breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] }),
+    [breathe],
+  );
+  const numberStyle = useMemo(
+    () => ({ fontSize: 12, color: warm ? palette.greenBright : palette.inkMuted }),
+    [warm],
+  );
 
   if (streak < 1) return null;
 
@@ -92,9 +103,7 @@ export function StreakFlame({ streak }: { streak: number }) {
       <Animated.View
         style={{
           marginRight: 4,
-          transform: [
-            { scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] }) },
-          ],
+          transform: [{ scale: flameScale }],
         }}
       >
         <Icon name="flame" size={13} color={warm ? palette.greenBright : palette.inkMuted} />
@@ -105,7 +114,7 @@ export function StreakFlame({ streak }: { streak: number }) {
         value={String(streak)}
         lineHeight={16}
         duration={450}
-        style={{ fontSize: 12, color: warm ? palette.greenBright : palette.inkMuted }}
+        style={numberStyle}
         className="font-semibold"
       />
     </View>

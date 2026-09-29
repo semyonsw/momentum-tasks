@@ -40,7 +40,7 @@
  * first and the animation follows it, so a slow frame can never delay a commit.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, View, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -66,12 +66,18 @@ function useEnter(duration: number, riseFrom: number, delay = 0) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enter]);
 
-  return {
-    opacity: enter,
-    transform: [
-      { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [riseFrom, 0] }) },
-    ],
-  };
+  /* Memoized, like every interpolation below: a fresh `interpolate()` is a fresh
+     native node, and the Animated props built on it detach and re-attach on every
+     render of a host that re-renders four times a second while a rest runs. */
+  return useMemo(
+    () => ({
+      opacity: enter,
+      transform: [
+        { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [riseFrom, 0] }) },
+      ],
+    }),
+    [enter, riseFrom],
+  );
 }
 
 export function Reveal({ children }: { children: ReactNode }) {
@@ -190,22 +196,30 @@ export function Ripple({ size }: { size: number }) {
       useNativeDriver: true,
     }).start();
   }, [scale, v]);
+  const ring = useMemo(
+    () => ({
+      opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.7, 0] }),
+      transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
+    }),
+    [v],
+  );
   if (scale === 0) return null;
   return (
     <Animated.View
       pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        borderWidth: 3,
-        borderColor: palette.greenBright,
-        opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.7, 0] }),
-        transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
-      }}
+      style={[
+        {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: 3,
+          borderColor: palette.greenBright,
+        },
+        ring,
+      ]}
     />
   );
 }
@@ -252,16 +266,13 @@ export function SecondPulse({
     loop.start();
     return () => loop.stop();
   }, [active, scale, v]);
-  return (
-    <Animated.View
-      style={[
-        style,
-        { transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] }) }] },
-      ]}
-    >
-      {children}
-    </Animated.View>
+  const pulse = useMemo(
+    () => ({
+      transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] }) }],
+    }),
+    [v],
   );
+  return <Animated.View style={[style, pulse]}>{children}</Animated.View>;
 }
 
 /**
@@ -312,6 +323,14 @@ export function GrowIn({
   const slide = useRef(new Animated.Value(0)).current;
   const onLeftRef = useRef(onLeft);
   onLeftRef.current = onLeft;
+  const rise = useMemo(
+    () => fade.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }),
+    [fade],
+  );
+  const drift = useMemo(
+    () => slide.interpolate({ inputRange: [0, 1], outputRange: [0, 28] }),
+    [slide],
+  );
 
   /* In: once the content has a height to open to. */
   useEffect(() => {
@@ -378,14 +397,7 @@ export function GrowIn({
       <Animated.View
         style={{
           opacity: fade,
-          transform: [
-            {
-              translateY: leaving
-                ? 0
-                : fade.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }),
-            },
-            { translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [0, 28] }) },
-          ],
+          transform: [{ translateY: leaving ? 0 : rise }, { translateX: drift }],
         }}
       >
         <View onLayout={onLayout}>{children}</View>
@@ -447,21 +459,21 @@ export function usePressScale(to = 0.94, rotate = 0) {
       }),
     ]).start();
   }, [scale, v]);
-  const over = Math.min(0.035, (1 - to) * 0.58);
-  const sink = {
-    scale: v.interpolate({ inputRange: [-1, 0, 1], outputRange: [1 + over, 1, to] }),
-  };
-  const tilt = {
-    rotate: v.interpolate({
-      inputRange: [-1, 0, 1],
-      outputRange: ['0deg', '0deg', `${rotate}deg`],
-    }),
-  };
-  return {
-    onPressIn,
-    onPressOut,
-    style: { transform: rotate === 0 ? [sink] : [sink, tilt] },
-  };
+  const style = useMemo(() => {
+    const over = Math.min(0.035, (1 - to) * 0.58);
+    const sink = {
+      scale: v.interpolate({ inputRange: [-1, 0, 1], outputRange: [1 + over, 1, to] }),
+    };
+    if (rotate === 0) return { transform: [sink] };
+    const tilt = {
+      rotate: v.interpolate({
+        inputRange: [-1, 0, 1],
+        outputRange: ['0deg', '0deg', `${rotate}deg`],
+      }),
+    };
+    return { transform: [sink, tilt] };
+  }, [rotate, to, v]);
+  return { onPressIn, onPressOut, style };
 }
 
 /**
@@ -510,6 +522,10 @@ export function Sheen({
     return () => loop.stop();
   }, [periodMs, scale, v, width]);
   const bandWidth = width * band;
+  const sweep = useMemo(
+    () => v.interpolate({ inputRange: [0, 1], outputRange: [-1.2 * bandWidth, 2.2 * bandWidth] }),
+    [bandWidth, v],
+  );
   return (
     <View
       pointerEvents="none"
@@ -524,15 +540,7 @@ export function Sheen({
             bottom: 0,
             left: 0,
             width: bandWidth,
-            transform: [
-              {
-                translateX: v.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-1.2 * bandWidth, 2.2 * bandWidth],
-                }),
-              },
-              ...(skew ? [{ skewX: '-20deg' }] : []),
-            ],
+            transform: [{ translateX: sweep }, ...(skew ? [{ skewX: '-20deg' }] : [])],
           }}
         >
           <LinearGradient

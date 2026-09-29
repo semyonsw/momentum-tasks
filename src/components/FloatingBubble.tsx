@@ -53,7 +53,7 @@
  * meant for the row under it.
  */
 
-import { Children, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Children, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Animated,
   Easing,
@@ -134,7 +134,14 @@ export function FloatingBubble({
   const fade = useRef(new Animated.Value(0)).current;
   const move = useRef(new Animated.Value(0)).current;
   const itemValues = useRef<Animated.Value[]>([]);
-  while (itemValues.current.length < items.length) itemValues.current.push(new Animated.Value(0));
+  /* Each item's rise, built beside its value and kept: a fresh interpolation node
+     per render makes the Animated.View detach and re-attach its native graph. */
+  const itemRises = useRef<Animated.AnimatedInterpolation<number>[]>([]);
+  while (itemValues.current.length < items.length) {
+    const value = new Animated.Value(0);
+    itemValues.current.push(value);
+    itemRises.current.push(value.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }));
+  }
 
   /** The blur stays mounted through the exit, and goes once it has finished. */
   const [blurred, setBlurred] = useState(visible);
@@ -209,6 +216,14 @@ export function FloatingBubble({
       useNativeDriver: true,
     }).start();
   }, [halo, haloFraction, scale]);
+  const nodes = useMemo(
+    () => ({
+      dropY: move.interpolate({ inputRange: [0, 1], outputRange: [-28, 0] }),
+      dropScale: move.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }),
+      haloOut: halo.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+    }),
+    [halo, move],
+  );
 
   return (
     <View
@@ -232,10 +247,7 @@ export function FloatingBubble({
         style={{
           opacity: fade,
           transformOrigin: 'top',
-          transform: [
-            { translateY: move.interpolate({ inputRange: [0, 1], outputRange: [-28, 0] }) },
-            { scale: move.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) },
-          ],
+          transform: [{ translateY: nodes.dropY }, { scale: nodes.dropScale }],
         }}
       >
         {grows ? (
@@ -245,7 +257,7 @@ export function FloatingBubble({
               style={[
                 HALO_LAYER,
                 {
-                  opacity: halo.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+                  opacity: nodes.haloOut,
                   boxShadow: [{ ...HALO, blurRadius: 14, color: tint(0.14) }],
                 },
               ]}
@@ -313,14 +325,7 @@ export function FloatingBubble({
                   }
                   style={{
                     opacity: value,
-                    transform: [
-                      {
-                        translateY: value.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-8, 0],
-                        }),
-                      },
-                    ],
+                    transform: [{ translateY: itemRises.current[index] }],
                   }}
                 >
                   {child}
@@ -356,9 +361,12 @@ export function useHeroRecede(receded: boolean) {
       useNativeDriver: true,
     }).start();
   }, [receded, scale, v]);
-  return {
-    opacity: v.interpolate({ inputRange: [0, 1], outputRange: [1, 0.45] }),
-    transformOrigin: 'top' as const,
-    transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] }) }],
-  };
+  return useMemo(
+    () => ({
+      opacity: v.interpolate({ inputRange: [0, 1], outputRange: [1, 0.45] }),
+      transformOrigin: 'top' as const,
+      transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] }) }],
+    }),
+    [v],
+  );
 }

@@ -811,6 +811,10 @@ function WorkoutRow({
     .filter(Boolean)
     .join(' · ');
 
+  const turnRotate = useMemo(
+    () => turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }),
+    [turn],
+  );
   return (
     <View
       style={{
@@ -869,9 +873,7 @@ function WorkoutRow({
 
         <Animated.View
           style={{
-            transform: [
-              { rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) },
-            ],
+            transform: [{ rotate: turnRotate }],
           }}
         >
           <Icon name="chevron-down" size={18} color={palette.inkMuted} />
@@ -1220,6 +1222,14 @@ function RangeSwitch({
   }, [index, x]);
   const short: Record<BalanceWindow, string> = { '4w': t('4w'), '12w': t('12w'), all: t('All') };
 
+  const slideX = useMemo(
+    () =>
+      x.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, RANGE_SEGMENT],
+      }),
+    [x],
+  );
   return (
     <View
       accessibilityRole="radiogroup"
@@ -1246,10 +1256,7 @@ function RangeSwitch({
           boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 12, color: tint(0.35) }],
           transform: [
             {
-              translateX: x.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, RANGE_SEGMENT],
-              }),
+              translateX: slideX,
             },
           ],
         }}
@@ -1372,6 +1379,10 @@ function ClusterRow({
     }).start();
   }, [fraction, index, width]);
 
+  const fillWidth = useMemo(
+    () => width.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+    [width],
+  );
   return (
     <View
       className="flex-row items-center"
@@ -1424,7 +1435,7 @@ function ClusterRow({
                 height: '100%',
                 borderRadius: radius.pill,
                 overflow: 'hidden',
-                width: width.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+                width: fillWidth,
               }}
             >
               <LinearGradient {...gradientBar()} style={{ flex: 1 }} />

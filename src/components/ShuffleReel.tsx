@@ -40,7 +40,7 @@
  * the routine it is about to produce is being written to disk underneath it.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 
 import { Kicker } from './primitives';
@@ -122,6 +122,16 @@ export function ShuffleReel({ pool, result, onSettled }: ShuffleReelProps) {
     // re-running on a changed `result` would restart a reel mid-spin.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  /* The three nodes every row picks from, built once: a fresh interpolation per
+     render makes each Animated.View detach and re-attach its native graph. */
+  const nodes = useMemo(
+    () => ({
+      opacity: slide.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
+      down: slide.interpolate({ inputRange: [0, 1], outputRange: [-TRAVEL, 0] }),
+      up: slide.interpolate({ inputRange: [0, 1], outputRange: [TRAVEL, 0] }),
+    }),
+    [slide],
+  );
 
   return (
     <View className="rounded-surface border border-green-dim bg-surface p-lg">
@@ -133,15 +143,8 @@ export function ShuffleReel({ pool, result, onSettled }: ShuffleReelProps) {
             <Animated.View
               key={`${index}-${name}`}
               style={{
-                opacity: slide.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
-                transform: [
-                  {
-                    translateY: slide.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [downwards ? -TRAVEL : TRAVEL, 0],
-                    }),
-                  },
-                ],
+                opacity: nodes.opacity,
+                transform: [{ translateY: downwards ? nodes.down : nodes.up }],
               }}
             >
               <Text

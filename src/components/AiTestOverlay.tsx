@@ -30,7 +30,7 @@
  * rather than being skipped: the screen still says what it is doing.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
@@ -105,6 +105,17 @@ function Instrument() {
   const drift = useLoop(9000, 0, 'linear');
   const size = INSTRUMENT;
   const inner = size - 36;
+  // Built once: a fresh interpolation node per render makes each Animated.View
+  // detach and re-attach its native animation graph.
+  const nodes = useMemo(
+    () => ({
+      opacity: breath.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
+      scale: breath.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.04] }),
+      drift: drift.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] }),
+      spin: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+    }),
+    [breath, drift, spin],
+  );
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -117,19 +128,15 @@ function Instrument() {
           borderWidth: 1,
           borderColor: glass.greenEdge,
           boxShadow: [...halo.floating],
-          opacity: breath.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
-          transform: [
-            { scale: breath.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.04] }) },
-          ],
+          opacity: nodes.opacity,
+          transform: [{ scale: nodes.scale }],
         }}
       />
       {/* The dashed ring, turning the other way, slowly. */}
       <Animated.View
         style={{
           position: 'absolute',
-          transform: [
-            { rotate: drift.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] }) },
-          ],
+          transform: [{ rotate: nodes.drift }],
         }}
       >
         <Svg width={size - 16} height={size - 16}>
@@ -148,9 +155,7 @@ function Instrument() {
       <Animated.View
         style={{
           position: 'absolute',
-          transform: [
-            { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
-          ],
+          transform: [{ rotate: nodes.spin }],
         }}
       >
         <Svg width={inner} height={inner}>
@@ -184,6 +189,10 @@ function Instrument() {
 /** One step's mark: a dot while it waits, a turning arc while it runs, a ✓ once done. */
 function StepMark({ state }: { state: 'pending' | 'active' | 'done' }) {
   const spin = useLoop(900, 0, 'linear');
+  const rotate = useMemo(
+    () => spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+    [spin],
+  );
   if (state === 'done') {
     return (
       <Pop>
@@ -193,13 +202,7 @@ function StepMark({ state }: { state: 'pending' | 'active' | 'done' }) {
   }
   if (state === 'active') {
     return (
-      <Animated.View
-        style={{
-          transform: [
-            { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
-          ],
-        }}
-      >
+      <Animated.View style={{ transform: [{ rotate }] }}>
         <Svg width={20} height={20}>
           <Circle cx={10} cy={10} r={8} stroke={palette.greenDim} strokeWidth={2} fill="none" />
           <Circle
@@ -254,20 +257,23 @@ function Ripples({ size }: { size: number }) {
     run.start();
     return () => run.stop();
   }, [a, b, scale]);
-  const style = (v: Animated.Value) => ({
-    position: 'absolute' as const,
-    width: size,
-    height: size,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: palette.greenBright,
-    opacity: v.interpolate({ inputRange: [0, 0.01, 1], outputRange: [0, 0.7, 0] }),
-    transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.9, 2.2] }) }],
-  });
+  const [styleA, styleB] = useMemo(() => {
+    const style = (v: Animated.Value) => ({
+      position: 'absolute' as const,
+      width: size,
+      height: size,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: palette.greenBright,
+      opacity: v.interpolate({ inputRange: [0, 0.01, 1], outputRange: [0, 0.7, 0] }),
+      transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.9, 2.2] }) }],
+    });
+    return [style(a), style(b)];
+  }, [a, b, size]);
   return (
     <>
-      <Animated.View pointerEvents="none" style={style(a)} />
-      <Animated.View pointerEvents="none" style={style(b)} />
+      <Animated.View pointerEvents="none" style={styleA} />
+      <Animated.View pointerEvents="none" style={styleB} />
     </>
   );
 }

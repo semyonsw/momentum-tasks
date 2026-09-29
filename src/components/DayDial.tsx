@@ -48,7 +48,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
@@ -92,7 +92,12 @@ export function DayDial({
     }).start();
   }, [clamped, progress]);
 
-  const offset = progress.interpolate({ inputRange: [0, 1], outputRange: [length, 0] });
+  /* Memoised on the length for the same reason: a fresh node per render makes
+     the arc detach and re-attach its animated-props graph. */
+  const offset = useMemo(
+    () => progress.interpolate({ inputRange: [0, 1], outputRange: [length, 0] }),
+    [length, progress],
+  );
 
   return (
     <View style={{ width: size, height: size }} className="items-center justify-center">

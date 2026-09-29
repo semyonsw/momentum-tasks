@@ -20,7 +20,7 @@
  * green means progress in this app, and its absence is not an alarm.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -284,6 +284,15 @@ function Dot({ delay }: { delay: number }) {
     loop.start();
     return () => loop.stop();
   }, [delay, scale, v]);
+  // Built once: the chat re-renders while it streams, and a fresh interpolation
+  // node per render makes the dot detach and re-attach its native graph.
+  const nodes = useMemo(
+    () => ({
+      opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
+      rise: v.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }),
+    }),
+    [v],
+  );
   return (
     <Animated.View
       style={{
@@ -292,8 +301,8 @@ function Dot({ delay }: { delay: number }) {
         marginHorizontal: 2.5,
         borderRadius: 3,
         backgroundColor: palette.greenBright,
-        opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
-        transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }) }],
+        opacity: nodes.opacity,
+        transform: [{ translateY: nodes.rise }],
       }}
     />
   );

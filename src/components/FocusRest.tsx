@@ -48,8 +48,16 @@
  * same thing twice, quietly, in two places.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Animated, Text, View } from 'react-native';
+import Reanimated, {
+  cancelAnimation,
+  Easing,
+  ReduceMotion,
+  useAnimatedProps,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 import { Pressable } from './Pressable';
 
@@ -142,19 +150,26 @@ export function FocusRest({
   }, [arrive]);
 
   const clockColor = isPaused ? palette.inkMuted : finalTen ? palette.greenBright : palette.ink;
+  /* Memoized, both: this re-renders on every second of the rest, and a fresh
+     interpolation or style is a fresh prop for the native node or the memoized
+     clock under it. */
+  const arriveStyle = useMemo(
+    () => ({
+      marginTop: 28,
+      alignItems: 'center' as const,
+      opacity: arrive,
+      transform: [{ translateY: arrive.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+    }),
+    [arrive],
+  );
+  const clockStyle = useMemo(
+    () => ({ fontSize: 88, letterSpacing: -3, fontWeight: '600' as const, color: clockColor }),
+    [clockColor],
+  );
 
   return (
     <>
-      <Animated.View
-        style={{
-          marginTop: 28,
-          alignItems: 'center',
-          opacity: arrive,
-          transform: [
-            { translateY: arrive.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
-          ],
-        }}
-      >
+      <Animated.View style={arriveStyle}>
         <SecondPulse active={finalTen && isRunning}>
           <RestRing
             fraction={totalSeconds > 0 ? remaining / totalSeconds : 0}
@@ -171,7 +186,7 @@ export function FocusRest({
                   ? t('Rest paused with {seconds} seconds left', { seconds: secondsLeft })
                   : t('{seconds} seconds of rest left', { seconds: secondsLeft })
               }
-              style={{ fontSize: 88, letterSpacing: -3, fontWeight: '600', color: clockColor }}
+              style={clockStyle}
             />
             <Text
               numberOfLines={1}
@@ -273,7 +288,7 @@ export function FocusRest({
   );
 }
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedCircle = Reanimated.createAnimatedComponent(Circle);
 const RING = 280;
 const RING_STROKE = 10;
 const RING_R = (RING - RING_STROKE) / 2 - 3;
@@ -284,8 +299,10 @@ const RING_LENGTH = 2 * Math.PI * RING_R;
  *
  * The same idea as `TimerPill`'s drain line: jump to where the clock is on every
  * new deadline, then run linearly to empty over exactly the time left. It is an
- * SVG `strokeDashoffset`, which is not a transform, so it runs on the JS driver —
- * one number, once a frame, for a screen that has nothing else moving.
+ * SVG `strokeDashoffset`, which is not a transform, so the classic Animated could
+ * only run it on the JS driver — a number computed and pushed from JS on every
+ * frame of a two-minute rest, at 120 Hz, competing with every tick and ✓. It is a
+ * Reanimated shared value now: the same linear run, computed on the UI thread.
  *
  * The glow is a second, wider arc under the first at low alpha: an SVG filter
  * would be the literal translation, and `react-native-svg` does not draw one
@@ -307,30 +324,35 @@ function RestRing({
 }) {
   const motionScale = useMotionScale();
   const clamped = Math.min(1, Math.max(0, fraction));
-  const v = useRef(new Animated.Value(clamped)).current;
+  const v = useSharedValue(clamped);
   const latest = useRef(clamped);
   latest.current = clamped;
 
   useEffect(() => {
-    v.setValue(latest.current);
+    cancelAnimation(v);
+    v.value = latest.current;
     if (motionScale === 0 || drainMs == null) return undefined;
-    const run = Animated.timing(v, {
-      toValue: 0,
+    v.value = withTiming(0, {
       duration: Math.max(0, drainMs),
       easing: Easing.linear,
-      useNativeDriver: false,
+      // Reanimated would skip it under Android's "Remove animations"; RN Animated,
+      // which this replaced, never did — see `ProgressRing`.
+      reduceMotion: ReduceMotion.Never,
     });
-    run.start();
-    return () => run.stop();
+    return () => cancelAnimation(v);
     // Keyed on the deadline — see `TimerPill`'s `DrainLine`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drainKey, drainMs == null, motionScale]);
 
   useEffect(() => {
-    if (motionScale === 0 || drainMs == null) v.setValue(clamped);
+    if (motionScale === 0 || drainMs == null) v.value = clamped;
   }, [clamped, drainMs, motionScale, v]);
 
-  const offset = v.interpolate({ inputRange: [0, 1], outputRange: [RING_LENGTH, 0] });
+  /* One per arc: the glow and the stroke are two native views. */
+  const glowProps = useAnimatedProps(() => ({ strokeDashoffset: RING_LENGTH * (1 - v.value) }));
+  const strokeProps = useAnimatedProps(() => ({
+    strokeDashoffset: RING_LENGTH * (1 - v.value),
+  }));
 
   return (
     <View style={{ width: RING, height: RING }} className="items-center justify-center">
@@ -357,7 +379,7 @@ function RestRing({
           strokeWidth={RING_STROKE + 12}
           strokeLinecap="round"
           strokeDasharray={RING_LENGTH}
-          strokeDashoffset={offset}
+          animatedProps={glowProps}
         />
         <AnimatedCircle
           cx={RING / 2}
@@ -368,7 +390,7 @@ function RestRing({
           strokeWidth={RING_STROKE}
           strokeLinecap="round"
           strokeDasharray={RING_LENGTH}
-          strokeDashoffset={offset}
+          animatedProps={strokeProps}
         />
       </Svg>
       <View className="items-center">{children}</View>

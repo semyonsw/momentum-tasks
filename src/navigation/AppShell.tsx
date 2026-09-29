@@ -57,8 +57,8 @@ import { runOnJS, useSharedValue, withTiming, Easing } from 'react-native-reanim
 import { StatusBar } from 'expo-status-bar';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
-import { Toast, type ToastAction } from '../components/glass';
-import { isOverlayOpen, useOverlayOpen } from '../components/overlay';
+import { BlurGate, Toast, type ToastAction } from '../components/glass';
+import { isOverlayOpen } from '../components/overlay';
 import { PrimaryButton } from '../components/primitives';
 import { Segmented } from '../components/primitives';
 import { SwipePager } from '../components/SwipePager';
@@ -120,9 +120,9 @@ import {
   type ExerciseDraft,
 } from '../lib/exerciseDraft';
 import { MUSCLE_CLUSTER, describeItemsFocus } from '../lib/muscles';
-import { evaluateOverloadBatch } from '../lib/progressiveOverload';
+import { evaluateOverload, type OverloadVerdict } from '../lib/progressiveOverload';
 import { searchExercises } from '../lib/search';
-import { useActiveWorkout } from '../state/activeWorkoutStore';
+import { useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStore';
 import { routineUsageCount, useLibrary } from '../state/libraryStore';
 import { platesInForce, useSettings } from '../state/settingsStore';
 import { recentSummaries, useWorkoutHistory } from '../state/workoutHistoryStore';
@@ -235,13 +235,6 @@ const UNDO_TOAST_MS = 4500;
 export function AppShell() {
   const t = useT();
   const lang = useLanguage();
-  /*
-   * The nav pill floats over the section now, which means it also floats over
-   * anything the section raises. A sheet is modal, so while one is up the pill
-   * is not drawn at all — see `components/overlay.ts` for why this is a
-   * subscription rather than a `zIndex`.
-   */
-  const overlayOpen = useOverlayOpen();
   /**
    * What the last commit said, for about two seconds.
    *
@@ -281,15 +274,22 @@ export function AppShell() {
    * `App.tsx` REMOUNTS when the theme changes — and a theme is chosen in
    * Settings, where the user should still be standing when the colours land.
    */
-  const [route, setRoute] = useState<ShellRoute>(() => remembered.route);
+  const [route, setRouteState] = useState<ShellRoute>(() => remembered.route);
   const [lastSection, setLastSection] = useState<SectionTab>(() => remembered.section);
   const tab: SectionTab = route === 'Home' ? lastSection : route;
+  /*
+   * The route and the section it leaves behind, set in ONE batch. The section
+   * used to follow from an effect, which cost every section switch a second full
+   * render of both stage layers, in the first frames of the transition, to change
+   * a value nothing reads until the route is Home again.
+   */
+  const setRoute = useCallback((next: ShellRoute) => {
+    setRouteState(next);
+    if (next !== 'Home') setLastSection(next);
+  }, []);
   useEffect(() => {
     remembered.route = route;
-    if (route !== 'Home') {
-      remembered.section = route;
-      setLastSection(route);
-    }
+    if (route !== 'Home') remembered.section = route;
   }, [route]);
   /** The tile each section last grew out of, so it can shrink back into it. */
   const tileRects = useRef<Partial<Record<SectionTab, TileRect>>>({});
@@ -409,7 +409,19 @@ export function AppShell() {
    */
   const restSecondsBetweenSets = useSettings((s) => s.restSecondsBetweenSets);
 
-  const session = useActiveWorkout((s) => s.session);
+  /*
+   * THE SESSION BY ITS FACTS, NOT BY REFERENCE. The draft's identity changes on
+   * every ✓ and every ± chip, and subscribing to it re-ran this whole shell — every
+   * memo check, every route's element — for each of them, in the same frame as the
+   * logging screen's own render. The shell only needs which session it is, what
+   * it was built from, and the resume card's numbers; the rest is read from the
+   * store at the moment a handler needs it.
+   */
+  const sessionId = useActiveWorkout((s) => s.session?.localId ?? null);
+  const sessionRoutineId = useActiveWorkout((s) => s.session?.routineId ?? null);
+  const sessionTitle = useActiveWorkout((s) => s.session?.title ?? '');
+  const sessionStartedAt = useActiveWorkout((s) => s.session?.startedAt ?? null);
+  const sessionProgress = useSessionProgress();
   const startSession = useActiveWorkout((s) => s.startSession);
   const discardSession = useActiveWorkout((s) => s.discardSession);
 
@@ -448,30 +460,20 @@ export function AppShell() {
    * The workout already running, for the home screen's resume card.
    *
    * Only a STARTED session counts: an unstarted one is a routine somebody opened
-   * to read, and it is thrown away when they leave. Minutes are computed once per
-   * render rather than ticking — this card is not a clock, it is a way back.
+   * to read, and it is thrown away when they leave.
    */
-  const inProgress = useMemo<WorkoutInProgress | null>(() => {
-    if (!session?.startedAt) return null;
-    let done = 0;
-    let total = 0;
-    for (const entry of session.entries) {
-      for (const set of entry.sets) {
-        total += 1;
-        if (set.isCompleted) done += 1;
-      }
-    }
-    const startedMs = new Date(session.startedAt).getTime();
-    return {
-      title: session.title,
-      startedAt: session.startedAt,
-      done,
-      total,
-      minutes: Number.isFinite(startedMs)
-        ? Math.max(0, Math.floor((Date.now() - startedMs) / 60_000))
-        : 0,
-    };
-  }, [session]);
+  const inProgress = useMemo<WorkoutInProgress | null>(
+    () =>
+      sessionStartedAt
+        ? {
+            title: sessionTitle,
+            startedAt: sessionStartedAt,
+            done: sessionProgress.done,
+            total: sessionProgress.total,
+          }
+        : null,
+    [sessionProgress.done, sessionProgress.total, sessionStartedAt, sessionTitle],
+  );
 
   /** Search results. Browse mode builds its own tree from `exercises`. */
   const matches = useMemo(() => searchExercises(exercises, query), [exercises, query]);
@@ -568,7 +570,7 @@ export function AppShell() {
       });
       setRoute(next);
     },
-    [route, tab],
+    [route, setRoute, tab],
   );
   /*
    * The transition starts when it is ON STAGE, not when it is asked for. Zeroing
@@ -593,9 +595,10 @@ export function AppShell() {
   }, [navDrag, progress, swipeX, transition]);
   /** A section by name, from anywhere — the nav bar, a swipe, a deep jump. */
   const selectTab = useCallback((next: SectionTab) => navigate(next), [navigate]);
+  const goHome = useCallback(() => navigate('Home'), [navigate]);
   /* The jumps that land in a section from UNDER a pushed screen: nothing on
      stage to animate, so the route just changes. */
-  const setTab = useCallback((next: SectionTab) => setRoute(next), []);
+  const setTab = useCallback((next: SectionTab) => setRoute(next), [setRoute]);
 
   /**
    * Open one finished workout, wherever the tap came from: go to the workout
@@ -723,14 +726,14 @@ export function AppShell() {
    */
   const claimedSessionId = useRef<string | null>(null);
   useEffect(() => {
-    if (!session) {
+    if (!sessionId) {
       claimedSessionId.current = null;
       return;
     }
-    if (claimedSessionId.current === session.localId) return;
-    claimedSessionId.current = session.localId;
+    if (claimedSessionId.current === sessionId) return;
+    claimedSessionId.current = sessionId;
     push({ name: 'session' });
-  }, [push, session]);
+  }, [push, sessionId]);
 
   /* --- derived: history, the choices, the nudge count ------------------- */
   /*
@@ -766,14 +769,54 @@ export function AppShell() {
     return ordinals.length > 0 ? Math.max(...ordinals) + 1 : 1;
   }, [numbers]);
 
-  const verdicts = useMemo(
-    () =>
-      evaluateOverloadBatch(exercises, historyById, {
+  /*
+   * PER EXERCISE, CACHED. A ✓ at a new weight writes that one exercise's default
+   * back to the library, which is a new `exercises` array — and re-running the
+   * engine over every exercise's whole history on each of those was a synchronous
+   * pass over the log inside the tap that logged the set. The library replaces
+   * only what it edits, so an exercise object that is the same reference, with the
+   * same history array, the same units and the same UTC day (the engine's clock
+   * reads no finer than that — see `daysBetween`) gets the same verdict back.
+   */
+  const verdictCache = useRef(
+    new WeakMap<
+      Exercise,
+      {
+        history: SetHistory[] | undefined;
+        unitSystem: UnitSystem;
+        day: string;
+        verdict: OverloadVerdict;
+      }
+    >(),
+  ).current;
+  const verdicts = useMemo(() => {
+    const now = new Date();
+    const day = now.toISOString().slice(0, 10);
+    const out: Record<ID, OverloadVerdict> = {};
+    for (const exercise of exercises) {
+      const history = historyById[exercise.id];
+      const cached = verdictCache.get(exercise);
+      if (
+        cached &&
+        cached.history === history &&
+        cached.unitSystem === unitSystem &&
+        cached.day === day
+      ) {
+        out[exercise.id] = cached.verdict;
+        continue;
+      }
+      const verdict = evaluateOverload({
+        exercise,
+        history: history ?? [],
         policy: seedUser.overloadPolicy,
         unitSystem,
-      }),
-    [exercises, historyById, unitSystem],
-  );
+        now,
+      });
+      verdictCache.set(exercise, { history, unitSystem, day, verdict });
+      out[exercise.id] = verdict;
+    }
+    return out;
+  }, [exercises, historyById, unitSystem, verdictCache]);
 
   /** When each routine was last trained, for the hero's `LAST` stat. */
   const lastTrained = useMemo(() => lastTrainedByRoutine(workouts), [workouts]);
@@ -843,6 +886,7 @@ export function AppShell() {
     (routineId: ID) => {
       // An AI routine stops saying so once it has been opened. See `aiStore`.
       useAi.getState().markRoutineSeen(routineId);
+      const session = useActiveWorkout.getState().session;
       /*
        * A STARTED session is never clobbered: if one exists — the user backed out
        * of it and came back — this returns to it rather than rebuilding the draft,
@@ -897,7 +941,7 @@ export function AppShell() {
         lang,
       });
     },
-    [exercisesById, historyById, lang, push, routinesById, session, startSession],
+    [exercisesById, historyById, lang, push, routinesById, startSession],
   );
 
   /**
@@ -1191,7 +1235,7 @@ export function AppShell() {
                * update it. Absent for a session with no routine behind it, which is
                * also the answer to "is there a plan to update".
                */
-              routineItems={session?.routineId ? routinesById[session.routineId]?.items : undefined}
+              routineItems={sessionRoutineId ? routinesById[sessionRoutineId]?.items : undefined}
               onAddExercise={() =>
                 push({ name: 'addExercise', routineId: null, target: 'session' })
               }
@@ -1905,29 +1949,34 @@ export function AppShell() {
           long-press-then-slide reorder inside these screens are untouched — see
           `components/SwipePager.tsx`. */}
       <View style={{ flex: 1, display: rootsCovered ? 'none' : 'flex' }}>
-        <Hold frozen={rootsCovered}>
-          <SwipePager
-            enabled={route !== 'Home' && stack.length === 0 && transition == null}
-            onDrag={onSwipeDrag}
-            onRelease={onSwipeRelease}
-          >
-            <ShellStage
-              route={route}
-              transition={transition}
-              progress={progress}
-              drag={swipeX}
-              covered={covered}
-              render={renderRoot}
-            />
-          </SwipePager>
-        </Hold>
+        {/* Covered roots also let go of their blurs — see `BlurGate`. */}
+        <BlurGate.Provider value={!rootsCovered}>
+          <Hold frozen={rootsCovered}>
+            <SwipePager
+              enabled={route !== 'Home' && stack.length === 0 && transition == null}
+              onDrag={onSwipeDrag}
+              onRelease={onSwipeRelease}
+            >
+              <ShellStage
+                route={route}
+                transition={transition}
+                progress={progress}
+                drag={swipeX}
+                covered={covered}
+                render={renderRoot}
+              />
+            </SwipePager>
+          </Hold>
+        </BlurGate.Provider>
       </View>
 
       <NavBar
         active={tab}
-        visible={route !== 'Home' && stack.length === 0 && !overlayOpen}
+        /* A sheet being up hides it as well; the pill subscribes to that
+           itself, so a sheet opening does not re-render the shell. */
+        visible={route !== 'Home' && stack.length === 0}
         onSelect={selectTab}
-        onHome={() => navigate('Home')}
+        onHome={goHome}
         drag={navDrag}
       />
 

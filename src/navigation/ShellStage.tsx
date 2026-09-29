@@ -33,7 +33,7 @@
  * it came from — so a section you are not looking at costs nothing.
  */
 
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
@@ -125,12 +125,14 @@ function StageLayer({
 }) {
   const { width: W, height: H } = useWindowDimensions();
   const kind = transition?.kind ?? null;
-  const rect = transition?.rect ?? {
-    x: W * 0.25,
-    y: H * 0.35,
-    width: W * 0.5,
-    height: H * 0.3,
-  };
+  /* Memoized: both worklets below capture it, and Reanimated treats a captured
+     object that is new on every render as a new worklet — its mapper stopped and
+     restarted on the UI thread on every render of the shell. */
+  const fallbackRect = useMemo(
+    () => ({ x: W * 0.25, y: H * 0.35, width: W * 0.5, height: H * 0.3 }),
+    [H, W],
+  );
+  const rect = transition?.rect ?? fallbackRect;
   const dir = transition?.dir ?? 1;
   const dragFrom = transition?.dragFrom ?? 0;
   /* The section being clipped: the incoming one on `open`, the outgoing one on `close`. */
