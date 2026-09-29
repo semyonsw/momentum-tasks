@@ -136,12 +136,16 @@ export function PushHost({
     if (phase === 'idle') {
       /* At rest nothing is moving, so nothing may drive the roots either. */
       rootsUnder.value = 0;
+      /* ...and the top screen is fully in. A pop ENDS at pos = 1 — that is
+         the leaving screen gone off to the right — and the screen it uncovered
+         becomes the top layer reading that same 1 as "all the way out". */
+      pos.value = 0;
       covered.value = depth > 0 ? 1 : 0;
       onRootsVisible(depth === 0);
     } else {
       onRootsVisible(depth <= 1 || (phase === 'pop' && depth === 0));
     }
-  }, [covered, depth, onRootsVisible, phase, rootsUnder]);
+  }, [covered, depth, onRootsVisible, phase, pos, rootsUnder]);
 
   /* The edge drag. Captured only for a clearly rightward move that STARTED at
      the edge, so every tap — the 46 dp back circle included — is untouched. */
@@ -202,12 +206,12 @@ export function PushHost({
       {phase === 'pop' ? (
         <>
           {depth >= 1 ? (
-            <Layer key={topKey} role="under" pos={pos}>
+            <Layer key={topKey} role="under" pos={pos} resting={false}>
               {top}
             </Layer>
           ) : null}
           {exiting.current ? (
-            <Layer key={`out:${exiting.current.key}`} role="over" pos={pos}>
+            <Layer key={`out:${exiting.current.key}`} role="over" pos={pos} resting={false}>
               <Quiet>{exiting.current.node}</Quiet>
             </Layer>
           ) : null}
@@ -215,11 +219,17 @@ export function PushHost({
       ) : (
         <>
           {showBeneath ? (
-            <Layer key="beneath" role="under" pos={pos}>
+            <Layer key="beneath" role="under" pos={pos} resting={false}>
               <Quiet>{renderBeneath()}</Quiet>
             </Layer>
           ) : null}
-          <Layer key={topKey} role="over" pos={pos} panHandlers={responder.panHandlers}>
+          <Layer
+            key={topKey}
+            role="over"
+            pos={pos}
+            resting={phase === 'idle'}
+            panHandlers={responder.panHandlers}
+          >
             {top}
             {/* The lit edge that says the screen can be dragged back. */}
             <View
@@ -240,20 +250,32 @@ export function PushHost({
   );
 }
 
+/**
+ * One screen of the stack. `resting` pins an `over` layer fully in: this was a
+ * BLACK SCREEN after every pop to a screen that was itself pushed — `Apply
+ * changes` on an AI suggestion, or plain back from it to the chat. The pop's
+ * animation ends at pos = 1, the screen it uncovered turns from `under` into
+ * `over` on the same key, and `over` at 1 is translated one screen-width off to
+ * the right, with the roots under it hidden because something is pushed. The
+ * idle effect resets `pos` too, but a JS write lands a frame later; this makes
+ * the first idle frame right on its own.
+ */
 function Layer({
   role,
   pos,
+  resting,
   panHandlers,
   children,
 }: {
   role: 'over' | 'under';
   pos: SharedValue<number>;
+  resting: boolean;
   panHandlers?: object;
   children: ReactNode;
 }) {
   const { width: W } = useWindowDimensions();
   const style = useAnimatedStyle(() => {
-    const v = pos.value;
+    const v = resting ? 0 : pos.value;
     if (role === 'over') return { opacity: 1, transform: [{ translateX: v * W }, { scale: 1 }] };
     return {
       opacity: 0.35 + 0.65 * v,

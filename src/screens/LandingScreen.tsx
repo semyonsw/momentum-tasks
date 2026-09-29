@@ -462,6 +462,9 @@ function Tile({
                 allowFontScaling={false}
                 numberOfLines={1}
                 adjustsFontSizeToFit
+                /* A floor: on Android the first fit can run before the row has a width,
+                   and without one the number opens the size of a full stop. */
+                minimumFontScale={0.6}
                 style={{
                   fontSize: 26,
                   lineHeight: 30,

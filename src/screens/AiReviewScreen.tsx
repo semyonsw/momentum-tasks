@@ -57,6 +57,7 @@ import {
   type RowField,
 } from '../lib/ai/aiProposal';
 import { tap } from '../lib/feedback';
+import { stepperFontSize } from '../lib/stepperFont';
 import { useAi } from '../state/aiStore';
 import { useLibrary } from '../state/libraryStore';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
@@ -440,8 +441,11 @@ function Stepper({
         >
           <Text
             numberOfLines={1}
-            adjustsFontSizeToFit
-            style={[{ fontSize: 20, lineHeight: 22 }, differs ? textGlow.live : null]}
+            allowFontScaling={false}
+            style={[
+              { fontSize: stepperFontSize(value), lineHeight: 22 },
+              differs ? textGlow.live : null,
+            ]}
             className={[
               'font-semibold tabular-nums',
               differs ? 'text-green-bright' : 'text-ink',

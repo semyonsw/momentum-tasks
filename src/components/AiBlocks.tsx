@@ -111,6 +111,9 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
                 <Text
                   numberOfLines={1}
                   adjustsFontSizeToFit
+                  /* A floor: on Android the first fit can run before the row has a width,
+                     and without one the number opens the size of a full stop. */
+                  minimumFontScale={0.6}
                   style={{ fontSize: 20, lineHeight: 24 }}
                   className="mt-[2px] font-semibold tabular-nums text-ink"
                 >
