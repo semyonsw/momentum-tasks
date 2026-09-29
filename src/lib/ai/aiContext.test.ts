@@ -211,6 +211,21 @@ describe('the workout context', () => {
     expect(json.setsPerCluster4w.pull).toBeGreaterThan(0);
   });
 
+  it('sends every session, not only the recent window, when it fits', () => {
+    const old = { ...workouts[0], id: 'ancient', startedAt: '2025-01-15T09:00:00.000Z' };
+    const all = buildWorkoutContext({
+      exercises: seedExercises,
+      routines: seedRoutines,
+      workouts: [...workouts, old],
+      unitSystem: 'metric',
+      lang: 'en',
+      now: NOW,
+    });
+    const sessions: { date: string }[] = JSON.parse(all.json).sessions;
+    expect(sessions.map((s) => s.date)).toContain('2025-01-15');
+    expect(all.workoutCount).toBe(workouts.length + 1);
+  });
+
   it('sheds old sessions rather than growing past the cap', () => {
     // A hundred and fifty copies of the log's heaviest session, a day apart.
     const heavy = workouts[0];
@@ -226,8 +241,9 @@ describe('the workout context', () => {
       unitSystem: 'metric',
       lang: 'en',
       now: NOW,
+      cap: 24_000,
     });
-    expect(big.json.length).toBeLessThanOrEqual(CONTEXT_CAP);
+    expect(big.json.length).toBeLessThanOrEqual(24_000);
     expect(big.workoutCount).toBeLessThan(150);
     expect(big.workoutCount).toBeGreaterThan(0);
     // Newest kept, oldest shed.
@@ -312,16 +328,18 @@ describe('the tasks context', () => {
           read: {
             '2026-09-24': { mark: 'done', note: 'chapter 3' },
             '2026-09-25': { mark: 'missed', note: '  sick   today ' },
-            '2026-01-01': { mark: 'done', note: 'too old' },
+            '2026-01-01': { mark: 'done', note: 'from winter' },
           },
         },
         today: '2026-09-27',
         lang: 'en',
       }).json,
     );
+    // The whole history by default — the January note is not "too old" any more.
     expect(noted.notes).toEqual([
       '2026-09-25 read (excused): sick today',
       '2026-09-24 read (done): chapter 3',
+      '2026-01-01 read (done): from winter',
     ]);
   });
 
@@ -340,8 +358,25 @@ describe('the tasks context', () => {
 
   it('leaves days that asked for nothing out of the daily line', () => {
     // Four days asked; the 25th was excused out of its denominator.
-    expect(json.dailyDonePct).toEqual(['09-24:100', '09-26:100', '09-27:0']);
+    expect(json.dailyDonePct).toEqual(['2026-09-24:100', '2026-09-26:100', '2026-09-27:0']);
     expect(built.dayCount).toBe(3);
+  });
+
+  it('names the days themselves, so a date can be answered', () => {
+    expect(json.tasks[0].doneOn).toEqual(['2026-09-24', '2026-09-26']);
+    expect(json.tasks[0].excusedOn).toEqual(['2026-09-25']);
+  });
+
+  it('keeps an archived task’s past, marked as archived', () => {
+    const archived = JSON.parse(
+      buildTasksContext({
+        tasks: [task('read', { startedOn: '2026-09-24', archivedAt: '2026-09-27T12:00:00.000Z' })],
+        log,
+        today: '2026-09-27',
+        lang: 'en',
+      }).json,
+    );
+    expect(archived.tasks[0]).toMatchObject({ id: 'read', done: 2, archivedOn: '2026-09-27' });
   });
 
   it('counts an unanswered past day as missed', () => {
@@ -415,8 +450,8 @@ describe('the expenses context', () => {
     expect(september.income).toBe(9000);
     expect(september.wholeMonthAmounts).toEqual(['expense Home 5000']);
     expect(september.byCategory).toEqual({ Food: 100, Home: 5000 });
-    // Nothing in the context is keyed by day, so the rent cannot land on one.
-    expect(built.json).not.toMatch(/2026-09-0\d/);
+    // In the ledger the rent is keyed by its month, never by a day.
+    expect(json.amounts).toContain('2026-09 (whole month) expense Home 5000');
   });
 
   it('covers six months, oldest first, and counts the ones with anything in them', () => {
@@ -447,7 +482,7 @@ describe('the expenses context', () => {
           value: 5000,
           when: { kind: 'month', year: 2026, month: 7 },
         }),
-        // Outside the six months: left out.
+        // Nine months back: in, because the default window is the whole history.
         amount('old', { note: 'ancient', when: { kind: 'day', date: '2025-12-01' } }),
       ],
       categories,
@@ -457,12 +492,18 @@ describe('the expenses context', () => {
       lang: 'en',
     });
     const parsed = JSON.parse(noted.json);
-    expect(parsed.notes).toEqual([
+    const withNotes = (parsed.amounts as string[]).filter((line) => line.includes(': '));
+    expect(withNotes).toEqual([
       '2026-09-20 expense Food 100: dinner with Anna',
       '2026-08-02 expense Food 3200: weekly groceries',
       '2026-08 (whole month) expense Home 5000: rent, flat on Abovyan',
+      '2025-12-01 expense Food 100: ancient',
     ]);
-    expect(noted.noteCount).toBe(3);
+    expect(noted.noteCount).toBe(4);
+    expect(noted.notes).toEqual(withNotes);
+    // Amounts with no note are listed too — every amount, not only the noted ones.
+    expect(parsed.amounts.length).toBe(noted.amountCount);
+    expect(noted.amountCount).toBeGreaterThan(withNotes.length);
   });
 
   it('sheds the oldest notes first to stay under the cap', () => {
@@ -480,16 +521,17 @@ describe('the expenses context', () => {
       currency: '֏',
       today: '2026-09-27',
       lang: 'en',
+      cap: 24_000,
     });
-    expect(capped.json.length).toBeLessThanOrEqual(CONTEXT_CAP);
-    const notes: string[] = JSON.parse(capped.json).notes;
+    expect(capped.json.length).toBeLessThanOrEqual(24_000);
+    const notes: string[] = JSON.parse(capped.json).amounts;
     expect(notes.length).toBe(capped.noteCount);
     expect(notes.length).toBeGreaterThan(20);
     expect(notes[0].startsWith('2026-09-27')).toBe(true);
   });
 
-  it('carries no notes key when nobody wrote one', () => {
-    expect(json.notes).toBeUndefined();
+  it('counts no notes when nobody wrote one', () => {
+    expect(built.notes).toEqual([]);
     expect(built.noteCount).toBe(0);
   });
 

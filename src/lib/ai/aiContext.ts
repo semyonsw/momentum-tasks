@@ -69,6 +69,15 @@ import type {
 /**
  * The size every context is held under, in characters of JSON.
  *
+ * 400,000 — about 100,000 tokens, a tenth of the model's window. At 24,000 the
+ * shedding loops were the normal path rather than the safety net: the workout
+ * chat saw 60 sessions at most, the money chat six months and only the amounts
+ * that had a note, the tasks chat 90 days. "What did I do in March?" had no
+ * answer because March had been thrown away before the question was asked. A
+ * year of everything the app records is ~300 KB, so this sends ALL of it for
+ * any realistic log and still sheds oldest-first past that.
+ *
+ * Before that:
  * 24,000 — about 6,000 tokens. It was 6,000, then 12,000 once the contexts
  * carried what the user WROTE (notes on amounts, answers after a workout), and
  * now carries the all-time records, the bodyweight line, the task notes and a
@@ -77,7 +86,7 @@ import type {
  * Still a rounding error against the model's window, and the oldest detail
  * still goes first.
  */
-export const CONTEXT_CAP = 24_000;
+export const CONTEXT_CAP = 400_000;
 
 export const LANGUAGE_NAME: Record<Language, string> = { ru: 'Russian', en: 'English' };
 
@@ -102,6 +111,8 @@ export interface WorkoutContextInput {
   sequence?: TrainingSequence;
   /** Bodyweight readings, any order — the line the records are weighed against. */
   bodyweightLog?: readonly BodyweightEntry[];
+  /** Overrides `CONTEXT_CAP` — for tests that exercise the shedding. */
+  cap?: number;
 }
 
 export interface WorkoutContext {
@@ -218,6 +229,7 @@ export function workoutFacts(input: {
 export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext {
   const { exercises, routines, workouts, numbers = {}, bodyweightKg, unitSystem, lang } = input;
   const now = input.now ?? new Date();
+  const cap = input.cap ?? CONTEXT_CAP;
   const weeks = input.weeks ?? 20;
   const byId: Record<ID, Exercise> = Object.fromEntries(exercises.map((e) => [e.id, e]));
   const windowStart = now.getTime() - weeks * 7 * DAY_MS;
@@ -325,6 +337,7 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
         const ladder = ladderOf(exercise);
         if (ladder) row.ladder = ladder.max;
         if (item.supersetGroup) row.superset = true;
+        if (exercise.cue?.trim()) row.cue = exercise.cue.trim();
         return row;
       }),
   }));
@@ -350,6 +363,8 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
       const ladder = ladderOf(e);
       if (ladder) kind.push(`rep ladder max ${ladder.max}`);
       parts.push(kind.join(', '));
+      // The user's own one-line form note — words the numbers cannot carry.
+      if (e.cue?.trim()) parts.push(`cue: ${e.cue.trim()}`);
       return parts.join(' | ');
     });
 
@@ -423,31 +438,38 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     ...(ordered[0] ? { firstWorkout: dayKey(ordered[0].startedAt) } : {}),
     ...(ordered.length ? { lastWorkout: dayKey(ordered[ordered.length - 1].startedAt) } : {}),
   };
-  const bodyweightLine = bodyweights.slice(-12).map((e) => `${dayKey(e.at)}:${e.kg}`);
+  const bodyweightLine = bodyweights.map((e) => `${dayKey(e.at)}:${e.kg}`);
 
-  const sessionRows = inWindow.map((w) => {
+  /*
+   * EVERY session, newest first — not the window. The rollups and verdicts
+   * above read the last 20 weeks because they are about the current block;
+   * "when did I last do legs before the summer?" is about the whole log.
+   */
+  const allSessions = [...workouts].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const sessionRows = allSessions.map((w) => {
     const row: Record<string, unknown> = { date: dayKey(w.startedAt) };
     if (numbers[w.id] != null) row.n = numbers[w.id];
     row.routine = w.title;
+    if (w.routineId) row.routineId = w.routineId;
     row.min = w.durationMinutes;
+    row.sets = w.setCount;
     if (w.effort) row.feel = w.effort;
     row.ex = w.exercises.filter((e) => e.setCount > 0).map((e) => `${e.name}: ${e.summary}`);
     return row;
   });
 
   /*
-   * THE DEBRIEFS — newest first, only for workouts still in the window, and each
+   * THE DEBRIEFS — newest first, for every workout still in the log, and each
    * one only if it says something. They are what the numbers cannot say ("too
    * heavy", "lower back", "make it shorter"), so they are shed LAST of anything
    * optional: down to three before the sessions go below six.
    */
-  const inWindowIds = new Set(inWindow.map((w) => w.id));
+  const loggedIds = new Set(workouts.map((w) => w.id));
   const debriefRows = (input.debriefs ?? [])
-    .filter((d) => inWindowIds.has(d.workoutId))
+    .filter((d) => loggedIds.has(d.workoutId))
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
     .map(debriefForAi)
-    .filter((row): row is Record<string, unknown> => row != null)
-    .slice(0, 12);
+    .filter((row): row is Record<string, unknown> => row != null);
   let debriefLimit = debriefRows.length;
 
   /*
@@ -489,7 +511,7 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     ...rows.keys(),
     ...routines.flatMap((r) => r.items.map((i) => i.exerciseId)),
   ]);
-  let sessionLimit = Math.min(60, sessionRows.length);
+  let sessionLimit = sessionRows.length;
   let libraryRows = library;
   let rollupLimit = rollups.length;
   const render = () =>
@@ -514,37 +536,37 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     });
 
   let json = render();
-  while (json.length > CONTEXT_CAP && sessionLimit > 6) {
+  while (json.length > cap && sessionLimit > 6) {
     sessionLimit = Math.max(6, Math.floor(sessionLimit * 0.75));
     json = render();
   }
-  if (json.length > CONTEXT_CAP) {
+  if (json.length > cap) {
     libraryRows = exercises
       .filter((e) => !e.isArchived && referenced.has(e.id))
       .map((e) => `${e.id} | ${e.name}`);
     json = render();
   }
-  while (json.length > CONTEXT_CAP && rollupLimit > 5) {
+  while (json.length > cap && rollupLimit > 5) {
     rollupLimit = Math.max(5, rollupLimit - 5);
     json = render();
   }
-  while (json.length > CONTEXT_CAP && recordLimit > 10) {
+  while (json.length > cap && recordLimit > 10) {
     recordLimit = Math.max(10, recordLimit - 5);
     json = render();
   }
-  while (json.length > CONTEXT_CAP && debriefLimit > 3) {
+  while (json.length > cap && debriefLimit > 3) {
     debriefLimit -= 1;
     json = render();
   }
-  while (json.length > CONTEXT_CAP && sessionLimit > 1) {
+  while (json.length > cap && sessionLimit > 1) {
     sessionLimit -= 1;
     json = render();
   }
-  while (json.length > CONTEXT_CAP && debriefLimit > 0) {
+  while (json.length > cap && debriefLimit > 0) {
     debriefLimit -= 1;
     json = render();
   }
-  while (json.length > CONTEXT_CAP && recordLimit > 0) {
+  while (json.length > cap && recordLimit > 0) {
     recordLimit -= 1;
     json = render();
   }
@@ -552,7 +574,7 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
   const facts = workoutFacts({ exercises, routines, workouts, now });
   return {
     json,
-    workoutCount: Math.min(sessionLimit, inWindow.length),
+    workoutCount: Math.min(sessionLimit, sessionRows.length),
     debriefCount: debriefLimit,
     ...facts,
   };
@@ -568,7 +590,28 @@ export interface TasksContextInput {
   /** `YYYY-MM-DD`. */
   today: string;
   lang: Language;
+  /** Defaults to the whole history: back to the first task or first mark, at least 90 days. */
   days?: number;
+  /** Overrides `CONTEXT_CAP` — for tests that exercise the shedding. */
+  cap?: number;
+}
+
+/** Ten years of days — a bound on a window read off user data, not a limit anyone reaches. */
+const MAX_TASK_DAYS = 3650;
+
+/** Days from the first thing the log knows about to `today`, inclusive — at least 90. */
+function taskHistoryDays(tasks: readonly Task[], log: TaskLog, today: string): number {
+  let earliest = today;
+  const consider = (day: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day) && day < earliest) earliest = day;
+  };
+  for (const task of tasks) consider(task.startedOn);
+  for (const days of Object.values(log)) for (const day of Object.keys(days)) consider(day);
+  const from = parseDay(earliest);
+  const to = parseDay(today);
+  if (!from || !to) return 90;
+  const span = Math.round((to.getTime() - from.getTime()) / DAY_MS) + 1;
+  return Math.min(MAX_TASK_DAYS, Math.max(90, span));
 }
 
 export interface TasksContext {
@@ -587,14 +630,21 @@ function scheduleLabel(task: Task): string {
 
 export function buildTasksContext(input: TasksContextInput): TasksContext {
   const { tasks, log, today, lang } = input;
-  const days = input.days ?? 90;
+  const cap = input.cap ?? CONTEXT_CAP;
+  /* The whole history by default: "how was my reading in spring?" is about a
+     spring the old 90-day window had already dropped. */
+  const days = input.days ?? taskHistoryDays(tasks, log, today);
   const first = shiftDay(today, -(days - 1));
   const window: string[] = [];
   for (let day = first; day <= today; day = shiftDay(day, 1)) window.push(day);
   const labels = weekdayLabels('en');
 
-  const live = tasks.filter((task) => task.archivedAt === null);
-  const perTask = live.map((task) => {
+  /* Archived tasks too: their past days are still the user's past, and the
+     trend screen counts them (`asksOn` stops one on the day it was archived).
+     Leaving them out made the model's daily numbers disagree with the chart. */
+  const perTask = tasks.map((task) => {
+    const doneDays: string[] = [];
+    const excusedDays: string[] = [];
     let asked = 0;
     let done = 0;
     let excused = 0;
@@ -610,10 +660,12 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       if (mark === 'missed') {
         // Excused ON PURPOSE: out of the denominator, and the run steps over it.
         excused += 1;
+        excusedDays.push(day);
         continue;
       }
       if (mark === 'done') {
         done += 1;
+        doneDays.push(day);
         run += 1;
         best = Math.max(best, run);
         byWeekday[weekday].counted += 1;
@@ -639,6 +691,7 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       row.remind = `${String(task.reminder.hour).padStart(2, '0')}:${String(task.reminder.minute).padStart(2, '0')}`;
     }
     if (task.auto) row.ticksItself = task.auto;
+    if (task.archivedAt) row.archivedOn = dayKey(task.archivedAt);
     Object.assign(row, {
       asked,
       done,
@@ -647,16 +700,20 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       streak: streakOf(task, log, today),
       bestStreak: best,
       donePctByWeekday: rates,
+      // The days themselves, so "what did I do on the 12th?" has an answer.
+      doneOn: doneDays,
+      ...(excusedDays.length ? { excusedOn: excusedDays } : {}),
     });
     return row;
   });
 
   const daily: string[] = [];
   for (const day of window) {
-    const progress = dayProgress(live, log, day);
+    const progress = dayProgress(tasks, log, day);
     // A day that asked for nothing is left out, as the trend screen leaves it out.
     if (progress.total === 0) continue;
-    daily.push(`${day.slice(5)}:${Math.round(progress.fraction * 100)}`);
+    // The full date: a window that crosses New Year has two `01-02`s otherwise.
+    daily.push(`${day}:${Math.round(progress.fraction * 100)}`);
   }
 
   /*
@@ -673,7 +730,7 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       const note = entry.note.trim().replace(/\s+/g, ' ');
       if (note === '') continue;
       const mark = entry.mark === 'done' ? 'done' : entry.mark === 'missed' ? 'excused' : 'open';
-      noted.push(`${day} ${names[taskId]} (${mark}): ${note.slice(0, 160)}`);
+      noted.push(`${day} ${names[taskId]} (${mark}): ${note}`);
     }
   }
   noted.sort((a, b) => b.localeCompare(a));
@@ -694,15 +751,15 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       ...(noteLimit > 0 ? { notes: noted.slice(0, noteLimit) } : {}),
     });
   let json = render();
-  while (json.length > CONTEXT_CAP && noteLimit > 20) {
+  while (json.length > cap && noteLimit > 20) {
     noteLimit = Math.max(20, Math.floor(noteLimit * 0.8));
     json = render();
   }
-  while (json.length > CONTEXT_CAP && dailyRows.length > 14) {
+  while (json.length > cap && dailyRows.length > 14) {
     dailyRows = dailyRows.slice(Math.ceil(dailyRows.length / 4));
     json = render();
   }
-  while (json.length > CONTEXT_CAP && noteLimit > 0) {
+  while (json.length > cap && noteLimit > 0) {
     noteLimit -= 1;
     json = render();
   }
@@ -721,7 +778,10 @@ export interface ExpensesContextInput {
   currency: string;
   today: string;
   lang: Language;
+  /** Defaults to every month from the first amount to this one, at least six. */
   months?: number;
+  /** Overrides `CONTEXT_CAP` — for tests that exercise the shedding. */
+  cap?: number;
 }
 
 export interface ExpensesContext {
@@ -730,10 +790,31 @@ export interface ExpensesContext {
   monthCount: number;
   /** Notes that made it into `json`. */
   noteCount: number;
+  /** Amounts listed one by one in `json`. */
+  amountCount: number;
+  /** The ledger lines that carry a note, newest first — for the other sections' brief. */
+  notes: string[];
 }
 
-/** A note is a line, not an essay: the first this-many characters of each. */
-const NOTE_CHARS = 140;
+/** `YYYY-MM` of an amount — a whole-month amount's month, or its day's. */
+function amountMonth(amount: Amount): string {
+  return amount.when.kind === 'month'
+    ? `${amount.when.year}-${String(amount.when.month + 1).padStart(2, '0')}`
+    : amount.when.date.slice(0, 7);
+}
+
+/** Months from the first amount's to `today`'s, inclusive — at least six, at most 20 years. */
+function moneyHistoryMonths(amounts: readonly Amount[], today: string): number {
+  let earliest = today.slice(0, 7);
+  for (const amount of amounts) {
+    const month = amountMonth(amount);
+    if (/^\d{4}-\d{2}$/.test(month) && month < earliest) earliest = month;
+  }
+  const [fy, fm] = earliest.split('-').map(Number);
+  const [ty, tm] = today.slice(0, 7).split('-').map(Number);
+  const span = (ty - fy) * 12 + (tm - fm) + 1;
+  return Math.min(240, Math.max(6, Number.isFinite(span) ? span : 6));
+}
 
 /** `YYYY-MM-01` of the month `offset` months from the one `day` is in. */
 function monthAnchor(day: string, offset: number): string {
@@ -744,7 +825,10 @@ function monthAnchor(day: string, offset: number): string {
 
 export function buildExpensesContext(input: ExpensesContextInput): ExpensesContext {
   const { amounts, categories, accounts, currency, today, lang } = input;
-  const months = input.months ?? 6;
+  const cap = input.cap ?? CONTEXT_CAP;
+  /* Every month there is money in, not the last six: "how much did the car cost
+     me last year?" is a question about a year the model was never shown. */
+  const months = input.months ?? moneyHistoryMonths(amounts, today);
   const names: Record<ID, string> = Object.fromEntries(categories.map((c) => [c.id, c.name]));
   const catName = (id: ID) => names[id] ?? 'Other';
 
@@ -758,6 +842,7 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
     // their month — and named again below, so neither is lost nor doubled.
     const totals = totalsIn(amounts, 'month', anchor);
     const byCategory: Record<string, number> = {};
+    const incomeByCategory: Record<string, number> = {};
     const wholeMonth: string[] = [];
     for (const amount of amounts) {
       const inMonth =
@@ -768,7 +853,11 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
       if (amount.when.kind === 'month') {
         wholeMonth.push(`${amount.direction} ${catName(amount.categoryId)} ${amount.value}`);
       }
-      if (amount.direction !== 'expense') continue;
+      if (amount.direction !== 'expense') {
+        const source = catName(amount.categoryId);
+        incomeByCategory[source] = (incomeByCategory[source] ?? 0) + amount.value;
+        continue;
+      }
       const name = catName(amount.categoryId);
       byCategory[name] = (byCategory[name] ?? 0) + amount.value;
       overall[name] = (overall[name] ?? 0) + amount.value;
@@ -780,6 +869,7 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
       income: totals.incomes,
       byCategory,
     };
+    if (Object.keys(incomeByCategory).length) row.incomeByCategory = incomeByCategory;
     if (wholeMonth.length) row.wholeMonthAmounts = wholeMonth;
     return row;
   });
@@ -789,37 +879,40 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
     .slice(0, 5)
     .map(([name, total]) => ({ name, total }));
 
-  const balances = accounts
-    .filter((account) => account.archivedAt === null)
-    .map((account) => {
-      let balance = account.opening;
-      for (const amount of amounts) {
-        if (amount.accountId !== account.id) continue;
-        balance += amount.direction === 'expense' ? -amount.value : amount.value;
-      }
-      return { account: account.name, balance, opening: account.opening };
-    });
+  const balances = accounts.map((account) => {
+    let balance = account.opening;
+    for (const amount of amounts) {
+      if (amount.accountId !== account.id) continue;
+      balance += amount.direction === 'expense' ? -amount.value : amount.value;
+    }
+    const row: Record<string, unknown> = {
+      account: account.name,
+      balance,
+      opening: account.opening,
+    };
+    if (account.archivedAt !== null) row.archived = true;
+    return row;
+  });
 
   /*
-   * THE NOTES. A category says "Food 42,000"; the notes say it was "dinner with
-   * Anna", "groceries for the week", "birthday cake" — which is the difference
-   * between "you spent a lot on food" and an answer that knows what the money
-   * was actually for. Every amount in the window that carries one goes in, newest
-   * first, one line each, and the OLDEST are shed first to stay under the cap.
+   * THE LEDGER — every amount in the window, one line each, newest first, with
+   * the note the user wrote on it in full. A category says "Food 42,000"; the
+   * notes say it was "dinner with Anna", "groceries for the week" — the
+   * difference between "you spent a lot on food" and an answer that knows what
+   * the money was for. It used to be only the amounts WITH a note, cut to 140
+   * characters, so "what did I spend on the 12th?" had no answer for most days.
+   * The OLDEST lines are shed first to stay under the cap. Future-dated amounts
+   * are in: they are in the month totals too, and they are real plans.
    */
   const windowStart = anchors[0];
   const accountNames: Record<ID, string> = Object.fromEntries(accounts.map((a) => [a.id, a.name]));
-  const noted = amounts
-    .filter((amount) => amount.note.trim() !== '')
-    .map((amount) => {
-      const when =
-        amount.when.kind === 'month'
-          ? `${amount.when.year}-${String(amount.when.month + 1).padStart(2, '0')}`
-          : amount.when.date;
-      return { amount, when };
-    })
+  const ledgerEntries = amounts
+    .map((amount) => ({
+      amount,
+      when: amount.when.kind === 'month' ? amountMonth(amount) : amount.when.date,
+    }))
     // A whole-month amount's key is `YYYY-MM`, which sorts before that month's days.
-    .filter(({ when }) => when >= windowStart.slice(0, 7) && when <= today)
+    .filter(({ when }) => when >= windowStart.slice(0, 7))
     .sort(
       (a, b) =>
         b.when.localeCompare(a.when) || b.amount.createdAt.localeCompare(a.amount.createdAt),
@@ -828,28 +921,32 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
       const month = amount.when.kind === 'month' ? ' (whole month)' : '';
       const account = accountNames[amount.accountId];
       const where = accounts.length > 1 && account ? ` [${account}]` : '';
-      const note = amount.note.trim().replace(/\s+/g, ' ').slice(0, NOTE_CHARS);
-      return `${when}${month} ${amount.direction} ${catName(amount.categoryId)} ${amount.value}${where}: ${note}`;
+      const note = amount.note.trim().replace(/\s+/g, ' ');
+      const line = `${when}${month} ${amount.direction} ${catName(amount.categoryId)} ${amount.value}${where}`;
+      return { line: note ? `${line}: ${note}` : line, noted: note !== '' };
     });
+  const ledger = ledgerEntries.map((entry) => entry.line);
 
   const base = {
     today,
     language: LANGUAGE_NAME[lang],
     currency,
-    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; notes are what the user wrote on individual amounts, newest first',
+    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; amounts lists every amount, newest first, as "date direction category value [account]: note" — the note, when present, is what the user wrote on it',
     months: monthRows,
     topCategories,
     balances,
   };
-  let noteLimit = noted.length;
+  let ledgerLimit = ledger.length;
   const render = () =>
-    JSON.stringify(noteLimit > 0 ? { ...base, notes: noted.slice(0, noteLimit) } : base);
+    JSON.stringify(ledgerLimit > 0 ? { ...base, amounts: ledger.slice(0, ledgerLimit) } : base);
   let json = render();
-  while (json.length > CONTEXT_CAP && noteLimit > 0) {
-    noteLimit = noteLimit > 20 ? Math.floor(noteLimit * 0.8) : noteLimit - 1;
+  while (json.length > cap && ledgerLimit > 0) {
+    ledgerLimit = ledgerLimit > 20 ? Math.floor(ledgerLimit * 0.8) : ledgerLimit - 1;
     json = render();
   }
-  return { json, monthCount, noteCount: noteLimit };
+  const sent = ledgerEntries.slice(0, ledgerLimit);
+  const notes = sent.filter((entry) => entry.noted).map((entry) => entry.line);
+  return { json, monthCount, noteCount: notes.length, amountCount: ledgerLimit, notes };
 }
 
 /* ------------------------------------------------------------------ */
@@ -920,9 +1017,9 @@ export function expensesBrief(input: {
   currency: string;
   today: string;
 }): Record<string, unknown> {
-  const built = JSON.parse(buildExpensesContext({ ...input, lang: 'en', months: 2 }).json) as {
+  const context = buildExpensesContext({ ...input, lang: 'en', months: 2 });
+  const built = JSON.parse(context.json) as {
     months: { month: string; spent: number; income: number; byCategory: Record<string, number> }[];
-    notes?: string[];
   };
   const month = built.months[built.months.length - 1];
   const top = Object.entries(month?.byCategory ?? {})
@@ -933,7 +1030,7 @@ export function expensesBrief(input: {
     currency: input.currency,
     thisMonth: month ? { month: month.month, spent: month.spent, income: month.income } : null,
     topCategoriesThisMonth: top,
-    recentNotes: (built.notes ?? []).slice(0, 10),
+    recentNotes: context.notes.slice(0, 10),
   };
 }
 

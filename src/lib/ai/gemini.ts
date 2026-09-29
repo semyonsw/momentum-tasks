@@ -35,14 +35,20 @@ export const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 export const DEFAULT_MODEL = 'gemini-3.8-flash';
 
 /**
- * 30 s for a chat turn, 10 s for each step of the key test.
+ * 90 s for a chat turn, 10 s for each step of the key test.
  *
+ * 90 since the context became the WHOLE log rather than a 24,000-character
+ * window of it: a year of sessions, amounts and task days is ~100k tokens, and a
+ * thinking model reads that before its first token. A slow answer is still an
+ * answer; a timeout is a question asked again, with the same wait again.
+ *
+ * Before that, 30:
  * A chat turn was 15 s, which a thinking model reading a 12,000-character
  * context can spend before its first token on a busy afternoon — and a turn cut
  * off at 15 s is a question the user has to ask again, which costs more than
  * waiting.
  */
-export const CHAT_TIMEOUT_MS = 30_000;
+export const CHAT_TIMEOUT_MS = 90_000;
 export const TEST_TIMEOUT_MS = 10_000;
 
 /* ------------------------------------------------------------------ */
