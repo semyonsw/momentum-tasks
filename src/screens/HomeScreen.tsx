@@ -98,6 +98,7 @@ import { Pressable } from '../components/Pressable';
 import { RollingNumber, RollingPhrase } from '../components/RollingNumber';
 import { FADE_ON, RunningText } from '../components/RunningText';
 import { useBubbleOnScroll } from '../hooks/useBubbleOnScroll';
+import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { formatElapsed, formatShortDate, formatVolumeKg } from '../lib/units';
@@ -275,19 +276,30 @@ export function HomeScreen({
   /*
    * THE CELEBRATION, once, on the mount a save came back to. The id is held for
    * the Recent row that grows in; the sparks run for as long as they take.
+   *
+   * Read on ARRIVAL, which for a mount at arrival is the mount: a section built
+   * ahead (`hooks/useArrived.ts`) would otherwise have read the save from before
+   * it happened, or thrown the sparks where nobody could see them. `undefined`
+   * is "not read yet".
    */
-  const [celebrating] = useState(() =>
-    justSaved != null && Date.now() - justSaved.at < 4000 ? justSaved.id : null,
+  const arrived = useArrived();
+  const saveNow = () =>
+    justSaved != null && Date.now() - justSaved.at < 4000 ? justSaved.id : null;
+  const [celebrating, setCelebrating] = useState<ID | null | undefined>(() =>
+    arrived ? saveNow() : undefined,
   );
-  const [sparks, setSparks] = useState(celebrating != null);
+  if (arrived && celebrating === undefined) setCelebrating(saveNow());
+  const [sparksDone, setSparksDone] = useState(false);
+  const sparks = celebrating != null && !sparksDone;
   useEffect(() => {
     if (celebrating == null) return undefined;
     onCelebrated?.();
-    const timer = setTimeout(() => setSparks(false), SPARK_MS);
+    const timer = setTimeout(() => setSparksDone(true), SPARK_MS);
     return () => clearTimeout(timer);
-    // Mount only: this is about the save that brought the screen here.
+    // Once: `celebrating` is set a single time, and this is about the save that
+    // brought the screen here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [celebrating]);
 
   /*
    * THE LIST, MEMOIZED ON EVERYTHING BUT THE BUBBLE. The bubble's flag is this
@@ -344,7 +356,14 @@ export function HomeScreen({
                 context, and eight lit panes of it would out-shout the hero. */}
               <GlassSurface tier="well" radius={radius.row} flat className="mx-lg">
                 {recent.map((session, index) => (
-                  <GrowIn key={session.id} appear={session.id === celebrating} duration={500}>
+                  /* Keyed on the celebration too: `appear` is latched when a row
+                     mounts, and in a section built ahead the saved row can mount
+                     before the arrival that decides it is the one to grow. */
+                  <GrowIn
+                    key={`${session.id}:${session.id === celebrating}`}
+                    appear={session.id === celebrating}
+                    duration={500}
+                  >
                     <RecentRow
                       session={session}
                       number={numbers[session.id]}
@@ -509,8 +528,9 @@ function Shimmer({
   const { width } = useWindowDimensions();
   const scale = useMotionScale();
   const sweep = useRef(new Animated.Value(0)).current;
+  const arrived = useArrived();
   useEffect(() => {
-    if (scale === 0) return undefined;
+    if (scale === 0 || !arrived) return undefined;
     const loop = Animated.loop(
       Animated.timing(sweep, {
         toValue: 1,
@@ -524,7 +544,7 @@ function Shimmer({
       clearTimeout(start);
       loop.stop();
     };
-  }, [delay, scale, sweep]);
+  }, [arrived, delay, scale, sweep]);
 
   const strip = 300;
   const sweepX = useMemo(
@@ -994,8 +1014,9 @@ function Hero({
    * opacity swinging over the dimmer, native-driven.
    */
   const breath = useRef(new Animated.Value(0)).current;
+  const arrived = useArrived();
   useEffect(() => {
-    if (scale === 0) return undefined;
+    if (scale === 0 || !arrived) return undefined;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(breath, {
@@ -1017,7 +1038,7 @@ function Hero({
       clearTimeout(start);
       loop.stop();
     };
-  }, [breath, scale]);
+  }, [arrived, breath, scale]);
 
   return (
     <View className="mx-lg mt-lg">

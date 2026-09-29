@@ -29,6 +29,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 
+import { useArrived } from '../hooks/useArrived';
 import { Icon } from './Icon';
 import { RollingNumber } from './RollingNumber';
 import { palette, radius, tint } from '../theme/tokens';
@@ -41,9 +42,10 @@ export function StreakFlame({ streak }: { streak: number }) {
   const breathe = useRef(new Animated.Value(0)).current;
   const hot = streak >= HOT;
   const warm = streak >= WARM;
+  const arrived = useArrived();
 
   useEffect(() => {
-    if (!hot) return;
+    if (!hot || !arrived) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(breathe, {
@@ -62,7 +64,7 @@ export function StreakFlame({ streak }: { streak: number }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [breathe, hot]);
+  }, [arrived, breathe, hot]);
   // Built once: a fresh interpolation node per render makes the flame detach and
   // re-attach its native graph, and a fresh style object defeats RollingNumber's
   // memo. Both above the early return, for the rules of hooks.

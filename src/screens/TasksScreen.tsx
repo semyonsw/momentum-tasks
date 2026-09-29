@@ -117,6 +117,7 @@ import { FloatingBubble, useHeroRecede } from '../components/FloatingBubble';
 import { RollingNumber, RollingPhrase } from '../components/RollingNumber';
 import { FADE_ON, RunningText } from '../components/RunningText';
 import { useBubbleOnScroll } from '../hooks/useBubbleOnScroll';
+import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { Icon } from '../components/Icon';
 import { ReorderRow } from '../components/ReorderRow';
@@ -229,12 +230,15 @@ export function TasksScreen({
   const closed = progress.total > 0 && open === 0 && progress.done > 0;
   const wasClosed = useRef<{ day: string; closed: boolean }>({ day, closed });
   const [celebrating, setCelebrating] = useState(false);
+  /* Built ahead and still hidden, it only keeps count: a day closed from
+     elsewhere is not one closed while you are looking at it. */
+  const arrived = useArrived();
   useEffect(() => {
     const previous = wasClosed.current;
     wasClosed.current = { day, closed };
-    if (previous.day !== day) return;
+    if (!arrived || previous.day !== day) return;
     if (closed && !previous.closed) setCelebrating(true);
-  }, [closed, day]);
+  }, [arrived, closed, day]);
   useEffect(() => {
     if (!celebrating) return;
     const timer = setTimeout(() => setCelebrating(false), SPARK_MS);
@@ -836,7 +840,9 @@ function Mark({ mark }: { mark: TaskMark | null }) {
  */
 function CheckPop({ children }: { children: React.ReactNode }) {
   const pop = useRef(new Animated.Value(0)).current;
+  const arrived = useArrived();
   useEffect(() => {
+    if (!arrived) return;
     const easing = Easing.bezier(0.34, 1.56, 0.64, 1);
     Animated.sequence([
       Animated.timing(pop, {
@@ -852,7 +858,7 @@ function CheckPop({ children }: { children: React.ReactNode }) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [pop]);
+  }, [arrived, pop]);
 
   return <Animated.View style={{ transform: [{ scale: pop }] }}>{children}</Animated.View>;
 }

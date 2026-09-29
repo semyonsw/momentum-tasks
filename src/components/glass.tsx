@@ -62,6 +62,7 @@ import { Icon, type IconName } from './Icon';
 import { MaterialSymbol, type SymbolName } from './MaterialSymbol';
 import { Pop, usePressScale } from './motion';
 import { FADE_ON, RunningText } from './RunningText';
+import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import {
   barInset,
@@ -168,8 +169,12 @@ export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
   const specs = LAMPS[section] ?? LAMPS.Workout;
   const { width, height } = useWindowDimensions();
   const breath = useRef(new Animated.Value(0)).current;
+  /* Every loop in a section waits for it to arrive (`hooks/useArrived.ts`), so a
+     section built ahead starts its breath where a fresh one would. */
+  const arrived = useArrived();
 
   useEffect(() => {
+    if (!arrived) return undefined;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(breath, {
@@ -188,7 +193,7 @@ export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [breath]);
+  }, [arrived, breath]);
   // Built once: a fresh interpolation node per render makes the Animated.View
   // detach and re-attach its native animation graph every time.
   const opacity = useMemo(
@@ -527,6 +532,7 @@ export function FloatingAction({
   const insets = useSafeAreaInsets();
   const filled = variant === 'filled' && !asleep;
   const motionScale = useMotionScale();
+  const arrived = useArrived();
   /*
    * THE MOTION PASS, three parts and none of them in the way:
    *   • it ARRIVES — fade and a 10 dp rise, 200 ms after its section, so the
@@ -539,6 +545,7 @@ export function FloatingAction({
   const wake = useRef(new Animated.Value(asleep ? 0.55 : 1)).current;
   const press = usePressScale(0.94);
   useEffect(() => {
+    if (!arrived) return;
     Animated.timing(arrive, {
       toValue: 1,
       duration: (round ? 560 : 420) * motionScale,
@@ -546,9 +553,9 @@ export function FloatingAction({
       easing: curve(round ? motion.pop : motion.ease),
       useNativeDriver: true,
     }).start();
-    // Mount only: the arrival is the section's, not the label's.
+    // Arrival only: the section's, not the label's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrive]);
+  }, [arrive, arrived]);
   useEffect(() => {
     Animated.timing(wake, {
       toValue: asleep ? 0.55 : 1,

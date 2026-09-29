@@ -43,13 +43,13 @@
  */
 
 import {
-  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from 'react';
 import { BackHandler, Text, View, useWindowDimensions } from 'react-native';
@@ -81,6 +81,7 @@ import { RoutineListScreen } from '../screens/RoutineListScreen';
 import { SequenceScreen } from '../screens/SequenceScreen';
 import { SettingsHomeScreen } from '../screens/SettingsHomeScreen';
 import { LandingScreen, type TileRect } from '../screens/LandingScreen';
+import { Hold } from './Hold';
 import { ShellStage, TRANSITION_MS, type ShellTransition } from './ShellStage';
 import { PushHost } from './PushHost';
 import { WorkoutSettingsScreen } from '../screens/WorkoutSettingsScreen';
@@ -232,6 +233,30 @@ const DEBRIEF_DELAY_MS = 1500;
 /** How long a toast with an Undo stays: long enough to read and reach. */
 const UNDO_TOAST_MS = 4500;
 
+/**
+ * The expenses window as entering the section puts it: today, in the default
+ * interval and direction, on whichever subsection it was on. The SAME object
+ * when it already stands there, so a re-seed that changes nothing re-renders
+ * nothing.
+ */
+function seedMoneyWindow(current: MoneyWindow): MoneyWindow {
+  const settings = useSettings.getState();
+  const anchor = dayKey(new Date());
+  if (
+    current.anchor === anchor &&
+    current.interval === settings.moneyDefaultInterval &&
+    current.direction === settings.moneyDefaultDirection
+  ) {
+    return current;
+  }
+  return {
+    ...current,
+    anchor,
+    interval: settings.moneyDefaultInterval,
+    direction: settings.moneyDefaultDirection,
+  };
+}
+
 export function AppShell() {
   const t = useT();
   const lang = useLanguage();
@@ -370,6 +395,20 @@ export function AppShell() {
     if (was === today) return;
     setMoneyWindow((current) => (current.anchor === was ? { ...current, anchor: today } : current));
   }, [today]);
+  /*
+   * The same re-seed once the section has been LEFT and the slide is over. The
+   * stage builds the next Expenses ahead of time (`navigation/ShellStage.tsx`),
+   * from the window as it stands then — so it has to stand where the way in
+   * would put it, or the re-seed on arrival would roll every total on screen
+   * from the old window's numbers, where a mount at arrival just showed them.
+   * And again when a default is edited in Settings, which is next door, for the
+   * same reason. The way-in re-seed stays as the backstop, a no-op otherwise.
+   */
+  const moneyDefaultInterval = useSettings((s) => s.moneyDefaultInterval);
+  const moneyDefaultDirection = useSettings((s) => s.moneyDefaultDirection);
+  useEffect(() => {
+    if (transition == null && tab !== 'Expenses') setMoneyWindow(seedMoneyWindow);
+  }, [moneyDefaultDirection, moneyDefaultInterval, tab, transition]);
   const [stack, setStack] = useState<Route[]>([]);
   const [query, setQuery] = useState('');
   /*
@@ -544,15 +583,7 @@ export function AppShell() {
          reset only the anchor on the way out, so `Opens on: Week` changed in
          Settings did nothing until the next launch — the one moment the shell
          read it. */
-      if (next === 'Expenses' && tab !== 'Expenses') {
-        const settings = useSettings.getState();
-        setMoneyWindow((current) => ({
-          ...current,
-          anchor: dayKey(new Date()),
-          interval: settings.moneyDefaultInterval,
-          direction: settings.moneyDefaultDirection,
-        }));
-      }
+      if (next === 'Expenses' && tab !== 'Expenses') setMoneyWindow(seedMoneyWindow);
       /* Which of the three transitions this is, and where it grows from. */
       const section = next === 'Home' ? (route as SectionTab) : next;
       if (next !== 'Home' && options.from) tileRects.current[next] = options.from;
@@ -1822,7 +1853,7 @@ export function AppShell() {
     ? { name: inProgress.title, focus: null }
     : (sequenceView?.next ?? choices.find((c) => c.exerciseCount > 0) ?? null);
 
-  const renderRoot = (r: ShellRoute): ReactNode => {
+  const renderRoot = (r: ShellRoute): ReactElement => {
     if (r === 'Home') {
       return (
         <LandingScreen
@@ -2220,22 +2251,3 @@ function Fallback({ onBack }: { onBack: () => void }) {
     </View>
   );
 }
-
-/**
- * The roots — Home and the four sections — FROZEN while a pushed screen fully
- * covers them. They are `display: none` then, so nothing they would draw is
- * seen; but they were still RE-RENDERED on every shell render, and during a
- * workout that is every set logged: each ✓ and each ± rebuilt Home (its hero,
- * its recent list, its number over the whole log) behind a screen that hid it.
- *
- * While frozen the element passed in is ignored and React keeps what it last
- * rendered; the moment the roots can show again — a pop, an edge drag — the
- * latest element renders once, before the frame that reveals them. Their own
- * store subscriptions still update them, so nothing they own goes stale.
- */
-const Hold = memo(
-  function Hold({ children }: { frozen: boolean; children: ReactNode }) {
-    return <>{children}</>;
-  },
-  (_previous, next) => next.frozen,
-);

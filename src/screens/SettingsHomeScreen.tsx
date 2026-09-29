@@ -89,6 +89,7 @@ import { pressedStyle } from '../components/motion';
 import { Kicker, Separator, StepperRow, TextButton, Toggle } from '../components/primitives';
 import { SparkleCircle } from '../components/AiEntryCard';
 import { useAi } from '../state/aiStore';
+import { useArrived } from '../hooks/useArrived';
 import { runBackupNow } from '../hooks/useAutoBackup';
 import { describeBackupAge } from '../lib/autoBackup';
 import {
@@ -762,8 +763,11 @@ function ThemePreview({ name }: { name: string }) {
   const custom = useSettings((s) => s.customColors);
   const [width, setWidth] = useState(0);
   const sheen = useRef(new Animated.Value(0)).current;
+  const arrived = useArrived();
 
   useEffect(() => {
+    // Not in a section built ahead of its arrival: the first pass would be over.
+    if (!arrived) return undefined;
     // `sheen` keyframes: -120% → 220% of its own width over the first 60% of
     // 4 s, then out of sight until the next pass.
     const loop = Animated.loop(
@@ -779,7 +783,7 @@ function ThemePreview({ name }: { name: string }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [sheen]);
+  }, [arrived, sheen]);
 
   const sheenWidth = width * 0.35;
   const sheenX = useMemo(

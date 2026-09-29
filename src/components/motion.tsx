@@ -44,6 +44,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Animated, Easing, View, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { curve, motion, palette, tint } from '../theme/tokens';
 
@@ -53,8 +54,10 @@ const POP = curve(motion.pop);
 
 function useEnter(duration: number, riseFrom: number, delay = 0) {
   const scale = useMotionScale();
+  const arrived = useArrived();
   const enter = useRef(new Animated.Value(scale === 0 ? 1 : 0)).current;
   useEffect(() => {
+    if (!arrived) return;
     Animated.timing(enter, {
       toValue: 1,
       duration: duration * scale,
@@ -62,9 +65,10 @@ function useEnter(duration: number, riseFrom: number, delay = 0) {
       easing: EASING,
       useNativeDriver: true,
     }).start();
-    // Mount only — see the file header on why an entrance never replays.
+    // Mount only — see the file header on why an entrance never replays — or,
+    // in a section built ahead (`hooks/useArrived.ts`), arrival only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enter]);
+  }, [enter, arrived]);
 
   /* Memoized, like every interpolation below: a fresh `interpolate()` is a fresh
      native node, and the Animated props built on it detach and re-attach on every

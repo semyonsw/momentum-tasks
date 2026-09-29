@@ -50,6 +50,7 @@ import { Icon } from './Icon';
 import { usePressScale } from './motion';
 import { FADE_ON, RunningText } from './RunningText';
 import { useAiPrompts } from '../hooks/useAiPrompts';
+import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
 import type { AiSection } from '../lib/ai/aiSchema';
@@ -187,6 +188,7 @@ function PromptChip({
  */
 function GradientLine({ text }: { text: string }) {
   const motionScale = useMotionScale();
+  const arrived = useArrived();
   const [boxWidth, setBoxWidth] = useState(0);
   const [textWidth, setTextWidth] = useState(0);
   const x = useRef(new Animated.Value(0)).current;
@@ -194,7 +196,8 @@ function GradientLine({ text }: { text: string }) {
 
   useEffect(() => {
     x.setValue(0);
-    if (travel === 0 || motionScale === 0) return undefined;
+    // Waits for its section to arrive, as `RunningText`'s does.
+    if (travel === 0 || motionScale === 0 || !arrived) return undefined;
     const phases = marqueePhases(travel);
     const ease = curve(motion.ease);
     const loop = Animated.loop(
@@ -221,7 +224,7 @@ function GradientLine({ text }: { text: string }) {
       clearTimeout(start);
       loop.stop();
     };
-  }, [motionScale, text, travel, x]);
+  }, [arrived, motionScale, text, travel, x]);
 
   const onBox = (e: LayoutChangeEvent) => {
     const width = e.nativeEvent.layout.width;

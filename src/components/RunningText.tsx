@@ -57,6 +57,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import {
   MARQUEE_DELAY_MS,
@@ -114,6 +115,7 @@ export function RunningText({
   accessibilityLabel?: string;
 }) {
   const motionScale = useMotionScale();
+  const arrived = useArrived();
   const [boxWidth, setBoxWidth] = useState(0);
   const [textWidth, setTextWidth] = useState(0);
   const x = useRef(new Animated.Value(0)).current;
@@ -123,10 +125,12 @@ export function RunningText({
    * The loop. Restarted from 0 whenever the string or either width changes, and
    * stopped on unmount — a label that kept sliding under a screen that has left
    * would be an animation nobody can see, costing frames on the one that can.
+   * Nor does it start in a section built ahead of its arrival, which would show
+   * the text already mid-slide.
    */
   useEffect(() => {
     x.setValue(0);
-    if (travel === 0 || motionScale === 0) return undefined;
+    if (travel === 0 || motionScale === 0 || !arrived) return undefined;
     const phases = marqueePhases(travel, pxPerSecond);
     const loop = Animated.loop(
       Animated.sequence([
@@ -152,7 +156,7 @@ export function RunningText({
       clearTimeout(start);
       loop.stop();
     };
-  }, [delayMs, motionScale, pxPerSecond, text, travel, x]);
+  }, [arrived, delayMs, motionScale, pxPerSecond, text, travel, x]);
 
   const onBox = (e: LayoutChangeEvent) => {
     const width = e.nativeEvent.layout.width;
