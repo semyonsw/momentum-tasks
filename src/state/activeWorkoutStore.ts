@@ -186,6 +186,16 @@ interface ActiveWorkoutState {
    * row, so "remove the only set" can only mean "I'm not doing this".
    */
   removeSet: (entryId: ID, setId: ID) => void;
+  /**
+   * Put a removed set back at `index` — the Undo on `Removed set 3`.
+   *
+   * Offered only for a LOGGED set (see `ActiveWorkoutScreen`): an unlogged row
+   * is one `+ Add set` away, a logged one is a weight and a count nobody wrote
+   * down anywhere else. An id already on the entry is ignored, so a double tap
+   * on Undo cannot make two of it; an entry that has since left the session is
+   * ignored too — its own Undo is the way back.
+   */
+  insertSet: (entryId: ID, set: DraftSet, index: number) => void;
   /** Drop the bottom row — the other half of `addSet`. Four sets back to three. */
   removeLastSet: (entryId: ID) => void;
   /** Applies the overload suggestion to every not-yet-completed set. */
@@ -632,7 +642,10 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
         const { session, rest } = get();
         if (!session) return;
         set({
-          session: mapSet(session, entryId, setId, (s) => ({
+          // The measured rest goes with the ✓ it was measured for: `completeSet`
+          // only writes one when a rest is on screen, so a set ticked again later
+          // with no rest running would otherwise log a rest that never happened.
+          session: mapSet(session, entryId, setId, ({ restTakenSeconds: _rest, ...s }) => ({
             ...s,
             isCompleted: false,
             completedAt: null,
@@ -701,8 +714,9 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
 
         set({
           session: mapEntry(session, entryId, (entry) => {
-            // Refused once anything is logged: see the note on the action.
-            if (entry.sets.some((s) => s.isCompleted)) return entry;
+            // Refused once anything is logged: see the note on the action. And
+            // once warm-ups are there — the ramp is added once, not per tap.
+            if (entry.sets.some((s) => s.isCompleted || s.isWarmup)) return entry;
 
             const rows: DraftSet[] = warmups.map((warmup) => ({
               localId: uid('set'),
@@ -760,6 +774,19 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
           // A timer with nothing left to log into is a timer that can't be
           // committed. Drop it rather than leaving an orphan running.
           setTimer: setTimer?.setId === setId ? null : setTimer,
+        });
+      },
+
+      insertSet: (entryId, row, index) => {
+        const { session } = get();
+        if (!session) return;
+        const entry = session.entries.find((e) => e.localId === entryId);
+        if (!entry || entry.sets.some((s) => s.localId === row.localId)) return;
+        const at = Math.max(0, Math.min(entry.sets.length, Math.trunc(index)));
+        set({
+          session: mapEntry(session, entryId, (e) =>
+            withLadderPlan({ ...e, sets: [...e.sets.slice(0, at), row, ...e.sets.slice(at)] }),
+          ),
         });
       },
 

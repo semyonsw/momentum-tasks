@@ -378,6 +378,7 @@ export function ActiveWorkoutScreen({
   const addSet = useActiveWorkout((s) => s.addSet);
   const addWarmupSets = useActiveWorkout((s) => s.addWarmupSets);
   const removeSet = useActiveWorkout((s) => s.removeSet);
+  const insertSet = useActiveWorkout((s) => s.insertSet);
   const removeEntry = useActiveWorkout((s) => s.removeEntry);
   const insertEntry = useActiveWorkout((s) => s.insertEntry);
   const moveEntry = useActiveWorkout((s) => s.moveEntry);
@@ -434,8 +435,9 @@ export function ActiveWorkoutScreen({
   const warmupPlans = useMemo(() => {
     const plans: Record<ID, { sets: WarmupSet[]; summary: string }> = {};
     for (const entry of session?.entries ?? []) {
-      // Nothing to warm up for once the exercise is under way.
-      if (entry.sets.some((set) => set.isCompleted)) continue;
+      // Nothing to warm up for once the exercise is under way — or once its
+      // warm-ups are already on it: a second tap used to add the ramp twice.
+      if (entry.sets.some((set) => set.isCompleted || set.isWarmup)) continue;
       // The first working set's weight is what the rungs are a fraction of.
       const working = entry.sets.find((set) => !set.isWarmup)?.weightKg ?? null;
       const sets = warmupSets({
@@ -716,6 +718,32 @@ export function ActiveWorkoutScreen({
     [removing],
   );
 
+  /**
+   * A LOGGED set just left: say so, with the Undo that puts it back where it
+   * was. Unlogged rows go quietly — `+ Add set` is their way back, and a toast
+   * on every `− Remove set` would be noise over the one removal that costs data.
+   */
+  const offerSetUndo = useCallback(
+    (entryId: ID, removed: DraftSet, index: number) => {
+      const name =
+        useActiveWorkout.getState().session?.entries.find((e) => e.localId === entryId)?.exercise
+          .name ?? '';
+      setToast({
+        text: t('Removed a logged set from {name}', { name }),
+        key: Date.now(),
+        action: {
+          label: t('Undo'),
+          onPress: () => {
+            tap();
+            insertSet(entryId, removed, index);
+            setToast(null);
+          },
+        },
+      });
+    },
+    [insertSet, t],
+  );
+
   const openFocus = useCallback(() => setFocusOpen(true), []);
 
   /*
@@ -734,6 +762,7 @@ export function ActiveWorkoutScreen({
     handleToggleSet,
     handlePressTimer,
     handleRemoveEntry,
+    offerSetUndo,
     lift,
     warmupPlans,
     onEditExercise,
@@ -743,6 +772,7 @@ export function ActiveWorkoutScreen({
     handleToggleSet,
     handlePressTimer,
     handleRemoveEntry,
+    offerSetUndo,
     lift,
     warmupPlans,
     onEditExercise,
@@ -767,7 +797,13 @@ export function ActiveWorkoutScreen({
         if (plan) addWarmupSets(entryId, plan.sets);
       },
       onAddSet: () => addSet(entryId),
-      onRemoveSet: (setId) => removeSet(entryId, setId),
+      onRemoveSet: (setId) => {
+        const sets = entryNow()?.sets ?? [];
+        const index = sets.findIndex((set) => set.localId === setId);
+        const removed = sets[index];
+        removeSet(entryId, setId);
+        if (removed?.isCompleted) live.current.offerSetUndo(entryId, removed, index);
+      },
       onAcceptOverload: () => acceptOverload(entryId),
       onDismissOverload: () => dismissOverload(entryId),
       onRemoveExercise: () => live.current.handleRemoveEntry(entryId),

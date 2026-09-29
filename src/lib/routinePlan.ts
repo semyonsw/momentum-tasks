@@ -339,3 +339,41 @@ export function performedSetCounts(
     completedSets: entry.sets.filter((s) => s.isCompleted).length,
   }));
 }
+
+/* ------------------------------------------------------------------ */
+/* Unsaved edits                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Would leaving the routine editor now lose something?
+ *
+ * The editor is a draft committed on `Save`, and backing out used to drop the
+ * draft without a word — four sets nudged to five, a rolled routine, a new name,
+ * all gone on one ‹. This is the question the editor asks before it lets go.
+ *
+ * ORDER IS THE SEQUENCE, NOT THE FIELD: an older routine can carry `order`
+ * values with gaps in them, and a drag that renumbers them densely and a drag
+ * back to where it started is no edit at all. Everything else is compared field
+ * by field rather than through `JSON.stringify`, which would call a key that
+ * went `undefined` → absent a change.
+ */
+export function routineDraftChanged(
+  saved: { name: string; items: readonly RoutineItem[] },
+  draft: { name: string; items: readonly RoutineItem[] },
+): boolean {
+  if (saved.name !== draft.name) return true;
+  if (saved.items.length !== draft.items.length) return true;
+  const before = [...saved.items].sort((a, b) => a.order - b.order);
+  return draft.items.some((item, index) => {
+    const was = before[index];
+    return (
+      item.id !== was.id ||
+      item.exerciseId !== was.exerciseId ||
+      item.targetSets !== was.targetSets ||
+      item.targetRepsMin !== was.targetRepsMin ||
+      item.targetRepsMax !== was.targetRepsMax ||
+      item.transitionRestSeconds !== was.transitionRestSeconds ||
+      item.supersetGroup !== was.supersetGroup
+    );
+  });
+}

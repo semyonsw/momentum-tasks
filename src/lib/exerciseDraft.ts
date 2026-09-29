@@ -490,3 +490,22 @@ export function applyDraftToExercise(draft: ExerciseDraft, existing: Exercise): 
     equipment: existing.equipment,
   };
 }
+
+/**
+ * Would backing out of the exercise editor now lose something?
+ *
+ * The editor is reached mid-workout (`Rest, targets and cue`), between sets, one
+ * handed — and a rest nudged to 3:00 followed by a ‹ meant as "done" used to be
+ * gone without a word. Field by field, the muscles as an ordered list: the first
+ * one picked is the primary, so a reorder is an edit.
+ */
+export function exerciseDraftChanged(initial: ExerciseDraft, draft: ExerciseDraft): boolean {
+  return (Object.keys(initial) as (keyof ExerciseDraft)[]).some((key) => {
+    const was = initial[key];
+    const now = draft[key];
+    if (Array.isArray(was) && Array.isArray(now)) {
+      return was.length !== now.length || was.some((value, i) => value !== now[i]);
+    }
+    return was !== now;
+  });
+}

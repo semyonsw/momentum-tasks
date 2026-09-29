@@ -45,7 +45,14 @@ import type { DraftSet } from '../lib/draft';
 import type { Exercise, UnitSystem } from '../types/models';
 import { nudgeSet, nudgeSteps } from '../lib/setNudge';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
-import { countUnitLabel, formatCount, formatWeight, lbToKg, unitLabel } from '../lib/units';
+import {
+  countUnitLabel,
+  formatCount,
+  formatWeight,
+  lbToKg,
+  parseCountInput,
+  unitLabel,
+} from '../lib/units';
 import type { SetField } from './SetRow';
 import { useLanguage, useT } from '../hooks/useT';
 
@@ -75,6 +82,8 @@ export function QuickAdjust({
   const inputRef = useRef<TextInput>(null);
 
   const isWeight = field === 'weight';
+  /** A clock cell: typed as minutes, so it needs the decimal point. */
+  const isTimeCount = exercise.countUnit === 'seconds' || exercise.countUnit === 'rounds';
   /*
    * Chips are expressed in the user's own units; kg is the storage unit only.
    * Weight has its own pair of steps (±0.5 / ±2); a count keeps the doubling
@@ -123,13 +132,15 @@ export function QuickAdjust({
   };
 
   const commitTyped = () => {
-    const parsed = Number(buffer.replace(',', '.'));
-    if (!Number.isNaN(parsed) && buffer.trim() !== '') {
-      if (isWeight) {
+    if (isWeight) {
+      const parsed = Number(buffer.replace(',', '.'));
+      if (!Number.isNaN(parsed) && buffer.trim() !== '') {
         onChange({ weightKg: unitSystem === 'imperial' ? lbToKg(parsed) : parsed });
-      } else {
-        onChange({ count: Math.max(0, Math.round(parsed)) });
       }
+    } else {
+      // In the unit the cell shows — minutes on a timed one. See `parseCountInput`.
+      const count = parseCountInput(buffer, exercise.countUnit);
+      if (count != null) onChange({ count });
     }
     setTyping(false);
     setBuffer('');
@@ -170,7 +181,7 @@ export function QuickAdjust({
             onChangeText={setBuffer}
             onBlur={commitTyped}
             onSubmitEditing={commitTyped}
-            keyboardType={isWeight ? 'decimal-pad' : 'number-pad'}
+            keyboardType={isWeight || isTimeCount ? 'decimal-pad' : 'number-pad'}
             selectTextOnFocus
             placeholder={displayValue}
             placeholderTextColor="#57615C"

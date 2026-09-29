@@ -135,6 +135,32 @@ export function formatCount(count: number, countUnit: CountUnit): string {
   return String(count);
 }
 
+/**
+ * A count TYPED into a set's editor, read in the unit the cell shows.
+ *
+ * A timed cell reads `2:00` over `MIN`, so the number typed into it is minutes:
+ * `3` is three minutes, `1.5` (or `1,5`) is a minute and a half, and `1:30` is
+ * read as the clock it looks like. It used to go straight into `count` as
+ * seconds, so the `3` meant for a three-minute plank logged a three-second one —
+ * and every prefill and overload verdict after it inherited the three seconds.
+ * Reps and metres are the plain integer they look like.
+ *
+ * Null for anything that is not a number, so the caller keeps the old value
+ * rather than writing a zero nobody typed.
+ */
+export function parseCountInput(text: string, countUnit: CountUnit): number | null {
+  const trimmed = text.trim().replace(',', '.');
+  if (trimmed === '') return null;
+  const timed = countUnit === 'seconds' || countUnit === 'rounds';
+  if (timed) {
+    const clock = /^(\d+):(\d{1,2})$/.exec(trimmed);
+    if (clock) return Number(clock[1]) * 60 + Math.min(59, Number(clock[2]));
+  }
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(timed ? value * 60 : value);
+}
+
 /** "3 min" / "45 sec" — a duration in the coarsest unit that stays exact. */
 export function formatDuration(seconds: number, lang: Language = 'en'): string {
   if (seconds <= 0) return t('no rest', lang);

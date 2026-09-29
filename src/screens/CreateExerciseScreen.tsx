@@ -120,6 +120,8 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { ConfirmSheet } from '../components/ConfirmSheet';
+import { useLeaveGuard } from '../navigation/leaveGuard';
 import { ScreenHeader } from '../components/ScreenHeader';
 import {
   FieldWell,
@@ -137,6 +139,7 @@ import {
   bumpDraftRest,
   bumpDraftSets,
   bumpLadderMax,
+  exerciseDraftChanged,
   followSettingsRest,
   toggleLadder,
   toggleMaxReps,
@@ -277,11 +280,28 @@ export function CreateExerciseScreen({
         : [...draft.muscleGroups, muscle],
     });
 
+  /*
+   * BACK ASKS, ONCE THERE IS SOMETHING TO LOSE — the routine editor's rule, for
+   * the same reason: `Save` is still the commit and backing out still cancels,
+   * but not silently. Hardware back and the edge swipe go through the shell,
+   * so they are guarded through `navigation/leaveGuard.ts`.
+   */
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  /** Discarded and on the way out: nothing left to guard during the exit slide. */
+  const [left, setLeft] = useState(false);
+  const dirty = exerciseDraftChanged(initial, draft);
+  const handleBack = () => {
+    if (dirty) setConfirmingLeave(true);
+    else onBack();
+  };
+  const interceptBack = dirty && !left && !confirmingLeave;
+  useLeaveGuard(interceptBack, () => setConfirmingLeave(true));
+
   return (
     <View className="flex-1 bg-bg">
       <ScreenHeader
         kicker={mode === 'edit' ? t('Edit exercise') : t('New exercise')}
-        onBack={onBack}
+        onBack={handleBack}
         action={{
           label: mode === 'edit' ? t('Save') : t('Create'),
           // Demoted while the name is empty: an exercise with no name is a row you
@@ -654,6 +674,22 @@ export function CreateExerciseScreen({
           </Text>
         )}
       </ScrollView>
+
+      {confirmingLeave ? (
+        <ConfirmSheet
+          tone="danger"
+          title={t('Discard your changes?')}
+          body={t('Your edits to this exercise are not saved yet.')}
+          confirmLabel={t('Discard changes')}
+          cancelLabel={t('Keep editing')}
+          onConfirm={() => {
+            setLeft(true);
+            setConfirmingLeave(false);
+            onBack();
+          }}
+          onCancel={() => setConfirmingLeave(false)}
+        />
+      ) : null}
     </View>
   );
 }

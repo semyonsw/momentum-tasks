@@ -87,6 +87,7 @@ import { useAutoBackup } from './src/hooks/useAutoBackup';
 import { useAutoRounds } from './src/hooks/useAutoRounds';
 import { useReminders } from './src/hooks/useReminders';
 import { useTimerAlerts } from './src/hooks/useTimerAlerts';
+import { useSetTimerCommit } from './src/hooks/useSetTimerCommit';
 
 /*
  * Timer alerts — rest ending, and the bell on a timed hold.
@@ -165,11 +166,13 @@ export default function App() {
      * nobody to tell. The store caught that throw and started empty, which is
      * indistinguishable on screen from having never trained.
      *
-     * This is the second attempt, from a point where that cannot happen. It is a
-     * no-op-shaped few milliseconds when the first read worked, and it is the
-     * difference between "the app forgot my history" and not, when it did not.
+     * This is the second attempt, from a point where that cannot happen — and
+     * only when the first one failed. On a launch where it worked, re-reading
+     * every row, re-parsing every workout and handing the store a new array that
+     * equals the old one re-rendered every history subscriber and re-ran every
+     * overload verdict in the middle of the launch animation, to learn nothing.
      */
-    useWorkoutHistory.getState().reloadHistory();
+    if (useWorkoutHistory.getState().loadFailed) useWorkoutHistory.getState().reloadHistory();
     /*
      * Once, on the first launch after upgrading. In an effect rather than at module
      * scope because it is async and it touches two storage systems, and a side
@@ -323,13 +326,15 @@ function Reminders() {
  * The shell renders only the top of its stack, so anything mounted inside the
  * session screen stops the moment `Add an exercise` is pushed over it or the user
  * backs out to Home mid-rest. Two things cannot afford that: the pocket alarms
- * (`useTimerAlerts`) and the boxing round chain (`useAutoRounds`) — both read the
- * store and the clock and nothing on screen. A sibling rendering nothing rather
+ * (`useTimerAlerts`), the boxing round chain (`useAutoRounds`) and the bell that
+ * logs a countdown set (`useSetTimerCommit`) — all read the store and the clock
+ * and nothing on screen. A sibling rendering nothing rather
  * than hooks inside `AppShell`, so a rest starting re-renders this and not the
  * whole app.
  */
 function SessionClock() {
   useTimerAlerts();
   useAutoRounds();
+  useSetTimerCommit();
   return null;
 }

@@ -1365,6 +1365,28 @@ describe('editing a finished workout', () => {
     expect(onDisk(workout.id)?.sets.length).toBeGreaterThan(0);
   });
 
+  it('restoreWorkout undoes a removal, on disk too', () => {
+    const workout = saved();
+    const extra = seedExercises.find((e) => !workout.exercises.some((x) => x.exerciseId === e.id));
+    useWorkoutHistory.getState().addWorkoutExercise(workout.id, extra!);
+    const snapshot = current(workout.id)!;
+
+    useWorkoutHistory.getState().deleteWorkoutExercise(workout.id, extra!.id);
+    expect(useWorkoutHistory.getState().restoreWorkout(snapshot)).toBe(true);
+
+    expect(current(workout.id)?.exercises.some((e) => e.exerciseId === extra!.id)).toBe(true);
+    expect(onDisk(workout.id)?.sets.length).toBe(snapshot.sets.length);
+  });
+
+  it('restoreWorkout will not bring back a workout that was deleted', () => {
+    const workout = saved();
+    const snapshot = current(workout.id)!;
+    useWorkoutHistory.getState().deleteWorkout(workout.id);
+
+    expect(useWorkoutHistory.getState().restoreWorkout(snapshot)).toBe(false);
+    expect(current(workout.id)).toBeUndefined();
+  });
+
   it('does nothing for a workout that is not there', () => {
     expect(useWorkoutHistory.getState().editWorkout('nope', { title: 'x' })).toBe(false);
     expect(useWorkoutHistory.getState().addWorkoutSet('nope', 'ex_x')).toBe(false);

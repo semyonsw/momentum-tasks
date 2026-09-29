@@ -102,7 +102,7 @@ import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { formatElapsed, formatShortDate, formatVolumeKg } from '../lib/units';
-import { isResting, useActiveWorkout } from '../state/activeWorkoutStore';
+import { isResting, useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStore';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
 import {
   curve,
@@ -162,6 +162,16 @@ export interface WorkoutInProgress {
   total: number;
 }
 
+/**
+ * What the shell hands down about the running workout: which one, and since when.
+ *
+ * NOT its set counts. Those move on every ✓, and the shell reading them meant
+ * every set logged re-rendered the whole shell — every route, every memo check —
+ * in the same frame as the tick's flash and the rest starting. This screen reads
+ * them itself (`useSessionProgress`), so a ✓ repaints the card that shows them.
+ */
+export type RunningWorkout = Pick<WorkoutInProgress, 'title' | 'startedAt'>;
+
 interface HomeScreenProps {
   /**
    * The workout already running, if any. It gets the top of the screen and the
@@ -169,7 +179,7 @@ interface HomeScreenProps {
    * rather than to the routine that was tapped — a live session is never
    * clobbered, and the user has to be able to see why.
    */
-  inProgress: WorkoutInProgress | null;
+  inProgress: RunningWorkout | null;
   sequence: SequenceView | null;
   /** Every routine, in list order. */
   choices: RoutineChoice[];
@@ -211,7 +221,7 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({
-  inProgress,
+  inProgress: running,
   sequence,
   choices,
   recent,
@@ -230,6 +240,11 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const t = useT();
   const plural = usePlural();
+  const progress = useSessionProgress();
+  const inProgress = useMemo<WorkoutInProgress | null>(
+    () => (running ? { ...running, done: progress.done, total: progress.total } : null),
+    [progress.done, progress.total, running],
+  );
   const bars = useBarInsets();
   const next = sequence?.next ?? null;
   /*

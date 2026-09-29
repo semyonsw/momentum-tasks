@@ -65,7 +65,10 @@
  *     is decided mid-exercise, with chalk on your hands), and under it two chips,
  *     `⏸ Rest 1:30 | ▶ Focus`. `− Remove set` takes the LAST row and is not
  *     offered on a one-row exercise — removing that row is removing the
- *     exercise, which stays behind the ✎ with its Undo.
+ *     exercise. That has its OWN control, a coral bin beside the ✎: taking an
+ *     exercise out used to mean opening edit mode or pressing `−` once per set
+ *     until the last one took the card with it, and "skip the leg press, it's
+ *     taken" is decided in a second. It does not ask; the screen's Undo covers it.
  *   • IN EDIT MODE the ✎ becomes a green `Done` pill, `EDITING PLAN` appears over
  *     the name, every set row grows its own coral `−` (so you remove the set you
  *     mean, not the bottom one), and the footer becomes `+ Add set`, `+ Warm-up`
@@ -565,6 +568,12 @@ function ExerciseCardComponent({
             ) : null}
           </Pressable>
 
+          {/* THE WAY OUT OF AN EXERCISE, in one tap and without edit mode — see
+              the file header. Edit mode has its own `Remove exercise` row. */}
+          {onRemoveExercise && !isEditing ? (
+            <RemoveCircle onPress={onRemoveExercise} name={entry.exercise.name} />
+          ) : null}
+
           {/* THE DOOR INTO EDIT MODE, and the way out of it. */}
           {onToggleEditing ? (
             isEditing ? (
@@ -1005,6 +1014,45 @@ function EditCircle({ onPress, name }: { onPress: () => void; name: string }) {
         }}
       >
         <Icon name="edit" size={16} color={palette.inkMuted} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+/**
+ * The bin beside the ✎: the same 36 dp glass circle, coral glyph. It does not
+ * ask — the screen slides the card out and offers the Undo, logged sets and all.
+ */
+function RemoveCircle({ onPress, name }: { onPress: () => void; name: string }) {
+  const t = useT();
+  const press = usePressScale(0.88);
+  return (
+    <Pressable
+      onPress={() => {
+        undo();
+        onPress();
+      }}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={t('Remove {name} from this workout', { name })}
+      className="ml-sm"
+    >
+      <Animated.View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 9999,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(224,115,95,0.06)',
+          borderWidth: 1,
+          borderColor: 'rgba(224,115,95,0.16)',
+          transform: press.style.transform,
+        }}
+      >
+        <Icon name="trash" size={16} color={danger} />
       </Animated.View>
     </Pressable>
   );

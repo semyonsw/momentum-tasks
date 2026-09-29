@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  editBalanceInput,
   parseBalanceInput,
   type Amount,
   type MoneyAccount,
@@ -325,5 +326,18 @@ describe('parseBalanceInput', () => {
 
   it('keeps no more digits than the keypad allows', () => {
     expect(parseBalanceInput('12345678901234567').digits).toBe('123456789012');
+  });
+});
+
+describe('editBalanceInput', () => {
+  it('reads a backspace on its own thousands comma as a deletion, not a fraction', () => {
+    expect(editBalanceInput('40,000', '40,00')).toBe('4000');
+    expect(editBalanceInput('-1,250', '-1,25')).toBe('-125');
+    expect(editBalanceInput('1,000', '1000')).toBe('1000');
+  });
+
+  it('still drops a typed or pasted fraction', () => {
+    expect(editBalanceInput('1,234', '1,234.50')).toBe('1234');
+    expect(editBalanceInput('', '40 000,00')).toBe('40000');
   });
 });

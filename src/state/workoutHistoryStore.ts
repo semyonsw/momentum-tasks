@@ -211,6 +211,13 @@ interface WorkoutHistoryState {
    * `deleteWorkout`, which asks first.
    */
   deleteWorkoutExercise: (workoutId: ID, exerciseId: ID) => boolean;
+  /**
+   * Put a workout back exactly as a snapshot taken before an edit had it — the
+   * Undo on `Removed a set` and `Removed Barbell row` in History. Refused (false)
+   * for a workout that has since been deleted: the Undo restores an edit, it
+   * does not resurrect a record the user threw away on purpose.
+   */
+  restoreWorkout: (snapshot: CompletedWorkout) => boolean;
 
   clearHistory: () => void;
   /**
@@ -524,6 +531,11 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()((set, get) => ({
 
     const next = removeExerciseFromWorkout(workout, exerciseId, bodyweightFor(workout));
     return next ? writeEdited(set, get, next) : false;
+  },
+
+  restoreWorkout: (snapshot) => {
+    if (!get().workouts.some((w) => w.id === snapshot.id)) return false;
+    return writeEdited(set, get, snapshot);
   },
 
   clearHistory: () => {

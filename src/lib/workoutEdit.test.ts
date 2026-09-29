@@ -221,14 +221,15 @@ describe('adding a set', () => {
 
   it('lands in POSITION, not at the end of the session', () => {
     /*
-     * A row appended to the first of two exercises must sort before the second
-     * exercise's rows: `setIndex` orders the rows on disk and prints in the CSV.
+     * A row appended to the first of two exercises is that exercise's NEXT set,
+     * and it sits with that exercise's rows rather than after the second one's.
+     * `setIndex` counts within an exercise — see `reindexSets`.
      */
     const next = addSetToWorkout(workout(), pullup.id, 'new1');
-    const order = [...(next?.sets ?? [])]
-      .sort((a, b) => a.setIndex - b.setIndex)
-      .map((s) => s.exerciseId);
-    expect(order).toEqual([pullup.id, pullup.id, pullup.id, plank.id]);
+    const rows = next?.sets ?? [];
+    expect(rows.map((s) => s.exerciseId)).toEqual([pullup.id, pullup.id, pullup.id, plank.id]);
+    expect(rows.find((s) => s.id === 'new1')?.setIndex).toBe(2);
+    expect(rows.find((s) => s.exerciseId === plank.id)?.setIndex).toBe(0);
   });
 
   it('takes the unit off the snapshot for a time-counted exercise', () => {
@@ -339,7 +340,9 @@ describe('reindexing', () => {
       ],
     };
     expect(reindexSets(scrambled).map((s) => s.id)).toEqual(['a1', 'a2', 'b']);
-    expect(reindexSets(scrambled).map((s) => s.setIndex)).toEqual([0, 1, 2]);
+    // Counted within each exercise, the way a saved session writes them — the
+    // plank's one row is ITS first set, which `restMedians` reads as a transition.
+    expect(reindexSets(scrambled).map((s) => s.setIndex)).toEqual([0, 1, 0]);
   });
 
   it('keeps a row whose exercise has no snapshot, at the end', () => {

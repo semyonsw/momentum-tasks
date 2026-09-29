@@ -127,7 +127,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from '../components/Pressable';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
-import { GlassSurface } from '../components/glass';
+import { GlassSurface, Toast, type ToastAction } from '../components/glass';
 import { FADE_ON, RunningText } from '../components/RunningText';
 import { Icon } from '../components/Icon';
 import { pressedStyle, Reveal } from '../components/motion';
@@ -268,6 +268,11 @@ export interface HistoryScreenProps {
   /** Take an exercise out, rows and all. False when it was the last one. */
   onRemoveExercise: (workoutId: ID, exerciseId: ID) => boolean;
   /**
+   * Put a workout back as it was before a removal — the toast's Undo. Absent =
+   * removals still happen, with no Undo offered.
+   */
+  onRestoreWorkout?: (snapshot: CompletedWorkout) => void;
+  /**
    * Open the library picker to put an exercise INTO a finished workout.
    *
    * Optional because it is the one edit on this screen that needs navigation, and a
@@ -295,6 +300,7 @@ export function HistoryScreen({
   onEditWorkout,
   onAddSet,
   onRemoveExercise,
+  onRestoreWorkout,
   onAddExercise,
   numbers,
   onSetNumber,
@@ -368,29 +374,83 @@ export function HistoryScreen({
    * redraw only when their own workout, number or open state changes.
    */
   const latest = useRef({
+    t,
+    workouts,
     onEditSet,
     onDeleteSet,
     onEditWorkout,
     onAddSet,
     onRemoveExercise,
+    onRestoreWorkout,
     onAddExercise,
   });
   latest.current = {
+    t,
+    workouts,
     onEditSet,
     onDeleteSet,
     onEditWorkout,
     onAddSet,
     onRemoveExercise,
+    onRestoreWorkout,
     onAddExercise,
   };
+
+  /*
+   * REMOVING FROM THE RECORD OFFERS AN UNDO, the session's rule. A set's ✕ and
+   * `Remove exercise` are one tap each, and the "way back" they had was `+ Add a
+   * set` — a default row, not the 82.5 × 6 that was there. The workout is
+   * snapshotted before the edit and the toast's Undo writes the snapshot back.
+   */
+  const [toast, setToast] = useState<{ text: string; key: number; action: ToastAction } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), UNDO_TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  const withUndo = (workoutId: ID, text: string, remove: () => boolean): boolean => {
+    const snapshot = latest.current.workouts.find((w) => w.id === workoutId);
+    const removed = remove();
+    const restore = latest.current.onRestoreWorkout;
+    if (removed && snapshot && restore) {
+      setToast({
+        text,
+        key: Date.now(),
+        action: {
+          label: t('Undo'),
+          onPress: () => {
+            tap();
+            restore(snapshot);
+            setToast(null);
+          },
+        },
+      });
+    }
+    return removed;
+  };
+  const undoable = useRef(withUndo);
+  undoable.current = withUndo;
+
   const actions = useMemo<RowActions>(
     () => ({
       editSet: (workoutId, setId, patch) => latest.current.onEditSet(workoutId, setId, patch),
-      deleteSet: (workoutId, setId) => latest.current.onDeleteSet(workoutId, setId),
+      deleteSet: (workoutId, setId) =>
+        undoable.current(workoutId, latest.current.t('Removed a set'), () =>
+          latest.current.onDeleteSet(workoutId, setId),
+        ),
       editWorkout: (workoutId, patch) => latest.current.onEditWorkout(workoutId, patch),
       addSet: (workoutId, exerciseId) => latest.current.onAddSet(workoutId, exerciseId),
-      removeExercise: (workoutId, exerciseId) =>
-        latest.current.onRemoveExercise(workoutId, exerciseId),
+      removeExercise: (workoutId, exerciseId) => {
+        const name =
+          latest.current.workouts
+            .find((w) => w.id === workoutId)
+            ?.exercises.find((e) => e.exerciseId === exerciseId)?.name ?? '';
+        return undoable.current(workoutId, latest.current.t('Removed {name}', { name }), () =>
+          latest.current.onRemoveExercise(workoutId, exerciseId),
+        );
+      },
       addExercise: (workoutId) => latest.current.onAddExercise?.(workoutId),
       toggle: (workoutId) => {
         tap();
@@ -650,9 +710,14 @@ export function HistoryScreen({
           onCancel={() => setDeleting(null)}
         />
       ) : null}
+
+      {toast ? <Toast key={toast.key} label={toast.text} action={toast.action} /> : null}
     </View>
   );
 }
+
+/** How long the Undo after a removal stays up — the session screen's number. */
+const UNDO_TOAST_MS = 4500;
 
 /* ------------------------------------------------------------------ */
 

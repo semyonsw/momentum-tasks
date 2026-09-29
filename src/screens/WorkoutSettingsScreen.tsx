@@ -195,11 +195,14 @@ export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
   const workouts = useWorkoutHistory((s) => s.workouts);
   const workoutCount = workouts.length;
   /*
-   * Counted from the DATABASE, once per render of this screen, rather than from the
-   * array above — the whole point is to be able to disagree with it. Cheap: one
-   * `COUNT(*)` over an indexed table, on a screen nobody opens mid-set.
+   * Counted from the DATABASE rather than from the array above — the whole point
+   * is to be able to disagree with it. Once per change of the log, not once per
+   * render: this section is pre-built while idle and re-renders with every
+   * setting, and a write to the table is always a write to `workouts` too.
    */
-  const onDisk = useWorkoutHistory((s) => s.countOnDisk)();
+  const countOnDisk = useWorkoutHistory((s) => s.countOnDisk);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `workouts` is the signal to recount
+  const onDisk = useMemo(() => countOnDisk(), [countOnDisk, workouts]);
   /*
    * What the user ACTUALLY rests, from the timer's own measurements. Null until
    * there are enough samples to mean anything — see `restHistory.ts` — and the

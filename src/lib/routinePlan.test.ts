@@ -11,6 +11,7 @@ import {
   isSupersettedWithAbove,
   performedSetCounts,
   plannedSetDiff,
+  routineDraftChanged,
   supersetRunPosition,
   toggleSupersetWithAbove,
 } from './routinePlan';
@@ -346,5 +347,36 @@ describe('supersets in the routine editor', () => {
     // Two members exist, so the run positions are honest about the first one
     // opening a bracket the second does not continue.
     expect(supersetRunPosition(scattered, 1)).toBe('none');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe('routineDraftChanged', () => {
+  const saved = {
+    name: 'Pull',
+    items: [item({ id: 'a', order: 0 }), item({ id: 'b', order: 3, exerciseId: 'ex_row' })],
+  };
+
+  it('is false for the draft the editor opened with', () => {
+    expect(routineDraftChanged(saved, { name: 'Pull', items: [...saved.items] })).toBe(false);
+  });
+
+  it('ignores a renumbered order that puts every row back where it was', () => {
+    const renumbered = saved.items.map((i, order) => ({ ...i, order }));
+    expect(routineDraftChanged(saved, { name: 'Pull', items: renumbered })).toBe(false);
+  });
+
+  it('sees a rename, a nudge, a move, a removal and a superset toggle', () => {
+    const [a, b] = saved.items;
+    expect(routineDraftChanged(saved, { name: 'Pull day', items: [a, b] })).toBe(true);
+    expect(routineDraftChanged(saved, { name: 'Pull', items: [bumpTargetSets(a, 1), b] })).toBe(
+      true,
+    );
+    expect(routineDraftChanged(saved, { name: 'Pull', items: [b, a] })).toBe(true);
+    expect(routineDraftChanged(saved, { name: 'Pull', items: [a] })).toBe(true);
+    expect(
+      routineDraftChanged(saved, { name: 'Pull', items: [a, { ...b, supersetGroup: 'g1' }] }),
+    ).toBe(true);
   });
 });

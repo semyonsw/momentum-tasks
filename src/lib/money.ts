@@ -155,6 +155,24 @@ export function parseBalanceInput(text: string): { digits: string; value: number
   return { digits: (negative ? '-' : '') + digits, value: Number(digits) * (negative ? -1 : 1) };
 }
 
+/**
+ * The balance field after an edit, given what it SHOWED before the edit.
+ *
+ * The field re-renders its own value with thousands commas, so a backspace on
+ * `40,000` hands back `40,00` — which `parseBalanceInput` reads, correctly for
+ * typed text, as forty with a fraction dropped. A string that got SHORTER than
+ * what was on screen is a deletion from our own formatting, never a fraction
+ * the user typed (the field never shows a `.`), so it is read as its digits.
+ * Anything else — typing, pasting — goes through the parser as before.
+ */
+export function editBalanceInput(shown: string, text: string): string {
+  if (text.length < shown.length) {
+    const negative = text.trim().startsWith('-');
+    return (negative ? '-' : '') + text.replace(/\D/g, '').slice(0, BALANCE_MAX_DIGITS);
+  }
+  return parseBalanceInput(text).digits;
+}
+
 export function formatValue(value: number): string {
   const rounded = Math.round(Math.abs(value));
   const sign = value < 0 ? '-' : '';

@@ -324,6 +324,31 @@ export function historyByExerciseId(
 }
 
 /**
+ * `next`, with every exercise whose rows did not change handed back as the
+ * array it had in `prev`.
+ *
+ * `historyByExerciseId` builds fresh arrays on every call, and the shell's
+ * overload cache keys on the array's identity — so saving one workout, or one ±
+ * on a set in History, re-ran the engine over EVERY exercise's whole history.
+ * A workout nobody touched keeps its row objects (the store replaces only what
+ * it edits), so "same length, same rows by reference" is exactly "unchanged",
+ * and the exercises that really moved are the only ones recomputed.
+ */
+export function shareUnchanged(
+  prev: Record<ID, SetHistory[]> | null,
+  next: Record<ID, SetHistory[]>,
+): Record<ID, SetHistory[]> {
+  if (!prev) return next;
+  const out: Record<ID, SetHistory[]> = {};
+  for (const [exerciseId, rows] of Object.entries(next)) {
+    const was = prev[exerciseId];
+    out[exerciseId] =
+      was && was.length === rows.length && was.every((row, i) => row === rows[i]) ? was : rows;
+  }
+  return out;
+}
+
+/**
  * When each routine was last trained — the hero's `LAST · 6 Sep`.
  *
  * Newest-first input, so the first sighting of a routine is its latest. A workout

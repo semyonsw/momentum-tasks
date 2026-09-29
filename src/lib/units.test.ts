@@ -5,6 +5,7 @@ import {
   WEIGHT_STEP_FINE_KG,
   effectiveLoadKg,
   formatElapsed,
+  parseCountInput,
   resolveIncrementKg,
   weightSteps,
 } from './units';
@@ -118,5 +119,29 @@ describe('formatElapsed', () => {
   it('never goes negative, and survives a clock that is not a number', () => {
     expect(formatElapsed(-5_000)).toBe('0:00');
     expect(formatElapsed(Number.NaN)).toBe('0:00');
+  });
+});
+
+describe('parseCountInput', () => {
+  it('reads a timed cell in the minutes it shows', () => {
+    expect(parseCountInput('3', 'seconds')).toBe(180);
+    expect(parseCountInput('1.5', 'seconds')).toBe(90);
+    expect(parseCountInput('1,5', 'rounds')).toBe(90);
+    expect(parseCountInput('1:30', 'seconds')).toBe(90);
+    expect(parseCountInput('0:45', 'rounds')).toBe(45);
+  });
+
+  it('reads reps and metres as the integer they look like', () => {
+    expect(parseCountInput('8', 'reps')).toBe(8);
+    expect(parseCountInput('7.6', 'reps')).toBe(8);
+    expect(parseCountInput('400', 'meters')).toBe(400);
+  });
+
+  it('refuses what is not a number, so the old value stays', () => {
+    expect(parseCountInput('', 'reps')).toBeNull();
+    expect(parseCountInput('  ', 'seconds')).toBeNull();
+    expect(parseCountInput('abc', 'reps')).toBeNull();
+    expect(parseCountInput('-3', 'reps')).toBeNull();
+    expect(parseCountInput('1:30', 'reps')).toBeNull();
   });
 });

@@ -84,6 +84,12 @@ export function clampDurationMinutes(value: number): number {
  * Renumber every row by position: exercise order first, then the order the rows
  * already had inside each exercise.
  *
+ * `setIndex` counts WITHIN an exercise, from 0 — which is what `draftToSetHistory`
+ * writes when a session is saved, and what `restMedians` reads to tell a rest
+ * before an exercise's first set from a rest between its sets. This used to
+ * number the whole session 0..n, so renaming yesterday's workout quietly turned
+ * every exercise's transition rest into a between-sets one.
+ *
  * Rows belonging to no snapshot go last rather than being dropped — a malformed
  * record is not a reason to lose a set that happened, and `recomputeWorkout` is
  * where a row with nothing to describe it stops counting.
@@ -91,6 +97,8 @@ export function clampDurationMinutes(value: number): number {
 export function reindexSets(workout: CompletedWorkout): SetHistory[] {
   const order = new Map(workout.exercises.map((exercise, index) => [exercise.exerciseId, index]));
   const orphanRank = workout.exercises.length;
+  /** The next index each exercise hands out. */
+  const next = new Map<ID, number>();
 
   return [...workout.sets]
     .map((row, position) => ({ row, position }))
@@ -103,7 +111,11 @@ export function reindexSets(workout: CompletedWorkout): SetHistory[] {
       // they arrived in rather than swapping on every edit.
       return a.position - b.position;
     })
-    .map(({ row }, index) => (row.setIndex === index ? row : { ...row, setIndex: index }));
+    .map(({ row }) => {
+      const index = next.get(row.exerciseId) ?? 0;
+      next.set(row.exerciseId, index + 1);
+      return row.setIndex === index ? row : { ...row, setIndex: index };
+    });
 }
 
 /** Apply the rows and regenerate every number that describes them. */

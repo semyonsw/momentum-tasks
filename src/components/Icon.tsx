@@ -61,9 +61,6 @@ export type IconName =
    */
   | 'routines'
   | 'library'
-  /* The two the reminders needed: what a reminder IS, and what it is set to. */
-  | 'bell'
-  | 'clock'
   /**
    * THE ONE PLAYFUL GLYPH IN THE APP, and it earns the exception by being the
    * only control whose whole point is that you do not know what it will do.
@@ -74,14 +71,6 @@ export type IconName =
    * a shuffle arrow, a wand — would be describing the mechanism instead.
    */
   | 'dice'
-  /**
-   * The expenses section's own mark, and it exists for one row: the map at the
-   * top of Settings, where all three sections are listed and only two of them
-   * had a glyph. A banknote rather than a currency symbol — the app's currency is
-   * a LABEL the user types, so a ֏ or a $ here would be a guess about somebody
-   * else's money.
-   */
-  | 'money'
   | 'flame'
   | 'backspace'
   /**
@@ -92,7 +81,10 @@ export type IconName =
    * `clock`. It is a destination like the other corner glyphs, not a verb, so
    * it is drawn at the quieter weight.
    */
-  | 'sparkle';
+  | 'sparkle'
+  /* Remove a whole exercise from the open session — the one delete that sits
+     outside edit mode, so it gets a glyph nobody has to read. */
+  | 'trash';
 
 interface IconProps {
   name: IconName;
@@ -118,13 +110,11 @@ const STROKE: Record<IconName, number> = {
   history: 2,
   routines: 2,
   library: 2,
-  bell: 2,
-  clock: 2,
   dice: 2,
-  money: 2,
   flame: 2,
   backspace: 2,
   sparkle: 2,
+  trash: 2,
 };
 
 /**
@@ -183,14 +173,6 @@ const PATHS: Record<IconName, string[]> = {
     'M12 6.6c1.6-1.5 3.6-2 7.4-2v12.8c-3.8 0-5.8.5-7.4 2',
     'M12 6.6v12.8',
   ],
-  // A bell, with the clapper as its own stroke so the shape still reads at 14px.
-  bell: ['M18 15.6V10a6 6 0 00-12 0v5.6L4.4 18.2h15.2z', 'M9.9 21a2.3 2.3 0 004.2 0'],
-  // The same dial and the same 12-and-4 hands as `history`, WITHOUT the rewind
-  // notch — which is the entire difference between "when" and "when it was".
-  clock: ['M12 3.5a8.5 8.5 0 100 17 8.5 8.5 0 000-17z', 'M12 7.6V12l3.2 1.9'],
-  // A banknote, seen flat: the note's edge and the coin printed on it. It reads
-  // at 15px, which is the size the Settings map draws it at.
-  money: ['M3 6.5h18v11H3z', 'M12 9.6a2.4 2.4 0 100 4.8 2.4 2.4 0 000-4.8z'],
   // The keypad's delete key. A glyph rather than the `⌫` character: that
   // codepoint is not in every Roboto build Android ships, and a missing one
   // renders as a tofu box on the one key whose whole job is to be recognised
@@ -215,6 +197,13 @@ const PATHS: Record<IconName, string[]> = {
   // A die on its five face: a rounded square, and the pips come from `DOTS`.
   dice: [
     'M7.6 4h8.8A3.6 3.6 0 0120 7.6v8.8a3.6 3.6 0 01-3.6 3.6H7.6A3.6 3.6 0 014 16.4V7.6A3.6 3.6 0 017.6 4z',
+  ],
+  // A bin: the lid, its handle, and the can with two ribs so it reads at 16px.
+  trash: [
+    'M4.5 7h15',
+    'M9.5 7V5a1 1 0 011-1h3a1 1 0 011 1v2',
+    'M6.5 7l.9 11.6A1.6 1.6 0 009 20h6a1.6 1.6 0 001.6-1.4L17.5 7',
+    'M10.3 10.8v5.4M13.7 10.8v5.4',
   ],
 };
 

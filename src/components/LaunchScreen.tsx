@@ -150,8 +150,19 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
     moneyReady: ticked.money,
     elapsedMs: elapsed,
   });
+  /*
+   * A TAP SKIPS THE WAIT, once the data is actually in. The floor is there for the
+   * choreography, and the choreography is for the first look, not the fortieth
+   * launch of the week. Before every store has reported, a tap does nothing: the
+   * splash would be leaving onto screens with nothing in them yet.
+   */
+  const [skipped, setSkipped] = useState(false);
+  const allLoaded = historyReady && tasksReady && moneyReady;
   /* Reduced motion has no choreography to wait for: leave once the data is in. */
-  const exit = state.exit || (reduced && (state.stage === 3 || elapsed >= LAUNCH_CEILING_MS));
+  const exit =
+    state.exit ||
+    (skipped && allLoaded) ||
+    (reduced && (state.stage === 3 || elapsed >= LAUNCH_CEILING_MS));
 
   /* --- the exit ------------------------------------------------------- */
   const leave = useRef(new Animated.Value(0)).current;
@@ -315,6 +326,9 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
   return (
     <Animated.View
       accessibilityLabel={t('Loading')}
+      onTouchEnd={() => {
+        if (allLoaded) setSkipped(true);
+      }}
       style={{
         position: 'absolute',
         top: 0,

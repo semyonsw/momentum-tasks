@@ -7,6 +7,7 @@ import {
   bumpLadderMax,
   draftToExercise,
   emptyExerciseDraft,
+  exerciseDraftChanged,
   exerciseToDraft,
   followSettingsRest,
   toggleLadder,
@@ -464,5 +465,22 @@ describe('the form cue', () => {
     const withCue = { ...machine, cue: 'Old cue' };
     const cleared = applyDraftToExercise({ ...exerciseToDraft(withCue), cue: '' }, withCue);
     expect(cleared.cue).toBeUndefined();
+  });
+});
+
+describe('exerciseDraftChanged', () => {
+  it('is false for an untouched draft, even a fresh copy of it', () => {
+    const draft = emptyExerciseDraft('Dips');
+    expect(exerciseDraftChanged(draft, { ...draft, muscleGroups: [...draft.muscleGroups] })).toBe(
+      false,
+    );
+  });
+
+  it('sees a nudged rest, a typed name and reordered muscles', () => {
+    const draft = { ...emptyExerciseDraft('Dips'), muscleGroups: ['chest', 'triceps'] as const };
+    const base = { ...draft, muscleGroups: [...draft.muscleGroups] };
+    expect(exerciseDraftChanged(base, bumpDraftRest(base, 15))).toBe(true);
+    expect(exerciseDraftChanged(base, { ...base, name: 'Ring dips' })).toBe(true);
+    expect(exerciseDraftChanged(base, { ...base, muscleGroups: ['triceps', 'chest'] })).toBe(true);
   });
 });

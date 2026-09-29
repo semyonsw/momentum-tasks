@@ -33,7 +33,7 @@ import { Text, TextInput, View } from 'react-native';
 import { Sheet, SheetCancel } from './Sheet';
 import { Kicker, PrimaryButton } from './primitives';
 import { useT } from '../hooks/useT';
-import { formatValue, parseBalanceInput } from '../lib/money';
+import { editBalanceInput, formatValue, parseBalanceInput } from '../lib/money';
 import { palette, tint } from '../theme/tokens';
 
 interface BalanceSheetProps {
@@ -69,7 +69,7 @@ export function BalanceSheet({ title, balance, currency, onSave, onDismiss }: Ba
       >
         <TextInput
           value={shown}
-          onChangeText={(text) => setDigits(parseBalanceInput(text).digits)}
+          onChangeText={(text) => setDigits(editBalanceInput(shown, text))}
           placeholder="0"
           placeholderTextColor={palette.inkFaint}
           cursorColor={palette.greenBright}

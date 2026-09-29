@@ -74,7 +74,7 @@ import {
   HomeScreen,
   type RoutineChoice,
   type SequenceView,
-  type WorkoutInProgress,
+  type RunningWorkout,
 } from '../screens/HomeScreen';
 import { RoutineEditorScreen } from '../screens/RoutineEditorScreen';
 import { RoutineListScreen } from '../screens/RoutineListScreen';
@@ -84,6 +84,7 @@ import { LandingScreen, type TileRect } from '../screens/LandingScreen';
 import { Hold } from './Hold';
 import { ShellStage, TRANSITION_MS, type ShellTransition } from './ShellStage';
 import { PushHost } from './PushHost';
+import { mayLeave } from './leaveGuard';
 import { WorkoutSettingsScreen } from '../screens/WorkoutSettingsScreen';
 import { TaskSettingsScreen } from '../screens/TaskSettingsScreen';
 import { MoneySettingsScreen } from '../screens/MoneySettingsScreen';
@@ -103,6 +104,7 @@ import { useDebriefs } from '../state/debriefStore';
 import type { AiSection } from '../lib/ai/aiSchema';
 import {
   historyByExerciseId,
+  shareUnchanged,
   lastTrainedByRoutine,
   recentlyUsedExerciseIds,
   workoutNumbers,
@@ -123,7 +125,7 @@ import {
 import { MUSCLE_CLUSTER, describeItemsFocus } from '../lib/muscles';
 import { evaluateOverload, type OverloadVerdict } from '../lib/progressiveOverload';
 import { searchExercises } from '../lib/search';
-import { useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStore';
+import { useActiveWorkout } from '../state/activeWorkoutStore';
 import { routineUsageCount, useLibrary } from '../state/libraryStore';
 import { platesInForce, useSettings } from '../state/settingsStore';
 import { recentSummaries, useWorkoutHistory } from '../state/workoutHistoryStore';
@@ -460,7 +462,6 @@ export function AppShell() {
   const sessionRoutineId = useActiveWorkout((s) => s.session?.routineId ?? null);
   const sessionTitle = useActiveWorkout((s) => s.session?.title ?? '');
   const sessionStartedAt = useActiveWorkout((s) => s.session?.startedAt ?? null);
-  const sessionProgress = useSessionProgress();
   const startSession = useActiveWorkout((s) => s.startSession);
   const discardSession = useActiveWorkout((s) => s.discardSession);
 
@@ -478,6 +479,7 @@ export function AppShell() {
   const addWorkoutSet = useWorkoutHistory((s) => s.addWorkoutSet);
   const addWorkoutExercise = useWorkoutHistory((s) => s.addWorkoutExercise);
   const deleteWorkoutExercise = useWorkoutHistory((s) => s.deleteWorkoutExercise);
+  const restoreWorkout = useWorkoutHistory((s) => s.restoreWorkout);
   const numbering = useWorkoutHistory((s) => s.numbering);
   const setWorkoutNumber = useWorkoutHistory((s) => s.setWorkoutNumber);
 
@@ -501,17 +503,9 @@ export function AppShell() {
    * Only a STARTED session counts: an unstarted one is a routine somebody opened
    * to read, and it is thrown away when they leave.
    */
-  const inProgress = useMemo<WorkoutInProgress | null>(
-    () =>
-      sessionStartedAt
-        ? {
-            title: sessionTitle,
-            startedAt: sessionStartedAt,
-            done: sessionProgress.done,
-            total: sessionProgress.total,
-          }
-        : null,
-    [sessionProgress.done, sessionProgress.total, sessionStartedAt, sessionTitle],
+  const inProgress = useMemo<RunningWorkout | null>(
+    () => (sessionStartedAt ? { title: sessionTitle, startedAt: sessionStartedAt } : null),
+    [sessionStartedAt, sessionTitle],
   );
 
   /** Search results. Browse mode builds its own tree from `exercises`. */
@@ -690,6 +684,8 @@ export function AppShell() {
    */
   const leaveTop = useRef<() => void>(pop);
   leaveTop.current = () => {
+    // A screen with unsaved edits asks first — see `navigation/leaveGuard.ts`.
+    if (!mayLeave()) return;
     const route = stack[stack.length - 1];
     if (route?.name === 'routineEditor') {
       leaveRoutineEditor.current(route);
@@ -776,7 +772,14 @@ export function AppShell() {
    * disk, flattened to the shape the prefills, the overload engine and the
    * exercise chart all want.
    */
-  const historyById = useMemo(() => historyByExerciseId(workouts), [workouts]);
+  const historyByIdRef = useRef<Record<ID, SetHistory[]> | null>(null);
+  const historyById = useMemo(() => {
+    // An exercise whose rows did not change keeps its array, so the verdict cache
+    // below recomputes only the exercises that moved. See `shareUnchanged`.
+    const next = shareUnchanged(historyByIdRef.current, historyByExerciseId(workouts));
+    historyByIdRef.current = next;
+    return next;
+  }, [workouts]);
 
   const recent = useMemo(() => recentSummaries(workouts), [workouts]);
 
@@ -1788,6 +1791,7 @@ export function AppShell() {
           onEditWorkout={editWorkout}
           onAddSet={addWorkoutSet}
           onRemoveExercise={deleteWorkoutExercise}
+          onRestoreWorkout={restoreWorkout}
           /*
            * The one edit on that screen that needs navigation: the picker is another
            * pushed route, so the screen cannot open it itself. `focusWorkoutId` is
@@ -2063,6 +2067,7 @@ function WorkoutHistory({
   onEditWorkout,
   onAddSet,
   onRemoveExercise,
+  onRestoreWorkout,
   onAddExercise,
   onBack,
 }: {
@@ -2081,6 +2086,7 @@ function WorkoutHistory({
   onEditWorkout: HistoryScreenProps['onEditWorkout'];
   onAddSet: HistoryScreenProps['onAddSet'];
   onRemoveExercise: HistoryScreenProps['onRemoveExercise'];
+  onRestoreWorkout: HistoryScreenProps['onRestoreWorkout'];
   onAddExercise: HistoryScreenProps['onAddExercise'];
   onBack: () => void;
 }) {
@@ -2144,6 +2150,7 @@ function WorkoutHistory({
       onEditWorkout={onEditWorkout}
       onAddSet={onAddSet}
       onRemoveExercise={onRemoveExercise}
+      onRestoreWorkout={onRestoreWorkout}
       onAddExercise={onAddExercise}
       toolbar={toolbar}
     />

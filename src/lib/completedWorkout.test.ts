@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCompletedWorkout,
   historyByExerciseId,
+  shareUnchanged,
   lastTrainedByRoutine,
   monthKey,
   recentlyUsedExerciseIds,
@@ -563,5 +564,32 @@ describe('lastTrainedByRoutine', () => {
 
   it('ignores a workout with no routine behind it', () => {
     expect(lastTrainedByRoutine([at('w1', '2026-09-06T17:00:00.000Z')])).toEqual({});
+  });
+});
+
+describe('shareUnchanged', () => {
+  it('hands back the previous array for an exercise whose rows did not change', () => {
+    const workout = buildCompletedWorkout(logFirstEntry(draft(), 2));
+    if (!workout) throw new Error('fixture logged nothing');
+    const exerciseId = workout.sets[0].exerciseId;
+
+    const first = historyByExerciseId([workout]);
+    const again = shareUnchanged(first, historyByExerciseId([workout]));
+    expect(again[exerciseId]).toBe(first[exerciseId]);
+  });
+
+  it('takes the new array once a row is added, replaced or gone', () => {
+    const workout = buildCompletedWorkout(logFirstEntry(draft(), 2));
+    if (!workout) throw new Error('fixture logged nothing');
+    const exerciseId = workout.sets[0].exerciseId;
+    const first = historyByExerciseId([workout]);
+
+    const edited = { ...workout, sets: [{ ...workout.sets[0], count: 99 }, workout.sets[1]] };
+    const next = shareUnchanged(first, historyByExerciseId([edited]));
+    expect(next[exerciseId]).not.toBe(first[exerciseId]);
+    expect(next[exerciseId][0].count).toBe(99);
+
+    const shorter = shareUnchanged(first, historyByExerciseId([{ ...workout, sets: [] }]));
+    expect(shorter[exerciseId]).toBeUndefined();
   });
 });

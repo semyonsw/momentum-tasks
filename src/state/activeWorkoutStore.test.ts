@@ -1016,6 +1016,34 @@ describe('editing the session while it runs', () => {
     expect(useActiveWorkout.getState().session).toBeNull();
   });
 
+  it('insertSet puts a removed logged set back where it was, logged', () => {
+    const session = startRoutine();
+    const entry = session.entries[0];
+    useActiveWorkout.getState().completeSet(entry.localId, entry.sets[1].localId);
+    const snapshot = selectEntry(entry.localId)(useActiveWorkout.getState())?.sets[1];
+    if (!snapshot) throw new Error('the set vanished before it was removed');
+
+    useActiveWorkout.getState().removeSet(entry.localId, snapshot.localId);
+    useActiveWorkout.getState().insertSet(entry.localId, snapshot, 1);
+    // A second Undo tap is a no-op, not a duplicate row.
+    useActiveWorkout.getState().insertSet(entry.localId, snapshot, 1);
+
+    const sets = selectEntry(entry.localId)(useActiveWorkout.getState())?.sets ?? [];
+    expect(sets.map((s) => s.localId)).toEqual(entry.sets.map((s) => s.localId));
+    expect(sets[1].isCompleted).toBe(true);
+  });
+
+  it('insertSet ignores an exercise that has left the session', () => {
+    const session = startRoutine();
+    const entry = session.entries[0];
+    const row = entry.sets[0];
+    useActiveWorkout.getState().removeEntry(entry.localId);
+
+    useActiveWorkout.getState().insertSet(entry.localId, row, 0);
+
+    expect(selectEntry(entry.localId)(useActiveWorkout.getState())).toBeNull();
+  });
+
   it('removeSet takes the row it is given, not the bottom one', () => {
     const session = startRoutine();
     const entry = session.entries[0];

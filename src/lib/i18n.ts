@@ -150,9 +150,7 @@ const RU: Record<string, string> = {
   History: 'История',
   'Training history': 'История тренировок',
   'Task history': 'История задач',
-  'Expense history': 'История расходов',
   Routines: 'Программы',
-  'Exercise library': 'База упражнений',
   'Open the routines': 'Открыть программы',
   'Open the exercise library': 'Открыть базу упражнений',
   Language: 'Язык',
@@ -171,15 +169,11 @@ const RU: Record<string, string> = {
   'Other routines': 'Другие программы',
   'Start a workout': 'Начать тренировку',
   Recent: 'Недавние',
-  'Set up': 'Настройка',
   'Nothing to open': 'Нечего открыть',
   'Put some exercises in a routine — the list glyph in the corner of this screen — and it shows up here, ready to open.':
     'Добавьте упражнения в программу — значок списка в углу этого экрана — и она появится здесь, готовая к запуску.',
-  '{done} of {total} sets · {minutes} min': '{done} из {total} подходов · {minutes} мин',
   '{exercises} exercises · {sets} sets': 'упражнений: {exercises} · подходов: {sets}',
   'Open {name}': 'Открыть «{name}»',
-  'nudge waiting': 'подсказка ждёт',
-  'nudges waiting': 'подсказок ждёт',
   'Deleted routine': 'Удалённая программа',
   'Edit the sequence.': 'Изменить последовательность.',
   'next up': 'следующая',
@@ -267,7 +261,6 @@ const RU: Record<string, string> = {
   'Edit task': 'Изменить задачу',
   'Task name': 'Название задачи',
   'What are you asking yourself to do?': 'Что вы просите себя сделать?',
-  'Asks on': 'Спрашивает',
   'Every day': 'Каждый день',
   'Chosen days': 'Выбранные дни',
   'Just once': 'Один раз',
@@ -280,8 +273,6 @@ const RU: Record<string, string> = {
   'The day it first asks. Days before it stay exactly as you left them.':
     'День, когда она спросит впервые. Более ранние дни останутся такими, как были.',
   'Give it a name.': 'Дайте ей название.',
-  'Category: {name}. Change it.': 'Категория: {name}. Изменить.',
-  'Pick a category': 'Выберите категорию',
   MAX: 'МАКС',
   'Reps to MAX': 'Повторения до МАКС',
   'Every set starts at 0 and counts up — nothing is prefilled':
@@ -323,12 +314,9 @@ const RU: Record<string, string> = {
     'Она уйдёт из списка дня. Все уже отвеченные дни останутся на месте.',
   'Archive it': 'Архивировать',
   'Keep it': 'Оставить',
-  'Filled is done, outlined is missed, faint is unanswered. Blank days were never asked for.':
-    'Залитый — сделано, контур — пропущено, бледный — без ответа. Пустые дни никогда не спрашивались.',
   since: 'с',
 
   /* --- reminders --------------------------------------------------- */
-  Reminder: 'Напоминание',
   'Remind me': 'Напоминать',
   'Remind me about this': 'Напоминать об этом',
   'At what time': 'Во сколько',
@@ -375,12 +363,6 @@ const RU: Record<string, string> = {
   'Change the time interval.': 'Сменить период.',
   year: 'год',
   'Everything recorded': 'Всё, что записано',
-  'Edit category': 'Изменить категорию',
-  'Its name, its glyph and everything recorded in it': 'Название, значок и всё, что в ней записано',
-  'Add an income here': 'Добавить сюда доход',
-  'Add an expense here': 'Добавить сюда расход',
-  'A tap on the tile adds an expense': 'Нажатие на плитку добавляет расход',
-  'A tap on the tile adds an income': 'Нажатие на плитку добавляет доход',
   'Add category': 'Добавить категорию',
   /* --- the subsections: where the money physically is ----------------
      `Cash` and `Online` themselves are NOT here: an account's name is user data
@@ -406,7 +388,6 @@ const RU: Record<string, string> = {
   Sections: 'Разделы',
   'Workout settings': 'Настройки тренировок',
   'Daily tasks settings': 'Настройки ежедневных задач',
-  'Expenses settings': 'Настройки расходов',
   Answering: 'Ответы',
   'Let the app tick what it knows': 'Разрешить приложению отмечать то, что оно знает',
   'Finishing a workout ticks the training task; recording an amount ticks the expense one':
@@ -672,7 +653,6 @@ const RU: Record<string, string> = {
   'Lengthen {what} by {seconds} seconds': 'Увеличить «{what}» на {seconds} с',
   'Load mode': 'Тип нагрузки',
   'Long press for focus mode': 'Долгое нажатие — режим фокуса',
-  'Long press to edit the category': 'Долгое нажатие — изменить категорию',
   'Make this a working set': 'Сделать рабочим подходом',
   Manual: 'Вручную',
   'Mark this set as a warm-up': 'Отметить как разминочный',
@@ -723,7 +703,6 @@ const RU: Record<string, string> = {
   'Remove {name} from the sequence': 'Убрать «{name}» из последовательности',
   'Remove {name} from this routine': 'Убрать «{name}» из этой программы',
   'Remove {name} from this workout': 'Убрать «{name}» из этой тренировки',
-  'Remove {name}?': 'Убрать «{name}»?',
   'Remove {unit}': 'Убрать {unit}',
   'Remove “{name}”?': 'Убрать «{name}»?',
   'Replace everything with this file?': 'Заменить всё этим файлом?',
@@ -747,7 +726,6 @@ const RU: Record<string, string> = {
   Rounds: 'Круги',
   'Same {held} for {days} days · {sessions} sessions':
     'Одно и то же ({held}) уже {days} дн · тренировок: {sessions}',
-  'Save {noun}': 'Сохранить {noun}',
   'Saved {name} to {where} — {counts}.': '{name} сохранён в {where} — {counts}.',
   'Session complete': 'Тренировка завершена',
   Sessions: 'Тренировки',
@@ -813,7 +791,6 @@ const RU: Record<string, string> = {
   'Type an exact value': 'Ввести точное значение',
   'Undo set': 'Отменить подход',
   'Undo the last logged set': 'Отменить последний записанный подход',
-  'Up next: {name}. Adjust the weight or the count.': 'Далее: {name}. Измените вес или количество.',
   'Up to three months the line is one point a day; past that it is one a month. A whole-month amount has no day to sit on, so it only appears once the buckets are months.':
     'До трёх месяцев линия строится по дням, дальше — по месяцам. У суммы за месяц нет своего дня, поэтому она появляется, только когда деления — месяцы.',
   Use: 'Применить',
@@ -915,7 +892,6 @@ const RU: Record<string, string> = {
   'skip the clock to finish the workout': 'пропустите таймер, чтобы завершить тренировку',
   'suggestion waiting': 'есть подсказка',
   'supersetted with the exercise above': 'в суперсете с упражнением выше',
-  'swipe down to exit': 'проведите вниз, чтобы выйти',
   'target distance': 'целевая дистанция',
   'target reps': 'целевые повторы',
   'target time': 'целевое время',
@@ -931,8 +907,6 @@ const RU: Record<string, string> = {
   'unit:reps': 'повт',
   'unit:round': 'круг',
   'up next': 'далее',
-  'walk to a new machine · you were on {name}':
-    'переход к другому снаряду · до этого было «{name}»',
   'warm-up': 'разминка',
   'weight + ladder': 'вес + лесенка',
   'weight + {noun}': 'вес + {noun}',
@@ -941,8 +915,6 @@ const RU: Record<string, string> = {
   'your next set is in here': 'ваш следующий подход здесь',
   '{clock} held': 'продержано {clock}',
   '{clock} left': 'осталось {clock}',
-  '{count} logged sets will go with it, and nothing about them reaches your history. The exercise itself stays in your library.':
-    'Записанных подходов ({count}) исчезнет вместе с ним, и в историю о них ничего не попадёт. Само упражнение останется в базе.',
   '{count} met sessions to a max of {max}': 'ещё {count} выполненных тренировок до максимума {max}',
   '{count} rounds': 'кругов: {count}',
   '{count} set is': '{count} подход',
@@ -1048,10 +1020,6 @@ const RU: Record<string, string> = {
   'No workout in progress': 'Нет активной тренировки',
   'Nothing to log': 'Нечего записывать',
   'This workout has no exercises in it right now.': 'Сейчас в этой тренировке нет упражнений.',
-  'Each one holds only what its own section reads. Rest, plates and weekly targets are training; the automatic tick is the daily tasks; what amounts are counted in is the expenses.':
-    'В каждом — только то, что читает его раздел. Отдых, блины и недельные цели — тренировки; автоматическая отметка — ежедневные задачи; в чём считаются суммы — расходы.',
-  'A backup is plain JSON, so you can read it, keep it anywhere, and move it to another phone. It holds all three sections — training, the daily tasks and the expenses — and every setting.':
-    'Копия — это обычный JSON: её можно прочитать, хранить где угодно и перенести на другой телефон. В ней все три раздела — тренировки, ежедневные задачи и расходы — и все настройки.',
   'Replace everything': 'Заменить всё',
   'makes this phone look like the file, so export first if there is anything here you would miss. A backup written by an older version carries no tasks and no amounts, and restoring one leaves both of those exactly where they are rather than emptying them. A workout in progress is not part of a backup: it carries a running clock.':
     'делает телефон таким, как файл, — поэтому сначала выгрузите то, что жалко потерять. В копии из старой версии нет ни задач, ни сумм, и восстановление такой копии оставит и то и другое как есть, а не очистит. Идущая тренировка в копию не входит: в ней работают часы.',
@@ -1138,6 +1106,14 @@ const RU: Record<string, string> = {
   'Rest, targets and cue': 'Отдых, цели и подсказка',
   'Remove this set': 'Удалить этот подход',
   'Removed {name}': 'Удалено: {name}',
+  'Removed a logged set from {name}': 'Удалён выполненный подход: {name}',
+  'Removed a set': 'Подход удалён',
+  'Discard your changes?': 'Отменить изменения?',
+  'This routine goes back to how it was when you opened it.':
+    'Программа вернётся к тому виду, в котором вы её открыли.',
+  'Your edits to this exercise are not saved yet.': 'Изменения этого упражнения ещё не сохранены.',
+  'Discard changes': 'Отменить изменения',
+  'Keep editing': 'Продолжить',
   Undo: 'Отменить',
   'Kg moved': 'Кг поднято',
   'Save workout': 'Сохранить тренировку',
@@ -1266,10 +1242,6 @@ const RU: Record<string, string> = {
   'Reading {count} {noun} of amounts…': 'Читаю суммы: {count} {noun}…',
   Send: 'Отправить',
   'Start a new chat': 'Начать новый чат',
-  'Start a new chat?': 'Начать новый чат?',
-  'A suggestion in this chat has not been added yet. Starting over drops it.':
-    'Предложение в этом чате ещё не добавлено. Новый чат его отбросит.',
-  'Start over': 'Начать заново',
   'Summarize my last 4 weeks': 'Подведи итоги последних 4 недель',
   'Last 4 weeks': 'Последние 4 недели',
   'How is my {lift} going?': 'Как продвигается «{lift}»?',

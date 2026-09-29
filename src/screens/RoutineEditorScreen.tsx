@@ -136,6 +136,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
+import { useLeaveGuard } from '../navigation/leaveGuard';
 import { RandomRoutineSheet } from '../components/RandomRoutineSheet';
 import { ReorderRow } from '../components/ReorderRow';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -167,6 +168,7 @@ import {
   bumpTargetMin,
   bumpTargetSets,
   isSupersettedWithAbove,
+  routineDraftChanged,
   supersetRunPosition,
   targetCountStep,
   toggleSupersetWithAbove,
@@ -288,6 +290,10 @@ export function RoutineEditorScreen({
      did: it sits one row under `Duplicate`, and it took the plan and its steps
      in the training loop on a single tap. */
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  /** Back was pressed on a draft with edits in it: the sheet asks before they go. */
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  /** Discarded and on the way out: nothing left to guard during the exit slide. */
+  const [left, setLeft] = useState(false);
   const t = useT();
   const lang = useLanguage();
 
@@ -416,7 +422,28 @@ export function RoutineEditorScreen({
     setItems(rolled.items.map((item, order) => ({ ...item, id: `ri_${stamp}_${order}`, order })));
   };
 
-  const dimmed = removing != null || confirmingDelete;
+  /*
+   * BACK ASKS, ONCE THERE IS SOMETHING TO LOSE. The draft still waits for `Save`
+   * — backing out is how an edit is cancelled — but it used to go without a word,
+   * and five sets nudged from four were gone on a ‹ meant as "done". Asked only
+   * when `routineDraftChanged` says so: backing out of an untouched routine is
+   * one press, as it always was.
+   */
+  const dirty = routineDraftChanged(routine, { name, items });
+  const handleBack = () => {
+    if (dirty) setConfirmingLeave(true);
+    else onBack();
+  };
+  /*
+   * Hardware back and the edge swipe never reach this screen, so it guards them
+   * — `navigation/leaveGuard.ts`. Not while a sheet is up (it answers back
+   * itself) or a row is in the air.
+   */
+  const interceptBack =
+    dirty && !left && !lifted && !asking && !confirmingLeave && !removing && !confirmingDelete;
+  useLeaveGuard(interceptBack, () => setConfirmingLeave(true));
+
+  const dimmed = removing != null || confirmingDelete || confirmingLeave;
 
   return (
     <View className="flex-1 bg-bg">
@@ -440,7 +467,7 @@ export function RoutineEditorScreen({
                 })
               : undefined
           }
-          onBack={lifted ? undefined : onBack}
+          onBack={lifted ? undefined : handleBack}
           /* The die goes while a row is in the air: rebuilding the list under a
              finger that is dragging one of its rows is the one state this screen
              cannot be in. */
@@ -650,6 +677,22 @@ export function RoutineEditorScreen({
           cancelLabel={t('Keep it')}
           onConfirm={() => removeItem(removing.id)}
           onCancel={() => setRemoving(null)}
+        />
+      ) : null}
+
+      {confirmingLeave ? (
+        <ConfirmSheet
+          tone="danger"
+          title={t('Discard your changes?')}
+          body={t('This routine goes back to how it was when you opened it.')}
+          confirmLabel={t('Discard changes')}
+          cancelLabel={t('Keep editing')}
+          onConfirm={() => {
+            setLeft(true);
+            setConfirmingLeave(false);
+            onBack();
+          }}
+          onCancel={() => setConfirmingLeave(false)}
         />
       ) : null}
 
