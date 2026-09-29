@@ -65,6 +65,16 @@ describe('the window', () => {
     expect(spoken(cues)).toEqual(['tick', 'tick', 'tick', 'final']);
   });
 
+  it('stays silent for a zero first seen after the phone was locked', () => {
+    // JS timers stop in the background: the reading goes 60 → 0 on unlock, and
+    // the notification has already rung for that rest.
+    expect(spoken(run([61, 60, 0, 0]))).toEqual([]);
+  });
+
+  it('still sounds the end through a janky frame or two', () => {
+    expect(spoken(run([4, 3, 0], { window: 0 }))).toEqual(['final']);
+  });
+
   it('a window of zero is silent but still sounds the end', () => {
     const cues = run([10, 5, 4, 3, 2, 1, 0], { window: 0 });
     expect(spoken(cues)).toEqual(['final']);
@@ -209,7 +219,12 @@ describe('re-arming', () => {
 
 describe('purity', () => {
   it('does not mutate the latch it is given', () => {
-    const latch: CueLatch = { armedFor: 'rest:1', spokenSecond: 5, spokeFinal: false };
+    const latch: CueLatch = {
+      armedFor: 'rest:1',
+      spokenSecond: 5,
+      spokeFinal: false,
+      lastSeen: 5,
+    };
     const frozen = { ...latch };
 
     nextCue(latch, { id: 'rest:1', secondsLeft: 4, ...DEFAULTS });
@@ -217,7 +232,12 @@ describe('purity', () => {
   });
 
   it('is deterministic for the same latch and input', () => {
-    const latch: CueLatch = { armedFor: 'rest:1', spokenSecond: 5, spokeFinal: false };
+    const latch: CueLatch = {
+      armedFor: 'rest:1',
+      spokenSecond: 5,
+      spokeFinal: false,
+      lastSeen: 5,
+    };
     const input = { id: 'rest:1', secondsLeft: 4, ...DEFAULTS };
 
     expect(nextCue(latch, input)).toEqual(nextCue(latch, input));

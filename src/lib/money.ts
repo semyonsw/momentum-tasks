@@ -136,6 +136,25 @@ export const INTERVAL_LABELS: Record<Interval, string> = {
 };
 
 /** "9,020" — grouped, no unit. Tabular numerals do the aligning. */
+/** A balance is whole units, and no more digits than the amount keypad allows. */
+export const BALANCE_MAX_DIGITS = 12;
+
+/**
+ * What the balance field holds, typed any which way: `-40 000` → -40000.
+ *
+ * Digits and one leading minus — and a trailing FRACTION dropped rather than
+ * folded in. The numeric keyboard has `.` and `,`, and stripping every non-digit
+ * turned `1234.50` into 123,450 and a pasted `40 000,00` into four million. Only
+ * one or two digits after the last separator count as a fraction, because the
+ * field shows its own thousands commas (`40,000`) and those must survive.
+ */
+export function parseBalanceInput(text: string): { digits: string; value: number } {
+  const negative = text.trim().startsWith('-');
+  const whole = text.replace(/[.,]\d{1,2}\s*$/, '');
+  const digits = whole.replace(/\D/g, '').slice(0, BALANCE_MAX_DIGITS);
+  return { digits: (negative ? '-' : '') + digits, value: Number(digits) * (negative ? -1 : 1) };
+}
+
 export function formatValue(value: number): string {
   const rounded = Math.round(Math.abs(value));
   const sign = value < 0 ? '-' : '';

@@ -211,12 +211,8 @@ export function TasksScreen({
    */
   const excused = useMemo(
     () =>
-      tasks.filter(
-        (task) =>
-          task.archivedAt === null &&
-          asksOn(task, day) &&
-          entryOf(log, task.id, day).mark === 'missed',
-      ).length,
+      tasks.filter((task) => asksOn(task, day) && entryOf(log, task.id, day).mark === 'missed')
+        .length,
     [tasks, log, day],
   );
   const open = progress.total - progress.done;

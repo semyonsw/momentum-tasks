@@ -992,8 +992,10 @@ function LadderSection({
                 )}
           </Text>
           <Text className="mx-lg mt-xs text-label text-ink-faint">
-            Miss one and nothing moves — the same numbers come back next time. Shown at {sets} sets,
-            which is what the Sets row above plans; five is the scheme as it is written.
+            {t(
+              'Miss one and nothing moves — the same numbers come back next time. Shown at {sets} sets, which is what the Sets row above plans; five is the scheme as it is written.',
+              { sets },
+            )}
           </Text>
         </>
       ) : null}
@@ -1082,7 +1084,9 @@ function nextIncrement(current: number): number {
 /** " · PULL · back, biceps" — the filing decision, echoed back in pick order. */
 function describeMuscles(muscles: MuscleGroup[], lang: Language): string {
   if (muscles.length === 0) return '';
-  const cluster = clusterLabel(MUSCLE_CLUSTER[muscles[0]], lang);
+  const primary = MUSCLE_CLUSTER[muscles[0]];
+  if (!primary) return '';
+  const cluster = clusterLabel(primary, lang);
   // `muscleLabel` rather than `term` directly: it owns the capitalisation the
   // catalogue's namespaced keys are written in.
   return ` · ${cluster} · ${muscles.map((m) => muscleLabel(m, lang)).join(', ')}`;

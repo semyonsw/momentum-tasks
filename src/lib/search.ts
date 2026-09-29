@@ -43,16 +43,22 @@ function matchesName(exercise: Exercise, needle: string): boolean {
  * to stop finding a row by the word they have always used for it.
  */
 function matchesMuscle(exercise: Exercise, needle: string): boolean {
-  return exercise.muscleGroups.some(
-    (muscle) =>
+  return exercise.muscleGroups.some((muscle) => {
+    const cluster = MUSCLE_CLUSTER[muscle];
+    // A muscle this build does not know (a restored file, an older catalogue) has
+    // no cluster: it is matched by its own word, as the tree files it "Unfiled",
+    // instead of throwing out of every keystroke that reached it.
+    if (!cluster) return String(muscle).toLowerCase().includes(needle);
+    return (
       muscle.includes(needle) ||
-      MUSCLE_CLUSTER[muscle].includes(needle) ||
+      cluster.includes(needle) ||
       LANGUAGES.some(
         (lang) =>
           muscleLabel(muscle, lang).toLowerCase().includes(needle) ||
-          clusterLabel(MUSCLE_CLUSTER[muscle], lang).toLowerCase().includes(needle),
-      ),
-  );
+          clusterLabel(cluster, lang).toLowerCase().includes(needle),
+      )
+    );
+  });
 }
 
 export function searchExercises(exercises: Exercise[], query: string): Exercise[] {

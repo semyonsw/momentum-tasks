@@ -205,6 +205,8 @@ const RU: Record<string, string> = {
   'Add routine': 'Добавить программу',
   'Add exercise': 'Добавить упражнение',
   'Delete routine': 'Удалить программу',
+  'The routine goes, and so do its steps in your training loop. Workouts you logged from it stay in your history.':
+    'Программа удаляется вместе с её шагами в цикле тренировок. Тренировки, записанные по ней, остаются в истории.',
   Exercises: 'Упражнения',
 
   /* --- the dice ---------------------------------------------------- */
@@ -865,6 +867,15 @@ const RU: Record<string, string> = {
   'last set logged': 'последний подход записан',
   'last: {what}': 'прошлый раз: {what}',
   level: 'без изменений',
+  'up {amount}': 'рост на {amount}',
+  'down {amount}': 'снижение на {amount}',
+  '{count} {matches}': '{matches}: {count}',
+  match: 'совпадение',
+  matches: 'совпадений',
+  'As many as you can — set in the exercise, not in the plan':
+    'Сколько сможете — задаётся в упражнении, а не в плане',
+  'Miss one and nothing moves — the same numbers come back next time. Shown at {sets} sets, which is what the Sets row above plans; five is the scheme as it is written.':
+    'Не выполнили один подход — ничего не меняется, в следующий раз те же числа. Показано для {sets} подходов — столько планирует строка «Подходы» выше; схема рассчитана на пять.',
   'logs itself at the bell': 'запишется само по сигналу',
   'make it different': 'сделать другой',
   max: 'максимум',
@@ -1132,6 +1143,8 @@ const RU: Record<string, string> = {
   'Save workout': 'Сохранить тренировку',
   'Workout {number} saved': 'Тренировка {number} сохранена',
   'Workout saved': 'Тренировка сохранена',
+  'Could not save the workout. It is still here: try Finish again.':
+    'Не удалось сохранить тренировку. Она на месте — нажмите «Завершить» ещё раз.',
   Resting: 'Отдых',
   resting: 'отдых',
   'Up next': 'Далее',

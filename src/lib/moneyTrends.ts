@@ -78,8 +78,23 @@ export function moneyRangeStart(
   today: string,
 ): string {
   const length = rangeLength(range);
-  if (length != null) return shiftDay(today, -(length - 1));
-  return earliestDay(amounts) ?? today;
+  const byMonth = bucketOf(range) === 'month';
+  if (length != null) {
+    const start = shiftDay(today, -(length - 1));
+    /*
+     * A MONTHLY SERIES STARTS ON A 1ST. Amounts are bucketed by month, so a range
+     * opening on 30 September took ALL of September in: 13 buckets for a year,
+     * and an expense from 5 September counted in a range that began on the 30th.
+     * Round up to the next whole month instead — exactly twelve for a year.
+     */
+    const at = parseDay(start);
+    if (!byMonth || !at || at.getDate() === 1) return start;
+    return dayKey(new Date(at.getFullYear(), at.getMonth() + 1, 1));
+  }
+  const earliest = earliestDay(amounts);
+  if (earliest == null) return today;
+  const at = parseDay(earliest);
+  return byMonth && at ? dayKey(new Date(at.getFullYear(), at.getMonth(), 1)) : earliest;
 }
 
 /** `2026-09-13` → `2026-09`. The month a day belongs to, as a sortable key. */

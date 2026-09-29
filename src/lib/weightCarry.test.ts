@@ -37,6 +37,17 @@ describe('carriesWeight', () => {
 });
 
 describe('carryWeightForward', () => {
+  it('carries nothing from a warm-up: its weight is the ramp, not the working weight', () => {
+    const sets = [
+      set('w1', 40, { isWarmup: true, isCompleted: true }),
+      set('w2', 50, { isWarmup: true }),
+      set('s1', 80),
+      set('s2', 80),
+    ];
+
+    expect(carryWeightForward(sets, 'w1').map((s) => s.weightKg)).toEqual([40, 50, 80, 80]);
+  });
+
   it('takes the logged weight down every set below it', () => {
     const sets = [
       set('s1', 60, { isCompleted: true }),

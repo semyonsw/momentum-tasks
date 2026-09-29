@@ -34,13 +34,25 @@ export interface CueLatch {
   /** The second already spoken for, so 4 Hz ticks collapse to 1 Hz cues. */
   spokenSecond: number | null;
   spokeFinal: boolean;
+  /** The reading before this one — how the zero was arrived at. */
+  lastSeen: number | null;
 }
 
 export const IDLE_LATCH: CueLatch = {
   armedFor: null,
   spokenSecond: null,
   spokeFinal: false,
+  lastSeen: null,
 };
+
+/**
+ * The final tone plays only for a zero reached from at most this many seconds
+ * out. Android stops JS timers in the background, so the first reading after
+ * the phone is unlocked could be 0 from a last reading of 60 — and the long tone
+ * went off minutes after the rest ended, after its notification had already
+ * rung. 3 rather than 1 so a janky frame in the foreground still gets its tone.
+ */
+const FINAL_REACH = 3;
 
 export interface CueInput {
   id: CueId;
@@ -74,22 +86,33 @@ export function nextCue(latch: CueLatch, input: CueInput): { cue: Cue; latch: Cu
   if (latch.armedFor !== id) {
     return {
       cue: 'none',
-      latch: { armedFor: id, spokenSecond: secondsLeft, spokeFinal: secondsLeft <= 0 },
+      latch: {
+        armedFor: id,
+        spokenSecond: secondsLeft,
+        spokeFinal: secondsLeft <= 0,
+        lastSeen: secondsLeft,
+      },
     };
   }
 
+  const seen = { ...latch, lastSeen: secondsLeft };
+
   if (secondsLeft <= 0) {
-    if (!finalTone || latch.spokeFinal) return { cue: 'none', latch };
-    return { cue: 'final', latch: { ...latch, spokeFinal: true } };
+    if (!finalTone || latch.spokeFinal) return { cue: 'none', latch: seen };
+    // A zero that jumped from far out is the past being narrated: stay silent.
+    if (latch.lastSeen != null && latch.lastSeen > FINAL_REACH) {
+      return { cue: 'none', latch: { ...seen, spokeFinal: true } };
+    }
+    return { cue: 'final', latch: { ...seen, spokeFinal: true } };
   }
 
-  if (window <= 0) return { cue: 'none', latch };
+  if (window <= 0) return { cue: 'none', latch: seen };
 
   // `!==` rather than `<`: a `−15` that pushes the clock back up should be able to
   // speak the same number again on the way down.
   if (secondsLeft <= window && latch.spokenSecond !== secondsLeft) {
-    return { cue: 'tick', latch: { ...latch, spokenSecond: secondsLeft } };
+    return { cue: 'tick', latch: { ...seen, spokenSecond: secondsLeft } };
   }
 
-  return { cue: 'none', latch };
+  return { cue: 'none', latch: seen };
 }

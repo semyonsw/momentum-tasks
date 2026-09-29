@@ -91,7 +91,10 @@ function compact(value: number): string {
 const BAR_HEIGHT = 58;
 
 export function SummaryCard({ block }: { block: SummaryBlock }) {
-  const max = block.bars ? Math.max(1, ...block.bars.map((b) => b.value)) : 1;
+  /* Scaled to the tallest bar, whatever its size: the floor of 1 drew rates and
+     fractions (0.2, 0.4) at a fifth of the height and lit none of them as top. */
+  const peak = block.bars ? Math.max(0, ...block.bars.map((b) => b.value)) : 0;
+  const max = peak > 0 ? peak : 1;
   return (
     <GlassSurface tier="card" radius={radius.card} shadow="e1" flat>
       <View style={{ padding: 16 }}>

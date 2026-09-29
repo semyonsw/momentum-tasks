@@ -121,7 +121,14 @@ export async function writeToFolder(
     baseName,
     mimeType,
   );
-  await FileSystem.writeAsStringAsync(fileUri, contents);
+  try {
+    await FileSystem.writeAsStringAsync(fileUri, contents);
+  } catch (error) {
+    // The file exists by now and is empty. Left behind, it sorts as the newest
+    // backup — the one somebody in trouble reaches for — and is never rotated.
+    await deleteFile(fileUri);
+    throw error;
+  }
   /*
    * The URI as well as the name, because the automatic backup has to be able to
    * DELETE this file later: SAF cannot overwrite (a second write becomes

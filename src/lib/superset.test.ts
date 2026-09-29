@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDraftSession, type DraftEntry, type DraftSession } from './draft';
 import { DEFAULT_OVERLOAD_POLICY } from './progressiveOverload';
 import { nextInSupersetRound, supersetMembers, supersetPosition } from './superset';
+import { upNextSet } from './upNext';
 import type { Exercise, Routine } from '../types/models';
 
 /**
@@ -312,5 +313,34 @@ describe('supersetPosition', () => {
 
   it('is `none` past the end of the list', () => {
     expect(supersetPosition(entries([]), 0)).toBe('none');
+  });
+});
+
+describe('up next follows the superset round', () => {
+  it('points at the partner after the first member’s set, not at the next row down', () => {
+    const s = logged(
+      session([
+        [dips, 3, 'a'],
+        [rows, 3, 'a'],
+        [curls, 3, undefined],
+      ]),
+      0,
+      1,
+    );
+    const next = upNextSet(s);
+    expect(next?.entryId).toBe(id(s, 1));
+    expect(next?.setId).toBe(s.entries[1].sets[0].localId);
+  });
+
+  it('is the plain next row for an exercise in no superset', () => {
+    const s = logged(
+      session([
+        [dips, 3, undefined],
+        [rows, 3, undefined],
+      ]),
+      0,
+      1,
+    );
+    expect(upNextSet(s)?.entryId).toBe(id(s, 0));
   });
 });

@@ -34,7 +34,9 @@ import { useEffect } from 'react';
 
 import { autoBackupBaseName, shouldBackUpNow } from '../lib/autoBackup';
 import { deleteFile, writeToFolder } from '../lib/backupFile';
+import { useAi } from '../state/aiStore';
 import { exportBackupText } from '../state/dataTransfer';
+import { useDebriefs } from '../state/debriefStore';
 import { useLibrary } from '../state/libraryStore';
 import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
@@ -50,7 +52,9 @@ import { useTasks } from '../state/tasksStore';
  * read synchronously from SQLite before the first render.
  */
 function storesHydrated(): boolean {
-  return [useSettings, useLibrary, useTasks, useMoney].every((store) =>
+  // The AI chats and the debriefs too: the file carries both, and a copy taken
+  // before they had loaded restored as "no chats, no answers" over real ones.
+  return [useSettings, useLibrary, useTasks, useMoney, useAi, useDebriefs].every((store) =>
     store.persist.hasHydrated(),
   );
 }

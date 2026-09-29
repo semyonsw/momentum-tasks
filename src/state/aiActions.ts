@@ -33,6 +33,7 @@ import {
 import { systemPrompt } from '../lib/ai/aiPrompts';
 import { normalizeProposal, planApply, type Library } from '../lib/ai/aiProposal';
 import { AI_SECTIONS, validateBlocks, type AiSection } from '../lib/ai/aiSchema';
+import { keepSteps } from '../lib/ai/sequenceCursor';
 import {
   CHAT_TIMEOUT_MS,
   FALLBACK_MODEL,
@@ -498,15 +499,12 @@ export function applySequence(section: AiSection, messageId: string): Applied | 
 
   const library = useLibrary.getState();
   const known = new Set(library.routines.map((r) => r.id));
-  const routineIds = block.routineIds.filter((id) => known.has(id));
+  // "Next" is re-counted on the routine the card highlighted — `keepSteps`.
+  const { routineIds, next } = keepSteps(block.routineIds, block.next, (id) => known.has(id));
   if (routineIds.length === 0) return null;
 
   const before = library.sequence;
-  library.replaceSequence({
-    isActive: true,
-    routineIds,
-    cursor: Math.min(block.next, routineIds.length - 1),
-  });
+  library.replaceSequence({ isActive: true, routineIds, cursor: next });
   useAi.getState().setSequenceStatus(section, messageId, 'accepted');
   return {
     message: t('Training loop updated', lang()),

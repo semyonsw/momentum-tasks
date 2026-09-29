@@ -1,18 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  BLOB_HALF,
-  BLOB_STRETCH,
   EXIT_WINDOW_MS,
   SECTIONS,
   backAction,
-  blobEdges,
   edgeBackCommits,
   isHorizontalSwipe,
   stepSection,
   swipeDecision,
   swipeFollow,
-  usableRoute,
   type SectionTab,
 } from './sectionNav';
 
@@ -49,28 +45,6 @@ describe('stepSection', () => {
     expect(at).toBe(SECTIONS[SECTIONS.length - 1]);
     for (let i = 1; i < SECTIONS.length; i += 1) at = stepSection(at, -1);
     expect(at).toBe(SECTIONS[0]);
-  });
-});
-
-describe('usableRoute', () => {
-  it('keeps Home and the four sections, and lands anything else on Home', () => {
-    expect(usableRoute('Home')).toBe('Home');
-    expect(usableRoute('Tasks')).toBe('Tasks');
-    expect(usableRoute('History')).toBe('Home');
-    expect(usableRoute(undefined)).toBe('Home');
-  });
-});
-
-describe('blobEdges', () => {
-  it('rests at its own width on a slot', () => {
-    expect(blobEdges(44, 110, 0)).toEqual({ left: 14, right: 74 });
-    expect(blobEdges(44, 110, 1)).toEqual({ left: 80, right: 140 });
-  });
-
-  it('stretches by the full 16 half-way, and never goes negative', () => {
-    const mid = blobEdges(44, 110, 0.5);
-    expect(mid.right - mid.left).toBeCloseTo(2 * (BLOB_HALF + BLOB_STRETCH));
-    expect(blobEdges(44, 110, -3)).toEqual(blobEdges(44, 110, 0));
   });
 });
 

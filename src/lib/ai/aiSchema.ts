@@ -44,6 +44,7 @@
  */
 
 import { MUSCLE_GROUPS } from '../muscles';
+import { keepSteps } from './sequenceCursor';
 import type { MuscleGroup } from '../../types/models';
 
 export type AiSection = 'Workout' | 'Tasks' | 'Expenses';
@@ -510,19 +511,13 @@ export function validateBlocks(raw: unknown, ctx: ValidateContext): AiBlock[] {
 function validateSequence(raw: unknown, ctx: ValidateContext): SequenceProposal | null {
   if (!isRecord(raw) || !Array.isArray(raw.routineIds)) return null;
   const why = text(raw.why, LIMITS.why);
-  const routineIds: string[] = [];
-  for (const id of raw.routineIds) {
-    if (routineIds.length >= LIMITS.sequence) break;
-    // A step naming a routine the phone never described is a step into nothing.
-    if (typeof id === 'string' && ctx.routineIds.has(id.trim())) routineIds.push(id.trim());
-  }
+  const named = raw.routineIds.map((id) => (typeof id === 'string' ? id.trim() : ''));
+  // A step naming a routine the phone never described is a step into nothing —
+  // dropped, with "next" re-counted on the routine the model meant (`keepSteps`).
+  const kept = keepSteps(named, finite(raw.next) ?? 0, (id) => ctx.routineIds.has(id));
+  const routineIds = kept.routineIds.slice(0, LIMITS.sequence);
   if (!why || routineIds.length === 0) return null;
-  const next = finite(raw.next);
-  return {
-    routineIds,
-    next: next == null ? 0 : clampInt(next, 0, routineIds.length - 1),
-    why,
-  };
+  return { routineIds, next: kept.next < routineIds.length ? kept.next : 0, why };
 }
 
 /** The list of blocks, from any of the shapes a model has been seen to send. */

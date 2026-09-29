@@ -23,8 +23,7 @@
  * offering to let you tick it would be offering to lie. This is the opposite
  * kind of control. It picks a day for something that has not happened yet — a
  * one-day task for tomorrow is the whole reason that shape exists — so the
- * future is exactly what it is for, and `earliest` is how a caller that does
- * need a floor asks for one.
+ * future is exactly what it is for, and every day in it is tappable.
  *
  * Padded at the start only, like every other calendar here: a trailing pad draws
  * squares for days that are not in the month.
@@ -46,11 +45,9 @@ interface DayPickerProps {
   /** The day currently chosen, `YYYY-MM-DD`. */
   value: string;
   onChange: (day: string) => void;
-  /** Days before this are not tappable. Absent = any day, past or future. */
-  earliest?: string;
 }
 
-export function DayPicker({ value, onChange, earliest }: DayPickerProps) {
+export function DayPicker({ value, onChange }: DayPickerProps) {
   const lang = useLanguage();
   const t = useT();
   const today = dayKey(new Date());
@@ -126,7 +123,6 @@ export function DayPicker({ value, onChange, earliest }: DayPickerProps) {
                 day={day}
                 selected={day === value}
                 isToday={day === today}
-                disabled={day != null && earliest != null && day < earliest}
                 onPress={() => {
                   if (!day) return;
                   tap();
@@ -150,13 +146,11 @@ function Cell({
   day,
   selected,
   isToday,
-  disabled,
   onPress,
 }: {
   day: string | null;
   selected: boolean;
   isToday: boolean;
-  disabled: boolean;
   onPress: () => void;
 }) {
   if (day === null) return <View className="flex-1 p-[3px]" />;
@@ -165,10 +159,9 @@ function Cell({
   return (
     <BubblePressable
       onPress={onPress}
-      disabled={disabled}
       radius={8}
       accessibilityRole="button"
-      accessibilityState={{ selected, disabled }}
+      accessibilityState={{ selected }}
       accessibilityLabel={day}
       style={pressedStyle}
       className="flex-1 p-[3px]"
@@ -185,11 +178,9 @@ function Cell({
             selected
               ? // On the c2 fill: `onAcc`, since ink vanishes on a light theme's c2.
                 'font-semibold text-on-acc'
-              : disabled
-                ? 'text-ink-faint/40'
-                : isToday
-                  ? 'text-green-bright'
-                  : 'text-ink-muted',
+              : isToday
+                ? 'text-green-bright'
+                : 'text-ink-muted',
           ].join(' ')}
         >
           {number}

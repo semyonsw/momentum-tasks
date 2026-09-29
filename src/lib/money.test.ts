@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  parseBalanceInput,
   type Amount,
   type MoneyAccount,
   amountsIn,
@@ -307,5 +308,22 @@ describe('the day a window means', () => {
   it('is the window itself once the window is in the past', () => {
     expect(dayInWindow('month', '2026-03-01', TODAY)).toBe('2026-03-01');
     expect(dayInWindow('year', '2024-01-01', TODAY)).toBe('2024-01-01');
+  });
+});
+
+describe('parseBalanceInput', () => {
+  it('reads digits and a leading minus, whatever the spacing', () => {
+    expect(parseBalanceInput('-40 000').value).toBe(-40000);
+    expect(parseBalanceInput('40,000').value).toBe(40000);
+  });
+
+  it('drops a trailing fraction instead of multiplying the balance by a hundred', () => {
+    expect(parseBalanceInput('1234.50').value).toBe(1234);
+    expect(parseBalanceInput('40 000,00').value).toBe(40000);
+    expect(parseBalanceInput('12.5').value).toBe(12);
+  });
+
+  it('keeps no more digits than the keypad allows', () => {
+    expect(parseBalanceInput('12345678901234567').digits).toBe('123456789012');
   });
 });

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { dayKey } from '../lib/days';
-import { entryOf } from '../lib/tasks';
+import { dayKey, shiftDay } from '../lib/days';
+import { asksOn, entryOf } from '../lib/tasks';
 import { useSettings } from './settingsStore';
 import { renameSeedTasks, sanitizeTasks, seedTasks, useTasks } from './tasksStore';
 
@@ -101,14 +101,23 @@ describe('answering a day', () => {
   });
 });
 
+/**
+ * A day the seeded "Gym / Boxing" task asks: it trains Mon/Wed/Fri from the day
+ * the store was seeded, and the automatic tick only answers a day that asks.
+ */
+const ASKED = (() => {
+  const gym = seedTasks().find((task) => task.auto === 'workout');
+  let day = dayKey(new Date());
+  while (gym && !asksOn(gym, day)) day = shiftDay(day, 1);
+  return day;
+})();
+
 describe('the automatic tick', () => {
   it('ticks the task its source feeds, and only that one', () => {
-    useTasks.getState().tickAuto('workout', '2026-09-13');
+    useTasks.getState().tickAuto('workout', ASKED);
     const { tasks, log } = useTasks.getState();
     for (const task of tasks) {
-      expect(entryOf(log, task.id, '2026-09-13').mark).toBe(
-        task.auto === 'workout' ? 'done' : null,
-      );
+      expect(entryOf(log, task.id, ASKED).mark).toBe(task.auto === 'workout' ? 'done' : null);
     }
   });
 
@@ -116,9 +125,9 @@ describe('the automatic tick', () => {
     const gym = useTasks.getState().tasks.find((task) => task.auto === 'workout');
     if (!gym) throw new Error('the seed no longer ships an auto-ticked training task');
 
-    useTasks.getState().setMark(gym.id, '2026-09-13', 'missed');
-    useTasks.getState().tickAuto('workout', '2026-09-13');
-    expect(entryOf(useTasks.getState().log, gym.id, '2026-09-13').mark).toBe('missed');
+    useTasks.getState().setMark(gym.id, ASKED, 'missed');
+    useTasks.getState().tickAuto('workout', ASKED);
+    expect(entryOf(useTasks.getState().log, gym.id, ASKED).mark).toBe('missed');
   });
 
   it('leaves an archived task alone', () => {
@@ -126,8 +135,8 @@ describe('the automatic tick', () => {
     if (!gym) throw new Error('the seed no longer ships an auto-ticked training task');
 
     useTasks.getState().archiveTask(gym.id);
-    useTasks.getState().tickAuto('workout', '2026-09-13');
-    expect(entryOf(useTasks.getState().log, gym.id, '2026-09-13').mark).toBeNull();
+    useTasks.getState().tickAuto('workout', ASKED);
+    expect(entryOf(useTasks.getState().log, gym.id, ASKED).mark).toBeNull();
   });
 });
 
@@ -143,29 +152,39 @@ describe('archiving', () => {
   });
 });
 
+describe('the automatic tick', () => {
+  it('never answers a day the task does not ask', () => {
+    const gym = useTasks.getState().tasks.find((task) => task.auto === 'workout');
+    if (!gym) throw new Error('the seed no longer ships an auto-ticked training task');
+    const off = shiftDay(ASKED, 1); // Tue, Thu or Sat — Gym trains Mon/Wed/Fri
+    useTasks.getState().tickAuto('workout', off);
+    expect(entryOf(useTasks.getState().log, gym.id, off).mark).toBeNull();
+  });
+});
+
 describe('the automatic tick can be switched off', () => {
   it('answers nothing at all while the setting is off', () => {
     const gym = useTasks.getState().tasks.find((task) => task.auto === 'workout');
     if (!gym) throw new Error('the seed no longer ships an auto-ticked training task');
 
     useSettings.getState().setFlag('autoTickTasks', false);
-    useTasks.getState().tickAuto('workout', '2026-09-13');
-    expect(entryOf(useTasks.getState().log, gym.id, '2026-09-13').mark).toBeNull();
+    useTasks.getState().tickAuto('workout', ASKED);
+    expect(entryOf(useTasks.getState().log, gym.id, ASKED).mark).toBeNull();
 
     // ...and it is the SETTING and not the task: switched back on, the same call
     // answers the same row.
     useSettings.getState().setFlag('autoTickTasks', true);
-    useTasks.getState().tickAuto('workout', '2026-09-13');
-    expect(entryOf(useTasks.getState().log, gym.id, '2026-09-13').mark).toBe('done');
+    useTasks.getState().tickAuto('workout', ASKED);
+    expect(entryOf(useTasks.getState().log, gym.id, ASKED).mark).toBe('done');
   });
 
   it('leaves marks already given exactly where they are', () => {
     const gym = useTasks.getState().tasks.find((task) => task.auto === 'workout');
     if (!gym) throw new Error('the seed no longer ships an auto-ticked training task');
 
-    useTasks.getState().tickAuto('workout', '2026-09-13');
+    useTasks.getState().tickAuto('workout', ASKED);
     useSettings.getState().setFlag('autoTickTasks', false);
-    expect(entryOf(useTasks.getState().log, gym.id, '2026-09-13').mark).toBe('done');
+    expect(entryOf(useTasks.getState().log, gym.id, ASKED).mark).toBe('done');
   });
 });
 

@@ -33,7 +33,7 @@ import { Text, TextInput, View } from 'react-native';
 import { Sheet, SheetCancel } from './Sheet';
 import { Kicker, PrimaryButton } from './primitives';
 import { useT } from '../hooks/useT';
-import { formatValue } from '../lib/money';
+import { formatValue, parseBalanceInput } from '../lib/money';
 import { palette, tint } from '../theme/tokens';
 
 interface BalanceSheetProps {
@@ -46,17 +46,10 @@ interface BalanceSheetProps {
   onDismiss: () => void;
 }
 
-/** `-40 000` typed any which way → `-40000`. Digits and one leading minus. */
-function parseSigned(text: string): { digits: string; value: number } {
-  const negative = text.trim().startsWith('-');
-  const digits = text.replace(/\D/g, '');
-  return { digits: (negative ? '-' : '') + digits, value: Number(digits) * (negative ? -1 : 1) };
-}
-
 export function BalanceSheet({ title, balance, currency, onSave, onDismiss }: BalanceSheetProps) {
   const t = useT();
   const [digits, setDigits] = useState(String(balance));
-  const parsed = parseSigned(digits);
+  const parsed = parseBalanceInput(digits);
   const shown = digits === '' || digits === '-' ? digits : formatValue(parsed.value);
 
   return (
@@ -76,7 +69,7 @@ export function BalanceSheet({ title, balance, currency, onSave, onDismiss }: Ba
       >
         <TextInput
           value={shown}
-          onChangeText={(text) => setDigits(parseSigned(text).digits)}
+          onChangeText={(text) => setDigits(parseBalanceInput(text).digits)}
           placeholder="0"
           placeholderTextColor={palette.inkFaint}
           cursorColor={palette.greenBright}

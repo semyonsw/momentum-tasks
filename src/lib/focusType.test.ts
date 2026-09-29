@@ -5,7 +5,6 @@ import {
   NUMERAL_ADVANCE,
   UNIT_GAP,
   UNIT_RATIO,
-  workCeiling,
   workNumeralSize,
 } from './focusType';
 
@@ -88,80 +87,5 @@ describe('the working numerals', () => {
 
   it('is the ceiling when there is nothing to measure', () => {
     expect(workNumeralSize([], 284, 96)).toBe(96);
-  });
-});
-
-/**
- * ── AND THE LINES HAVE TO FIT THE PHONE, NOT ONLY THE GUTTER ───────────────
- *
- * The first cut of this budgeted a share of the screen's height for ONE line and
- * then drew two, which on a short phone with the ± panel open would have put the
- * stepper pills behind the DONE circle. The height is a budget: what is left after
- * the furniture, split between the lines actually being drawn.
- */
-describe('the ceiling a screen allows', () => {
-  /** What each state draws around the numbers, per `focusType.ts`. */
-  const FURNITURE = { lift: 514, rest: 490 } as const;
-
-  const PANEL = 150;
-  const NEW_EXERCISE = 60;
-
-  function fits(
-    height: number,
-    where: 'lift' | 'rest',
-    lines: number,
-    compact: boolean,
-    newExercise = false,
-  ) {
-    const size = workCeiling(height, where, lines, compact, newExercise);
-    const extra = newExercise && where === 'rest' ? NEW_EXERCISE : 0;
-    return FURNITURE[where] + (compact ? PANEL : 0) + extra + lines * size * 1.06 <= height;
-  }
-
-  it('gives a tall phone the countdown’s own size for the set it replaces', () => {
-    expect(workCeiling(800, 'lift', 2)).toBe(120);
-  });
-
-  it('gives a single bodyweight line the height both lines would have shared', () => {
-    expect(workCeiling(680, 'lift', 1)).toBeGreaterThan(workCeiling(680, 'lift', 2));
-  });
-
-  it('keeps the whole state on the phone, on every screen it can run on', () => {
-    for (const height of [640, 667, 720, 800, 900, 1000]) {
-      for (const lines of [1, 2]) {
-        for (const compact of [false, true]) {
-          for (const where of ['lift', 'rest'] as const) {
-            for (const newExercise of [false, true]) {
-              // The floor is allowed to win on the smallest screen with the panel
-              // open — under it the number has stopped being worth its own line.
-              if (workCeiling(height, where, lines, compact, newExercise) > 40) {
-                expect(fits(height, where, lines, compact, newExercise)).toBe(true);
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-
-  it('stands down while the ± panel states the same numbers', () => {
-    expect(workCeiling(900, 'lift', 2, true)).toBeLessThanOrEqual(56);
-    expect(workCeiling(900, 'lift', 2, true)).toBeLessThan(workCeiling(900, 'lift', 2));
-  });
-
-  it('leaves room for the line that says you are walking to another machine', () => {
-    // On a screen tall enough for the cap both are 76; the budget only has a say
-    // where there is not enough room for everything, which is where it matters.
-    expect(workCeiling(640, 'rest', 2, false, true)).toBeLessThan(
-      workCeiling(640, 'rest', 2, false, false),
-    );
-  });
-
-  it('keeps the up-next block under the clock that owns the screen', () => {
-    expect(workCeiling(900, 'rest', 2)).toBeLessThan(workCeiling(900, 'lift', 2));
-  });
-
-  it('never goes under the size the same numbers have everywhere else', () => {
-    expect(workCeiling(200, 'rest', 2)).toBe(40);
   });
 });

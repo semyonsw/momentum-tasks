@@ -51,11 +51,6 @@ import {
 
 let current: DerivedTheme = deriveTheme(themeColors(DEFAULT_THEME_ID, DEFAULT_CUSTOM_COLORS));
 
-/** The theme every getter below reads. */
-export function currentTheme(): DerivedTheme {
-  return current;
-}
-
 /**
  * Pour three colours into the tokens. Called by the root before it renders, and
  * again — followed by a remount — whenever the setting changes.
@@ -190,48 +185,6 @@ export const glass = {
     return tint(0.32);
   },
 };
-
-/** 4pt grid. Layout only ever uses these. */
-export const space = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  xxl: 40,
-} as const;
-
-/** Fixed heights that carry meaning, not just measurement. */
-export const size = {
-  /** Minimum tap target. Nothing interactive in the logging flow goes below it. */
-  hit: 44,
-  /** Set rows and single-line list rows. */
-  row: 56,
-  /** Editor / library rows — two lines of text and still clear of the handle. */
-  rowLarge: 64,
-  /** Big numeric wells on the create-exercise screen. */
-  well: 96,
-  /**
-   * The inner row of the timer pill.
-   *
-   * 132, and it has grown twice for the same reason: the numerals inside it are the
-   * thing you read from across the room while the phone lies on a bench. It was 54
-   * in the spec, then 92, and it is now the height a clock at 84 pt needs with its
-   * label and its controls stacked under it.
-   *
-   * A MINIMUM rather than a fixed height now (see `TimerPill`), because the pill
-   * stopped being one row: the clock owns the top of it and the controls sit
-   * underneath, so the content decides the height and this is the floor that keeps
-   * a short pill from looking like a different instrument.
-   */
-  timer: 132,
-  /**
-   * Bottom tab bar — exists only outside a session. 56 of row inside a 6/4
-   * frame: the tab that is active is a pane now rather than a word, and a pane
-   * needs the padding around it to read as one.
-   */
-  tabBar: 56,
-} as const;
 
 /**
  * THE FOUR STEPS OF FILL a month grid is drawn in, lightest first.

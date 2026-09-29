@@ -36,6 +36,7 @@ import { clampHour, clampMinute, dayKey } from '../lib/days';
 import { t } from '../lib/i18n';
 import { useSettings } from './settingsStore';
 import {
+  asksOn,
   reorderWithinVisible,
   type Task,
   type TaskAutoSource,
@@ -377,6 +378,9 @@ export const useTasks = create<TasksState>()(
         let next = log;
         for (const task of tasks) {
           if (task.auto !== source || task.archivedAt !== null) continue;
+          // Only on a day the task asks: a Tuesday workout under a Mon/Wed/Fri
+          // "Gym" wrote a hidden `done` that surfaced the day the schedule changed.
+          if (!asksOn(task, day)) continue;
           if ((next[task.id]?.[day]?.mark ?? null) !== null) continue;
           next = writeEntry(next, task.id, day, { mark: 'done' });
         }

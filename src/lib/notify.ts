@@ -254,6 +254,24 @@ export interface TimerAlert {
   kind?: 'go' | 'getset';
   /** The language the Android channel names are created in, first time round. */
   lang?: Language;
+  /** A fixed id: scheduling it again REPLACES the alarm rather than adding one. */
+  identifier?: string;
+}
+
+/** Which clock a pair of alerts belongs to — one pair of each can ever exist. */
+export type TimerSlot = 'rest' | 'set';
+
+/**
+ * The fixed ids of one clock's pair.
+ *
+ * Fixed rather than generated because the ids used to live only in a hook's
+ * ref: an app killed mid-rest forgot them, the relaunch scheduled a SECOND pair
+ * off the persisted deadline, and a skip afterwards cancelled only the new one —
+ * so "Rest over" rang twice, or for a rest that no longer existed. A fixed id is
+ * known to every process, and re-scheduling it replaces what is there.
+ */
+export function timerSlotIds(slot: TimerSlot): string[] {
+  return [`timer-${slot}-getset`, `timer-${slot}-go`];
 }
 
 /**
@@ -271,6 +289,7 @@ export async function scheduleTimerAlert(alert: TimerAlert): Promise<string | nu
   try {
     await ensureTimerChannels(alert.lang);
     return await Notifications.scheduleNotificationAsync({
+      ...(alert.identifier ? { identifier: alert.identifier } : {}),
       content: {
         title: alert.title,
         body: alert.body,
@@ -308,8 +327,11 @@ export async function scheduleTimerAlertPair(params: {
   getSetTitle: string;
   getSetBody: string;
   lang?: Language;
+  /** Gives the pair its fixed ids — see `timerSlotIds`. */
+  slot?: TimerSlot;
 }): Promise<string[]> {
   const ids: string[] = [];
+  const [getSetIdentifier, goIdentifier] = params.slot ? timerSlotIds(params.slot) : [];
 
   const getSetId = await scheduleTimerAlert({
     title: params.getSetTitle,
@@ -317,6 +339,7 @@ export async function scheduleTimerAlertPair(params: {
     at: params.at - GETSET_LEAD_SECONDS * 1000,
     kind: 'getset',
     lang: params.lang,
+    identifier: getSetIdentifier,
   });
   if (getSetId) ids.push(getSetId);
 
@@ -326,6 +349,7 @@ export async function scheduleTimerAlertPair(params: {
     at: params.at,
     kind: 'go',
     lang: params.lang,
+    identifier: goIdentifier,
   });
   if (goId) ids.push(goId);
 

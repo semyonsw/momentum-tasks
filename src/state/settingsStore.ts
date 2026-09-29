@@ -669,6 +669,10 @@ interface SettingsState extends Settings {
   importSettings: (raw: unknown) => void;
 }
 
+/** Set by the persist error callback below — declared first so it exists by then. */
+let settingsReadFailed = false;
+const readFailedListeners = new Set<() => void>();
+
 export const useSettings = create<SettingsState>()(
   persist(
     (set, get) => ({
@@ -859,9 +863,32 @@ export const useSettings = create<SettingsState>()(
         ...current,
         ...sanitizeSettings(persisted as Partial<Settings> | undefined),
       }),
+      /*
+       * A read that FAILS (storage error, a blob that is not JSON) never marks the
+       * store hydrated, and never fires `onFinishHydration` — and the root waits
+       * on exactly that, so the app was a blank screen on every launch with no
+       * way out but clearing its data. Say it failed, and let the root go on
+       * with the defaults.
+       */
+      onRehydrateStorage: () => (_state, error) => {
+        if (error == null) return;
+        settingsReadFailed = true;
+        for (const listener of [...readFailedListeners]) listener();
+      },
     },
   ),
 );
+
+/** Whether reading the settings from disk failed this launch. */
+export function settingsHydrationFailed(): boolean {
+  return settingsReadFailed;
+}
+
+/** Called once if the settings read fails; returns the unsubscribe. */
+export function onSettingsHydrationFailed(listener: () => void): () => void {
+  readFailedListeners.add(listener);
+  return () => readFailedListeners.delete(listener);
+}
 
 /**
  * The settings a session needs, as a plain object.

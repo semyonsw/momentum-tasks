@@ -74,17 +74,6 @@ function useEnter(duration: number, riseFrom: number, delay = 0) {
   };
 }
 
-export function PanelEnter({
-  children,
-  style,
-}: {
-  children: ReactNode;
-  style?: StyleProp<ViewStyle>;
-}) {
-  const enterStyle = useEnter(300, 10);
-  return <Animated.View style={[style, enterStyle]}>{children}</Animated.View>;
-}
-
 export function Reveal({ children }: { children: ReactNode }) {
   const enterStyle = useEnter(220, -6);
   return <Animated.View style={enterStyle}>{children}</Animated.View>;

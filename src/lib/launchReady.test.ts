@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  LAUNCH_CEILING_MS,
-  LAUNCH_FLOOR_MS,
-  launchReady,
-  launchTicks,
-  nextLaunchChangeMs,
-} from './launchReady';
+import { LAUNCH_CEILING_MS, LAUNCH_FLOOR_MS, launchReady, launchTicks } from './launchReady';
 
 /**
  * The launch screen's two decisions: which chips are ticked, and whether it may
@@ -89,17 +83,5 @@ describe('the ticks', () => {
     const at = { history: 5, tasks: 5, money: 3000 };
     expect(launchTicks(at, 2999).money).toBe(false);
     expect(launchTicks(at, 3000).money).toBe(true);
-  });
-});
-
-describe('the next change', () => {
-  it('points at the next slot a ready store will tick in', () => {
-    expect(nextLaunchChangeMs({ history: 5, tasks: 5, money: 5 }, 800)).toBe(1150);
-  });
-
-  it('points at the floor, then the ceiling, when nothing else is due', () => {
-    expect(nextLaunchChangeMs(none, 100)).toBe(LAUNCH_FLOOR_MS);
-    expect(nextLaunchChangeMs(none, 3000)).toBe(LAUNCH_CEILING_MS);
-    expect(nextLaunchChangeMs(none, 7000)).toBeNull();
   });
 });

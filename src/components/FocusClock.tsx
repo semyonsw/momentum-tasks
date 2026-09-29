@@ -1,5 +1,5 @@
 /**
- * The two blocks every clock-driven state of focus mode is made of.
+ * The clock block every clock-driven state of focus mode is made of.
  *
  *   resting          ╭──────────────────────────────────╮
  *                    │ BETWEEN SETS                     │
@@ -12,13 +12,6 @@
  *                    PLANK
  *                    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░
  *                    logs itself at the bell
- *
- *   up next          ╭──────────────────────────────────╮
- *                    │ UP NEXT                          │
- *                    │ Weighted 90° pull-ups            │
- *                    │ +32 KG              SET 3 OF 4   │
- *                    │ 5 REPS                      ±    │
- *                    ╰──────────────────────────────────╯
  *
  * ── WHY ONE COMPONENT AND NOT TWO CLOCKS ────────────────────────────────────
  *
@@ -46,16 +39,10 @@
  */
 
 import type { ReactNode } from 'react';
-import { Pressable, Text, useWindowDimensions, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View } from 'react-native';
 
-import { describeSetPosition, type FocusTarget } from '../lib/focusPlan';
-import { workCeiling } from '../lib/focusType';
-import { useLanguage, useT } from '../hooks/useT';
-import { FocusNumbers, workLines } from './FocusNumbers';
-import { focusGlow, palette, size, space, timerShadow } from '../theme/tokens';
+import { focusGlow, palette, timerShadow } from '../theme/tokens';
 import type { PillTone } from './TimerPill';
-import type { UnitSystem } from '../types/models';
 
 interface FocusClockBlockProps {
   /** Every colour in the block. `pillTone(inverted)` — see the file header. */
@@ -206,159 +193,6 @@ export function FocusClockBlock({
       ) : null}
 
       {children ? <View className="flex-row p-sm">{children}</View> : null}
-    </View>
-  );
-}
-
-/**
- * `UP NEXT` — the set the countdown is FOR, under the clock it is counting.
- *
- * This block is the reason focus mode exists rather than a bigger timer pill:
- * when rest ends you have to already know what to walk to, without touching the
- * phone — from wherever you are standing, not from 30 cm. So the same figures the
- * clock replaced come back STACKED and near the clock's own size
- * (`FocusNumbers`), in ink rather than green: still the biggest thing on the
- * screen after the countdown, and no longer the instruction, which is the app's
- * existing "this is a fact now" rule doing its normal job.
- *
- * A NEW EXERCISE IS A DIFFERENT EVENT, and it moves four channels at once, none of
- * them colour alone: the label's words, the label's colour, the block's ground,
- * and the name's size. Then it says the thing in words and NAMES THE EXERCISE YOU
- * ARE LEAVING — "which pull-up variant was I on" is the actual mid-workout
- * confusion, and it is the one question the session list answers by scrolling.
- */
-export function FocusUpNext({
-  target,
-  unitSystem,
-  isNewExercise,
-  previousName,
-  onPress,
-  isOpen = false,
-}: {
-  target: FocusTarget;
-  unitSystem: UnitSystem;
-  isNewExercise: boolean;
-  /** The exercise the last logged set was in, when it was a different one. */
-  previousName?: string | null;
-  /**
-   * Make the block a control: open the ± on the set it is describing.
-   *
-   * Absent leaves it exactly what it was — a statement of what is coming. Present
-   * is what turns REST from a screen you can only watch into a screen you can
-   * plan on, which is the one thing a countdown is actually good for: the minute
-   * before a set is when you decide the set is going to be lighter.
-   */
-  onPress?: () => void;
-  /** The ± panel under this block is open — the affordance says so, and so does
-   * the accessibility state. */
-  isOpen?: boolean;
-}) {
-  const t = useT();
-  const lang = useLanguage();
-  const { width, height: screen } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  /* What the SHEET has, which is what the numbers are being budgeted against —
-     the status bar and the gesture bar are not space anything can be drawn in. */
-  const height = screen - insets.top - insets.bottom;
-  const { exercise } = target.entry;
-  const lineCount = workLines(target, unitSystem, lang).length;
-
-  const body = (
-    <>
-      {/* The set position rides with the LABEL rather than with the numbers: it is
-          chrome, it is the longest word on the block in Russian, and beside the
-          numbers it was taking 100 dp off the one thing this block is for. */}
-      <View className="flex-row items-baseline">
-        <Text
-          numberOfLines={1}
-          className={[
-            'flex-1 text-micro font-semibold uppercase',
-            isNewExercise ? 'text-green-bright' : 'text-ink-faint',
-          ].join(' ')}
-        >
-          {isNewExercise ? t('next exercise') : t('up next')}
-        </Text>
-        <Text
-          numberOfLines={1}
-          className="ml-md text-micro font-semibold uppercase tabular-nums text-ink-faint"
-        >
-          {describeSetPosition(target, lang)}
-        </Text>
-      </View>
-
-      <Text
-        numberOfLines={2}
-        className={[
-          'mt-xs font-medium text-ink',
-          isNewExercise ? 'text-title-lg' : 'text-title',
-        ].join(' ')}
-      >
-        {exercise.name}
-      </Text>
-
-      {/* THE TWO NUMBERS, at the size the clock above them is read at — stacked,
-          because that is what lets them be that size at all (`FocusNumbers`). */}
-      <View className="mt-sm flex-row items-center">
-        <View className="flex-1">
-          <FocusNumbers
-            target={target}
-            unitSystem={unitSystem}
-            tone="fact"
-            ceiling={workCeiling(height, 'rest', lineCount, isOpen, isNewExercise)}
-            /* The screen's gutter, the card's own padding, and — only when the
-               block is a button — the ± beside them with its margin. */
-            width={width - space.lg * 4 - (onPress ? size.hit + space.md : 0)}
-          />
-        </View>
-        {/* The affordance, and only when there is one: `±` is the same mark the
-            LIFT state uses for the same panel, so the gesture is learned once
-            rather than twice. `×` while it is open, because the block is then the
-            way back out of it. */}
-        {onPress ? (
-          <View className="ml-md h-hit w-hit shrink-0 items-center justify-center">
-            <Text className="text-title text-ink-faint">{isOpen ? '×' : '±'}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {isNewExercise && previousName ? (
-        <Text className="mt-sm text-micro font-semibold uppercase text-green-bright">
-          {t('walk to a new machine · you were on {name}', { name: previousName })}
-        </Text>
-      ) : null}
-    </>
-  );
-
-  const style = {
-    backgroundColor: isNewExercise ? palette.surfaceAlt : palette.surface,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-  } as const;
-  const className = 'mx-lg rounded-surface px-lg pb-lg pt-lg';
-
-  /*
-   * A Pressable only when there is something to press. The children are built ONCE
-   * above and handed to whichever container is needed, rather than through a
-   * component declared in here: a component defined during render is a new type
-   * every render, and this block re-renders four times a second while the rest it
-   * sits under ticks. Same reasoning as `SetRow`'s `rowChildren`.
-   */
-  return onPress ? (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ expanded: isOpen }}
-      accessibilityLabel={t('Up next: {name}. Adjust the weight or the count.', {
-        name: exercise.name,
-      })}
-      style={style}
-      className={`${className} mb-sm`}
-    >
-      {body}
-    </Pressable>
-  ) : (
-    <View style={style} className={`${className} mb-xl`}>
-      {body}
     </View>
   );
 }

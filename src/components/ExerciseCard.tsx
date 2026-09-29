@@ -297,7 +297,6 @@ function ExerciseCardComponent({
   const completed = entry.sets.filter((s) => s.isCompleted).length;
   const total = entry.sets.length;
   const allDone = completed === total && total > 0;
-  const nextSetId = entry.sets.find((s) => !s.isCompleted)?.localId ?? null;
   /*
    * W, 1, 2, 3 — warm-ups are not numbered as working sets, and the working sets
    * number around them. Derived in `lib/draft.ts`: it is arithmetic over the list,
@@ -603,7 +602,6 @@ function ExerciseCardComponent({
                   workingNumber={setLabels[index]}
                   exercise={entry.exercise}
                   unitSystem={unitSystem}
-                  isNext={set.localId === nextSetId}
                   /* The mark for "do this one". Every card has a next row; only
                      one row in the session is THE next row, and lighting all of
                      them would mark nothing. `upNextSetId` is that row. */

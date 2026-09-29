@@ -97,6 +97,15 @@ module.exports = tseslint.config(
     files: ['src/lib/beepSources.ts'],
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
+  {
+    /*
+     * A test that indexes its own fixture KNOWS the row is there — it built it
+     * three lines up — and `!` is the honest way to say so. Ninety warnings of
+     * that buried the few in app code, where the rule is worth reading.
+     */
+    files: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
   // Last, so it can switch off anything the sets above turned on that Prettier
   // owns instead.
   prettier,

@@ -20,9 +20,8 @@
  * edge moves in 360 ms and its trailing edge follows in 560 ms, 60 ms late, both
  * on an overshooting curve — so for a moment it is wider than itself and then it
  * lands. While a finger drags between sections, `drag` (−1 … 1 of the way to the
- * neighbour) moves it directly and it stretches by `16·sin(πp)` each side: the
- * same shape `lib/sectionNav.blobEdges` computes, inlined below because a
- * worklet cannot call a plain function.
+ * neighbour) moves it directly and it stretches by `16·sin(πp)` each side,
+ * so the pane reads as liquid being pulled rather than a rectangle being slid.
  *
  * Hidden on Home and on every pushed screen: it drops away in 380 ms, and comes
  * back up on an overshoot 160 ms after a section arrives, so the section is on

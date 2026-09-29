@@ -81,21 +81,3 @@ export function launchTicks(
   });
   return ticked;
 }
-
-/** The next moment `launchTicks` or `launchReady` can change its answer, or null. */
-export function nextLaunchChangeMs(
-  readyAtMs: Record<LaunchStore, number | null>,
-  elapsedMs: number,
-): number | null {
-  const finished = LAUNCH_STORES.filter((store) => readyAtMs[store] != null).sort(
-    (a, b) => (readyAtMs[a] as number) - (readyAtMs[b] as number),
-  );
-  const moments = [
-    ...finished.map((store, order) =>
-      Math.max(readyAtMs[store] as number, LAUNCH_TICK_SLOTS_MS[order]),
-    ),
-    LAUNCH_FLOOR_MS,
-    LAUNCH_CEILING_MS,
-  ].filter((at) => at > elapsedMs);
-  return moments.length > 0 ? Math.min(...moments) : null;
-}

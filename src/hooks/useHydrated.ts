@@ -15,18 +15,29 @@
 
 import { useEffect, useState } from 'react';
 
-import { useSettings } from '../state/settingsStore';
+import {
+  onSettingsHydrationFailed,
+  settingsHydrationFailed,
+  useSettings,
+} from '../state/settingsStore';
+
+/** Finished — or failed, which the root must treat as finished: see `settingsStore`. */
+const settled = () => useSettings.persist.hasHydrated() || settingsHydrationFailed();
 
 export function useSettingsHydrated(): boolean {
-  const [hydrated, setHydrated] = useState(() => useSettings.persist.hasHydrated());
+  const [hydrated, setHydrated] = useState(settled);
 
   useEffect(() => {
     if (hydrated) return;
-    // Both, deliberately: the listener catches a hydration still in flight, and
+    // Both, deliberately: the listeners catch a hydration still in flight, and
     // the re-check catches one that finished between render and effect.
     const done = useSettings.persist.onFinishHydration(() => setHydrated(true));
-    if (useSettings.persist.hasHydrated()) setHydrated(true);
-    return done;
+    const failed = onSettingsHydrationFailed(() => setHydrated(true));
+    if (settled()) setHydrated(true);
+    return () => {
+      done();
+      failed();
+    };
   }, [hydrated]);
 
   return hydrated;

@@ -115,6 +115,7 @@ export function ExerciseLibraryScreen({
   onDelete,
 }: ExerciseLibraryScreenProps) {
   const t = useT();
+  const counted = usePlural();
   const lang = useLanguage();
   const trimmed = query.trim();
   const { clusters, unfiled } = useMemo(() => buildMuscleTree(exercises), [exercises]);
@@ -150,7 +151,15 @@ export function ExerciseLibraryScreen({
           /* Searching: one flat, ranked list. */
           <>
             <Kicker className="mx-lg mb-sm mt-sm">
-              {matches.length} {matches.length === 1 ? 'match' : 'matches'}
+              {t('{count} {matches}', {
+                count: matches.length,
+                // `few` is Russian's own third form, so it is the Russian word.
+                matches: counted(matches.length, {
+                  one: t('match'),
+                  few: 'совпадения',
+                  many: t('matches'),
+                }),
+              })}
             </Kicker>
             {matches.length > 0 ? (
               <ListCard className="mx-lg">

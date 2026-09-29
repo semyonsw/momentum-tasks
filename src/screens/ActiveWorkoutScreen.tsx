@@ -656,15 +656,32 @@ export function ActiveWorkoutScreen({
     [session?.entries, lang],
   );
 
+  /*
+   * SAVE FIRST, CLEAR SECOND. This used to clear the session (and so its
+   * persisted copy) and then save it: a save that threw — a full disk, a
+   * database that could not be opened at launch — lost the whole workout, from
+   * memory and from disk, and left the screen empty. Now a failed save leaves
+   * the session exactly where it was, says so, and Finish can be pressed again.
+   */
   const commitFinish = useCallback(
     async (updatePlan = false) => {
       setConfirming(null);
-      const finished = finishSession();
-      if (!finished) return;
-      await onFinish(finished, updatePlan);
+      const draft = useActiveWorkout.getState().session;
+      if (!draft) return;
+      try {
+        await onFinish(draft, updatePlan);
+      } catch (error) {
+        console.error('[finish] save failed', error);
+        setToast({
+          text: t('Could not save the workout. It is still here: try Finish again.'),
+          key: Date.now(),
+        });
+        return;
+      }
+      finishSession();
       onExit();
     },
-    [finishSession, onExit, onFinish],
+    [finishSession, onExit, onFinish, t],
   );
 
   /** ▶ Start — the workout is happening as of now. */

@@ -256,7 +256,16 @@ export function SettingsHomeScreen({
 
   const confirmImport = () => {
     if (!pending) return;
-    const applied = applyBackup(pending.envelope);
+    let applied: ReturnType<typeof applyBackup>;
+    try {
+      applied = applyBackup(pending.envelope);
+    } catch (error) {
+      // A throw out of a press handler is a crash in a release build; this says
+      // what went wrong instead, and the log step runs first so nothing changed.
+      setPending(null);
+      setStatus({ tone: 'quiet', text: describeError(error, language) });
+      return;
+    }
     commit();
     setPending(null);
     succeed(
@@ -295,7 +304,22 @@ export function SettingsHomeScreen({
         folder = picked;
       }
 
-      const result = await runBackupNow(true);
+      let result = await runBackupNow(true);
+      /*
+       * A FOLDER THAT STOPPED WORKING IS RE-PICKED HERE. The message used to say
+       * "pick it again", and nothing on the screen could: the picker only ever
+       * opened when there was no folder at all. Now the failed write asks for one
+       * — the same folder re-grants access, a new one replaces it — and tries once
+       * more.
+       */
+      if (!result.wrote) {
+        const picked = await pickFolder();
+        if (picked) {
+          settings.setAutoBackupFolder(picked);
+          folder = picked;
+          result = await runBackupNow(true);
+        }
+      }
       if (!result.wrote) {
         setStatus({
           tone: 'quiet',

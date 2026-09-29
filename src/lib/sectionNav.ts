@@ -55,13 +55,6 @@ export function stepSection(current: SectionTab, delta: 1 | -1): SectionTab {
 
 export type ShellRoute = 'Home' | SectionTab;
 
-/** A route this build knows, or Home — the default landing. */
-export function usableRoute(value: unknown): ShellRoute {
-  return value === 'Home' || SECTIONS.includes(value as SectionTab)
-    ? (value as ShellRoute)
-    : 'Home';
-}
-
 /**
  * The nav bar's four slot centres, as fractions of the bar's width.
  *
@@ -81,23 +74,6 @@ export const NAV_SLOTS: Record<SectionTab, number> = {
 export const BLOB_HALF = 30;
 /** How far the blob stretches mid-way between two slots. */
 export const BLOB_STRETCH = 16;
-
-/**
- * The blob mid-swipe: where its two edges are when the finger is `progress` of
- * the way (0–1) from one slot to the next. It STRETCHES — half-width
- * `30 + 16·sin(πp)` — so the pane reads as liquid being pulled rather than a
- * rectangle being slid, and lands at its resting width on either end.
- */
-export function blobEdges(
-  fromCentre: number,
-  toCentre: number,
-  progress: number,
-): { left: number; right: number } {
-  const p = Math.min(Math.max(progress, 0), 1);
-  const centre = fromCentre + (toCentre - fromCentre) * p;
-  const half = BLOB_HALF + BLOB_STRETCH * Math.sin(Math.PI * p);
-  return { left: centre - half, right: centre + half };
-}
 
 /** |dx| past this, and past 1.3× |dy|, and the swipe owns the finger. */
 export const SWIPE_LOCK_PX = 10;

@@ -17,11 +17,6 @@
  * for zero (the marquee, the breathing lamps) now always run.
  */
 
-/** The scale, outside React — for the few call sites that compute a duration in a callback. */
-export function getMotionScale(): number {
-  return 1;
-}
-
 /** Always 1. Multiply durations by it. */
 export function useMotionScale(): number {
   return 1;

@@ -551,7 +551,14 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()((set, get) => ({
     replaceAllWorkouts(workouts);
     // Validated against the workouts that actually survived, not the ones the file
     // claimed: a pin onto a workout the guard dropped is a pin onto nothing.
-    set({ workouts, numbering: persistNumbering(sanitizeNumbering(numbering, workouts)) });
+    // A restore that landed IS a readable log: a boot read that had failed no
+    // longer blocks backups (`exportBackupText` refuses while `loadFailed`).
+    set({
+      workouts,
+      numbering: persistNumbering(sanitizeNumbering(numbering, workouts)),
+      loadFailed: false,
+      ready: true,
+    });
     return workouts.length;
   },
 }));

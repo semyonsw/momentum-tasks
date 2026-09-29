@@ -67,7 +67,8 @@ describe('where a range starts', () => {
   it('`all time` starts at the first amount ever recorded', () => {
     const amounts = [day('2026-08-30', 100), day('2026-09-12', 200)];
     expect(earliestDay(amounts)).toBe('2026-08-30');
-    expect(moneyRangeStart(amounts, 'all', '2026-09-13')).toBe('2026-08-30');
+    // Monthly buckets, so it opens on the 1st of that first month.
+    expect(moneyRangeStart(amounts, 'all', '2026-09-13')).toBe('2026-08-01');
   });
 
   it('...and an empty log starts today, so nothing is drawn rather than a year of zeroes', () => {
@@ -119,12 +120,25 @@ describe('one direction, bucketed', () => {
       'year',
       '2026-09-13',
     );
-    // 365 days back from 13 September lands on 14 September a year earlier, so
-    // the range touches thirteen calendar months — the first of them a part-month.
-    expect(points).toHaveLength(13);
-    expect(points[0].key).toBe('2025-09');
+    // Twelve WHOLE months. It used to touch thirteen — a part-month first bucket
+    // that still counted every day of that month, before the range had begun.
+    expect(points).toHaveLength(12);
+    expect(points[0].key).toBe('2025-10');
     expect(points.at(-1)).toMatchObject({ key: '2026-09', value: 500 });
     expect(points.at(-2)).toMatchObject({ key: '2026-08', value: 100 });
+  });
+});
+
+describe('a year never counts a month twice', () => {
+  it('leaves out the part of last year’s month that is before the range', () => {
+    const points = moneyTrendSeries(
+      [day('2025-09-05', 1000), day('2026-09-01', 500)],
+      'expense',
+      'year',
+      '2026-09-29',
+    );
+    expect(points).toHaveLength(12);
+    expect(points.reduce((sum, p) => sum + p.value, 0)).toBe(500);
   });
 });
 

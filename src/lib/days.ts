@@ -51,7 +51,7 @@ export function shiftDay(key: string, offset: number): string {
   return dayKey(date);
 }
 
-/** Days apart, `to` minus `from`, clamped at zero. */
+/** Days apart, `to` minus `from` — negative when `to` is earlier. Callers clamp. */
 export function daysBetween(from: string, to: string): number {
   const a = parseDay(from);
   const b = parseDay(to);

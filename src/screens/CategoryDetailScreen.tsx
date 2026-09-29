@@ -78,6 +78,7 @@ import { useLanguage, useT } from '../hooks/useT';
 import { useSettings } from '../state/settingsStore';
 import { palette } from '../theme/tokens';
 import type { ID } from '../types/models';
+import type { Direction } from '../lib/money';
 
 interface CategoryDetailScreenProps {
   category: MoneyCategory;
@@ -86,6 +87,8 @@ interface CategoryDetailScreenProps {
   /** The window the money screen was reading through when this was tapped. */
   interval: Interval;
   anchor: string;
+  /** Expenses or incomes — what the grid was showing. The header sums only that. */
+  direction: Direction;
   onBack: () => void;
   onOpenAmount: (amountId: ID) => void;
   /** Handed the day this window means, so the new amount lands inside the list
@@ -98,6 +101,7 @@ export function CategoryDetailScreen({
   account,
   interval,
   anchor,
+  direction,
   onBack,
   onOpenAmount,
   onAddAmount,
@@ -135,10 +139,12 @@ export function CategoryDetailScreen({
     () => amountsIn(inAccount(amounts, account.id), category.id, interval, anchor),
     [amounts, account.id, category.id, interval, anchor],
   );
-  const total = rows.reduce(
-    (sum, row) => sum + (row.direction === 'expense' ? row.value : -row.value),
-    0,
-  );
+  /*
+   * The total of the DIRECTION the tile showed. It was expenses minus incomes,
+   * printed unsigned: 3,000 out and 5,000 in under "Family" read "2,000" — a
+   * figure on neither tile, and one that looked like spending.
+   */
+  const total = rows.reduce((sum, row) => (row.direction === direction ? sum + row.value : sum), 0);
 
   return (
     <View className="flex-1 bg-bg">
@@ -153,9 +159,7 @@ export function CategoryDetailScreen({
         <Text className="mx-lg mt-sm text-title font-semibold text-ink">{category.name}</Text>
         <Text className="mx-lg mt-xs text-label text-ink-muted">
           {account.glyph} {account.name} · {describeInterval(interval, anchor, lang)} ·{' '}
-          <Text className="tabular-nums text-green-bright">
-            {formatMoney(Math.abs(total), currency)}
-          </Text>
+          <Text className="tabular-nums text-green-bright">{formatMoney(total, currency)}</Text>
         </Text>
 
         <View className="mx-lg mt-lg flex-row">

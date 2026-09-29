@@ -464,31 +464,6 @@ function ClockBloom({ glow, height }: { glow: 'rest' | 'near' | 'none'; height: 
 }
 
 /**
- * The micro label beside the clock, on its baseline — the set timer's exercise
- * name ("PLANK"). The rest card uses `PillKicker` above the clock instead.
- */
-export function PillLabel({
-  children,
-  tone,
-  inline = true,
-}: {
-  children: ReactNode;
-  tone: PillTone;
-  inline?: boolean;
-}) {
-  return (
-    <Text
-      numberOfLines={1}
-      allowFontScaling={false}
-      style={{ color: tone.label }}
-      className={`text-micro font-semibold uppercase ${inline ? 'ml-md flex-1' : 'mt-xs'}`}
-    >
-      {children}
-    </Text>
-  );
-}
-
-/**
  * One control chip on the card: 44 tall, a glass pill, 15 / 600 text. `flex`
  * shares the row (`+15 s`, `Skip`); `width` fixes it (the 52 dp pause). Sinks to
  * 0.9 under the finger — the card is read from across a gym, and the press has

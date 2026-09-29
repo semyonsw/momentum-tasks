@@ -34,3 +34,11 @@ describe('searchExercises', () => {
     expect(searchExercises(seedExercises, '  ')).toHaveLength(seedExercises.length);
   });
 });
+
+describe('a muscle this build does not know', () => {
+  it('is searched by its own word instead of crashing the search', () => {
+    const odd = { ...seedExercises[0], id: 'odd', name: 'Odd one', muscleGroups: ['zzz' as never] };
+    expect(() => searchExercises([odd], 'row')).not.toThrow();
+    expect(searchExercises([odd], 'zzz').map((e) => e.id)).toEqual(['odd']);
+  });
+});

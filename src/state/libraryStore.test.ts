@@ -435,6 +435,20 @@ describe('the training sequence', () => {
     expect(routineIds()).toEqual([b.id, a.id]);
   });
 
+  it('keeps "next" on the same routine when that step is moved', () => {
+    const [a, b, c] = useLibrary.getState().routines;
+    for (const id of [a.id, b.id, c.id]) useLibrary.getState().addSequenceStep(id);
+    useLibrary.getState().setSequenceCursor(1); // b is next
+
+    useLibrary.getState().moveSequenceStep(1, -1);
+    expect(routineIds()).toEqual([b.id, a.id, c.id]);
+    expect(routineIds()[seq().cursor]).toBe(b.id);
+
+    // Moving a neighbour past it keeps it too.
+    useLibrary.getState().moveSequenceStep(1, -1);
+    expect(routineIds()[seq().cursor]).toBe(b.id);
+  });
+
   it('keeps the cursor on the same step when an earlier one is removed', () => {
     const [a, b, c] = useLibrary.getState().routines;
     for (const id of [a.id, b.id, c.id]) useLibrary.getState().addSequenceStep(id);

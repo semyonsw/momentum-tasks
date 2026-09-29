@@ -617,6 +617,13 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
                 pausedRemainingMs: null,
               }
             : rest,
+          /*
+           * A ✓ on a set whose own clock is running ENDS that clock. It kept
+           * running, and at the bell `commitSetTimer` logged the set a second
+           * time — a new `completedAt`, a new rest over the one already running,
+           * and the cursor moved off the card the user had walked on to.
+           */
+          setTimer: get().setTimer?.setId === setId ? null : get().setTimer,
         });
       },
 
@@ -783,8 +790,9 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
              * thing: the number that goes into `count`.
              */
             const { suggestedWeightKg, suggestedCount } = entry.overload;
+            // A warm-up keeps its ramp: the suggestion is for the WORKING sets.
             const sets = entry.sets.map((s) =>
-              s.isCompleted
+              s.isCompleted || s.isWarmup
                 ? s
                 : {
                     ...s,
@@ -1050,6 +1058,15 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
       commitSetTimer: () => {
         const { session, setTimer } = get();
         if (!session || !setTimer) return;
+
+        // Already logged by hand while the clock ran: nothing left to commit.
+        const timed = session.entries
+          .find((e) => e.localId === setTimer.entryId)
+          ?.sets.find((s) => s.localId === setTimer.setId);
+        if (!timed || timed.isCompleted) {
+          set({ setTimer: null });
+          return;
+        }
 
         const { workedSeconds } = readSetTimer(setTimer, Date.now());
         if (workedSeconds <= 0) {

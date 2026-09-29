@@ -63,6 +63,9 @@ export function carriesWeight(exercise: Pick<Exercise, 'requiresWeight'>): boole
 export function carryWeightForward(sets: readonly DraftSet[], fromSetId: ID): DraftSet[] {
   const index = sets.findIndex((s) => s.localId === fromSetId);
   if (index === -1) return sets as DraftSet[];
+  // A warm-up's weight is the ramp, not the working weight: ticking the 40 kg
+  // warm-up used to rewrite every working set below it to 40.
+  if (sets[index].isWarmup) return sets as DraftSet[];
 
   const weightKg = sets[index].weightKg;
   if (weightKg == null || !Number.isFinite(weightKg)) return sets as DraftSet[];

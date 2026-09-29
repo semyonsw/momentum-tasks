@@ -611,11 +611,14 @@ export function AppShell() {
    * `RECENT` list on the workout section — and pushing history on top of them would
    * make `‹` walk back through a screen nobody asked to see again.
    */
-  const openWorkout = useCallback((sessionId: ID) => {
-    setFocusWorkoutId(sessionId);
-    setTab('Workout');
-    setStack([{ name: 'workoutHistory' }]);
-  }, []);
+  const openWorkout = useCallback(
+    (sessionId: ID) => {
+      setFocusWorkoutId(sessionId);
+      setTab('Workout');
+      setStack([{ name: 'workoutHistory' }]);
+    },
+    [setTab],
+  );
   const clearFocusWorkout = useCallback(() => setFocusWorkoutId(null), []);
 
   /** Filled in below, once the editor's exit rule exists. See `leaveTop`. */
@@ -661,6 +664,11 @@ export function AppShell() {
     if (route?.name === 'session') {
       leaveSession();
       return;
+    }
+    // The picker's own ‹ reopens the workout it was adding to; hardware back and
+    // the edge swipe come through here and must leave the same state behind.
+    if (route?.name === 'addExercise' && route.target === 'history' && route.workoutId) {
+      setFocusWorkoutId(route.workoutId);
     }
     pop();
   };
@@ -1207,107 +1215,118 @@ export function AppShell() {
                  */
                 const saved = saveSession(finished);
                 /*
-                 * ...and Home, which is where this lands, says so: `Workout 92 saved`,
-                 * with sparks from the hero and the new row growing into Recent. The
-                 * number is read AFTER the save, from the log as it now is, so it is
-                 * the number History will show rather than the one predicted for it.
+                 * Everything below is a CONSEQUENCE of the save — the toast, the
+                 * debrief, the loop, the ladders, the plan. Past this line the
+                 * workout is on disk, so none of them may throw back into the
+                 * finish: the screen reads a throw as "not saved" and keeps the
+                 * session for another try, which would store the workout twice.
                  */
-                if (saved) {
-                  const history = useWorkoutHistory.getState();
-                  const number = workoutNumbers(history.workouts, history.numbering)[saved.id];
-                  setToast(
-                    number != null ? t('Workout {number} saved', { number }) : t('Workout saved'),
-                  );
-                  setJustSaved({ id: saved.id, at: Date.now() });
-                }
-
-                /*
-                 * ...and a few questions about how it went (`lib/debrief.ts`), if
-                 * the user has not switched them off. Filed NOW, so a phone locked
-                 * straight after Save still has it waiting on Home; opened a beat
-                 * later, so the sparks and the toast land first and the sheet does
-                 * not arrive on top of the celebration it follows.
-                 */
-                if (saved && useSettings.getState().askAfterWorkout) {
-                  useDebriefs.getState().offer(saved, DEBRIEF_DELAY_MS);
-                }
-                // The queue only moves when a workout from the step it is on actually
-                // gets recorded. A session with nothing logged saves nothing, and a
-                // workout from some other routine is not this step being done.
-                if (saved) advanceSequence(saved.routineId);
-
-                /*
-                 * ...and the day's `Gym / Boxing` task answers itself.
-                 *
-                 * On the day the workout STARTED, not today: a session begun at
-                 * 23:40 and finished after midnight is Tuesday's training, and the
-                 * tick belongs on the square the calendar will draw it on.
-                 *
-                 * It never overrules a day already answered — see
-                 * `tasksStore.tickAuto` — so a day marked "missed on purpose" that
-                 * then turns into a workout keeps the mark the user chose.
-                 */
-                if (saved) useTasks.getState().tickAuto('workout', dayKey(saved.startedAt));
-
-                /*
-                 * ...and the rest of the phone is told a workout happened, if the user
-                 * has switched that on and granted it.
-                 *
-                 * FIRE AND FORGET, deliberately: it is a `void` on a promise nobody
-                 * awaits, it can fail in half a dozen ordinary ways (Health Connect not
-                 * installed, permission revoked, provider gone), and none of them are
-                 * worth a word on screen because the log is already on disk by this
-                 * line. `lib/healthConnect.ts` has the argument for why it writes a
-                 * session and nothing else.
-                 */
-                if (saved && useSettings.getState().shareToHealthConnect) {
-                  void writeWorkoutToHealthConnect(saved);
-                }
-
-                /*
-                 * ...and every ladder that met its target moves up, one rep, without
-                 * being asked.
-                 *
-                 * AUTOMATIC, unlike the routine's set count below it, and the
-                 * difference is what the two things are: a routine is a template the
-                 * user wrote, so rewriting it is a question, while a ladder is a
-                 * progression they switched on precisely so it would advance on its
-                 * own. A dialog asking permission to add the rep after every workout
-                 * would be the app asking whether the user meant to train.
-                 *
-                 * `ladderOutcomes` is the whole decision — which sessions count as met,
-                 * which set earns the rep, when the max itself moves — and it produces
-                 * nothing at all for a session that came up short. The write goes
-                 * against the row as the STORE has it rather than the snapshot the
-                 * session was built from, so an exercise renamed mid-workout keeps its
-                 * new name and only its ladder changes.
-                 */
-                for (const outcome of ladderOutcomes(finished.entries)) {
-                  const current = exercisesById[outcome.exerciseId];
-                  if (!current) continue;
-                  updateExercise(current.id, { ...current, ladder: outcome.after });
-                }
-
-                /*
-                 * ...and only if the user asked, the plan learns what actually
-                 * happened. Recomputed here rather than passed down as a list, so the
-                 * write is against the routine as the STORE has it: the sheet's copy
-                 * was rendered from a snapshot, and between rendering it and this line
-                 * the routine could have been edited on another screen. The diff is the
-                 * same pure function either way.
-                 */
-                const routine = finished.routineId ? routinesById[finished.routineId] : undefined;
-                if (updatePlan && routine) {
-                  const changes = plannedSetDiff(
-                    routine.items,
-                    performedSetCounts(finished.entries),
-                  );
-                  if (changes.length > 0) {
-                    updateRoutine(routine.id, {
-                      name: routine.name,
-                      items: applyPlannedSetDiff(routine.items, changes),
-                    });
+                try {
+                  /*
+                   * ...and Home, which is where this lands, says so: `Workout 92 saved`,
+                   * with sparks from the hero and the new row growing into Recent. The
+                   * number is read AFTER the save, from the log as it now is, so it is
+                   * the number History will show rather than the one predicted for it.
+                   */
+                  if (saved) {
+                    const history = useWorkoutHistory.getState();
+                    const number = workoutNumbers(history.workouts, history.numbering)[saved.id];
+                    setToast(
+                      number != null ? t('Workout {number} saved', { number }) : t('Workout saved'),
+                    );
+                    setJustSaved({ id: saved.id, at: Date.now() });
                   }
+
+                  /*
+                   * ...and a few questions about how it went (`lib/debrief.ts`), if
+                   * the user has not switched them off. Filed NOW, so a phone locked
+                   * straight after Save still has it waiting on Home; opened a beat
+                   * later, so the sparks and the toast land first and the sheet does
+                   * not arrive on top of the celebration it follows.
+                   */
+                  if (saved && useSettings.getState().askAfterWorkout) {
+                    useDebriefs.getState().offer(saved, DEBRIEF_DELAY_MS);
+                  }
+                  // The queue only moves when a workout from the step it is on actually
+                  // gets recorded. A session with nothing logged saves nothing, and a
+                  // workout from some other routine is not this step being done.
+                  if (saved) advanceSequence(saved.routineId);
+
+                  /*
+                   * ...and the day's `Gym / Boxing` task answers itself.
+                   *
+                   * On the day the workout STARTED, not today: a session begun at
+                   * 23:40 and finished after midnight is Tuesday's training, and the
+                   * tick belongs on the square the calendar will draw it on.
+                   *
+                   * It never overrules a day already answered — see
+                   * `tasksStore.tickAuto` — so a day marked "missed on purpose" that
+                   * then turns into a workout keeps the mark the user chose.
+                   */
+                  if (saved) useTasks.getState().tickAuto('workout', dayKey(saved.startedAt));
+
+                  /*
+                   * ...and the rest of the phone is told a workout happened, if the user
+                   * has switched that on and granted it.
+                   *
+                   * FIRE AND FORGET, deliberately: it is a `void` on a promise nobody
+                   * awaits, it can fail in half a dozen ordinary ways (Health Connect not
+                   * installed, permission revoked, provider gone), and none of them are
+                   * worth a word on screen because the log is already on disk by this
+                   * line. `lib/healthConnect.ts` has the argument for why it writes a
+                   * session and nothing else.
+                   */
+                  if (saved && useSettings.getState().shareToHealthConnect) {
+                    void writeWorkoutToHealthConnect(saved);
+                  }
+
+                  /*
+                   * ...and every ladder that met its target moves up, one rep, without
+                   * being asked.
+                   *
+                   * AUTOMATIC, unlike the routine's set count below it, and the
+                   * difference is what the two things are: a routine is a template the
+                   * user wrote, so rewriting it is a question, while a ladder is a
+                   * progression they switched on precisely so it would advance on its
+                   * own. A dialog asking permission to add the rep after every workout
+                   * would be the app asking whether the user meant to train.
+                   *
+                   * `ladderOutcomes` is the whole decision — which sessions count as met,
+                   * which set earns the rep, when the max itself moves — and it produces
+                   * nothing at all for a session that came up short. The write goes
+                   * against the row as the STORE has it rather than the snapshot the
+                   * session was built from, so an exercise renamed mid-workout keeps its
+                   * new name and only its ladder changes.
+                   */
+                  for (const outcome of ladderOutcomes(finished.entries)) {
+                    const current = exercisesById[outcome.exerciseId];
+                    if (!current) continue;
+                    updateExercise(current.id, { ...current, ladder: outcome.after });
+                  }
+
+                  /*
+                   * ...and only if the user asked, the plan learns what actually
+                   * happened. Recomputed here rather than passed down as a list, so the
+                   * write is against the routine as the STORE has it: the sheet's copy
+                   * was rendered from a snapshot, and between rendering it and this line
+                   * the routine could have been edited on another screen. The diff is the
+                   * same pure function either way.
+                   */
+                  const routine = finished.routineId ? routinesById[finished.routineId] : undefined;
+                  if (updatePlan && routine) {
+                    const changes = plannedSetDiff(
+                      routine.items,
+                      performedSetCounts(finished.entries),
+                    );
+                    if (changes.length > 0) {
+                      updateRoutine(routine.id, {
+                        name: routine.name,
+                        items: applyPlannedSetDiff(routine.items, changes),
+                      });
+                    }
+                  }
+                } catch (error) {
+                  console.error('[finish] after the save', error);
                 }
               }}
               onExit={leaveSession}
@@ -1428,7 +1447,9 @@ export function AppShell() {
               if (workoutId) setFocusWorkoutId(workoutId);
               return pop();
             }
-            if (!routineId) return push({ name: 'exerciseHistory', exerciseId });
+            // Every push of this route names a routine or a target; nothing else
+            // can reach here, so there is nothing to append to.
+            if (!routineId) return pop();
             appendToRoutine(routineId, exerciseId);
             return pop();
           }}
@@ -1624,6 +1645,7 @@ export function AppShell() {
             account={account}
             interval={top.interval}
             anchor={top.anchor}
+            direction={moneyWindow.direction}
             onBack={pop}
             onOpenAmount={(amountId) =>
               push({ name: 'moneyAmount', amountId, categoryId: null, accountId: null })
@@ -1636,6 +1658,9 @@ export function AppShell() {
                 amountId: null,
                 categoryId: category.id,
                 accountId: account.id,
+                // Added from the Incomes tile, it is an income — it was always
+                // opened as an expense.
+                direction: moneyWindow.direction,
                 day,
               })
             }

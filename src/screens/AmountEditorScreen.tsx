@@ -252,8 +252,14 @@ export function AmountEditorScreen({
   const landsOn = initialDay && parseDay(initialDay) ? initialDay : today;
   const [digits, setDigits] = useState(amount ? String(amount.value) : '');
   const [direction, setDirection] = useState<Direction>(amount?.direction ?? initialDirection);
+  /* A category handed in for a NEW amount must still be live: an archived one
+     opened the editor with an empty chip and saved the amount under a category
+     the grid no longer shows. An existing amount keeps its own, archived or not. */
   const [category, setCategory] = useState<ID | null>(
-    amount?.categoryId ?? categoryId ?? live[0]?.id ?? null,
+    amount?.categoryId ??
+      (categoryId && live.some((option) => option.id === categoryId) ? categoryId : null) ??
+      live[0]?.id ??
+      null,
   );
   const [account, setAccount] = useState<ID | null>(
     amount?.accountId ?? accountId ?? liveAccounts[0]?.id ?? null,

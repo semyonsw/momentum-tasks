@@ -284,6 +284,10 @@ export function RoutineEditorScreen({
   const [openId, setOpenId] = useState<ID | null>(null);
   /** The item the user asked to remove, held while the sheet asks. */
   const [removing, setRemoving] = useState<RoutineItem | null>(null);
+  /* Deleting the whole routine asks, as removing one exercise from it already
+     did: it sits one row under `Duplicate`, and it took the plan and its steps
+     in the training loop on a single tap. */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const t = useT();
   const lang = useLanguage();
 
@@ -412,7 +416,7 @@ export function RoutineEditorScreen({
     setItems(rolled.items.map((item, order) => ({ ...item, id: `ri_${stamp}_${order}`, order })));
   };
 
-  const dimmed = removing != null;
+  const dimmed = removing != null || confirmingDelete;
 
   return (
     <View className="flex-1 bg-bg">
@@ -618,7 +622,7 @@ export function RoutineEditorScreen({
                   />
                 </View>
               ) : null}
-              <TextButton label={t('Delete routine')} onPress={onDelete} />
+              <TextButton label={t('Delete routine')} onPress={() => setConfirmingDelete(true)} />
             </View>
           )}
         </ScrollView>
@@ -646,6 +650,23 @@ export function RoutineEditorScreen({
           cancelLabel={t('Keep it')}
           onConfirm={() => removeItem(removing.id)}
           onCancel={() => setRemoving(null)}
+        />
+      ) : null}
+
+      {confirmingDelete ? (
+        <ConfirmSheet
+          tone="danger"
+          title={t('Delete “{title}”?', { title: name.trim() || routine.name })}
+          body={t(
+            'The routine goes, and so do its steps in your training loop. Workouts you logged from it stay in your history.',
+          )}
+          confirmLabel={t('Delete it')}
+          cancelLabel={t('Keep it')}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            onDelete();
+          }}
+          onCancel={() => setConfirmingDelete(false)}
         />
       ) : null}
     </View>

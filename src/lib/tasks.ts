@@ -276,11 +276,15 @@ export function dayProgress(tasks: readonly Task[], log: TaskLog, day: string): 
   return { done, total, fraction: total === 0 ? 1 : done / total };
 }
 
-/** The tasks that asked for something on a day, in their own order. */
+/**
+ * The tasks that asked for something on a day, in their own order.
+ *
+ * Archived ones included, on the days before their archive — `asksOn` already
+ * stops them there, and it is what `dayProgress` counts. Hiding them here too
+ * made yesterday read "0 of 1" with no row to tick, a day that could never close.
+ */
 export function tasksOn(tasks: readonly Task[], day: string): Task[] {
-  return tasks
-    .filter((task) => task.archivedAt === null && asksOn(task, day))
-    .sort((a, b) => a.order - b.order);
+  return tasks.filter((task) => asksOn(task, day)).sort((a, b) => a.order - b.order);
 }
 
 /**

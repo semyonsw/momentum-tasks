@@ -313,10 +313,9 @@ export const useAi = create<AiState>()(
         }),
 
       setSequenceStatus: (section, messageId, status) =>
-        set((state) => ({
-          chats: {
-            ...state.chats,
-            [section]: state.chats[section].map((message) =>
+        set((state) => {
+          const mark = (messages: AiMessage[]) =>
+            messages.map((message) =>
               message.id === messageId && message.role === 'model'
                 ? {
                     ...message,
@@ -325,9 +324,21 @@ export const useAi = create<AiState>()(
                     ),
                   }
                 : message,
-            ),
-          },
-        })),
+            );
+          /* The archive too: `Start a new chat` between Apply and Undo files the
+             card away, and the Undo left it "accepted" there for good. */
+          return {
+            chats: { ...state.chats, [section]: mark(state.chats[section]) },
+            archive: {
+              ...state.archive,
+              [section]: state.archive[section].map((chat) =>
+                chat.messages.some((m) => m.id === messageId)
+                  ? { ...chat, messages: mark(chat.messages) }
+                  : chat,
+              ),
+            },
+          };
+        }),
       importChats: (raw) => {
         const clean = sanitizeAi(raw);
         set({ chats: clean.chats, archive: clean.archive, proposals: clean.proposals });

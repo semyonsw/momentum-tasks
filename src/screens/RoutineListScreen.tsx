@@ -19,7 +19,6 @@
 
 import { ScrollView, Text, View } from 'react-native';
 import { Pressable } from '../components/Pressable';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -41,8 +40,8 @@ interface RoutineListScreenProps {
   onStartWorkout: (routineId: ID) => void;
   onCreate: () => void;
   onOpenSequence: () => void;
-  /** Present since this screen moved out of the tab bar and under the workout section. */
-  onBack?: () => void;
+  /** `‹` — the screen is pushed from the workout section, never a tab root. */
+  onBack: () => void;
 }
 
 export function RoutineListScreen({
@@ -55,7 +54,6 @@ export function RoutineListScreen({
   onOpenSequence,
   onBack,
 }: RoutineListScreenProps) {
-  const insets = useSafeAreaInsets();
   const t = useT();
   const lang = useLanguage();
   const counted = usePlural();
@@ -63,10 +61,10 @@ export function RoutineListScreen({
 
   return (
     <View className="flex-1 bg-bg">
-      {onBack ? <ScreenHeader kicker={t('Routines')} onBack={onBack} bordered={false} /> : null}
+      <ScreenHeader kicker={t('Routines')} onBack={onBack} bordered={false} />
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingTop: onBack ? 8 : insets.top + 24, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingTop: 8, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
         <Kicker className="mx-lg mb-sm">{t('Sequence')}</Kicker>

@@ -119,11 +119,9 @@ interface SetRowProps {
   workingNumber: number | null;
   exercise: Exercise;
   unitSystem: UnitSystem;
-  /** The next uncompleted set of this card. Kept for callers; since Momentum v3 only `isUpNext` lights a row. */
-  isNext: boolean;
   /**
-   * THE next set of the whole session: this row is `isNext` AND its exercise is the
-   * one the cursor is on. Rings the row in green — see the file header.
+   * THE next set of the whole session: the first unlogged row of the exercise the
+   * cursor is on. Rings the row in green — see the file header.
    */
   isUpNext?: boolean;
   /**
@@ -162,7 +160,6 @@ function SetRowComponent({
   workingNumber,
   exercise,
   unitSystem,
-  isNext: _isNext,
   isUpNext = false,
   onOpenFocus,
   focusedField,
@@ -243,7 +240,7 @@ function SetRowComponent({
    * with 10 dp of padding where the others have 6. Every row carries a 1 dp
    * border, transparent on the rest, so the edge arriving on the primed row
    * does not move the numbers under the thumb sideways; only its height grows.
-   * `isNext` alone (the first unlogged row of a card being READ) no longer lifts:
+   * The first unlogged row of a card that is only being READ does not lift:
    * one lit row per session is the whole point of lighting it.
    */
   const rowStyle: ViewStyle = {

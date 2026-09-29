@@ -24,11 +24,24 @@
 
 import { useEffect, useRef } from 'react';
 
-import { cancelTimerAlerts, scheduleTimerAlertPair } from '../lib/notify';
+import { cancelTimerAlerts, scheduleTimerAlertPair, timerSlotIds } from '../lib/notify';
 import { workEndsAt } from '../lib/setTimer';
 import { useActiveWorkout } from '../state/activeWorkoutStore';
 import { useSettings } from '../state/settingsStore';
 import { useLanguage, useT } from './useT';
+
+/**
+ * Run alarm work for one clock strictly in order. Its ids are fixed now
+ * (`timerSlotIds`), so an effect's cleanup cancelling `timer-rest-go` and the
+ * next effect scheduling `timer-rest-go` are the same id — without a queue the
+ * old cancel could land after the new schedule and silence it.
+ */
+function useSerial() {
+  const tail = useRef<Promise<void>>(Promise.resolve());
+  return useRef((job: () => Promise<void>) => {
+    tail.current = tail.current.then(job, job);
+  }).current;
+}
 
 export function useTimerAlerts(): void {
   const restEndsAt = useActiveWorkout((s) => s.rest.endsAt);
@@ -36,9 +49,8 @@ export function useTimerAlerts(): void {
   const notifyOnTimerEnd = useSettings((s) => s.notifyOnTimerEnd);
   const t = useT();
   const lang = useLanguage();
-
-  const restIds = useRef<string[]>([]);
-  const setIds = useRef<string[]>([]);
+  const restQueue = useSerial();
+  const setQueue = useSerial();
 
   /*
    * REST. Two alerts, not one: a tick five seconds out and the tone at zero. This
@@ -47,39 +59,25 @@ export function useTimerAlerts(): void {
    * a swipe-away, while a scheduled alarm does. See `lib/notify.ts`.
    *
    * Any change of deadline — including a pause or a skip, which clear it —
-   * invalidates the pending pair.
+   * invalidates the pending pair. Cancelling by the slot's fixed ids also clears
+   * a pair a previous run of the app scheduled and never got to cancel.
    */
   useEffect(() => {
-    let cancelled = false;
-    const clearPending = async () => {
-      const ids = restIds.current;
-      restIds.current = [];
-      await cancelTimerAlerts(ids);
-    };
-
-    void (async () => {
-      await clearPending();
+    restQueue(async () => {
+      await cancelTimerAlerts(timerSlotIds('rest'));
       if (!restEndsAt || !notifyOnTimerEnd) return;
-      const ids = await scheduleTimerAlertPair({
+      await scheduleTimerAlertPair({
         at: restEndsAt,
         getSetTitle: t('Get set'),
         getSetBody: t('Rest ends in 5 seconds.'),
         goTitle: t('Rest over'),
         goBody: t('Next set.'),
         lang,
+        slot: 'rest',
       });
-      if (cancelled) {
-        await cancelTimerAlerts(ids);
-        return;
-      }
-      restIds.current = ids;
-    })();
-
-    return () => {
-      cancelled = true;
-      void clearPending();
-    };
-  }, [lang, notifyOnTimerEnd, restEndsAt, t]);
+    });
+    return () => restQueue(() => cancelTimerAlerts(timerSlotIds('rest')));
+  }, [lang, notifyOnTimerEnd, restEndsAt, restQueue, t]);
 
   /*
    * THE SET TIMER'S BELL. A plank is the case that needs this most: the phone is
@@ -90,36 +88,21 @@ export function useTimerAlerts(): void {
    * replaces the object, which reschedules the bell.
    */
   useEffect(() => {
-    let cancelled = false;
-    const clearPending = async () => {
-      const ids = setIds.current;
-      setIds.current = [];
-      await cancelTimerAlerts(ids);
-    };
-
-    void (async () => {
-      await clearPending();
+    setQueue(async () => {
+      await cancelTimerAlerts(timerSlotIds('set'));
       if (!timer || !notifyOnTimerEnd) return;
       const endsAt = workEndsAt(timer);
       if (endsAt == null) return; // an open hold has no bell to ring
-      const ids = await scheduleTimerAlertPair({
+      await scheduleTimerAlertPair({
         at: endsAt,
         getSetTitle: t('Almost'),
         getSetBody: t('5 seconds left.'),
         goTitle: t('Time'),
         goBody: t('Set logged — rest.'),
         lang,
+        slot: 'set',
       });
-      if (cancelled) {
-        await cancelTimerAlerts(ids);
-        return;
-      }
-      setIds.current = ids;
-    })();
-
-    return () => {
-      cancelled = true;
-      void clearPending();
-    };
-  }, [lang, notifyOnTimerEnd, t, timer]);
+    });
+    return () => setQueue(() => cancelTimerAlerts(timerSlotIds('set')));
+  }, [lang, notifyOnTimerEnd, setQueue, t, timer]);
 }

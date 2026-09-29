@@ -927,6 +927,21 @@ describe('editing the session while it runs', () => {
     expect(useActiveWorkout.getState().setTimer).toBeNull();
   });
 
+  it('stops a set timer when its set is ticked by hand, so the bell cannot log it twice', () => {
+    const session = startRoutine();
+    const timed = session.entries.find((e) => e.exercise.timerMode === 'countdown');
+    if (!timed) throw new Error('no timed exercise in the fixture routine');
+    const setId = timed.sets[0].localId;
+
+    useActiveWorkout.getState().startSetTimer(timed.localId, setId);
+    useActiveWorkout.getState().completeSet(timed.localId, setId);
+    expect(useActiveWorkout.getState().setTimer).toBeNull();
+
+    const before = useActiveWorkout.getState().session;
+    useActiveWorkout.getState().commitSetTimer();
+    expect(useActiveWorkout.getState().session).toBe(before);
+  });
+
   it('ends a rest that the removed exercise started', () => {
     const session = startRoutine();
     const entry = session.entries[0];

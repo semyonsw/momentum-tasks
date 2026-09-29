@@ -606,7 +606,11 @@ export const useLibrary = create<LibraryState>()(
         if (target < 0 || target >= sequence.routineIds.length) return;
         const routineIds = [...sequence.routineIds];
         [routineIds[index], routineIds[target]] = [routineIds[target], routineIds[index]];
-        set({ sequence: { ...sequence, routineIds } });
+        // The cursor follows the ROUTINE, not the slot: moving the step that is
+        // up next used to hand "next" to whichever routine took its place.
+        const cursor =
+          sequence.cursor === index ? target : sequence.cursor === target ? index : sequence.cursor;
+        set({ sequence: { ...sequence, routineIds, cursor } });
       },
 
       setSequenceCursor: (index) =>

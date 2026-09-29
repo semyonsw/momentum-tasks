@@ -132,15 +132,43 @@ export interface AppliedCounts extends BackupCounts {
  * feature.
  */
 export function applyBackup(payload: BackupPayload): AppliedCounts {
+  /*
+   * THE LOG FIRST. It is the one step that can realistically throw (a SQLite
+   * write), and it is transactional — so a failure here leaves the phone exactly
+   * as it was. Last, it used to throw after the file's settings and library had
+   * already replaced this phone's, leaving a mix of the two.
+   */
+  const workouts = useWorkoutHistory.getState().importWorkouts(payload.workouts, payload.numbering);
+
   const settingsApplied = payload.settings != null;
-  if (settingsApplied) useSettings.getState().importSettings(payload.settings);
+  if (settingsApplied) {
+    /*
+     * The file's settings, except what belongs to THIS PHONE: the backup folder
+     * is a grant this phone holds (another phone's URI is a folder it has no
+     * permission for, and every auto-backup after the restore failed), its
+     * rotation list and last-backup time describe this phone's own files, and
+     * Health Connect is a permission granted here or not at all.
+     */
+    const here = useSettings.getState();
+    const local = {
+      autoBackupEnabled: here.autoBackupEnabled,
+      autoBackupFolderUri: here.autoBackupFolderUri,
+      autoBackupUris: here.autoBackupUris,
+      lastBackupAt: here.lastBackupAt,
+      shareToHealthConnect: here.shareToHealthConnect,
+    };
+    const fromFile =
+      typeof payload.settings === 'object' && payload.settings !== null
+        ? (payload.settings as Record<string, unknown>)
+        : {};
+    useSettings.getState().importSettings({ ...fromFile, ...local });
+  }
 
   const library = useLibrary.getState().importLibrary({
     exercises: payload.exercises,
     routines: payload.routines,
     sequence: payload.sequence,
   });
-  const workouts = useWorkoutHistory.getState().importWorkouts(payload.workouts, payload.numbering);
 
   /*
    * ABSENT IS NOT EMPTY. A version-1 file carries neither log, and importing one
