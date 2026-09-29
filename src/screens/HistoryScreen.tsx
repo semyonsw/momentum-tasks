@@ -121,7 +121,7 @@
  *    about; a wrong total is one nobody can spot.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, ScrollView, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from '../components/Pressable';
@@ -163,6 +163,7 @@ import { historyTotals } from '../state/workoutHistoryStore';
 import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import { term, type Language } from '../lib/i18n';
 import { formatMonth } from '../lib/days';
+import { HISTORY_PAGE, monthsToRender, nearEnd, rowsIn } from '../lib/historyWindow';
 import { curve, elevation, gradientBar, palette, radius, tint } from '../theme/tokens';
 import { useSettings } from '../state/settingsStore';
 import { DURATION_LIMITS, formatTimeOfDay } from '../lib/workoutEdit';
@@ -347,6 +348,67 @@ export function HistoryScreen({
   const dimmed = deleting != null || numbering != null;
 
   /*
+   * HOW MUCH OF THE LOG IS MOUNTED — `lib/historyWindow.ts`. A page of workouts
+   * first, the next as the reader nears the bottom, and always as far back as
+   * the workout somebody asked to open.
+   */
+  const [rowBudget, setRowBudget] = useState(HISTORY_PAGE);
+  const monthSizes = useMemo(() => months.map((month) => month.workouts.length), [months]);
+  const focusMonth = focusWorkoutId
+    ? months.findIndex((month) => month.workouts.some((w) => w.id === focusWorkoutId))
+    : -1;
+  const shownMonths = monthsToRender(monthSizes, rowBudget, focusMonth);
+  const shown = months.slice(0, shownMonths);
+  const hasMore = shownMonths < months.length;
+
+  /*
+   * ONE STABLE SET OF HANDLERS for every row, reading the latest props through a
+   * ref. Each row used to get five fresh closures per render, so opening one
+   * workout re-rendered every card in the log; with these the memoised rows
+   * redraw only when their own workout, number or open state changes.
+   */
+  const latest = useRef({
+    onEditSet,
+    onDeleteSet,
+    onEditWorkout,
+    onAddSet,
+    onRemoveExercise,
+    onAddExercise,
+  });
+  latest.current = {
+    onEditSet,
+    onDeleteSet,
+    onEditWorkout,
+    onAddSet,
+    onRemoveExercise,
+    onAddExercise,
+  };
+  const actions = useMemo<RowActions>(
+    () => ({
+      editSet: (workoutId, setId, patch) => latest.current.onEditSet(workoutId, setId, patch),
+      deleteSet: (workoutId, setId) => latest.current.onDeleteSet(workoutId, setId),
+      editWorkout: (workoutId, patch) => latest.current.onEditWorkout(workoutId, patch),
+      addSet: (workoutId, exerciseId) => latest.current.onAddSet(workoutId, exerciseId),
+      removeExercise: (workoutId, exerciseId) =>
+        latest.current.onRemoveExercise(workoutId, exerciseId),
+      addExercise: (workoutId) => latest.current.onAddExercise?.(workoutId),
+      toggle: (workoutId) => {
+        tap();
+        setOpenId((current) => (current === workoutId ? null : workoutId));
+      },
+      askDelete: (workout) => {
+        undo();
+        setDeleting(workout);
+      },
+      askNumber: (workout) => {
+        tap();
+        setNumbering(workout);
+      },
+    }),
+    [],
+  );
+
+  /*
    * OPEN THE WORKOUT SOMEBODY TAPPED, and scroll it into view.
    *
    * Two steps rather than one, because the row cannot be scrolled to until it has
@@ -373,6 +435,11 @@ export function HistoryScreen({
       return;
     }
     setOpenId(focusWorkoutId);
+    /* Keep it mounted once the id is cleared, too: the window is about to stop
+       reaching for it, and a row that unmounted on the next render is one the
+       scroll below can no longer find. */
+    const index = months.findIndex((month) => month.workouts.some((w) => w.id === focusWorkoutId));
+    if (index >= 0) setRowBudget((budget) => Math.max(budget, rowsIn(monthSizes, index + 1)));
 
     const frame = requestAnimationFrame(() => {
       const row = rowOffsets.current[focusWorkoutId];
@@ -388,6 +455,8 @@ export function HistoryScreen({
       onFocusHandled?.();
     });
     return () => cancelAnimationFrame(frame);
+    // `months`/`monthSizes` follow `workouts`, which is already a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusWorkoutId, onFocusHandled, workouts]);
 
   return (
@@ -427,6 +496,19 @@ export function HistoryScreen({
             contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
             showsVerticalScrollIndicator={false}
             scrollEnabled={!dimmed}
+            scrollEventThrottle={100}
+            onScroll={
+              hasMore
+                ? (e) => {
+                    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+                    if (nearEnd(contentOffset.y, layoutMeasurement.height, contentSize.height)) {
+                      setRowBudget((budget) =>
+                        Math.max(budget, rowsIn(monthSizes, shownMonths) + HISTORY_PAGE),
+                      );
+                    }
+                  }
+                : undefined
+            }
           >
             {/* ----------------------------------------------------------
                 SETS PER CLUSTER — above the months, because it is about the
@@ -487,7 +569,7 @@ export function HistoryScreen({
               </GlassSurface>
             ) : null}
 
-            {months.map((month) => (
+            {shown.map((month) => (
               <View
                 key={month.key}
                 onLayout={(e) => {
@@ -514,33 +596,13 @@ export function HistoryScreen({
                           };
                         }}
                       >
-                        <WorkoutRow
+                        <HistoryRow
                           workout={workout}
                           number={numbers[workout.id]}
                           isOpen={openId === workout.id}
                           unitSystem={unitSystem}
-                          onEditSet={(setId, patch) => onEditSet(workout.id, setId, patch)}
-                          onDeleteSet={(setId) => onDeleteSet(workout.id, setId)}
-                          onEditWorkout={(patch) => onEditWorkout(workout.id, patch)}
-                          onAddSet={(exerciseId) => onAddSet(workout.id, exerciseId)}
-                          onRemoveExercise={(exerciseId) =>
-                            onRemoveExercise(workout.id, exerciseId)
-                          }
-                          onAddExercise={
-                            onAddExercise ? () => onAddExercise(workout.id) : undefined
-                          }
-                          onPress={() => {
-                            tap();
-                            setOpenId((current) => (current === workout.id ? null : workout.id));
-                          }}
-                          onDelete={() => {
-                            undo();
-                            setDeleting(workout);
-                          }}
-                          onEditNumber={() => {
-                            tap();
-                            setNumbering(workout);
-                          }}
+                          canAddExercise={onAddExercise != null}
+                          actions={actions}
                         />
                       </View>
                     ))}
@@ -593,6 +655,62 @@ export function HistoryScreen({
 }
 
 /* ------------------------------------------------------------------ */
+
+/** What every row can do, keyed by workout — one object for the whole list. */
+interface RowActions {
+  editSet: (workoutId: ID, setId: ID, patch: { weightKg?: number | null; count?: number }) => void;
+  deleteSet: (workoutId: ID, setId: ID) => boolean;
+  editWorkout: (
+    workoutId: ID,
+    patch: { title?: string; shiftMinutes?: number; durationMinutes?: number },
+  ) => void;
+  addSet: (workoutId: ID, exerciseId: ID) => void;
+  removeExercise: (workoutId: ID, exerciseId: ID) => boolean;
+  addExercise: (workoutId: ID) => void;
+  toggle: (workoutId: ID) => void;
+  askDelete: (workout: CompletedWorkout) => void;
+  askNumber: (workout: CompletedWorkout) => void;
+}
+
+/**
+ * One workout of the list, memoised: its props are its own data plus the list's
+ * one stable `actions`, so it redraws when THIS workout changes and not when a
+ * neighbour opens. The per-workout closures are made here, below the memo.
+ */
+const HistoryRow = memo(function HistoryRow({
+  workout,
+  number,
+  isOpen,
+  unitSystem,
+  canAddExercise,
+  actions,
+}: {
+  workout: CompletedWorkout;
+  number?: number;
+  isOpen: boolean;
+  unitSystem: UnitSystem;
+  canAddExercise: boolean;
+  actions: RowActions;
+}) {
+  const id = workout.id;
+  return (
+    <WorkoutRow
+      workout={workout}
+      number={number}
+      isOpen={isOpen}
+      unitSystem={unitSystem}
+      onEditSet={(setId, patch) => actions.editSet(id, setId, patch)}
+      onDeleteSet={(setId) => actions.deleteSet(id, setId)}
+      onEditWorkout={(patch) => actions.editWorkout(id, patch)}
+      onAddSet={(exerciseId) => actions.addSet(id, exerciseId)}
+      onRemoveExercise={(exerciseId) => actions.removeExercise(id, exerciseId)}
+      onAddExercise={canAddExercise ? () => actions.addExercise(id) : undefined}
+      onPress={() => actions.toggle(id)}
+      onDelete={() => actions.askDelete(workout)}
+      onEditNumber={() => actions.askNumber(workout)}
+    />
+  );
+});
 
 function WorkoutRow({
   workout,

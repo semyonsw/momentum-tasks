@@ -43,6 +43,7 @@
  */
 
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -1846,6 +1847,8 @@ export function AppShell() {
   const beneath = () => renderPushed(stack[stack.length - 2] ?? null);
   const topKey = top ? `${stack.length}:${top.name}` : 'none';
   /* The key the screen under the top has, or had, as the top itself. */
+  /* Nothing of the roots is on screen: a pushed screen covers them at rest. */
+  const rootsCovered = !rootsVisible && stack.length > 0;
   const beneathKey =
     stack.length >= 2 ? `${stack.length - 1}:${stack[stack.length - 2].name}` : 'none';
 
@@ -1876,21 +1879,23 @@ export function AppShell() {
           horizontal gesture, so every scroll, every row and the
           long-press-then-slide reorder inside these screens are untouched — see
           `components/SwipePager.tsx`. */}
-      <View style={{ flex: 1, display: rootsVisible || stack.length === 0 ? 'flex' : 'none' }}>
-        <SwipePager
-          enabled={route !== 'Home' && stack.length === 0 && transition == null}
-          onDrag={onSwipeDrag}
-          onRelease={onSwipeRelease}
-        >
-          <ShellStage
-            route={route}
-            transition={transition}
-            progress={progress}
-            drag={swipeX}
-            covered={covered}
-            render={renderRoot}
-          />
-        </SwipePager>
+      <View style={{ flex: 1, display: rootsCovered ? 'none' : 'flex' }}>
+        <Hold frozen={rootsCovered}>
+          <SwipePager
+            enabled={route !== 'Home' && stack.length === 0 && transition == null}
+            onDrag={onSwipeDrag}
+            onRelease={onSwipeRelease}
+          >
+            <ShellStage
+              route={route}
+              transition={transition}
+              progress={progress}
+              drag={swipeX}
+              covered={covered}
+              render={renderRoot}
+            />
+          </SwipePager>
+        </Hold>
       </View>
 
       <NavBar
@@ -2141,3 +2146,22 @@ function Fallback({ onBack }: { onBack: () => void }) {
     </View>
   );
 }
+
+/**
+ * The roots — Home and the four sections — FROZEN while a pushed screen fully
+ * covers them. They are `display: none` then, so nothing they would draw is
+ * seen; but they were still RE-RENDERED on every shell render, and during a
+ * workout that is every set logged: each ✓ and each ± rebuilt Home (its hero,
+ * its recent list, its number over the whole log) behind a screen that hid it.
+ *
+ * While frozen the element passed in is ignored and React keeps what it last
+ * rendered; the moment the roots can show again — a pop, an edge drag — the
+ * latest element renders once, before the frame that reveals them. Their own
+ * store subscriptions still update them, so nothing they own goes stale.
+ */
+const Hold = memo(
+  function Hold({ children }: { frozen: boolean; children: ReactNode }) {
+    return <>{children}</>;
+  },
+  (_previous, next) => next.frozen,
+);
