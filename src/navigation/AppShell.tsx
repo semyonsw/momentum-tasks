@@ -42,7 +42,15 @@
  * sequence's next step and the overload verdicts behind its nudge count.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { BackHandler, Text, View, useWindowDimensions } from 'react-native';
 import { runOnJS, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
@@ -50,7 +58,6 @@ import { StatusBar } from 'expo-status-bar';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { Toast, type ToastAction } from '../components/glass';
 import { isOverlayOpen, useOverlayOpen } from '../components/overlay';
-import { SlideIn } from '../components/motion';
 import { PrimaryButton } from '../components/primitives';
 import { Segmented } from '../components/primitives';
 import { SwipePager } from '../components/SwipePager';
@@ -550,9 +557,6 @@ export function AppShell() {
         route === 'Home' ? 'open' : next === 'Home' ? 'close' : 'slide';
       const dir: 1 | -1 =
         kind === 'slide' && SECTIONS.indexOf(next as SectionTab) < SECTIONS.indexOf(tab) ? -1 : 1;
-      progress.value = 0;
-      swipeX.value = 0;
-      navDrag.value = 0;
       setTransition({
         kind,
         from: route,
@@ -562,16 +566,30 @@ export function AppShell() {
         dragFrom: options.dragFrom ?? 0,
       });
       setRoute(next);
-      progress.value = withTiming(
-        1,
-        { duration: TRANSITION_MS, easing: Easing.linear },
-        (finished) => {
-          if (finished) runOnJS(setTransition)(null);
-        },
-      );
     },
-    [navDrag, progress, route, swipeX, tab],
+    [route, tab],
   );
+  /*
+   * The transition starts when it is ON STAGE, not when it is asked for. Zeroing
+   * the swipe offset in `navigate` snapped a released screen back to centre —
+   * and the nav blob back to its old slot — for the frames it took the incoming
+   * section to mount, before the slide picked it up again from `dragFrom`; and
+   * the clock started early, so a slow mount (Money, Home) ate the first part of
+   * the 640 ms.
+   */
+  useLayoutEffect(() => {
+    if (!transition) return;
+    swipeX.value = 0;
+    navDrag.value = 0;
+    progress.value = 0;
+    progress.value = withTiming(
+      1,
+      { duration: TRANSITION_MS, easing: Easing.linear },
+      (finished) => {
+        if (finished) runOnJS(setTransition)(null);
+      },
+    );
+  }, [navDrag, progress, swipeX, transition]);
   /** A section by name, from anywhere — the nav bar, a swipe, a deep jump. */
   const selectTab = useCallback((next: SectionTab) => navigate(next), [navigate]);
   /* The jumps that land in a section from UNDER a pushed screen: nothing on
@@ -1148,8 +1166,12 @@ export function AppShell() {
       return (
         <View className="flex-1 bg-bg">
           {/* No nav bar. See the file header. The session slides in from the right
-            — a workout is somewhere you GO, not a section you switch to. */}
-          <SlideIn>
+            — a workout is somewhere you GO, not a section you switch to — and
+            that slide is `PushHost`'s. It used to be wrapped in its own
+            `SlideIn` as well, which starts at opacity 0: every time the session
+            was remounted under a pop (back from adding an exercise) the whole
+            workout blanked and faded back in. */}
+          <View className="flex-1">
             <ActiveWorkoutScreen
               unitSystem={unitSystem}
               /* What this workout will be saved as — `#92` in its header. One past the
@@ -1289,7 +1311,7 @@ export function AppShell() {
               }}
               onExit={leaveSession}
             />
-          </SlideIn>
+          </View>
         </View>
       );
     }
@@ -1380,7 +1402,11 @@ export function AppShell() {
           recentlyUsed={recentlyUsed}
           expanded={expanded}
           onToggleExpanded={toggleExpanded}
-          onBack={pop}
+          onBack={() => {
+            // Backing out of the picker reopens that workout too — see `onPick`.
+            if (target === 'history' && workoutId) setFocusWorkoutId(workoutId);
+            pop();
+          }}
           onChangeQuery={setQuery}
           onPick={(exerciseId) => {
             if (target === 'session') {
@@ -1391,12 +1417,14 @@ export function AppShell() {
             if (target === 'history') {
               /*
                * Into a workout that already happened, with one set. Back to the
-               * training history rather than to the picker, and the workout is already
-               * open there — `openWorkout` set `focusWorkoutId` on the way in, so
-               * the row the user was editing is the row they land on.
+               * training history rather than to the picker, with the workout open
+               * again — `focusWorkoutId` is set HERE, on the way back. Set on the
+               * way out, the history consumed it while the picker slid over it, and
+               * the history it came back to was a fresh mount with every row closed.
                */
               const exercise = exercisesById[exerciseId];
               if (exercise && workoutId) addWorkoutExercise(workoutId, exercise);
+              if (workoutId) setFocusWorkoutId(workoutId);
               return pop();
             }
             if (!routineId) return push({ name: 'exerciseHistory', exerciseId });
@@ -1662,10 +1690,10 @@ export function AppShell() {
           /*
            * The one edit on that screen that needs navigation: the picker is another
            * pushed route, so the screen cannot open it itself. `focusWorkoutId` is
-           * set on the way out so the workout is open again on the way back.
+           * set on the way BACK (the picker's `onPick` and `onBack`), so the workout
+           * is open again when the history reappears.
            */
           onAddExercise={(workoutId) => {
-            setFocusWorkoutId(workoutId);
             push({ name: 'addExercise', routineId: null, target: 'history', workoutId });
           }}
         />
@@ -1817,6 +1845,9 @@ export function AppShell() {
   const pushed = renderPushed(top);
   const beneath = () => renderPushed(stack[stack.length - 2] ?? null);
   const topKey = top ? `${stack.length}:${top.name}` : 'none';
+  /* The key the screen under the top has, or had, as the top itself. */
+  const beneathKey =
+    stack.length >= 2 ? `${stack.length - 1}:${stack[stack.length - 2].name}` : 'none';
 
   /* The section swipe: the screen follows, the blob stretches, release decides. */
   const onSwipeDrag = (dx: number) => {
@@ -1873,6 +1904,7 @@ export function AppShell() {
       <PushHost
         depth={stack.length}
         topKey={topKey}
+        beneathKey={beneathKey}
         top={pushed}
         renderBeneath={beneath}
         covered={covered}

@@ -35,6 +35,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -206,7 +207,7 @@ export function NavBar({ active, visible, onSelect, onHome, drag }: NavBarProps)
           ))
         : null}
 
-      <HomeButton label={t('Home')} onPress={onHome} />
+      <HomeButton label={t('Home')} onPress={onHome} running={visible} />
     </Animated.View>
   );
 }
@@ -286,15 +287,32 @@ function NavItem({
  * inside it on a six-second loop — the one element of the chrome that is never
  * quite still, because it is the one that is always the way out.
  */
-function HomeButton({ label, onPress }: { label: string; onPress: () => void }) {
+function HomeButton({
+  label,
+  onPress,
+  running,
+}: {
+  label: string;
+  onPress: () => void;
+  /** The drift runs only while the bar is on screen. */
+  running: boolean;
+}) {
   const drift = useSharedValue(0);
   useEffect(() => {
+    /* The bar is always mounted — it fades out on Home, under every pushed
+       screen and for the whole of a workout — and a repeat that never stops
+       kept the UI thread animating an invisible circle at 60 fps all that time. */
+    if (!running) {
+      cancelAnimation(drift);
+      return;
+    }
     drift.value = withRepeat(
       withTiming(1, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
       -1,
       true,
     );
-  }, [drift]);
+    return () => cancelAnimation(drift);
+  }, [drift, running]);
   const highlightStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: -4 + 8 * drift.value },

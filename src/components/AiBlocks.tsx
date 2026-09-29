@@ -31,6 +31,7 @@ import { pressedStyle } from './motion';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
 import type { SummaryBlock } from '../lib/ai/aiSchema';
+import { statFontSize } from '../lib/stepperFont';
 import { glassTier, gradientFill, greenSteps, palette, radius, tint } from '../theme/tokens';
 
 /** The 10 px green kicker every answer opens with. */
@@ -110,11 +111,10 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
                 </Text>
                 <Text
                   numberOfLines={1}
-                  adjustsFontSizeToFit
-                  /* A floor: on Android the first fit can run before the row has a width,
-                     and without one the number opens the size of a full stop. */
-                  minimumFontScale={0.6}
-                  style={{ fontSize: 20, lineHeight: 24 }}
+                  /* Sized from the value, not `adjustsFontSizeToFit`: in a
+                     flex-1 cell Android fits it before the row has a width,
+                     and the number opened at its smallest. */
+                  style={{ fontSize: statFontSize(stat.value), lineHeight: 24 }}
                   className="mt-[2px] font-semibold tabular-nums text-ink"
                 >
                   {stat.value}

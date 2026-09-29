@@ -46,6 +46,8 @@ interface PushHostProps {
   depth: number;
   /** Identity of the top route — a change at the same depth is a replace. */
   topKey: string;
+  /** The key the screen under the top one has (or will have) as the top. */
+  beneathKey: string;
   top: ReactNode;
   /** The screen under the top one, for depth ≥ 2 — rendered only while it shows. */
   renderBeneath: () => ReactNode;
@@ -60,6 +62,7 @@ interface PushHostProps {
 export function PushHost({
   depth,
   topKey,
+  beneathKey,
   top,
   renderBeneath,
   covered,
@@ -69,6 +72,12 @@ export function PushHost({
   const { width: W } = useWindowDimensions();
   const pos = useSharedValue(0);
   const [phase, setPhase] = useState<Phase>('idle');
+  /* Bumped on every change of top. A second push or pop landing while the
+     first still animates writes `pos` (cancelling that animation, whose
+     callback then never reaches `done`) and asks for the phase it already
+     has — so without this the effect never re-ran and the stack sat frozen
+     half-way, a stale screen over the app taking every touch. */
+  const [generation, setGeneration] = useState(0);
   const [seen, setSeen] = useState({ depth, key: topKey });
   const lastTop = useRef<ReactNode>(top);
   const exiting = useRef<{ key: string; node: ReactNode } | null>(null);
@@ -105,6 +114,7 @@ export function PushHost({
     }
     alreadyOut.current = false;
     setSeen({ depth, key: topKey });
+    setGeneration((g) => g + 1);
   }
   lastTop.current = top;
 
@@ -129,7 +139,7 @@ export function PushHost({
         if (finished) runOnJS(done)();
       });
     }
-  }, [phase, pos]);
+  }, [phase, generation, pos]);
 
   /* At rest the roots are covered exactly when something is pushed. */
   useEffect(() => {
@@ -201,26 +211,54 @@ export function PushHost({
 
   const showBeneath = phase !== 'idle' && (phase === 'pop' ? depth >= 1 : depth >= 2);
 
+  /*
+   * KEYS ARE THE ROUTE'S OWN, in every role. The screen leaving keeps the key it
+   * had as the top, and the one beneath carries the key it has (or is about to
+   * have) as the top — so React keeps ONE instance through push, pop and drag
+   * instead of mounting a copy for the animation. Copies re-ran mount effects
+   * and entrances: the session's fade-in blanked the workout on every trip
+   * through it, and History's copy consumed the focus it was meant to reopen.
+   * The `Guard` wrapper is in every role for the same reason: a changed parent
+   * type would remount the screen anyway.
+   */
+  const lit = (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 3,
+        backgroundColor: 'rgba(236,241,238,0.06)',
+      }}
+    />
+  );
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {phase === 'pop' ? (
         <>
           {depth >= 1 ? (
             <Layer key={topKey} role="under" pos={pos} resting={false}>
-              {top}
+              <Guard quiet={false}>{top}</Guard>
+              {null}
             </Layer>
           ) : null}
           {exiting.current ? (
-            <Layer key={`out:${exiting.current.key}`} role="over" pos={pos} resting={false}>
-              <Quiet>{exiting.current.node}</Quiet>
+            /* Inert: its captured ‹ would otherwise pop the screen under it too. */
+            <Layer key={exiting.current.key} role="over" pos={pos} resting={false} inert>
+              <Guard quiet>{exiting.current.node}</Guard>
+              {null}
             </Layer>
           ) : null}
         </>
       ) : (
         <>
           {showBeneath ? (
-            <Layer key="beneath" role="under" pos={pos} resting={false}>
-              <Quiet>{renderBeneath()}</Quiet>
+            <Layer key={beneathKey} role="under" pos={pos} resting={false}>
+              <Guard quiet>{renderBeneath()}</Guard>
+              {null}
             </Layer>
           ) : null}
           <Layer
@@ -230,19 +268,9 @@ export function PushHost({
             resting={phase === 'idle'}
             panHandlers={responder.panHandlers}
           >
-            {top}
+            <Guard quiet={false}>{top}</Guard>
             {/* The lit edge that says the screen can be dragged back. */}
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 3,
-                backgroundColor: 'rgba(236,241,238,0.06)',
-              }}
-            />
+            {lit}
           </Layer>
         </>
       )}
@@ -264,12 +292,15 @@ function Layer({
   role,
   pos,
   resting,
+  inert = false,
   panHandlers,
   children,
 }: {
   role: 'over' | 'under';
   pos: SharedValue<number>;
   resting: boolean;
+  /** Takes no touches — the screen on its way out. */
+  inert?: boolean;
   panHandlers?: object;
   children: ReactNode;
 }) {
@@ -284,7 +315,7 @@ function Layer({
   });
   return (
     <Animated.View
-      pointerEvents={role === 'over' ? 'auto' : 'none'}
+      pointerEvents={role === 'over' && !inert ? 'auto' : 'none'}
       style={[StyleSheet.absoluteFill, { backgroundColor: palette.bg }, style]}
       {...panHandlers}
     >
@@ -298,13 +329,23 @@ function Layer({
  * from behind — may be about a subject that has just stopped existing (the
  * exercise deleted on the way out). It is on screen for a third of a second;
  * if it cannot render, it renders nothing rather than taking the app down.
+ *
+ * The TOP screen goes through the same wrapper (`quiet={false}`) so its
+ * instance survives becoming a snapshot, and its errors are passed on to the
+ * app's `ErrorBoundary` exactly as before: a crash where the user is looking
+ * must still say what broke.
  */
-class Quiet extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
+class Guard extends Component<
+  { quiet: boolean; children: ReactNode },
+  { error: unknown; failed: boolean }
+> {
+  state = { error: null as unknown, failed: false };
+  static getDerivedStateFromError(error: unknown) {
+    return { error, failed: true };
   }
   render() {
-    return this.state.failed ? null : this.props.children;
+    if (!this.state.failed) return this.props.children;
+    if (this.props.quiet) return null;
+    throw this.state.error;
   }
 }

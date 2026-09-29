@@ -91,35 +91,6 @@ export function Reveal({ children }: { children: ReactNode }) {
 }
 
 /**
- * The session arriving: from the right, 24 dp and a fade, over 360 ms. A workout
- * is pushed rather than switched to, and a push travels sideways.
- */
-export function SlideIn({ children }: { children: ReactNode }) {
-  const scale = useMotionScale();
-  const v = useRef(new Animated.Value(scale === 0 ? 1 : 0)).current;
-  useEffect(() => {
-    Animated.timing(v, {
-      toValue: 1,
-      duration: 360 * scale,
-      easing: EASING,
-      useNativeDriver: true,
-    }).start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v]);
-  return (
-    <Animated.View
-      style={{
-        flex: 1,
-        opacity: v,
-        transform: [{ translateX: v.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
-      }}
-    >
-      {children}
-    </Animated.View>
-  );
-}
-
-/**
  * Function form, not a plain object, because `Pressable` only exposes `pressed`
  * through its `style` callback.
  */

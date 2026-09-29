@@ -18,3 +18,14 @@ export function stepperFontSize(value: string): number {
   if (length === 4) return 14;
   return 12;
 }
+
+/**
+ * The same decision for a stat in the AI's summary card: ~100 dp of a
+ * three-up row, holding anything from `4` to `124,500 ֏`.
+ */
+export function statFontSize(value: string): number {
+  const length = value.length;
+  if (length <= 6) return 20;
+  if (length <= 9) return 16;
+  return 13;
+}

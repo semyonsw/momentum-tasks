@@ -288,7 +288,12 @@ export function MoneyScreen({
   const [renamingAccount, setRenamingAccount] = useState<MoneyAccount | null>(null);
   const [settingBalance, setSettingBalance] = useState(false);
 
-  const liveAccounts = accounts.filter((account) => account.archivedAt === null);
+  // Memoised: the balances memo below depends on it, and a new array every
+  // render made that a pass over the whole money log on every render.
+  const liveAccounts = useMemo(
+    () => accounts.filter((account) => account.archivedAt === null),
+    [accounts],
+  );
   /*
    * The selected one, or the first — which covers both the first render and the
    * one after the selected subsection has been archived. The store guarantees at
@@ -306,7 +311,10 @@ export function MoneyScreen({
     () => byCategory(mine, direction, interval, anchor),
     [mine, direction, interval, anchor],
   );
-  const live = categories.filter((category) => category.archivedAt === null);
+  const live = useMemo(
+    () => categories.filter((category) => category.archivedAt === null),
+    [categories],
+  );
   /*
    * What each tile's ring is a fraction OF. The direction's own total for the
    * window — not the balance, and not both directions summed: a ring is only
