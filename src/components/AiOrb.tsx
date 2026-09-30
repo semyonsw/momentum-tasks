@@ -2,12 +2,11 @@
  * AiOrb — the assistant's mark, and the one thing in the app that never wears
  * the theme.
  *
- *        ✦                    a 2 dp conic ring, violet → pink → amber → cyan,
- *     ╭─────╮                 turning once every 4 s; an inner radial from
- *     │  ✧  │ ← sheen         #34245A to #130E22; the sparkle breathing
- *     ╰─────╯                 (scale 1.14, 12°, 2.6 s) under a glow that pulses
- *   ✦                         pink/violet on the same beat; and, on the top-bar
- *                             button, a light sheen and two twinkling stars.
+ *        ✦                    a 2 dp conic ring, violet → pink → amber → cyan;
+ *     ╭─────╮                 an inner radial from #34245A to #130E22; the
+ *     │  ✧  │                 sparkle; and, on the top-bar button, two stars.
+ *     ╰─────╯
+ *   ✦
  *
  * ── WHY IT IS NOT THEMED ──────────────────────────────────────────────────
  *
@@ -27,28 +26,21 @@
  * is built once at module load — the colours are fixed, so there is nothing a
  * theme change could make stale.
  *
- * ── THE COST ──────────────────────────────────────────────────────────────
+ * ── IT IS STILL ────────────────────────────────────────────────────────────
  *
- * Four native-driven loops per orb (spin, breath+glow, sheen, twinkle), all
- * transform/opacity, none re-rendering React. The glow is two fixed `boxShadow`
- * layers cross-faded, because a shadow cannot be animated and an opacity can.
+ * It used to spin, breathe, glow, sweep a sheen and twinkle — five loops that
+ * never stopped, on a mark that sits in EVERY section's top bar, so the app was
+ * never at rest. 2.1.0 stopped all five: the colours are what make the orb
+ * findable, and they do that just as well standing still.
  */
 
-import { memo, useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
+import { memo } from 'react';
+import { Text, View } from 'react-native';
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
-import { useMotionScale } from '../hooks/useMotionScale';
 import { ai, radius } from '../theme/tokens';
 import { Icon } from './Icon';
-import { Sheen } from './motion';
 
-/** CSS `ease-in-out`, which every one of the prototype's AI keyframes uses. */
-const EASE_IN_OUT = Easing.bezier(0.42, 0, 0.58, 1);
-
-const SPIN_MS = 4000;
-const BREATH_MS = 2600;
-const TWINKLE_MS = 2200;
 const RING = 2;
 
 /* ── The pie ──────────────────────────────────────────────────────────── */
@@ -86,119 +78,30 @@ const PIE = Array.from({ length: WEDGES }, (_, i) => {
   };
 });
 
-/* ── The glow ─────────────────────────────────────────────────────────── */
-
-/** `aiGlow` 0 % / 100 %. */
-const GLOW_LOW = [{ offsetX: 0, offsetY: 0, blurRadius: 10, color: 'rgba(236,72,153,0.35)' }];
-/** `aiGlow` 50 %. */
-const GLOW_HIGH = [
-  { offsetX: 0, offsetY: 0, blurRadius: 18, color: 'rgba(236,72,153,0.55)' },
-  { offsetX: 0, offsetY: 0, blurRadius: 30, color: 'rgba(139,92,246,0.55)' },
-];
-
-/** `twinkle`: opacity / scale / rotation at 0, 45, 70 and 100 %. */
-const TWINKLE_IN = [0, 0.45, 0.7, 1];
-
-/** A loop on the native driver, stopped on unmount. Zero-motion renders the rest state. */
-function useLoop(make: (value: Animated.Value) => Animated.CompositeAnimation, delayMs = 0) {
-  const scale = useMotionScale();
-  const value = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (scale === 0) return undefined;
-    const loop = Animated.loop(make(value));
-    const start = setTimeout(() => loop.start(), delayMs);
-    return () => {
-      clearTimeout(start);
-      loop.stop();
-    };
-    // `make` is a literal at each call site; the loop keys on the value.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scale, value, delayMs]);
-  return value;
-}
-
 /* Memoised: every prop is a primitive, and it sits in top bars and cards whose
    hosts re-render far more often than the orb changes. */
 export const AiOrb = memo(function AiOrb({
   size = 46,
   glyph = Math.round(size * 0.48),
-  glow = true,
-  sheen = false,
   stars = false,
 }: {
   size?: number;
   /** The sparkle's size: 22 on the top-bar button, 20 on the card's 44. */
   glyph?: number;
-  /** The pulsing pink/violet glow. Off in a list of them. */
-  glow?: boolean;
-  /** The 3.2 s light sweep — the top-bar button's. */
-  sheen?: boolean;
-  /** The two ✦ that twinkle at its corners — the top-bar button's. */
+  /** The two ✦ at its corners — the top-bar button's. */
   stars?: boolean;
 }) {
-  const spin = useLoop((v) =>
-    Animated.timing(v, {
-      toValue: 1,
-      duration: SPIN_MS,
-      easing: Easing.linear,
-      useNativeDriver: true,
-    }),
-  );
-  const breath = useLoop((v) =>
-    Animated.sequence([
-      Animated.timing(v, {
-        toValue: 1,
-        duration: BREATH_MS / 2,
-        easing: EASE_IN_OUT,
-        useNativeDriver: true,
-      }),
-      Animated.timing(v, {
-        toValue: 0,
-        duration: BREATH_MS / 2,
-        easing: EASE_IN_OUT,
-        useNativeDriver: true,
-      }),
-    ]),
-  );
   const inner = size - RING * 2;
-  // Built once: a fresh interpolation node per render makes each Animated.View
-  // detach and re-attach its native animation graph.
-  const nodes = useMemo(
-    () => ({
-      spin: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
-      breathScale: breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] }),
-      breathRotate: breath.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '12deg'] }),
-    }),
-    [breath, spin],
-  );
 
   return (
     <View style={{ width: size, height: size }}>
-      {glow ? (
-        <>
-          <View pointerEvents="none" style={[ROUND, { boxShadow: GLOW_LOW }]} />
-          <Animated.View
-            pointerEvents="none"
-            style={[ROUND, { opacity: breath, boxShadow: GLOW_HIGH }]}
-          />
-        </>
-      ) : null}
-
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          ROUND,
-          {
-            transform: [{ rotate: nodes.spin }],
-          },
-        ]}
-      >
+      <View pointerEvents="none" style={ROUND}>
         <Svg width={size} height={size} viewBox="0 0 100 100">
           {PIE.map((wedge) => (
             <Path key={wedge.d} d={wedge.d} fill={wedge.color} />
           ))}
         </Svg>
-      </Animated.View>
+      </View>
 
       <View
         pointerEvents="none"
@@ -225,73 +128,30 @@ export const AiOrb = memo(function AiOrb({
           </Defs>
           <Circle cx={inner / 2} cy={inner / 2} r={inner / 2} fill="url(#aiOrbInner)" />
         </Svg>
-        <Animated.View
-          style={{
-            transform: [{ scale: nodes.breathScale }, { rotate: nodes.breathRotate }],
-          }}
-        >
-          <Icon name="sparkle" size={glyph} color={ai.glyph} />
-        </Animated.View>
-        {sheen ? <Sheen band={0.4} alpha={0.28} periodMs={3200} /> : null}
+        <Icon name="sparkle" size={glyph} color={ai.glyph} />
       </View>
 
       {stars ? (
         <>
-          <Twinkle glyphSize={11} color="#FDE68A" position={{ top: -3, right: -2 }} delayMs={0} />
-          <Twinkle
-            glyphSize={8}
-            color="#A5F3FC"
-            position={{ bottom: -2, left: -3 }}
-            delayMs={TWINKLE_MS / 2}
-          />
+          <Star glyphSize={11} color="#FDE68A" position={{ top: -3, right: -2 }} />
+          <Star glyphSize={8} color="#A5F3FC" position={{ bottom: -2, left: -3 }} />
         </>
       ) : null}
     </View>
   );
 });
 
-function Twinkle({
+function Star({
   glyphSize,
   color,
   position,
-  delayMs,
 }: {
   glyphSize: number;
   color: string;
   position: { top?: number; right?: number; bottom?: number; left?: number };
-  delayMs: number;
 }) {
-  const v = useLoop(
-    (value) =>
-      Animated.timing(value, {
-        toValue: 1,
-        duration: TWINKLE_MS,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    delayMs,
-  );
-  const nodes = useMemo(
-    () => ({
-      opacity: v.interpolate({ inputRange: TWINKLE_IN, outputRange: [0, 1, 0, 0] }),
-      scale: v.interpolate({ inputRange: TWINKLE_IN, outputRange: [0.3, 1, 0.4, 0.3] }),
-      rotate: v.interpolate({
-        inputRange: TWINKLE_IN,
-        outputRange: ['0deg', '90deg', '160deg', '0deg'],
-      }),
-    }),
-    [v],
-  );
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        ...position,
-        opacity: nodes.opacity,
-        transform: [{ scale: nodes.scale }, { rotate: nodes.rotate }],
-      }}
-    >
+    <View pointerEvents="none" style={{ position: 'absolute', ...position }}>
       <Text
         allowFontScaling={false}
         style={{
@@ -303,7 +163,7 @@ function Twinkle({
       >
         ✦
       </Text>
-    </Animated.View>
+    </View>
   );
 }
 

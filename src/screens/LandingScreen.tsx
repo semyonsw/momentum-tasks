@@ -373,7 +373,6 @@ function Tile({
         collapsable={false}
         style={{
           borderRadius: 28,
-          boxShadow: [{ offsetX: 0, offsetY: 14, blurRadius: 34, color: 'rgba(0,0,0,0.45)' }],
         }}
       >
         <BubblePressable
@@ -441,9 +440,7 @@ function Tile({
                       borderWidth: 1,
                       borderColor: 'rgba(236,241,238,0.12)',
                     }
-                  : {
-                      boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 22, color: tint(0.4) }],
-                    }),
+                  : {}),
               }}
             >
               {plainBadge ? null : (
@@ -475,9 +472,6 @@ function Tile({
                   lineHeight: 30,
                   letterSpacing: -1,
                   fontVariant: ['tabular-nums'],
-                  textShadowColor: tint(0.4),
-                  textShadowOffset: { width: 0, height: 0 },
-                  textShadowRadius: 30,
                 }}
                 className="font-semibold text-ink"
               >

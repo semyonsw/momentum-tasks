@@ -33,13 +33,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import Animated, {
-  cancelAnimation,
   Easing,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
-  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -178,7 +176,6 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarP
           right: 0,
           bottom: 0,
           borderRadius: 30,
-          boxShadow: [{ offsetX: 0, offsetY: -2, blurRadius: 30, color: 'rgba(0,0,0,0.6)' }],
         }}
       >
         <BlurGate.Provider value={blurLive}>
@@ -195,7 +192,6 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarP
                       borderWidth: 1,
                       borderColor: tint(0.3),
                       backgroundColor: tint(0.18),
-                      boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: tint(0.26) }],
                     },
                     blobStyle,
                   ]}
@@ -219,7 +215,7 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarP
           ))
         : null}
 
-      <HomeButton label={t('Home')} onPress={onHome} running={visible} />
+      <HomeButton label={t('Home')} onPress={onHome} />
     </Animated.View>
   );
 }
@@ -289,9 +285,6 @@ const NavItem = memo(function NavItem({
             height: 4,
             borderRadius: 999,
             backgroundColor: active ? palette.acc : palette.hairline,
-            ...(active
-              ? { boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 8, color: palette.acc }] }
-              : {}),
           },
           dotStyle,
         ]}
@@ -302,45 +295,12 @@ const NavItem = memo(function NavItem({
 
 /**
  * The raised 66 dp gradient circle. A 6 dp ring of the bar's own near-black
- * separates it from the glass it rises out of, and a soft highlight drifts
- * inside it on a six-second loop — the one element of the chrome that is never
- * quite still, because it is the one that is always the way out.
+ * separates it from the glass it rises out of, and a soft highlight sits in its
+ * upper left. The highlight used to drift on a six-second loop; it is still now,
+ * because a chrome element that never stops animating keeps the UI thread
+ * producing frames on a screen that is otherwise at rest.
  */
-function HomeButton({
-  label,
-  onPress,
-  running,
-}: {
-  label: string;
-  onPress: () => void;
-  /** The drift runs only while the bar is on screen. */
-  running: boolean;
-}) {
-  const drift = useSharedValue(0);
-  useEffect(() => {
-    /* The bar is always mounted — it fades out on Home, under every pushed
-       screen and for the whole of a workout — and a repeat that never stops
-       kept the UI thread animating an invisible circle at 60 fps all that time. */
-    if (!running) {
-      cancelAnimation(drift);
-      return;
-    }
-    drift.value = withRepeat(
-      withTiming(1, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
-    );
-    return () => cancelAnimation(drift);
-  }, [drift, running]);
-  const highlightStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: -4 + 8 * drift.value },
-      { translateY: 3 - 6 * drift.value },
-      { scale: 0.92 + 0.14 * drift.value },
-      { rotate: `${-12 + 24 * drift.value}deg` },
-    ],
-  }));
-
+function HomeButton({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <View
       style={{
@@ -351,11 +311,7 @@ function HomeButton({
         width: 66,
         height: 66,
         borderRadius: 9999,
-        boxShadow: [
-          { offsetX: 0, offsetY: 0, blurRadius: 0, spreadDistance: 6, color: '#0B0F0E' },
-          { offsetX: 0, offsetY: 0, blurRadius: 34, color: tint(0.55) },
-          { offsetX: 0, offsetY: 12, blurRadius: 28, color: 'rgba(0,0,0,0.55)' },
-        ],
+        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 0, spreadDistance: 6, color: '#0B0F0E' }],
       }}
     >
       <BubblePressable
@@ -381,7 +337,7 @@ function HomeButton({
         />
         <Animated.View
           pointerEvents="none"
-          style={[{ position: 'absolute', top: 6, left: 6, right: 6, bottom: 6 }, highlightStyle]}
+          style={{ position: 'absolute', top: 6, left: 6, right: 6, bottom: 6 }}
         >
           <Svg width="100%" height="100%" viewBox="0 0 54 54">
             <Defs>

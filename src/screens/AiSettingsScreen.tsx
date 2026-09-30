@@ -281,11 +281,6 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
             borderWidth: 1,
             borderColor: wellBorder,
             backgroundColor: glassTier.well.tint,
-            ...(typed !== '' && !error
-              ? {
-                  boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.14) }],
-                }
-              : {}),
           }}
           className="mx-lg flex-row items-center pl-lg pr-sm"
         >
@@ -526,7 +521,6 @@ function ProviderControl() {
                   borderWidth: 1,
                   borderColor: tint(0.28),
                   backgroundColor: tint(0.16),
-                  boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.22) }],
                 }
               : null,
           ]}

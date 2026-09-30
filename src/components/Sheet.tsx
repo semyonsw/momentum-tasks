@@ -60,7 +60,7 @@ import { Pane } from './glass';
 import { PrimaryButton, TextButton } from './primitives';
 import { useIsOverlay } from './overlay';
 import { useT } from '../hooks/useT';
-import { curve, tint } from '../theme/tokens';
+import { curve } from '../theme/tokens';
 
 /** The design's curves, spelled once. */
 const IN = { duration: 600, bezier: [0.32, 1.28, 0.5, 1] as const };
@@ -233,10 +233,6 @@ export function SheetFrame({
             // The drop under the pane and the theme's glow round it. Outset
             // shadows are drawn outside the box, so the clipping child below
             // does not cut them.
-            boxShadow: [
-              { offsetX: 0, offsetY: -10, blurRadius: 50, color: 'rgba(0,0,0,0.6)' },
-              { offsetX: 0, offsetY: 0, blurRadius: 40, color: tint(0.14) },
-            ],
             transform: [{ translateY }],
           }}
         >

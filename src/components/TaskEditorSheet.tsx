@@ -81,7 +81,7 @@ import { dayKey, formatLongDay, shiftDay, weekdayLabels } from '../lib/days';
 import { ensureNotificationPermission } from '../lib/notify';
 import { useLanguage, useT } from '../hooks/useT';
 import type { TaskReminder, TaskSchedule, Weekday } from '../lib/tasks';
-import { curve, palette, tint } from '../theme/tokens';
+import { curve, palette } from '../theme/tokens';
 
 /** What the segmented control shows. `workdays` and `pick` are both `weekdays`. */
 type Mode = 'daily' | 'workdays' | 'pick' | 'once';
@@ -387,11 +387,6 @@ function SaveButton({
         accessibilityRole="button"
         accessibilityState={{ disabled: !awake }}
         accessibilityLabel={label}
-        style={
-          awake
-            ? { boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 34, color: tint(0.45) }] }
-            : undefined
-        }
         className="h-[58px] flex-row items-center justify-center rounded-pill"
       >
         <GradientFill />

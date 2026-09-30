@@ -68,7 +68,7 @@ import { maxLabel, showsMaxLabel } from '../lib/maxReps';
 import { countUnitLabel, formatClock, formatCount, formatWeight, unitLabel } from '../lib/units';
 import type { RestTimerApi } from '../hooks/useRestTimer';
 import { useMotionScale } from '../hooks/useMotionScale';
-import { curve, elevation, motion, palette, radius, tint } from '../theme/tokens';
+import { curve, motion, palette, radius, tint } from '../theme/tokens';
 import { FocusNudge } from './FocusNudge';
 import { Icon } from './Icon';
 import { SecondPulse, Stagger, usePressScale } from './motion';
@@ -502,7 +502,6 @@ function UpNextCard({
         backgroundColor: 'rgba(236,241,238,0.055)',
         borderWidth: 1,
         borderColor: 'rgba(236,241,238,0.06)',
-        boxShadow: [...elevation.e2],
       }}
     >
       <View className="flex-row items-center">

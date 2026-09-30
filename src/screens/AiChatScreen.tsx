@@ -52,7 +52,7 @@ import type { AiSection } from '../lib/ai/aiSchema';
 import { tap } from '../lib/feedback';
 import { discardSequence, sectionContext, sendMessage } from '../state/aiActions';
 import { useAi, type AiMessage } from '../state/aiStore';
-import { glassTier, gradientFill, halo, motion, palette, radius } from '../theme/tokens';
+import { glassTier, gradientFill, motion, palette, radius } from '../theme/tokens';
 
 const META: Record<
   AiSection,
@@ -439,7 +439,7 @@ function EmptyChat({
 }) {
   return (
     <View className="pt-xl">
-      <SparkleCircle size={56} glow />
+      <SparkleCircle size={56} />
       <Text
         style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.9 }}
         className="mt-lg font-semibold text-ink"
@@ -596,7 +596,6 @@ function SendButton({ live, onPress }: { live: boolean; onPress: () => void }) {
         justifyContent: 'center',
         backgroundColor: live ? undefined : 'rgba(236,241,238,0.07)',
         opacity: live ? 1 : 0.6,
-        ...(live ? { boxShadow: [...halo.repeating] } : {}),
       }}
     >
       {live ? (

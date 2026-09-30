@@ -397,16 +397,11 @@ const STAT_CARD = { flex: 1, padding: 16, borderRadius: radius.card, borderWidth
 const PLAIN_CARD = {
   backgroundColor: 'rgba(236,241,238,0.055)',
   borderColor: 'rgba(236,241,238,0.06)',
-  boxShadow: [{ offsetX: 0, offsetY: 8, blurRadius: 20, color: 'rgba(0,0,0,0.35)' }],
 } as const;
 function LIT_CARD() {
   return {
     backgroundColor: tint(0.13),
     borderColor: tint(0.3),
-    boxShadow: [
-      { offsetX: 0, offsetY: 14, blurRadius: 34, color: 'rgba(0,0,0,0.5)' },
-      { offsetX: 0, offsetY: 0, blurRadius: 34, color: tint(0.22) },
-    ],
   };
 }
 const STAT_KICKER = { fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1 } as const;
@@ -465,9 +460,6 @@ function Cell({
   const skin = done
     ? {
         backgroundColor: tint(0.75),
-        boxShadow: [
-          { offsetX: 0, offsetY: 1, blurRadius: 0, color: 'rgba(255,255,255,0.2)', inset: true },
-        ],
       }
     : cell.state === 'missed'
       ? { borderWidth: 1, borderStyle: 'dashed' as const, borderColor: DASHED }
@@ -481,7 +473,6 @@ function Cell({
         borderColor: palette.acc,
         // `boxShadow`, not `elevation`: Android's elevation draws a far wider
         // shadow than the radius asked for. See `theme/tokens.ts`.
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.45) }],
       }
     : selected
       ? { borderWidth: 1, borderStyle: 'solid' as const, borderColor: palette.inkMuted }

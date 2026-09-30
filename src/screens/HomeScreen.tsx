@@ -839,7 +839,6 @@ function WorkoutBubble({
           backgroundColor: tint(0.2),
           borderWidth: 1,
           borderColor: tint(0.38),
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.32) }],
         }}
       >
         {inProgress ? (
@@ -951,7 +950,6 @@ function PlayButton({ onPress, label }: { onPress: () => void; label: string }) 
           height: 50,
           borderRadius: 9999,
           transform: press.style.transform,
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: tint(0.5) }],
         }}
       >
         <View
@@ -1021,67 +1019,8 @@ function Hero({
 }) {
   const t = useT();
   const lang = useLanguage();
-  const scale = useMotionScale();
-  /*
-   * THE HALO BREATHES — 26 dp at 0.14 to 44 dp at 0.30 and back over six
-   * seconds, starting a second after the screen arrives. A `boxShadow` cannot
-   * animate, so it is two fixed halos behind the card with the brighter one's
-   * opacity swinging over the dimmer, native-driven.
-   */
-  const breath = useRef(new Animated.Value(0)).current;
-  const arrived = useArrived();
-  useEffect(() => {
-    if (scale === 0 || !arrived) return undefined;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breath, {
-          toValue: 1,
-          duration: motion.halo / 2,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(breath, {
-          toValue: 0,
-          duration: motion.halo / 2,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    const start = setTimeout(() => loop.start(), 1000);
-    return () => {
-      clearTimeout(start);
-      loop.stop();
-    };
-  }, [arrived, breath, scale]);
-
   return (
     <View className="mx-lg mt-lg">
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          borderRadius: radius.hero,
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 34, color: tint(0.22) }],
-        }}
-      />
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          borderRadius: radius.hero,
-          opacity: breath,
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 44, color: tint(0.3) }],
-        }}
-      />
       <GlassSurface tier="lit" radius={radius.hero} shadow="e2">
         {/* The corner lamp: the theme's THIRD colour, so the hero carries the
             far end of the gradient the floating ▶ under the thumb starts from. */}
@@ -1338,11 +1277,6 @@ function SequenceChip({
           borderWidth: 1,
           borderColor: step.isCurrent ? tint(0.3) : 'rgba(236,241,238,0.045)',
           backgroundColor: step.isCurrent ? tint(0.13) : 'rgba(236,241,238,0.028)',
-          ...(step.isCurrent
-            ? {
-                boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.35) }],
-              }
-            : {}),
         }}
       >
         <Text

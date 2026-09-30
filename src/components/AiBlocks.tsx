@@ -32,7 +32,7 @@ import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
 import type { SummaryBlock } from '../lib/ai/aiSchema';
 import { statFontSize } from '../lib/stepperFont';
-import { glassTier, gradientFill, greenSteps, palette, radius, tint } from '../theme/tokens';
+import { glassTier, gradientFill, greenSteps, palette, radius } from '../theme/tokens';
 
 /** The 10 px green kicker every answer opens with. */
 function AnswerKicker({ children }: { children: string }) {
@@ -150,18 +150,6 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
                       borderRadius: 6,
                       overflow: 'hidden',
                       backgroundColor: top ? undefined : greenSteps()[0],
-                      ...(top
-                        ? {
-                            boxShadow: [
-                              {
-                                offsetX: 0,
-                                offsetY: 0,
-                                blurRadius: 14,
-                                color: tint(0.35),
-                              },
-                            ],
-                          }
-                        : {}),
                     }}
                   >
                     {top ? (

@@ -66,8 +66,8 @@
  * section root, which is where somebody who cannot read the app will look.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, ScrollView, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ScrollView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -89,7 +89,6 @@ import { pressedStyle } from '../components/motion';
 import { Kicker, Separator, StepperRow, TextButton, Toggle } from '../components/primitives';
 import { SparkleCircle } from '../components/AiEntryCard';
 import { useAi } from '../state/aiStore';
-import { useArrived } from '../hooks/useArrived';
 import { runBackupNow } from '../hooks/useAutoBackup';
 import { describeBackupAge } from '../lib/autoBackup';
 import {
@@ -497,9 +496,6 @@ export function SettingsHomeScreen({
             className="mx-lg mb-sm"
             tint={tint(0.1)}
             borderColor={tint(0.24)}
-            style={{
-              boxShadow: [{ offsetX: 0, offsetY: 10, blurRadius: 28, color: 'rgba(0,0,0,0.44)' }],
-            }}
           >
             <View className="p-[18px]">
               <Kicker tone="green">{t('Last backup')}</Kicker>
@@ -753,56 +749,15 @@ function cssFor(colors: readonly [string, string, string]): string {
 }
 
 /**
- * The live theme as a 96 dp bar: the 90° gradient, a sheen crossing it every
- * 4 s, the name, and the gradient written out. The sheen is the one moving
- * thing in the card, and it is what makes the bar read as the app's light
- * rather than as a colour sample.
+ * The live theme as a 96 dp bar: the 90° gradient, the name, and the gradient
+ * written out. (A sheen used to cross it every 4 s; it went with the rest of the
+ * app's never-ending loops in 2.1.0.)
  */
 function ThemePreview({ name }: { name: string }) {
   const themeId = useSettings((s) => s.themeId);
   const custom = useSettings((s) => s.customColors);
-  const [width, setWidth] = useState(0);
-  const sheen = useRef(new Animated.Value(0)).current;
-  const arrived = useArrived();
-
-  useEffect(() => {
-    // Not in a section built ahead of its arrival: the first pass would be over.
-    if (!arrived) return undefined;
-    // `sheen` keyframes: -120% → 220% of its own width over the first 60% of
-    // 4 s, then out of sight until the next pass.
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(sheen, {
-          toValue: 1,
-          duration: 2400,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.delay(1600),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [arrived, sheen]);
-
-  const sheenWidth = width * 0.35;
-  const sheenX = useMemo(
-    () =>
-      sheen.interpolate({
-        inputRange: [0, 1],
-        outputRange: [-1.2 * sheenWidth, 2.2 * sheenWidth],
-      }),
-    [sheen, sheenWidth],
-  );
   return (
-    <View
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      style={{
-        height: 96,
-        borderRadius: 18,
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 30, color: tint(0.35) }],
-      }}
-    >
+    <View style={{ height: 96, borderRadius: 18 }}>
       <LinearGradient
         {...gradientBar()}
         style={{
@@ -814,31 +769,6 @@ function ThemePreview({ name }: { name: string }) {
           justifyContent: 'space-between',
         }}
       >
-        {width > 0 ? (
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: -10,
-              bottom: -10,
-              left: 0,
-              width: sheenWidth,
-              transform: [
-                {
-                  translateX: sheenX,
-                },
-                { skewX: '-20deg' },
-              ],
-            }}
-          >
-            <LinearGradient
-              colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0)']}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={{ flex: 1 }}
-            />
-          </Animated.View>
-        ) : null}
         <View className="flex-row items-center justify-between">
           <Text
             allowFontScaling={false}
@@ -903,18 +833,6 @@ function PresetCard({
         style={{
           height: 36,
           borderRadius: 12,
-          ...(selected
-            ? {
-                boxShadow: [
-                  {
-                    offsetX: 0,
-                    offsetY: 0,
-                    blurRadius: 16,
-                    color: `${preset.colors[1]}66`,
-                  },
-                ],
-              }
-            : {}),
         }}
       >
         <LinearGradient
@@ -1019,9 +937,6 @@ function CustomCard({
                 backgroundColor: colors[index],
                 borderWidth: 2,
                 borderColor: 'rgba(236,241,238,0.22)',
-                boxShadow: [
-                  { offsetX: 0, offsetY: 0, blurRadius: 12, color: `${colors[index]}55` },
-                ],
               },
             ]}
           />
@@ -1090,9 +1005,6 @@ function AiSettingsRow({ onPress }: { onPress: () => void }) {
                   borderRadius: 4,
                   marginRight: 6,
                   backgroundColor: ai.ready,
-                  boxShadow: [
-                    { offsetX: 0, offsetY: 0, blurRadius: 10, color: 'rgba(244,114,182,0.7)' },
-                  ],
                 }}
               />
             ) : null}

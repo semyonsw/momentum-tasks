@@ -220,7 +220,6 @@ export function FinishSheet({
           backgroundColor: palette.surface,
           borderTopWidth: 1,
           borderTopColor: 'rgba(236,241,238,0.08)',
-          boxShadow: [{ offsetX: 0, offsetY: -20, blurRadius: 50, color: 'rgba(0,0,0,0.6)' }],
           transform: [{ translateY: rise }],
         }}
       >
@@ -322,7 +321,6 @@ export function FinishSheet({
                 style={{
                   borderRadius: radius.pill,
                   backgroundColor: palette.green,
-                  boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.3) }],
                 }}
               />
               {EFFORT_CHOICES.map((choice) => {
@@ -437,7 +435,6 @@ function SaveButton({ label, onPress }: { label: string; onPress: () => void }) 
     <View
       style={{
         borderRadius: radius.pill,
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 30, color: tint(0.35) }],
       }}
     >
       <Pressable

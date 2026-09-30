@@ -182,7 +182,6 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
   const lamps = useRef(new Animated.Value(reduced ? 1 : 0)).current;
   /* The squeeze beat: 0 rest → 1 pinched → 2 overshoot → 3 rest again. */
   const beat = useRef(new Animated.Value(0)).current;
-  const markGlow = useRef(new Animated.Value(0)).current;
   const spin = useRef(new Animated.Value(0)).current;
   const wave1 = useRef(new Animated.Value(0)).current;
   const wave2 = useRef(new Animated.Value(0)).current;
@@ -204,7 +203,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
     const step = (v: Animated.Value, toValue: number, duration: number, easing = EASE) =>
       Animated.timing(v, { toValue, duration, easing, useNativeDriver: true });
 
-    // The room lighting up; `Lamps` breathes on its own from there.
+    // The room lighting up.
     step(lamps, 1, 1600).start();
 
     // `squeeze`: rest 0–72 %, 84 % pinched, 94 % overshoot, 100 % rest.
@@ -215,16 +214,6 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
           step(beat, 1, SQUEEZE_MS * 0.12, SQUEEZE_EASE),
           step(beat, 2, SQUEEZE_MS * 0.1, SQUEEZE_EASE),
           step(beat, 3, SQUEEZE_MS * 0.06, SQUEEZE_EASE),
-        ]),
-      ),
-    );
-
-    // `markGlow`: 24 dp at c2 30 % ↔ 52 dp at 65 %, 3 s.
-    run(
-      Animated.loop(
-        Animated.sequence([
-          step(markGlow, 1, 1500, Easing.inOut(Easing.ease)),
-          step(markGlow, 0, 1500, Easing.inOut(Easing.ease)),
         ]),
       ),
     );
@@ -432,25 +421,6 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
             />
           </Svg>
         </Animated.View>
-
-        {/* The mark's glow breathing, 24 ↔ 52 dp: two fixed halos, one fading. */}
-        <View
-          pointerEvents="none"
-          style={[
-            MARK_BOX,
-            { boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 24, color: tint(0.3) }] },
-          ]}
-        />
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            MARK_BOX,
-            {
-              opacity: markGlow,
-              boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 52, color: tint(0.65) }],
-            },
-          ]}
-        />
 
         <Animated.View
           style={[

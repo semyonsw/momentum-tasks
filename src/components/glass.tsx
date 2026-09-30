@@ -32,18 +32,15 @@
  *  • THERE IS NO INSET SHADOW. The specular edge is a real 1px `View` pinned to
  *    the top of the pane with the top two corners matching. Cheap, and it reads
  *    correctly at 1px on a 3× screen.
- *  • `BlurView` IS NOT FREE, and on Android it is not even ON by default —
- *    see `Pane` below for both halves of that. The budget is THREE blurred
- *    surfaces per screen: the top bar, the nav pill, and the one hero. Every
- *    repeating pane passes `flat`, which draws the same tint, border and
- *    specular with nothing behind them.
+ *  • THERE IS NO BLUR, AND NO GLOW. Since 2.1.0 a "blurred" pane is a darker
+ *    fill (see `Pane`) and every `boxShadow` is gone (see `halo` in
+ *    `theme/tokens.ts`). Both were most of the frames the app dropped.
  */
 
 import type { ReactNode } from 'react';
 import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
-  Easing,
   Pressable,
   Text,
   View,
@@ -51,7 +48,6 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
@@ -83,31 +79,25 @@ import {
 } from '../theme/tokens';
 
 /**
- * The blurred half of a pane, and the one place `BlurView` is configured.
+ * The backdrop half of a pane — which used to be a `BlurView`, and is now a
+ * plain fill. 2.1.0 took every blur out of the app.
  *
- * ── `experimentalBlurMethod` IS NOT OPTIONAL ON ANDROID ───────────────────
+ * ── WHY THE BLUR WENT ────────────────────────────────────────────────────
  *
- * `expo-blur` defaults it to `'none'`, and `'none'` on Android does not blur at
- * all — it renders a semi-transparent view and nothing else. This app is
- * Android-only, so without this prop every pane in the redesign would be exactly
- * the flat alpha the redesign exists to replace, and it would look correct in a
- * simulator on a Mac while shipping nothing to the phone.
+ * The Dimezis view Android needs hooks the window's pre-draw and re-renders the
+ * whole app into its bitmap on every frame anything moves. The rationing below
+ * (three per screen, `BlurGate` unmounting the hidden ones) made that bearable,
+ * never free: a list scrolling under the top bar paid a full-window redraw per
+ * blur per frame, and those were the microfreezes. What sat behind the glass was
+ * the lamps — radials that are already soft — and rows moving under a bar that
+ * is 58 % opaque, so what the blur bought was close to nothing on a phone.
  *
- * ── AND `blurReductionFactor` IS WHY THE NUMBERS ARE THE DESIGN'S ─────────
+ * ── WHY THE FILL SCALES WITH `intensity` ─────────────────────────────────
  *
- * Android divides `intensity` by it, default 4. At 4 the design's 34 for the
- * bars arrives as 8 and the glass is a grey wash. At 1 the tier's number is the
- * radius, so `glassTier.blur` can hold the design's own px values instead of a
- * table of guesses about somebody else's divisor.
- *
- * ── IT COSTS SOMETHING, SO IT IS RATIONED ────────────────────────────────
- *
- * The Dimezis implementation re-draws what is behind the view every frame the
- * view or its background moves. The budget is THREE per screen — the two bars
- * and the one hero — and every repeating surface (rows, tiles, keypad keys,
- * chips) passes `flat` instead. A row's tint and specular edge are what make it
- * read as glass; the blur behind a 72 dp card that is 94% opaque is a cost with
- * nothing on the other side of it.
+ * A heavier blur was always the surface more content moves under — bars and
+ * sheets at 30+, card panes at ~20 — so the old intensity is kept as the dial
+ * for how much the fill hides: a bar stops rows reading through it, a hero still
+ * lets its lamp in. Callers did not have to change.
  */
 /** The ghost round action's glyph: softer than ink, so it reads as maintenance. */
 const INK_SOFT = '#AEB9B3';
@@ -117,11 +107,9 @@ const INK_SOFT = '#AEB9B3';
  * default; false only where the shell KNOWS the glass cannot be seen — the roots
  * while a pushed screen covers them, the nav pill once it has dropped away.
  *
- * Needed because a hidden blur is not an idle one. The Dimezis view hooks the
- * window's pre-draw and re-renders the whole app into its bitmap on every frame
- * anything moves, and `display: none` or opacity 0 leaves that hook attached —
- * so a workout ran three to five invisible full-window blurs per frame behind
- * the two it was showing. Unmounting is the only switch the library has.
+ * It was needed when a `Pane` was a blur, because a hidden blur was not an idle
+ * one. A fill costs almost nothing, but one that cannot be seen costs less, so
+ * the shell's gating stays.
  */
 export const BlurGate = createContext(true);
 
@@ -129,26 +117,36 @@ export function Pane({ intensity }: { intensity: number }) {
   const live = useContext(BlurGate);
   if (!live) return null;
   return (
-    <BlurView
-      tint="dark"
-      intensity={intensity}
-      blurReductionFactor={1}
-      experimentalBlurMethod="dimezisBlurView"
-      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: `rgba(8,11,10,${paneAlpha(intensity)})`,
+      }}
     />
   );
+}
+
+/** The old blur intensity, as the backdrop's alpha: 10 → 0.25, 20 → 0.5, 34 → 0.85. */
+function paneAlpha(intensity: number): number {
+  return Math.min(0.88, intensity / 40);
 }
 
 /* ------------------------------------------------------------------ */
 /* Layer 1 — the lamps                                                 */
 /* ------------------------------------------------------------------ */
 
-/** Opacity 0.72 ↔ 1.0 over 7s. The one thing on a section root that is never still. */
-const BREATH_MS = 7000;
-
 /**
  * The two or three radial greens a section is lit by. Absolutely positioned,
  * `pointerEvents="none"`, and the first child of every section root.
+ *
+ * STILL. They used to breathe (opacity 0.72 ↔ 1 over 7 s), and a full-window
+ * layer whose opacity never stops changing is a full-window composite on every
+ * frame of the app's life — for a change nobody could see happen.
  *
  * ONE `Svg` HOLDING ALL OF THEM rather than one per lamp: three overlapping
  * full-screen native views is three compositing layers for a decoration, and the
@@ -168,38 +166,6 @@ const BREATH_MS = 7000;
 export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
   const specs = LAMPS[section] ?? LAMPS.Workout;
   const { width, height } = useWindowDimensions();
-  const breath = useRef(new Animated.Value(0)).current;
-  /* Every loop in a section waits for it to arrive (`hooks/useArrived.ts`), so a
-     section built ahead starts its breath where a fresh one would. */
-  const arrived = useArrived();
-
-  useEffect(() => {
-    if (!arrived) return undefined;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breath, {
-          toValue: 1,
-          duration: BREATH_MS / 2,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(breath, {
-          toValue: 0,
-          duration: BREATH_MS / 2,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [arrived, breath]);
-  // Built once: a fresh interpolation node per render makes the Animated.View
-  // detach and re-attach its native animation graph every time.
-  const opacity = useMemo(
-    () => breath.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }),
-    [breath],
-  );
   const { c1, c2, c3 } = palette;
   const art = useMemo(
     () => (
@@ -244,7 +210,7 @@ export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
   );
 
   return (
-    <Animated.View
+    <View
       pointerEvents="none"
       style={{
         position: 'absolute',
@@ -252,11 +218,10 @@ export function Lamps({ section }: { section: keyof typeof LAMPS | string }) {
         right: 0,
         top: 0,
         bottom: 0,
-        opacity,
       }}
     >
       {art}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -591,7 +556,6 @@ export function FloatingAction({
         // starts reading as a bar that has come loose. The label RUNS inside
         // that cap instead of being cut — see `RunningText`.
         maxWidth: '76%',
-        boxShadow: [...(filled ? halo.floating : []), ...elevation.e2],
         opacity,
         transform: [
           { translateY },
@@ -728,7 +692,6 @@ export function FloatingPair({
     <Animated.View
       style={{
         borderRadius: RADIUS.pill,
-        boxShadow: [...halo.floating, ...elevation.e2],
         transform: primaryPress.style.transform,
       }}
     >
@@ -790,7 +753,6 @@ export function FloatingPair({
           <Animated.View
             style={{
               borderRadius: RADIUS.pill,
-              boxShadow: [...elevation.e2],
               marginRight: 10,
               transform: secondaryPress.style.transform,
             }}
@@ -944,7 +906,6 @@ export function Toast({
           backgroundColor: 'rgba(14,18,17,0.9)',
           borderWidth: 1,
           borderColor: tint(0.3),
-          boxShadow: [{ offsetX: 0, offsetY: 12, blurRadius: 30, color: 'rgba(0,0,0,0.6)' }],
         }}
       >
         <Pane intensity={26} />
@@ -1000,14 +961,11 @@ export function Toast({
 export function CommitMark({
   size,
   glyph,
-  glow = true,
   children,
 }: {
   size: number;
   /** The ✓'s own size. Roughly half the circle. */
   glyph: number;
-  /** Off in a column of them — see `halo` on why the rule is a count. */
-  glow?: boolean;
   /** A label under the ✓, for the 176 dp one. */
   children?: ReactNode;
 }) {
@@ -1022,7 +980,6 @@ export function CommitMark({
         justifyContent: 'center',
         borderWidth: 1,
         borderColor: tint(0.5),
-        ...(glow ? { boxShadow: [...halo.repeating] } : {}),
       }}
     >
       <LinearGradient

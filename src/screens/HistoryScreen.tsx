@@ -164,7 +164,7 @@ import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import { term, type Language } from '../lib/i18n';
 import { formatMonth } from '../lib/days';
 import { HISTORY_PAGE, monthsToRender, nearEnd, rowsIn } from '../lib/historyWindow';
-import { curve, elevation, gradientBar, palette, radius, tint } from '../theme/tokens';
+import { curve, gradientBar, palette, radius, tint } from '../theme/tokens';
 import { useSettings } from '../state/settingsStore';
 import { DURATION_LIMITS, formatTimeOfDay } from '../lib/workoutEdit';
 import type { Exercise, ID, SessionEffort, SetHistory, UnitSystem } from '../types/models';
@@ -890,7 +890,6 @@ function WorkoutRow({
         // looked at in a column of eight identical cards.
         borderColor: isOpen ? tint(0.26) : 'rgba(236,241,238,0.06)',
         backgroundColor: isOpen ? 'rgba(236,241,238,0.07)' : 'rgba(236,241,238,0.045)',
-        boxShadow: elevation.e1,
       }}
     >
       <Pressable
@@ -1318,7 +1317,6 @@ function RangeSwitch({
           width: RANGE_SEGMENT,
           borderRadius: radius.pill,
           overflow: 'hidden',
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 12, color: tint(0.35) }],
           transform: [
             {
               translateX: slideX,

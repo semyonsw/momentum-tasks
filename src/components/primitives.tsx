@@ -700,7 +700,6 @@ export function Segmented<T extends string>({
           borderWidth: 1,
           backgroundColor: tint(0.16),
           borderColor: tint(0.34),
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.22) }],
         }}
       />
       {options.map((option) => {
@@ -891,7 +890,6 @@ export function Toggle({
           marginLeft: 3,
           borderRadius: 9999,
           backgroundColor: palette.ink,
-          boxShadow: [{ offsetX: 0, offsetY: 2, blurRadius: 6, color: 'rgba(0,0,0,0.4)' }],
           transform: [{ translateX: knobX }],
         }}
       />
@@ -940,14 +938,9 @@ export function PrimaryButton({
       style={(state) => [
         pressedStyle(state),
         primary
-          ? { boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 24, color: tint(0.3) }] }
+          ? null
           : isDanger
-            ? {
-                backgroundColor: danger,
-                boxShadow: [
-                  { offsetX: 0, offsetY: 0, blurRadius: 24, color: 'rgba(224,115,95,0.35)' },
-                ],
-              }
+            ? { backgroundColor: danger }
             : { backgroundColor: GHOST_FILL, borderColor: GHOST_EDGE, borderWidth: 1 },
       ]}
       className="h-row items-center justify-center rounded-pill px-lg"

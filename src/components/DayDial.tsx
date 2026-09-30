@@ -4,8 +4,8 @@
  *
  *          ╭───────────╮
  *        ╱               ╲        the ring re-fills over 760 ms when a mark
- *       │      14         │       changes, and the halo behind it brightens
- *       │   SEP 2026      │       with it — 18% at nothing done, 46% at all
+ *       │      14         │       changes. (A halo behind it used to brighten
+ *       │   SEP 2026      │       with it; 2.1.0 removed every glow.)
  *        ╲               ╱
  *          ╰───────────╯
  *
@@ -13,8 +13,8 @@
  *
  * `ProgressRing`'s arc travels too, since the motion pass — a new month moves
  * every tile's share at once, and that movement is how a new month reads as one.
- * What this one has that the tiles do not is the HALO behind it, a function of
- * the value rather than a constant, and the dial's own size and 760 ms timing.
+ * What this one has that the tiles do not is the dial's own size, gradient and
+ * 760 ms timing.
  * Putting those behind props on the shared ring would make six tiles carry a
  * capability only the dial uses.
  *
@@ -53,7 +53,7 @@ import { Animated, Easing, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 import { mixSrgb } from '../lib/theme';
-import { palette, tint } from '../theme/tokens';
+import { palette } from '../theme/tokens';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -101,7 +101,6 @@ export function DayDial({
 
   return (
     <View style={{ width: size, height: size }} className="items-center justify-center">
-      <Halo size={size - stroke * 2} fraction={clamped} />
       <Svg
         width={size}
         height={size}
@@ -139,29 +138,5 @@ export function DayDial({
       </Svg>
       {children}
     </View>
-  );
-}
-
-/**
- * The bloom behind the ring. Its own component so the alpha arithmetic is in one
- * place and the dial itself stays about the arc.
- *
- * A `boxShadow` on a circle rather than an SVG blur filter: a filter over a
- * 200 dp shape is an offscreen render target Android re-rasterises every time
- * the value changes, and this is the same light for nothing.
- */
-function Halo({ size, fraction }: { size: number; fraction: number }) {
-  const alpha = 0.18 + fraction * 0.28;
-  return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        width: size,
-        height: size,
-        borderRadius: 9999,
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 60, color: tint(alpha) }],
-      }}
-    />
   );
 }

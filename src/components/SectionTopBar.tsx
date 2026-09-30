@@ -86,7 +86,7 @@ import { GlassBar, SpecularEdge } from './glass';
 import { usePressScale } from './motion';
 import { SlidingThumb } from './SlidingThumb';
 import { useT } from '../hooks/useT';
-import { ai, glass, halo, palette, radius, tint } from '../theme/tokens';
+import { ai, glass, palette, radius, tint } from '../theme/tokens';
 
 /** The v3 top buttons: 46 dp circles, 23 dp glyphs, 8 apart. */
 const BUTTON = 46;
@@ -241,7 +241,6 @@ function TopBarButton({ action }: { action: TopBarAction }) {
             borderWidth: 1,
             borderColor: action.lit ? glass.greenEdge : 'rgba(236,241,238,0.07)',
             backgroundColor: action.lit ? tint(0.16) : 'rgba(236,241,238,0.055)',
-            ...(action.lit ? { boxShadow: [...halo.repeating] } : {}),
           },
           press.style,
         ]}
@@ -286,7 +285,7 @@ function AiButton({ action }: { action: TopBarAction }) {
       style={{ height: BUTTON, width: BUTTON }}
     >
       <Animated.View style={press.style}>
-        <AiOrb size={BUTTON} glyph={22} sheen stars />
+        <AiOrb size={BUTTON} glyph={22} stars />
       </Animated.View>
     </BubblePressable>
   );
@@ -344,7 +343,6 @@ export function LanguageToggle({
         bezier={[0.34, 1.3, 0.64, 1]}
         style={{
           borderRadius: radius.pill,
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.3) }],
         }}
       >
         <LinearGradient

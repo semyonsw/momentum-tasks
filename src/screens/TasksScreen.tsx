@@ -789,7 +789,7 @@ function Mark({ mark }: { mark: TaskMark | null }) {
     // the repeating halo instead, once.
     return (
       <CheckPop>
-        <CommitMark size={MARK} glyph={17} glow={false} />
+        <CommitMark size={MARK} glyph={17} />
       </CheckPop>
     );
   }
@@ -962,7 +962,6 @@ function DayBubble({
     <FloatingBubble
       visible={visible}
       width={BUBBLE_WIDTH}
-      haloFraction={clamped}
       contentStyle={{ gap: BUBBLE_GAP, padding: 6, paddingRight: 8 }}
       accessibilityLabel={`${isToday ? t('Today') : weekdayName(day, lang)}, ${t(
         '{done} of {total} done',
@@ -1006,8 +1005,6 @@ function DayBubble({
           style={{
             fontSize: 17,
             letterSpacing: -0.5,
-            textShadowColor: tint(0.5),
-            textShadowRadius: 12,
           }}
           className="font-bold tabular-nums text-ink"
         >
@@ -1047,24 +1044,21 @@ function DayBubble({
         />
       </Pressable>
 
-      <SharePill percent={percent} fraction={clamped} full={full} onPress={onTop} />
+      <SharePill percent={percent} full={full} onPress={onTop} />
     </FloatingBubble>
   );
 }
 
 /**
- * The share. Its glow is a function of the day, not a constant — the pill is
- * the bubble's own small dial halo — and at 100% it stops being a tint and
- * becomes the gradient, because a finished day is the one state worth a fill.
+ * The share. At 100% it stops being a tint and becomes the gradient, because a
+ * finished day is the one state worth a fill.
  */
 function SharePill({
   percent,
-  fraction,
   full,
   onPress,
 }: {
   percent: number;
-  fraction: number;
   full: boolean;
   onPress: () => void;
 }) {
@@ -1084,14 +1078,6 @@ function SharePill({
         borderWidth: 1,
         borderColor: tint(0.3),
         backgroundColor: full ? 'transparent' : tint(0.14),
-        boxShadow: [
-          {
-            offsetX: 0,
-            offsetY: 0,
-            blurRadius: Math.round(10 + fraction * 20),
-            color: tint(0.2 + fraction * 0.3),
-          },
-        ],
       }}
     >
       {full ? (

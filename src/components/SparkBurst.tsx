@@ -37,7 +37,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 
 import { celebrate } from '../lib/feedback';
-import { palette, tint } from '../theme/tokens';
+import { palette } from '../theme/tokens';
 
 const COUNT = 14;
 const DURATION = 900;
@@ -97,7 +97,6 @@ function Spark({ index }: { index: number }) {
         width: 6,
         borderRadius: 9999,
         backgroundColor: palette.greenBright,
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 10, color: tint(0.9) }],
         opacity: nodes.opacity,
         transform: [{ translateX: nodes.x }, { translateY: nodes.y }, { scale: nodes.scale }],
       }}

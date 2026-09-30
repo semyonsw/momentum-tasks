@@ -122,7 +122,6 @@ export function SuccessPopup({
           borderColor: tint(0.35),
           backgroundColor: palette.surface,
           overflow: 'hidden',
-          boxShadow: [{ offsetX: 0, offsetY: 18, blurRadius: 48, color: 'rgba(0,0,0,0.7)' }],
           opacity: nodes.fade,
           transform: [{ scale: nodes.pop }],
         }}

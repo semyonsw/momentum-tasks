@@ -135,7 +135,6 @@ export function SetTimerPill() {
         value={preparing ? reading.display : formatClock(reading.display)}
         tone={tone}
         variant={preparing ? 'count' : 'clock'}
-        glow={finalTen ? 'none' : 'rest'}
         breathe={finalTen}
         accessibilityLabel={
           preparing

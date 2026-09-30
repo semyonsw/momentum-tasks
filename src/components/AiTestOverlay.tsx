@@ -48,7 +48,6 @@ import {
   focalType,
   glass,
   gradientFill,
-  halo,
   palette,
   radius,
   specularHeavy,
@@ -127,7 +126,6 @@ function Instrument() {
           borderRadius: radius.pill,
           borderWidth: 1,
           borderColor: glass.greenEdge,
-          boxShadow: [...halo.floating],
           opacity: nodes.opacity,
           transform: [{ scale: nodes.scale }],
         }}
@@ -179,7 +177,7 @@ function Instrument() {
           />
         </Svg>
       </Animated.View>
-      <View style={{ boxShadow: [...halo.single], borderRadius: radius.pill }}>
+      <View style={{ borderRadius: radius.pill }}>
         <Icon name="sparkle" size={44} color={palette.greenBright} />
       </View>
     </View>
@@ -196,7 +194,7 @@ function StepMark({ state }: { state: 'pending' | 'active' | 'done' }) {
   if (state === 'done') {
     return (
       <Pop>
-        <CommitMark size={20} glyph={11} glow={false} />
+        <CommitMark size={20} glyph={11} />
       </Pop>
     );
   }
@@ -417,9 +415,7 @@ export function AiTestOverlay({
             </Text>
           </Stagger>
           <Stagger delay={400}>
-            <View
-              style={{ marginTop: 32, borderRadius: radius.pill, boxShadow: [...halo.floating] }}
-            >
+            <View style={{ marginTop: 32, borderRadius: radius.pill }}>
               <BubblePressable
                 onPress={onCta}
                 radius="pill"

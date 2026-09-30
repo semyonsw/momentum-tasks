@@ -229,7 +229,6 @@ function ProgressLine({ fraction }: { fraction: number }) {
           height: 2,
           width: fill,
           backgroundColor: palette.greenBright,
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 8, color: tint(0.8) }],
         }}
       />
     </View>

@@ -90,7 +90,7 @@ import {
   type MoneyCategory,
 } from '../lib/money';
 import { useMoney } from '../state/moneyStore';
-import { glowRepeating, palette } from '../theme/tokens';
+import { palette } from '../theme/tokens';
 import { useSettings } from '../state/settingsStore';
 import { useLanguage, useT, type Translate } from '../hooks/useT';
 import { plural, t as translate, type Language } from '../lib/i18n';
@@ -510,7 +510,6 @@ function ShareRow({
             // so it gets the glow: at 4px, a lit bar is legible where a flat one
             // is a hairline in the same colour as the track. Five of these in a
             // card, so it is the repeating value — see `theme/tokens.ts`.
-            boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 5, color: glowRepeating }],
           }}
         />
       </View>

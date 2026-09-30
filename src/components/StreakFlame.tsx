@@ -2,8 +2,8 @@
  * StreakFlame — how many days in a row, at one of three temperatures.
  *
  *   <7      ( 🜂 3 )    ink at 4%, muted text — a run, not yet a habit
- *   ≥7      ( 🜂 12 )   green at 12%, a thin halo — a week is the first threshold
- *   ≥21     ( 🜂 34 )   green at 20%, a wide halo, AND IT BREATHES
+ *   ≥7      ( 🜂 12 )   green at 12%, edged — a week is the first threshold
+ *   ≥21     ( 🜂 34 )   green at 20%, a brighter edge
  *
  * ── WHY THREE STEPS AND NOT A GRADIENT ────────────────────────────────────
  *
@@ -13,9 +13,8 @@
  * themselves. The count is written on it either way, so the temperature is
  * emphasis and never the only carrier of the number.
  *
- * The breathing at 21 is the only infinite animation in a list row anywhere in
- * this app, and it is deliberately hard to earn: `scale`, native-driven, on one
- * badge, and only once somebody has done a thing every day for three weeks.
+ * The hot badge used to glow and breathe. Both went in 2.1.0: an infinite loop
+ * in a list row is a list that is never at rest while it scrolls.
  *
  * ── IT IS ABSENT, NOT ZERO ────────────────────────────────────────────────
  *
@@ -26,10 +25,9 @@
  * thing that day's row is about.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, View } from 'react-native';
+import { useMemo } from 'react';
+import { View } from 'react-native';
 
-import { useArrived } from '../hooks/useArrived';
 import { Icon } from './Icon';
 import { RollingNumber } from './RollingNumber';
 import { palette, radius, tint } from '../theme/tokens';
@@ -39,39 +37,10 @@ const WARM = 7;
 const HOT = 21;
 
 export function StreakFlame({ streak }: { streak: number }) {
-  const breathe = useRef(new Animated.Value(0)).current;
   const hot = streak >= HOT;
   const warm = streak >= WARM;
-  const arrived = useArrived();
-
-  useEffect(() => {
-    if (!hot || !arrived) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathe, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(breathe, {
-          toValue: 0,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [arrived, breathe, hot]);
-  // Built once: a fresh interpolation node per render makes the flame detach and
-  // re-attach its native graph, and a fresh style object defeats RollingNumber's
-  // memo. Both above the early return, for the rules of hooks.
-  const flameScale = useMemo(
-    () => breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] }),
-    [breathe],
-  );
+  // Above the early return, for the rules of hooks: a fresh style object would
+  // defeat RollingNumber's memo.
   const numberStyle = useMemo(
     () => ({ fontSize: 12, color: warm ? palette.greenBright : palette.inkMuted }),
     [warm],
@@ -91,25 +60,11 @@ export function StreakFlame({ streak }: { streak: number }) {
         borderWidth: warm ? 1 : 0,
         borderColor: hot ? tint(0.42) : tint(0.24),
         backgroundColor: hot ? tint(0.2) : warm ? tint(0.12) : 'rgba(236,241,238,0.04)',
-        ...(hot
-          ? {
-              boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: tint(0.55) }],
-            }
-          : warm
-            ? {
-                boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 9, color: tint(0.3) }],
-              }
-            : {}),
       }}
     >
-      <Animated.View
-        style={{
-          marginRight: 4,
-          transform: [{ scale: flameScale }],
-        }}
-      >
+      <View style={{ marginRight: 4 }}>
         <Icon name="flame" size={13} color={warm ? palette.greenBright : palette.inkMuted} />
-      </Animated.View>
+      </View>
       {/* The number ROLLS when a mark moves it — a streak that grows is seen
           growing, on the row that grew it. */}
       <RollingNumber

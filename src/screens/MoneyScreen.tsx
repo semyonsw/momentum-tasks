@@ -749,7 +749,6 @@ function DirectionSelector({
           borderWidth: 1,
           borderColor: tint(0.3),
           backgroundColor: tint(0.14),
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.18) }],
         }}
       >
         <SpecularEdge color="rgba(236,241,238,0.12)" radius={18} />
@@ -948,7 +947,6 @@ function AccountChip({
               // means, so it is the one lit control on the screen. `boxShadow`
               // and not `elevation` — see `theme/tokens.ts`.
               borderColor: tint(0.5),
-              boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.3) }],
             }
           : { backgroundColor: 'rgba(236,241,238,0.035)', borderColor: 'transparent' },
       ]}
@@ -1026,10 +1024,6 @@ function CategoryTile({
           borderWidth: 1,
           backgroundColor: 'rgba(236,241,238,0.055)',
           borderColor: total > 0 ? tint(0.24) : 'rgba(236,241,238,0.06)',
-          boxShadow:
-            total > 0
-              ? [{ offsetX: 0, offsetY: 10, blurRadius: 26, color: 'rgba(0,0,0,0.42)' }]
-              : [{ offsetX: 0, offsetY: 8, blurRadius: 20, color: 'rgba(0,0,0,0.35)' }],
         },
       ]}
     >

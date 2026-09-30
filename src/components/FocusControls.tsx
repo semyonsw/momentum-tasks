@@ -31,7 +31,7 @@ import { Pressable } from './Pressable';
 
 import { commit, tap, undo as undoFeedback } from '../lib/feedback';
 import { useMotionScale } from '../hooks/useMotionScale';
-import { glow as GLOW, gradientFill, palette, tint } from '../theme/tokens';
+import { gradientFill, palette, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
 import { Icon, type IconName } from './Icon';
 import { Ripple, usePressScale } from './motion';
@@ -44,13 +44,6 @@ import { useT } from '../hooks/useT';
  * it is the one control on the screen whose press has to read from two metres.
  */
 const PRESS_SCALE_LARGE = 0.975;
-
-/** The one glow, spread behind the one control that is always the answer. */
-const DONE_GLOW = {
-  get boxShadow() {
-    return [{ offsetX: 0, offsetY: 0, blurRadius: 40, color: GLOW }];
-  },
-};
 
 /**
  * DONE — 176 dp of "I did that".
@@ -122,10 +115,6 @@ export function FocusDone({
             height: 176,
             borderRadius: 9999,
             transform: press.style.transform,
-            boxShadow: [
-              { offsetX: 0, offsetY: 0, blurRadius: 44, color: tint(0.45) },
-              { offsetX: 0, offsetY: 18, blurRadius: 44, color: 'rgba(0,0,0,0.6)' },
-            ],
           }}
         >
           <View
@@ -180,10 +169,7 @@ export function FocusFinish({ onPress }: { onPress: () => void }) {
       }}
       accessibilityRole="button"
       accessibilityLabel={t('Finish this workout')}
-      style={({ pressed }) => [
-        DONE_GLOW,
-        pressed ? { transform: [{ scale: PRESS_SCALE_LARGE }] } : null,
-      ]}
+      style={({ pressed }) => (pressed ? { transform: [{ scale: PRESS_SCALE_LARGE }] } : null)}
       className="h-focus-finish flex-row items-center justify-center rounded-pill bg-green"
     >
       <Icon name="check" size={34} color={palette.onAcc} />

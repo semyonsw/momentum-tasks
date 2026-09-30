@@ -121,10 +121,8 @@ import { useLanguage, useT } from '../hooks/useT';
 import { useSettings } from '../state/settingsStore';
 import {
   curve,
-  elevation,
   focalType,
   gradientFill,
-  halo,
   motion,
   palette,
   radius,
@@ -409,7 +407,6 @@ export function AmountEditorScreen({
                     letterSpacing: focalType.amount.letterSpacing,
                     color: digits === '' ? AMOUNT_EMPTY : palette.ink,
                   },
-                  digits === '' ? undefined : { textShadowColor: tint(0.45), textShadowRadius: 30 },
                 ]}
                 className="font-semibold"
               />
@@ -719,7 +716,6 @@ function SavePill({
         right: 16,
         bottom,
         borderRadius: radius.pill,
-        boxShadow: [...(asleep ? [] : halo.floating), ...elevation.e2],
         opacity: fade,
         transform: [{ scale: wakeScale }, ...press.style.transform],
       }}
@@ -787,7 +783,6 @@ function Key({
       <Animated.View
         style={{
           borderRadius: KEY_RADIUS,
-          boxShadow: [{ offsetX: 0, offsetY: 8, blurRadius: 20, color: 'rgba(0,0,0,0.35)' }],
           transform: press.style.transform,
         }}
       >
@@ -864,9 +859,6 @@ function CategoryChip({
           borderWidth: 1,
           borderColor: selected ? tint(0.36) : 'transparent',
           backgroundColor: selected ? tint(0.15) : 'rgba(236,241,238,0.035)',
-          boxShadow: selected
-            ? [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.28) }]
-            : [],
         }}
       >
         <Text allowFontScaling={false} style={{ fontSize: 14.5 }}>

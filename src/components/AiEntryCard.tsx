@@ -71,10 +71,10 @@ const BASELINE = 14.5;
 /**
  * The assistant's mark — kept under its old name for the callers that draw it
  * outside this card (the chat's empty state, the settings row). It is the
- * `AiOrb` now; `glow` switches the orb's pulsing glow.
+ * `AiOrb` now.
  */
-export function SparkleCircle({ size = 40, glow = true }: { size?: number; glow?: boolean }) {
-  return <AiOrb size={size} glow={glow} />;
+export function SparkleCircle({ size = 40 }: { size?: number }) {
+  return <AiOrb size={size} />;
 }
 
 export function AiEntryCard({

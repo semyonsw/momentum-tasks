@@ -21,7 +21,7 @@
  *    from 9 to 10 reps is the difference between "app" and "instrument".
  */
 
-import { Easing } from 'react-native';
+import { Easing, type BoxShadowValue, type TextStyle } from 'react-native';
 
 import {
   DEFAULT_THEME_ID,
@@ -257,7 +257,7 @@ export const timerShadow = {
 } as const;
 
 /**
- * The halo behind a focus-mode numeral.
+ * The halo behind a focus-mode numeral. Empty since 2.1.0 — see `textGlow`.
  *
  * The app's one glow, at a wider radius than `SetRow`'s 16: these numerals are
  * twice the size and more, and a bloom that does not grow with the glyph reads as
@@ -266,13 +266,7 @@ export const timerShadow = {
  * count and the working numbers — and a glow that drifted apart between them
  * would be two different lights on one screen.
  */
-export const focusGlow = {
-  get textShadowColor(): string {
-    return glow;
-  },
-  textShadowOffset: { width: 0, height: 0 },
-  textShadowRadius: 26,
-} as const;
+export const focusGlow: TextStyle = {};
 
 /* ══════════════════════════════════════════════════════════════════════════
    LIQUID GLASS — the layer the redesign added on top of everything above.
@@ -301,7 +295,10 @@ export const focusGlow = {
  * them, and there is deliberately no way to ask for a fifth: a surface that
  * needs its own alpha is a surface that has stopped belonging to the system.
  *
- * `blur` is an `expo-blur` INTENSITY. On Android that library divides it by
+ * `blur` is no longer a blur: since 2.1.0 there is none in the app, and `Pane`
+ * (`components/glass.tsx`) turns it into how opaque a pane's dark fill is. The
+ * number keeps its old meaning so the order still holds. The history: it was an
+ * `expo-blur` INTENSITY. On Android that library divided it by
  * `blurReductionFactor`, and `components/glass.tsx` passes 1 — so these are the
  * design's own px blur radii, one for one, which is the most defensible mapping
  * available without a device to calibrate against. What must hold either way is
@@ -317,7 +314,7 @@ export const focusGlow = {
 export interface GlassTier {
   /** Overlaid on the blur, as a plain `View`. */
   tint: string;
-  /** `expo-blur` intensity, 0–100. */
+  /** The old blur intensity, 0–100 — now the backdrop fill's strength. */
   blur: number;
   /** The 1px edge that holds the pane. */
   border: string;
@@ -364,6 +361,15 @@ export const glassTier: Record<'well' | 'card' | 'lit' | 'bar', GlassTier> = {
 export const specularHeavy = 'rgba(236,241,238,0.22)';
 
 /**
+ * RETIRED IN 2.1.0 — every step is now empty, and that is the whole design.
+ *
+ * A blurred `boxShadow` on Android is a `RenderEffect` blur pass per view, and
+ * the app had a hundred of them, several on views that scale, slide or sit in a
+ * scrolling list. They were the largest share of the frames the UI dropped, for
+ * a bloom on a dark page. Borders and fills carry the meaning — a lit pane is
+ * still the green-tinted, green-edged one — so the names stay for the callers
+ * and the light is gone. What follows is the old rule, kept for the count:
+ *
  * THREE GLOW STEPS, and the rule for choosing between them is a COUNT rather
  * than an importance: how many of these can be on one screen at once.
  *
@@ -377,40 +383,27 @@ export const specularHeavy = 'rgba(236,241,238,0.22)';
  * fixing in the first place.
  */
 export const halo = {
-  get repeating() {
-    return [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.28) }];
-  },
-  get single() {
-    return [{ offsetX: 0, offsetY: 0, blurRadius: 20, color: tint(0.6) }];
-  },
-  get floating() {
-    return [{ offsetX: 0, offsetY: 0, blurRadius: 44, color: tint(0.5) }];
-  },
+  repeating: [] as BoxShadowValue[],
+  single: [] as BoxShadowValue[],
+  floating: [] as BoxShadowValue[],
   /** The soft bloom a hero card carries under its shadow. Not a halo step. */
-  get hero() {
-    return [{ offsetX: 0, offsetY: 0, blurRadius: 34, color: tint(0.22) }];
-  },
+  hero: [] as BoxShadowValue[],
 };
 
 /**
- * THE SHADOW UNDER THE GLASS — three steps, black only.
- *
- * The app used to have exactly one shadow, under the timer pill, and the
- * comment above `timerShadow` is still right about why that suited an app of
- * flat surfaces. Glass changes the argument: a pane is a pane because something
- * is behind it, and a shadow is the cheapest statement of how far behind.
- *
- * `boxShadow` again, for the same reason as the halos — and these are the only
- * three depths, so a card cannot invent a fourth distance from the page.
+ * THE SHADOW UNDER THE GLASS — also retired, for the same reason as `halo`.
+ * On a #060807 page a black drop shadow was close to invisible, and each one was
+ * still a blurred layer behind a card that scrolls. The three steps stay as
+ * names so a pane can keep saying how far up it sits; they draw nothing.
  */
 export const elevation = {
   /** Cards, rows, tiles. */
-  e1: [{ offsetX: 0, offsetY: 8, blurRadius: 20, color: 'rgba(0,0,0,0.35)' }],
+  e1: [] as BoxShadowValue[],
   /** Hero cards and floating elements. */
-  e2: [{ offsetX: 0, offsetY: 14, blurRadius: 34, color: 'rgba(0,0,0,0.50)' }],
+  e2: [] as BoxShadowValue[],
   /** The rest clock, and nothing else. */
-  e3: [{ offsetX: 0, offsetY: 18, blurRadius: 44, color: 'rgba(0,0,0,0.60)' }],
-} as const;
+  e3: [] as BoxShadowValue[],
+};
 
 /**
  * RADIUS — one step softer than the flat design, because a blurred pane with a
@@ -455,29 +448,21 @@ export const focalType = {
 } as const;
 
 /**
- * THE TEXT GLOWS. `textShadow` is native on both platforms, so unlike the box
+ * THE TEXT GLOWS — retired with `halo`: a 30 dp text shadow is re-rasterised
+ * every time the number under it rolls, which is exactly when the frame budget
+ * is tightest. Empty styles, so the call sites keep their shape.
+ *
+ * The old note: `textShadow` is native on both platforms, so unlike the box
  * halos these need no workaround — but they still belong here, because the
  * numerals that carry them live in three different screens and a bloom that
  * drifted apart between them would read as two different lights.
  */
-export const textGlow = {
+export const textGlow: Record<'hero' | 'live', TextStyle> = {
   /** The day number, the balance. */
-  hero: {
-    get textShadowColor(): string {
-      return tint(0.32);
-    },
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 30,
-  },
+  hero: {},
   /** The up-next set's numbers. */
-  live: {
-    get textShadowColor(): string {
-      return tint(0.6);
-    },
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 16,
-  },
-} as const;
+  live: {},
+};
 
 /**
  * THE LAMPS — layer 1, per section.

@@ -42,7 +42,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, View, type StyleProp, type ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
@@ -478,83 +477,4 @@ export function usePressScale(to = 0.94, rotate = 0) {
     return { transform: [sink, tilt] };
   }, [rotate, to, v]);
   return { onPressIn, onPressOut, style };
-}
-
-/**
- * Sheen — a band of light sweeping across a surface, then resting.
- *
- * The prototype's `sheen` keyframes: `translateX(−120 %) skewX(−20°)` to
- * `translateX(220 %)` (percent of the BAND's width) over the first 60 % of the
- * period, still for the other 40 %. Used by the floating scroll pill (30 % band,
- * white 0.12, 4.5 s) and the AI button (40 %, white 0.28, 3.2 s).
- *
- * It measures its own box rather than taking a width, because both hosts are
- * sized by their content. Put it inside a parent that clips (`overflow:
- * hidden` with the host's radius) — the band starts and ends outside the box.
- * A translate on the native driver; nothing re-renders while it runs.
- */
-export function Sheen({
-  band = 0.3,
-  alpha = 0.12,
-  periodMs = 4500,
-  skew = true,
-}: {
-  /** The band's width as a fraction of the host's. */
-  band?: number;
-  /** White at this alpha in the middle of the band. */
-  alpha?: number;
-  periodMs?: number;
-  skew?: boolean;
-}) {
-  const scale = useMotionScale();
-  const [width, setWidth] = useState(0);
-  const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (width === 0 || scale === 0) return undefined;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(v, {
-          toValue: 1,
-          duration: periodMs * 0.6,
-          easing: Easing.bezier(0.42, 0, 0.58, 1),
-          useNativeDriver: true,
-        }),
-        Animated.delay(periodMs * 0.4),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [periodMs, scale, v, width]);
-  const bandWidth = width * band;
-  const sweep = useMemo(
-    () => v.interpolate({ inputRange: [0, 1], outputRange: [-1.2 * bandWidth, 2.2 * bandWidth] }),
-    [bandWidth, v],
-  );
-  return (
-    <View
-      pointerEvents="none"
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-    >
-      {width > 0 ? (
-        <Animated.View
-          style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: 0,
-            width: bandWidth,
-            transform: [{ translateX: sweep }, ...(skew ? [{ skewX: '-20deg' }] : [])],
-          }}
-        >
-          <LinearGradient
-            colors={['rgba(255,255,255,0)', `rgba(255,255,255,${alpha})`, 'rgba(255,255,255,0)']}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={{ flex: 1 }}
-          />
-        </Animated.View>
-      ) : null}
-    </View>
-  );
 }

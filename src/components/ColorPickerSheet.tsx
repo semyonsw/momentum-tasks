@@ -48,8 +48,8 @@ import {
   parseTypedHex,
   toneGrid,
 } from '../lib/colorPicker';
-import { deriveTheme, rgba, type ThemeColors } from '../lib/theme';
-import { gradientFill, halo, palette, radius, specularHeavy } from '../theme/tokens';
+import { deriveTheme, type ThemeColors } from '../lib/theme';
+import { gradientFill, palette, radius, specularHeavy } from '../theme/tokens';
 
 export function ColorPickerSheet({
   index,
@@ -93,7 +93,6 @@ export function ColorPickerSheet({
             backgroundColor: hex,
             borderWidth: 2,
             borderColor: 'rgba(236,241,238,0.22)',
-            boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: rgba(hex, 0.45) }],
           }}
         />
         <View style={{ flex: 1, height: 72, borderRadius: 20, overflow: 'hidden' }}>
@@ -238,7 +237,7 @@ export function ColorPickerSheet({
       </View>
 
       {/* DONE — the only thing in this sheet that writes anything. */}
-      <View className="mt-lg" style={{ borderRadius: radius.pill, boxShadow: [...halo.floating] }}>
+      <View className="mt-lg" style={{ borderRadius: radius.pill }}>
         <BubblePressable
           onPress={() => onDone(hex)}
           radius="pill"

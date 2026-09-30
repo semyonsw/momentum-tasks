@@ -36,11 +36,11 @@
  *
  * Its own recipe rather than a `glassTier`, because it is the one pane in the app
  * that floats over MOVING content with nothing but the page behind it: a tint of
- * `rgba(23,28,26,.72)` over a `BlurView` at 30, a border of ink at 10 %, the
- * theme glow (`0 0 30 c2@26%`) under a deep drop (`0 16 40 rgba(0,0,0,.6)`), a
- * 1 px specular line inset 18 from each end, and a 4.5 s sheen. The blur is
- * mounted only while the bubble is on screen, so it counts against the
- * three-per-screen budget (`glass.tsx`) only while it is actually there.
+ * `rgba(23,28,26,.72)` over a dark `Pane`, a border of ink at 10 %, and a 1 px
+ * specular line inset 18 from each end. The blur under it, its theme glow, its
+ * drop shadow and its 4.5 s sheen were all cut in 2.1.0 (`halo` in
+ * `theme/tokens.ts` says why): it floats over a list that is moving, which is
+ * exactly when each of them cost the most.
  *
  * ── ITS WIDTH ─────────────────────────────────────────────────────────────
  *
@@ -66,9 +66,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMotionScale } from '../hooks/useMotionScale';
-import { curve, motion, radius, tint } from '../theme/tokens';
+import { curve, motion, radius } from '../theme/tokens';
 import { Pane } from './glass';
-import { Sheen } from './motion';
 
 const EASE = curve(motion.ease);
 const DROP = Easing.bezier(0.34, 1.5, 0.64, 1);
@@ -83,23 +82,11 @@ const EASE_IN = Easing.in(Easing.quad);
  */
 export const BUBBLE_TOP = 70;
 
-/** The theme glow every bubble carries. The tasks one grows it with the day. */
-const HALO = {
-  offsetX: 0,
-  offsetY: 0,
-  blurRadius: 30,
-  get color(): string {
-    return tint(0.26);
-  },
-};
-const DROP_SHADOW = { offsetX: 0, offsetY: 16, blurRadius: 40, color: 'rgba(0,0,0,0.6)' };
-
 export function FloatingBubble({
   visible,
   children,
   delays = [120, 190, 260],
   contentStyle,
-  haloFraction,
   accessibilityLabel,
   underlay,
   onItemLayout,
@@ -112,11 +99,6 @@ export function FloatingBubble({
   delays?: readonly number[];
   /** Padding and gap inside the capsule — each bubble's own. */
   contentStyle?: StyleProp<ViewStyle>;
-  /**
-   * 0–1: grow the green halo with it — blur 14 → 36, alpha 0.14 → 0.48 — the
-   * tasks bubble's "the fuller the day, the brighter". Absent = the fixed halo.
-   */
-  haloFraction?: number;
   accessibilityLabel?: string;
   /** Drawn inside the capsule, under the children — the balance bubble's thumb. */
   underlay?: ReactNode;
@@ -203,26 +185,12 @@ export function FloatingBubble({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, scale, fade, move]);
 
-  /* The halo, cross-faded between its two ends rather than recomputed: a
-     `boxShadow` cannot animate, and two fixed ones at interpolated opacity can. */
-  const grows = haloFraction != null;
-  const halo = useRef(new Animated.Value(haloFraction ?? 0)).current;
-  useEffect(() => {
-    if (haloFraction == null) return;
-    Animated.timing(halo, {
-      toValue: Math.max(0, Math.min(1, haloFraction)),
-      duration: motion.ring * scale,
-      easing: EASE,
-      useNativeDriver: true,
-    }).start();
-  }, [halo, haloFraction, scale]);
   const nodes = useMemo(
     () => ({
       dropY: move.interpolate({ inputRange: [0, 1], outputRange: [-28, 0] }),
       dropScale: move.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }),
-      haloOut: halo.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
     }),
-    [halo, move],
+    [move],
   );
 
   return (
@@ -250,36 +218,7 @@ export function FloatingBubble({
           transform: [{ translateY: nodes.dropY }, { scale: nodes.dropScale }],
         }}
       >
-        {grows ? (
-          <>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                HALO_LAYER,
-                {
-                  opacity: nodes.haloOut,
-                  boxShadow: [{ ...HALO, blurRadius: 14, color: tint(0.14) }],
-                },
-              ]}
-            />
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                HALO_LAYER,
-                {
-                  opacity: halo,
-                  boxShadow: [{ ...HALO, blurRadius: 36, color: tint(0.48) }],
-                },
-              ]}
-            />
-          </>
-        ) : null}
-        <View
-          style={{
-            borderRadius: radius.pill,
-            boxShadow: grows ? [DROP_SHADOW] : [DROP_SHADOW, HALO],
-          }}
-        >
+        <View style={{ borderRadius: radius.pill }}>
           <View
             style={[
               {
@@ -298,7 +237,6 @@ export function FloatingBubble({
           >
             {blurred ? <Pane intensity={30} /> : null}
             <View pointerEvents="none" style={[FILL, { backgroundColor: 'rgba(23,28,26,0.72)' }]} />
-            {blurred ? <Sheen band={0.3} alpha={0.12} periodMs={4500} /> : null}
             {/* The 1 px specular: a line, not an edge, fading out 18 dp short
                 of each end where the pill curves away from the light. */}
             <LinearGradient
@@ -340,7 +278,6 @@ export function FloatingBubble({
 }
 
 const FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
-const HALO_LAYER = { ...FILL, borderRadius: radius.pill } as const;
 
 /**
  * The hero, stepping back while its bubble is up: scale 1 → 0.95 and opacity

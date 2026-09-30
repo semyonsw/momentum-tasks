@@ -95,27 +95,22 @@
  * lit tier would restyle a screen this pass does not own. Both tones share the
  * FINAL slab, so the inversion still reads as one alarm everywhere it appears.
  *
- * THE CLOCK'S GLOW IS AN SVG BLOOM, not a `textShadow`. The clock rolls
- * (`RollingNumber`) and every digit column clips itself, so a text shadow would
- * be cut into vertical stripes at each column edge. A radial behind the numerals
- * is the same light without the clipping, and it can animate: it grows over the
- * last ten seconds, as the design asks.
+ * THE CLOCK HAS NO GLOW. It had an SVG bloom behind the numerals that grew over
+ * the last ten seconds; 2.1.0 removed it with every other glow in the app.
  *
- * THE INVERSION STAYS. The design keeps the card lit to the end with a stronger
- * glow; this file's rule above is that the last ten seconds are read from across
- * a room, and a slab does that where a glow does not. So the glow grows where the
- * card is still lit — a rest PAUSED under ten seconds — and the running final ten
- * is the slab, pulsing. Near-black on `acc` holds contrast in every preset
+ * THE INVERSION STAYS. The last ten seconds are read from across a room, and a
+ * slab does that where a glow never did: the running final ten is the slab,
+ * pulsing. Near-black on `acc` holds contrast in every preset
  * because `acc` is c2 lifted toward white.
  */
 
-import { memo, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 
 import { useMotionScale } from '../hooks/useMotionScale';
-import { elevation, gradientBar, halo, palette, tint } from '../theme/tokens';
+import { gradientBar, palette, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
 import { SecondPulse, usePressScale } from './motion';
 import { RollingNumber } from './RollingNumber';
@@ -259,7 +254,6 @@ export function TimerPill({
       style={{
         borderRadius: CARD_RADIUS,
         // The slab glows harder: it is the one moment the card is an alarm.
-        boxShadow: [...(inverted ? halo.floating : halo.hero), ...elevation.e2],
       }}
     >
       <View
@@ -361,22 +355,18 @@ export function PillKicker({
  * `count` is the get-ready number: a bare 5 · 4 · 3 · 2 · 1 you should be able to
  * read from the floor while you get into position, so it is bigger still.
  *
- * `glow` is the bloom behind them: `rest` at 40 %, `near` (under ten seconds on a
- * card that is still lit) at 70 % and larger, `none` on the slab. `breathe` is the
- * 1 s pulse of the final ten.
+ * `breathe` is the 1 s pulse of the final ten.
  */
 export function PillClock({
   value,
   tone,
   variant = 'clock',
-  glow = 'rest',
   breathe = false,
   accessibilityLabel,
 }: {
   value: string | number;
   tone: PillTone;
   variant?: 'clock' | 'count';
-  glow?: 'rest' | 'near' | 'none';
   breathe?: boolean;
   accessibilityLabel: string;
 }) {
@@ -390,7 +380,6 @@ export function PillClock({
   );
   return (
     <View style={{ marginTop: 6, marginBottom: 12, alignSelf: 'flex-start' }}>
-      <ClockBloom glow={glow} height={lineHeight} />
       <SecondPulse active={breathe}>
         {/* The clock ROLLS, 320 ms a column: fast enough to finish inside the
             second it is showing, slow enough that `+15` reads as fifteen seconds
@@ -425,59 +414,6 @@ export function PillClock({
     </View>
   );
 }
-
-/**
- * The light behind the numerals. Opacity and scale are native-driven and travel
- * over 300 ms between the two strengths — the design's `text-shadow` transition.
- */
-const ClockBloom = memo(function ClockBloom({
-  glow,
-  height,
-}: {
-  glow: 'rest' | 'near' | 'none';
-  height: number;
-}) {
-  const target = glow === 'near' ? 1 : glow === 'rest' ? 0.55 : 0;
-  const v = useRef(new Animated.Value(target)).current;
-  useEffect(() => {
-    Animated.timing(v, {
-      toValue: target,
-      duration: 300,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    }).start();
-  }, [target, v]);
-  const w = 260;
-  const h = height + 60;
-  const bloom = useMemo(
-    () => [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.12] }) }],
-    [v],
-  );
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        left: -40,
-        top: -30,
-        width: w,
-        height: h,
-        opacity: v,
-        transform: bloom,
-      }}
-    >
-      <Svg width={w} height={h}>
-        <Defs>
-          <RadialGradient id="clockBloom" cx="50%" cy="50%" rx="50%" ry="50%">
-            <Stop offset="0%" stopColor={palette.c2} stopOpacity={0.7} />
-            <Stop offset="100%" stopColor={palette.c2} stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-        <Ellipse cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} fill="url(#clockBloom)" />
-      </Svg>
-    </Animated.View>
-  );
-});
 
 /**
  * One control chip on the card: 44 tall, a glass pill, 15 / 600 text. `flex`

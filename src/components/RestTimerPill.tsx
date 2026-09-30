@@ -189,7 +189,6 @@ export function RestTimerPill() {
       <PillClock
         value={formatClock(remaining)}
         tone={tone}
-        glow={finalTen ? 'none' : underTen ? 'near' : 'rest'}
         breathe={finalTen && isRunning}
         accessibilityLabel={
           isPaused

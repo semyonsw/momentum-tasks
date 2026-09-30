@@ -112,7 +112,7 @@ import { tap, undo } from '../lib/feedback';
 import { isTimed as isTimedExercise } from '../lib/setTimer';
 import { formatClock } from '../lib/units';
 import type { ID, UnitSystem } from '../types/models';
-import { curve, danger, elevation, glassTier, halo, motion, palette, tint } from '../theme/tokens';
+import { curve, danger, glassTier, motion, palette, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
 import { Icon } from './Icon';
 import { useLanguage, useT } from '../hooks/useT';
@@ -400,7 +400,6 @@ function ExerciseCardComponent({
             padding: 16,
             backgroundColor: glowing || isLifted ? glassTier.lit.tint : glassTier.card.tint,
             borderColor: glowing || isLifted ? glassTier.lit.border : glassTier.card.border,
-            boxShadow: [...(glowing ? halo.repeating : []), ...elevation.e1],
           },
           /*
            * The bracket, as a left border rather than an extra View: a collapsed
@@ -427,12 +426,7 @@ function ExerciseCardComponent({
 
           {/* The waiting suggestion: one 6 px dot, never a badge. */}
           {nudgeWaiting ? (
-            <View
-              className="ml-md h-[6px] w-[6px] rounded-pill bg-green-bright"
-              style={{
-                boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 8, color: tint(0.8) }],
-              }}
-            />
+            <View className="ml-md h-[6px] w-[6px] rounded-pill bg-green-bright" />
           ) : null}
 
           {/* Progress as text, rolled when a set lands, and as a ring beside it:
@@ -480,10 +474,7 @@ function ExerciseCardComponent({
   return (
     <View
       className="mx-lg mb-sm mt-xs"
-      style={[
-        { borderRadius: EXPANDED_RADIUS, boxShadow: [...elevation.e1] },
-        dimmed ? { opacity: 0.4 } : null,
-      ]}
+      style={[{ borderRadius: EXPANDED_RADIUS }, dimmed ? { opacity: 0.4 } : null]}
     >
       {/* Momentum v3: ONE card for the whole exercise — name, plan, nudge, rows
           and footer — on the flat `card` tier. It repeats down the list, so it
@@ -1080,7 +1071,6 @@ function DonePill({ onPress }: { onPress: () => void }) {
           backgroundColor: palette.green,
           borderWidth: 1,
           borderColor: tint(0.5),
-          boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 14, color: tint(0.3) }],
         }}
       >
         <Icon name="check" size={14} color={palette.onAcc} />

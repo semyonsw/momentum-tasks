@@ -88,7 +88,7 @@
  */
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, Text, View, type ViewStyle } from 'react-native';
+import { Animated, Pressable, Text, View, type ViewStyle } from 'react-native';
 
 import { commit, tap, undo } from '../lib/feedback';
 import type { DraftSet } from '../lib/draft';
@@ -97,7 +97,6 @@ import { describePlates, platesFor } from '../lib/plates';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
 import { countUnitLabel, formatCount, formatWeight, unitLabel } from '../lib/units';
 import { useLanguage, useT } from '../hooks/useT';
-import { useMotionScale } from '../hooks/useMotionScale';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { danger, gradientFill, palette, tint } from '../theme/tokens';
@@ -253,7 +252,6 @@ function SetRowComponent({
     borderWidth: 1,
     borderColor: ring ? tint(0.32) : 'transparent',
     backgroundColor: ring ? tint(0.12) : 'transparent',
-    boxShadow: ring ? [{ offsetX: 0, offsetY: 0, blurRadius: 22, color: tint(0.3) }] : undefined,
   };
 
   /*
@@ -288,7 +286,7 @@ function SetRowComponent({
           'w-[22px] font-semibold uppercase tabular-nums',
           ring ? 'text-acc' : 'text-ink-faint',
         ].join(' ')}
-        style={[{ fontSize: 14 }, ring ? NUMERAL_GLOW : null]}
+        style={{ fontSize: 14 }}
       >
         {workingNumber == null ? 'W' : workingNumber}
       </Text>
@@ -397,7 +395,6 @@ function SetRowComponent({
                   borderColor: palette.acc,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 18, color: tint(0.45) }],
                 }
               : {
                   width: 46,
@@ -427,7 +424,6 @@ function SetRowComponent({
 
       {/* The breath over the lit row's glow. Last child so it paints over the
           row, `pointerEvents="none"` so it takes nothing from the ✓ under it. */}
-      {ring ? <UpNextRing /> : null}
     </>
   );
 
@@ -442,57 +438,6 @@ function SetRowComponent({
     </Pressable>
   ) : (
     <View style={rowStyle}>{rowChildren}</View>
-  );
-}
-
-/**
- * The breath over the lit row.
- *
- * `halo.single`'s rule still holds — EXACTLY ONE of these per screen. The row's
- * own 22 dp glow is fixed (a `boxShadow` cannot animate), so the breath is a
- * second, wider glow whose opacity swings 0 ↔ 1 over 2.6 s on top of it.
- * Native-driven, so a rest ticking four times a second on the JS thread cannot
- * make it stutter.
- */
-function UpNextRing() {
-  const scale = useMotionScale();
-  const breath = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (scale === 0) return undefined;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breath, {
-          toValue: 1,
-          duration: 1300,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(breath, {
-          toValue: 0,
-          duration: 1300,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [breath, scale]);
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        left: -1,
-        right: -1,
-        top: -1,
-        bottom: -1,
-        borderRadius: ROW_RADIUS,
-        opacity: breath,
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 30, color: tint(0.4) }],
-      }}
-    />
   );
 }
 
@@ -559,22 +504,6 @@ function RemoveMark({ onPress }: { onPress: () => void }) {
   );
 }
 
-/**
- * The halo behind an up-next numeral.
- *
- * Inline, not className: a text glow is `textShadow*`, which NativeWind has no
- * utility for. Offset zero and a wide radius, so it is a halo AROUND the numeral
- * rather than a shadow under it — and declared once here so the set index, the
- * weight and the count cannot bloom by different amounts.
- */
-const NUMERAL_GLOW = {
-  get textShadowColor(): string {
-    return tint(0.55);
-  },
-  textShadowOffset: { width: 0, height: 0 },
-  textShadowRadius: 16,
-} as const;
-
 const PRIMED_NUMERAL = { fontSize: 30, lineHeight: 34, letterSpacing: -0.8 } as const;
 const ROW_NUMERAL = { fontSize: 21, lineHeight: 26, letterSpacing: -0.3 } as const;
 
@@ -630,7 +559,7 @@ function ValueCell({
       <Text
         allowFontScaling={false}
         className={['font-semibold tabular-nums', emphasis ? 'text-acc' : tone].join(' ')}
-        style={emphasis ? [PRIMED_NUMERAL, NUMERAL_GLOW] : ROW_NUMERAL}
+        style={emphasis ? PRIMED_NUMERAL : ROW_NUMERAL}
       >
         {value}
       </Text>

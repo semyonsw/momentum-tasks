@@ -133,7 +133,6 @@ export function BalanceBubble({
               backgroundColor: tint(0.16),
               borderWidth: 1,
               borderColor: tint(0.38),
-              boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 16, color: tint(0.28) }],
             }}
           />
         ) : null

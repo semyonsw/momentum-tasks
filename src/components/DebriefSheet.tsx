@@ -295,7 +295,6 @@ export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
             paddingBottom: insets.bottom + 16,
             borderTopLeftRadius: radius.hero,
             borderTopRightRadius: radius.hero,
-            boxShadow: [{ offsetX: 0, offsetY: -12, blurRadius: 40, color: 'rgba(0,0,0,0.55)' }],
           }}
           className="border-t border-t-hairline bg-surface px-lg pt-lg"
         >

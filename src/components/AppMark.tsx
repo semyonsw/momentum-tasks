@@ -13,7 +13,7 @@ import Svg, { Circle, Defs, G, Path, RadialGradient, Rect, Stop } from 'react-na
 
 import { SYMBOL_PATHS } from './symbolPaths';
 import { mixSrgb } from '../lib/theme';
-import { palette, tint } from '../theme/tokens';
+import { palette } from '../theme/tokens';
 
 /** A filled symbol placed on the 180 grid: `x`/`y` its top-left, `size` its box. */
 function Glyph({
@@ -45,7 +45,6 @@ export function AppMark({ size }: { size: number }) {
         width: size,
         height: size,
         borderRadius: radius,
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: size * 0.6, color: tint(0.3) }],
       }}
     >
       <Svg width={size} height={size} viewBox="0 0 180 180">
