@@ -1942,7 +1942,13 @@ export function AppShell() {
     <View className="flex-1 bg-bg">
       <StatusBar style="light" />
 
-      <View style={{ flex: 1, display: rootsCovered ? 'none' : 'flex' }}>
+      {/* `collapsable={false}` is load-bearing. The stage's layers carry
+          zIndex 0–3, and zIndex only orders siblings — so this view is what
+          keeps them BELOW the nav pill. Without it the new architecture
+          flattens a layout-only view away, the layers become siblings of the
+          pill, and the section paints over it. (The swipe's responder view
+          used to do this by accident; removing it hid the bar in 2.0.8.) */}
+      <View collapsable={false} style={{ flex: 1, display: rootsCovered ? 'none' : 'flex' }}>
         {/* Covered roots also let go of their blurs — see `BlurGate`. */}
         <BlurGate.Provider value={!rootsCovered}>
           <Hold frozen={rootsCovered}>
