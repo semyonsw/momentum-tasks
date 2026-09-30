@@ -31,9 +31,8 @@
  * SVG text does not truncate, so the line measures itself with an invisible RN
  * copy and runs like `RunningText` when it is longer than the row.
  *
- * The chips WRAP rather than scroll, for the same reason the money section's
- * account chips do: the section swipe claims a sideways drag, so a scrolling row
- * would change section under the thumb.
+ * The chips WRAP rather than scroll, like the money section's account chips:
+ * every chip is visible without a gesture.
  */
 
 import { useEffect, useRef, useState } from 'react';

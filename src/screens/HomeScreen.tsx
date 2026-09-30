@@ -1237,10 +1237,9 @@ function HeroStat({
  * persisted for one disclosure is more machinery than the question deserves.
  *
  * Open, it is the same wrapping line of chips as before, step whose turn it is on
- * a lit pane. WRAPPING and not a horizontal `ScrollView`, which it once was: the
- * section swipe (`components/SwipePager.tsx`) claims sideways drags on capture,
- * so a sequence wider than the screen could not be scrolled at all — flicking it
- * changed section. Tapping a chip opens the screen that edits the order — a chip
+ * a lit pane. WRAPPING and not a horizontal `ScrollView`, which it once was: a
+ * sideways-scrolling row hides the steps past the edge, and wrapped chips are
+ * all visible without a gesture. Tapping a chip opens the screen that edits the order — a chip
  * is a label, not a start button, and the thing you want after looking at your
  * order is usually to change it.
  */

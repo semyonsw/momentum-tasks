@@ -10,11 +10,11 @@
  *   slide   section ↔ section the incoming one arrives from ±55% at .94, the
  *                            outgoing one leaves toward ∓32% at .9 and fades
  *
- * A drag between sections (`drag`, in dp of finger travel already damped by
- * `lib/sectionNav.swipeFollow`) moves the current screen directly — it follows
- * the finger and shrinks by |d|/2800 — and a committed swipe hands its offset to
- * the slide, so the screen carries on from where the finger let go rather than
- * jumping back to centre first.
+ * Every one is a nav-bar tap (or a tile, or back). There used to be a swipe as
+ * well, with the current screen following the finger, and it is gone: the
+ * finger's offset came in over the JS thread, one responder event at a time, so
+ * the screen trembled whenever a render was running — which, at the start of a
+ * switch, it always was.
  *
  * ── A CLIP WITHOUT A MASK ─────────────────────────────────────────────────
  *
@@ -28,6 +28,18 @@
  *
  * Blur is left out: an animated `filter: blur` repaints the whole screen per
  * frame on Android, and the scale-and-fade reads the same at 640 ms.
+ *
+ * ── NOTHING THAT MOVES HOLDS A BLUR ───────────────────────────────────────
+ *
+ * The glass blurs (`components/glass.tsx`) are the most expensive thing on the
+ * screen once anything moves: each one re-draws the whole window into its own
+ * bitmap every frame. At rest that is the two or three a section shows. In a
+ * slide it was both sections' — and the arriving section turned its on in the
+ * very first frame, native views created as the slide began. So a layer blurs
+ * only when it is the route and the stage is still (`LayerGate`): for 640 ms
+ * the panes are their tint, border and edge, which is what they are made of
+ * anyway, and the blur settles in when the section does. The nav pill keeps
+ * its own; it is one, and it never moves.
  *
  * ── THE NEXT SECTION IS ALREADY BUILT ─────────────────────────────────────
  *
@@ -50,6 +62,11 @@
  *     holds no blur (`BlurGate`), since a hidden blur still redraws every frame;
  *   - it re-renders only when what it SHOWS changes, never for a new callback,
  *     so it is current when it arrives and the arrival has nothing to animate.
+ *
+ * And the section a slide leaves is not torn down when the slide ends: it
+ * stays, hidden and frozen, until the same idle moment that builds spares
+ * (`lib/stageBuilds.dropGone`), so the last frames of a switch do no
+ * unmounting.
  */
 
 import {
@@ -82,7 +99,14 @@ import { BlurGate } from '../components/glass';
 import type { TileRect } from '../screens/LandingScreen';
 import { Arrived } from '../hooks/useArrived';
 import { SECTIONS, type SectionTab, type ShellRoute } from '../lib/sectionNav';
-import { addSpare, initialBuilds, nextSpare, reconcileBuilds } from '../lib/stageBuilds';
+import {
+  addSpare,
+  dropGone,
+  initialBuilds,
+  nextSpare,
+  reconcileBuilds,
+  type StageBuilds,
+} from '../lib/stageBuilds';
 import { palette } from '../theme/tokens';
 
 export interface ShellTransition {
@@ -93,8 +117,6 @@ export interface ShellTransition {
   dir: 1 | -1;
   /** The tile the section grows out of or shrinks into. */
   rect: TileRect | null;
-  /** Where a released swipe left the outgoing screen, in dp. */
-  dragFrom: number;
 }
 
 /** The order layers are drawn in — stable, so a layer never remounts mid-trip. */
@@ -103,7 +125,8 @@ const ORDER: readonly ShellRoute[] = ['Home', ...SECTIONS];
 export const TRANSITION_MS = 640;
 
 /**
- * When the next spare is built: the stage at rest for `SPARE_DELAY_MS`, and no
+ * When the next piece of idle work — dropping a left section, then building
+ * the next spare — happens: the stage at rest for `SPARE_DELAY_MS`, and no
  * finger on the screen for `SPARE_QUIET_MS`. The render is a transition, so a
  * touch that lands mid-build still goes first — but the native half of a mount,
  * a few hundred views made on the UI thread, is not interruptible, and in the
@@ -122,21 +145,12 @@ interface ShellStageProps {
   transition: ShellTransition | null;
   /** 0 → 1 over a transition, linear; each layer applies its own curve. */
   progress: SharedValue<number>;
-  /** Finger offset while a section swipe is live, 0 otherwise. */
-  drag: SharedValue<number>;
   /** 0 → 1 as a pushed screen covers the roots: the parallax behind it. */
   covered: SharedValue<number>;
   render: (route: ShellRoute) => ReactElement;
 }
 
-export function ShellStage({
-  route,
-  transition,
-  progress,
-  drag,
-  covered,
-  render,
-}: ShellStageProps) {
+export function ShellStage({ route, transition, progress, covered, render }: ShellStageProps) {
   const live: ShellRoute[] = transition ? [transition.from, transition.to] : [route];
   const [stored, setStored] = useState(() => initialBuilds(route));
   /* Derived during render, so a spare goes live in the same commit as the
@@ -163,25 +177,25 @@ export function ShellStage({
     [],
   );
 
-  const build = useCallback(
-    (section: SectionTab) => startTransition(() => setStored((s) => addSpare(s, section))),
+  const work = useCallback(
+    (task: IdleTask) =>
+      startTransition(() => setStored((s) => (task === 'drop' ? dropGone(s) : addSpare(s, task)))),
     [],
   );
+  const idle: IdleTask | null =
+    transition != null ? null : stage.gone.length > 0 ? 'drop' : nextSpare(stage, route);
   return (
     <>
-      <SpareTimer
-        next={transition == null ? nextSpare(stage, route) : null}
-        touch={touch}
-        build={build}
-      />
-      {ORDER.filter((key) => stage.builds[key]).map((key) => (
+      <SpareTimer next={idle} touch={touch} work={work} />
+      {layers(stage).map(({ route: key, id, gone }) => (
         <StageLayer
-          key={`${key}:${stage.builds[key]?.id}`}
+          key={`${key}:${id}`}
           layer={key}
-          role={key === route ? 'current' : live.includes(key) ? 'previous' : 'spare'}
+          role={
+            gone ? 'gone' : key === route ? 'current' : live.includes(key) ? 'previous' : 'spare'
+          }
           transition={transition}
           progress={progress}
-          drag={drag}
           covered={covered}
           touchHandlers={touchHandlers}
         >
@@ -192,20 +206,39 @@ export function ShellStage({
   );
 }
 
+/** Drop the sections that were left, or build this one. */
+type IdleTask = 'drop' | SectionTab;
+
 /**
- * Builds the next spare once the stage has been quiet long enough. A component
- * of its own so that it alone reads the roots' gate — false while a pushed
- * screen covers them, when nothing is built, since that moment is somebody's
- * workout — and a covering screen settling does not re-render the stage.
+ * Every mounted build, in a stable order — by root, then by age — so a layer
+ * that is left keeps its place among its siblings rather than being moved.
+ */
+function layers(stage: StageBuilds): { route: ShellRoute; id: number; gone: boolean }[] {
+  const all = [
+    ...stage.gone.map((build) => ({ ...build, gone: true })),
+    ...ORDER.flatMap((route) => {
+      const build = stage.builds[route];
+      return build ? [{ route, id: build.id, gone: false }] : [];
+    }),
+  ];
+  return all.sort((a, b) => ORDER.indexOf(a.route) - ORDER.indexOf(b.route) || a.id - b.id);
+}
+
+/**
+ * Does the next idle task once the stage has been quiet long enough. A
+ * component of its own so that it alone reads the roots' gate — false while a
+ * pushed screen covers them, when nothing is done, since that moment is
+ * somebody's workout — and a covering screen settling does not re-render the
+ * stage.
  */
 function SpareTimer({
   next,
   touch,
-  build,
+  work,
 }: {
-  next: SectionTab | null;
+  next: IdleTask | null;
   touch: RefObject<{ down: boolean; downAt: number; liftedAt: number }>;
-  build: (section: SectionTab) => void;
+  work: (task: IdleTask) => void;
 }) {
   const spare = useContext(BlurGate) ? next : null;
   useEffect(() => {
@@ -222,17 +255,17 @@ function SpareTimer({
         timer = setTimeout(attempt, wait);
         return;
       }
-      build(spare);
+      work(spare);
     };
     timer = setTimeout(attempt, SPARE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [build, spare, touch]);
+  }, [work, spare, touch]);
   return null;
 }
 
-/** Blurs only in a layer that is on show, and only while the roots are. */
-function LayerGate({ waiting, children }: { waiting: boolean; children: ReactNode }) {
-  return <BlurGate.Provider value={useContext(BlurGate) && !waiting}>{children}</BlurGate.Provider>;
+/** Blurs only in the route's layer at rest, and only while the roots are on show. */
+function LayerGate({ still, children }: { still: boolean; children: ReactNode }) {
+  return <BlurGate.Provider value={useContext(BlurGate) && still}>{children}</BlurGate.Provider>;
 }
 
 /** Same keys, and every value that is not a function the same reference. */
@@ -248,40 +281,43 @@ function sameData(a: Record<string, unknown>, b: Record<string, unknown>): boole
  * A spare's screen, re-rendered only when a prop that is not a callback changes.
  * The callbacks it holds go stale, and nothing calls them: a spare takes no
  * touches and its mount-time effects wait for arrival — which renders it with
- * the latest ones before anything can.
+ * the latest ones before anything can. A gone screen never re-renders at all:
+ * it is waiting to be unmounted, and nobody will see it again.
  */
 const Spare = memo(
-  function Spare({ children }: { waiting: boolean; children: ReactElement }) {
+  function Spare({ children }: { role: LayerRole; children: ReactElement }) {
     return children;
   },
   (previous, next) =>
-    next.waiting &&
-    sameData(
-      previous.children.props as Record<string, unknown>,
-      next.children.props as Record<string, unknown>,
-    ),
+    next.role === 'gone' ||
+    (next.role === 'spare' &&
+      sameData(
+        previous.children.props as Record<string, unknown>,
+        next.children.props as Record<string, unknown>,
+      )),
 );
+
+type LayerRole = 'current' | 'previous' | 'spare' | 'gone';
 
 function StageLayer({
   layer,
   role,
   transition,
   progress,
-  drag,
   covered,
   touchHandlers,
   children,
 }: {
   layer: ShellRoute;
-  role: 'current' | 'previous' | 'spare';
+  role: LayerRole;
   transition: ShellTransition | null;
   progress: SharedValue<number>;
-  drag: SharedValue<number>;
   covered: SharedValue<number>;
   touchHandlers: Pick<ViewProps, 'onTouchStart' | 'onTouchEnd' | 'onTouchCancel'>;
   children: ReactNode;
 }) {
   const waiting = role === 'spare';
+  const hidden = waiting || role === 'gone';
   const { width: W, height: H } = useWindowDimensions();
   const kind = transition?.kind ?? null;
   /* Memoized: both worklets below capture it, and Reanimated treats a captured
@@ -293,14 +329,13 @@ function StageLayer({
   );
   const rect = transition?.rect ?? fallbackRect;
   const dir = transition?.dir ?? 1;
-  const dragFrom = transition?.dragFrom ?? 0;
   /* The section being clipped: the incoming one on `open`, the outgoing one on `close`. */
   const clipped =
     (kind === 'open' && role === 'current') || (kind === 'close' && role === 'previous');
 
   const outer = useAnimatedStyle(() => {
     /* Laid out, so it arrives measured, but not drawn. */
-    if (waiting) {
+    if (hidden) {
       return {
         left: 0,
         top: 0,
@@ -313,10 +348,8 @@ function StageLayer({
     }
     const t = progress.value;
     const e = EASE(t);
-    /* At rest, the current screen follows a live swipe and steps back behind
-       a pushed screen. */
+    /* At rest, the current screen steps back behind a pushed screen. */
     if (kind === null) {
-      const d = drag.value;
       const c = covered.value;
       return {
         left: 0,
@@ -325,10 +358,7 @@ function StageLayer({
         height: H,
         borderRadius: 0,
         opacity: 1 - 0.65 * c,
-        transform: [
-          { translateX: d - 0.26 * W * c },
-          { scale: (1 - Math.abs(d) / 2800) * (1 - 0.06 * c) },
-        ],
+        transform: [{ translateX: -0.26 * W * c }, { scale: 1 - 0.06 * c }],
       };
     }
     if (clipped) {
@@ -374,10 +404,7 @@ function StageLayer({
     return {
       ...full,
       opacity: 1 - e,
-      transform: [
-        { translateX: dragFrom + (-dir * 0.32 * W - dragFrom) * e },
-        { scale: 1 - 0.1 * e },
-      ],
+      transform: [{ translateX: -dir * 0.32 * W * e }, { scale: 1 - 0.1 * e }],
     };
   });
 
@@ -401,21 +428,21 @@ function StageLayer({
   });
 
   /* Static rather than animated: the order only changes between transitions. */
-  const zIndex = waiting ? 0 : clipped ? 3 : kind !== null && role === 'current' ? 2 : 1;
+  const zIndex = hidden ? 0 : clipped ? 3 : kind !== null && role === 'current' ? 2 : 1;
 
   return (
     <Animated.View
       pointerEvents={role === 'current' ? 'auto' : 'none'}
-      importantForAccessibility={waiting ? 'no-hide-descendants' : 'auto'}
-      accessibilityElementsHidden={waiting}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
+      accessibilityElementsHidden={hidden}
       {...touchHandlers}
       style={[styles.outer, { backgroundColor: palette.bg, zIndex }, outer]}
     >
       <Animated.View style={[{ position: 'absolute', width: W, height: H }, inner]}>
         <Animated.View style={[{ flex: 1 }, rise]}>
           <Arrived.Provider value={!waiting}>
-            <LayerGate waiting={waiting}>
-              <Spare waiting={waiting}>{children as ReactElement}</Spare>
+            <LayerGate still={role === 'current' && kind === null}>
+              <Spare role={role}>{children as ReactElement}</Spare>
             </LayerGate>
           </Arrived.Provider>
         </Animated.View>

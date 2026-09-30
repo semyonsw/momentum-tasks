@@ -382,12 +382,9 @@ export function MoneyScreen({
         contentContainerStyle={{ paddingTop: bars.top + 8, paddingBottom: bars.bottom }}
         showsVerticalScrollIndicator={false}
       >
-        {/* The subsections. WRAPPING and not a horizontal `ScrollView`: the tab
-            bar's swipe (`components/SwipePager.tsx`) claims sideways drags on
-            capture, so a scrolling chip row would change section under the thumb
-            instead of scrolling. Chips that run out of room drop to a second
-            line, which is also the only arrangement where every one of them is
-            visible without a gesture. */}
+        {/* The subsections. WRAPPING and not a horizontal `ScrollView`: chips
+            that run out of room drop to a second line, the only arrangement
+            where every one of them is visible without a gesture. */}
         <View className="mx-lg flex-row flex-wrap items-center justify-center" style={{ gap: 8 }}>
           {liveAccounts.map((row) => (
             <AccountChip

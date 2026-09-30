@@ -106,7 +106,7 @@ export function AiSequenceCard({
                   </Text>
                   {next ? (
                     <Text
-                      style={{ fontSize: 9, letterSpacing: 0.9 }}
+                      style={{ fontSize: 10.5, letterSpacing: 0.9 }}
                       className="ml-xs font-semibold uppercase text-green-bright"
                     >
                       {t('next')}

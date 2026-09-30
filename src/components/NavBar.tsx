@@ -14,21 +14,20 @@
  * are the same four as the Home tiles, which is what makes them learnable: you
  * have already tapped the big version of each one.
  *
- * ── THE BLOB IS LIQUID, AND THE SWIPE PULLS IT ────────────────────────────
+ * ── THE BLOB IS LIQUID ────────────────────────────────────────────────────
  *
  * The lit pane under the active icon does not slide as a rectangle. Its LEADING
  * edge moves in 360 ms and its trailing edge follows in 560 ms, 60 ms late, both
  * on an overshooting curve — so for a moment it is wider than itself and then it
- * lands. While a finger drags between sections, `drag` (−1 … 1 of the way to the
- * neighbour) moves it directly and it stretches by `16·sin(πp)` each side,
- * so the pane reads as liquid being pulled rather than a rectangle being slid.
+ * lands, and the pane reads as liquid rather than a rectangle being slid.
  *
  * Hidden on Home and on every pushed screen: it drops away in 380 ms, and comes
  * back up on an overshoot 160 ms after a section arrives, so the section is on
  * screen before the chrome is.
  *
- * All of it is Reanimated, on the UI thread — the blob moves under a finger, and
- * a JS-thread animation there is a nav bar that stutters whenever a list renders.
+ * All of it is Reanimated, on the UI thread — the blob moves while the incoming
+ * section renders, and a JS-thread animation there is a nav bar that stutters
+ * on every tap.
  */
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
@@ -42,7 +41,6 @@ import Animated, {
   withDelay,
   withRepeat,
   withTiming,
-  type SharedValue,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -53,7 +51,7 @@ import { BlurGate, GlassBar } from './glass';
 import { useOverlayOpen } from './overlay';
 import { MaterialSymbol, type SymbolName } from './MaterialSymbol';
 import { useT } from '../hooks/useT';
-import { BLOB_HALF, BLOB_STRETCH, NAV_SLOTS, SECTIONS, type SectionTab } from '../lib/sectionNav';
+import { BLOB_HALF, NAV_SLOTS, SECTIONS, type SectionTab } from '../lib/sectionNav';
 import { gradientFill, palette, tint } from '../theme/tokens';
 
 const GLYPH: Record<SectionTab, SymbolName> = {
@@ -89,11 +87,9 @@ interface NavBarProps {
   visible: boolean;
   onSelect: (tab: SectionTab) => void;
   onHome: () => void;
-  /** −1 … 1: how far a finger has dragged toward the previous / next section. */
-  drag: SharedValue<number>;
 }
 
-function NavBarComponent({ active, visible: onRoute, onSelect, onHome, drag }: NavBarProps) {
+function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarProps) {
   const insets = useSafeAreaInsets();
   const t = useT();
   const [width, setWidth] = useState(0);
@@ -148,8 +144,6 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome, drag }: N
     previous.value = activeIndex;
   }, [activeIndex, centre, left, previous, right, width]);
 
-  /* Memoized: the blob's worklet captures it, and a new array is a new worklet
-     closure — a restarted mapper on the UI thread on every render. */
   const centres = useMemo(() => SECTIONS.map((s) => NAV_SLOTS[s] * width), [width]);
 
   const barStyle = useAnimatedStyle(() => ({
@@ -157,16 +151,10 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome, drag }: N
     transform: [{ translateY: (1 - shown.value) * 130 }, { scale: 0.92 + 0.08 * shown.value }],
   }));
 
-  const blobStyle = useAnimatedStyle(() => {
-    const d = drag.value;
-    if (d === 0 || width === 0) return { left: left.value, width: right.value - left.value };
-    const target = Math.min(Math.max(activeIndex + (d > 0 ? 1 : -1), 0), centres.length - 1);
-    const p = Math.min(Math.abs(d), 1);
-    const from = centres[activeIndex];
-    const c = from + (centres[target] - from) * p;
-    const half = BLOB_HALF + BLOB_STRETCH * Math.sin(Math.PI * p);
-    return { left: c - half, width: half * 2 };
-  });
+  const blobStyle = useAnimatedStyle(() => ({
+    left: left.value,
+    width: right.value - left.value,
+  }));
 
   return (
     <Animated.View

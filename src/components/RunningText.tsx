@@ -30,9 +30,9 @@
  * ── IT NEVER TAKES A TOUCH ────────────────────────────────────────────────
  *
  * `pointerEvents="none"` throughout, and the motion is an animation and never a
- * scroll view: the parent `Pressable` keeps the tap, and `SwipePager` keeps every
- * horizontal drag — a marquee that claimed a sideways gesture would turn every
- * long routine name into a place where swiping between sections stops working.
+ * scroll view: the parent `Pressable` keeps the tap, and the scroll view around it keeps
+ * every drag — a marquee that claimed a gesture would turn every long routine
+ * name into a place where scrolling stops working.
  *
  * ── THE FADE ──────────────────────────────────────────────────────────────
  *

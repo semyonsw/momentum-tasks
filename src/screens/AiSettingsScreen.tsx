@@ -543,7 +543,7 @@ function ProviderControl() {
           </Text>
           {option.live ? null : (
             <Text
-              style={{ fontSize: 9, letterSpacing: 0.9, marginLeft: 4 }}
+              style={{ fontSize: 10.5, letterSpacing: 0.9, marginLeft: 4 }}
               className="font-semibold uppercase text-ink-faint"
             >
               {t('soon')}

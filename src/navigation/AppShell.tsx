@@ -16,14 +16,14 @@
  * three. `More` is gone with it: it was a lobby, and Settings — the one screen
  * anybody actually went there for — is a root that leads with a row per section.
  *
- * ── AND THE ORDER OF THE FOUR IS A GESTURE ─────────────────────────────────
+ * ── THE BAR IS THE ONE WAY BETWEEN THEM ────────────────────────────────────
  *
- * A horizontal swipe steps along the tab bar (`components/SwipePager.tsx`), so
- * the bar's left-to-right order is navigation rather than layout. Both read
- * `lib/sectionNav.ts` so there is one array and the swipe cannot land somewhere
- * the bar does not highlight. Swiping only works at a ROOT: a pushed screen owns
- * the whole width, and a flick out of a routine editor would be a way to lose an
- * edit sideways.
+ * A horizontal swipe used to step along the bar too, with the screen following
+ * the finger. It was removed: the finger's offset reached the screen over the
+ * JS thread, so the drag trembled whenever anything rendered, and the one thing
+ * it saved — a reach to the bottom edge — the bar already does in one tap. The
+ * order still lives in `lib/sectionNav.ts`, which is what makes a slide go the
+ * way the blob does.
  *
  * Why not a router library: the app has five roots and six pushable screens, none
  * of them deep-linked, none of them needing URL state. `expo-router` would add a
@@ -52,7 +52,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
-import { BackHandler, Text, View, useWindowDimensions } from 'react-native';
+import { BackHandler, Text, View } from 'react-native';
 import { runOnJS, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 
@@ -61,7 +61,6 @@ import { BlurGate, Toast, type ToastAction } from '../components/glass';
 import { isOverlayOpen } from '../components/overlay';
 import { PrimaryButton } from '../components/primitives';
 import { Segmented } from '../components/primitives';
-import { SwipePager } from '../components/SwipePager';
 import { NavBar } from '../components/NavBar';
 import { ActiveWorkoutScreen } from '../screens/ActiveWorkoutScreen';
 import { CreateExerciseScreen } from '../screens/CreateExerciseScreen';
@@ -135,15 +134,7 @@ import { dayKey } from '../lib/days';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { useToday } from '../hooks/useToday';
 import type { Direction, Interval } from '../lib/money';
-import {
-  SECTIONS,
-  backAction,
-  stepSection,
-  swipeDecision,
-  swipeFollow,
-  type SectionTab,
-  type ShellRoute,
-} from '../lib/sectionNav';
+import { SECTIONS, backAction, type SectionTab, type ShellRoute } from '../lib/sectionNav';
 import { seedUser } from '../data/seed';
 import type { CompletedWorkout } from '../lib/completedWorkout';
 import type { Exercise, ID, MuscleGroup, SetHistory, UnitSystem } from '../types/models';
@@ -293,8 +284,8 @@ export function AppShell() {
   const [justSaved, setJustSaved] = useState<{ id: ID; at: number } | null>(null);
   /**
    * Where the shell is: Home, or one of the four sections. Home is the landing
-   * (see `screens/LandingScreen.tsx`) and not a fifth tab — it is not on the
-   * swipe row, and `tab` below is the section the rest of the shell reads, which
+   * (see `screens/LandingScreen.tsx`) and not a fifth tab — it is not a nav
+   * slot, and `tab` below is the section the rest of the shell reads, which
    * on Home is simply the last one visited.
    *
    * Seeded from module scope rather than a constant, because the tree under
@@ -322,11 +313,8 @@ export function AppShell() {
   const tileRects = useRef<Partial<Record<SectionTab, TileRect>>>({});
   const [transition, setTransition] = useState<ShellTransition | null>(null);
   const progress = useSharedValue(0);
-  const swipeX = useSharedValue(0);
-  const navDrag = useSharedValue(0);
   const covered = useSharedValue(0);
   const [rootsVisible, setRootsVisible] = useState(true);
-  const { width: screenWidth } = useWindowDimensions();
   /**
    * A workout somebody tapped somewhere else, waiting for the training history to open
    * it and scroll to it.
@@ -554,8 +542,8 @@ export function AppShell() {
   const popToRoot = useCallback(() => setStack([]), []);
 
   /**
-   * Changing section, by the bar or by a swipe — the one path, so the two cannot
-   * leave different state behind.
+   * Changing section, by the bar, a tile or back — the one path, so none of them
+   * can leave different state behind.
    *
    * It does one thing beyond `setTab`: LEAVING the tasks unpins the day. Walking
    * back to last Tuesday is a thing you do inside that section, not a place you
@@ -565,7 +553,7 @@ export function AppShell() {
    * so the pin survives the trip that sets it.
    */
   const navigate = useCallback(
-    (next: ShellRoute, options: { from?: TileRect | null; dragFrom?: number } = {}) => {
+    (next: ShellRoute, options: { from?: TileRect | null } = {}) => {
       if (next === route) return;
       if (tab === 'Tasks' && next !== 'Tasks') setPinnedTaskDay(null);
       /* Same rule, same reason: the window is somewhere you walked to inside the
@@ -591,24 +579,18 @@ export function AppShell() {
         to: next,
         dir,
         rect: tileRects.current[section] ?? null,
-        dragFrom: options.dragFrom ?? 0,
       });
       setRoute(next);
     },
     [route, setRoute, tab],
   );
   /*
-   * The transition starts when it is ON STAGE, not when it is asked for. Zeroing
-   * the swipe offset in `navigate` snapped a released screen back to centre —
-   * and the nav blob back to its old slot — for the frames it took the incoming
-   * section to mount, before the slide picked it up again from `dragFrom`; and
-   * the clock started early, so a slow mount (Money, Home) ate the first part of
-   * the 640 ms.
+   * The transition starts when it is ON STAGE, not when it is asked for: a
+   * clock started in `navigate` would run while the incoming section rendered,
+   * and a slow render (Money, Home) ate the first part of the 640 ms.
    */
   useLayoutEffect(() => {
     if (!transition) return;
-    swipeX.value = 0;
-    navDrag.value = 0;
     progress.value = 0;
     progress.value = withTiming(
       1,
@@ -617,8 +599,8 @@ export function AppShell() {
         if (finished) runOnJS(setTransition)(null);
       },
     );
-  }, [navDrag, progress, swipeX, transition]);
-  /** A section by name, from anywhere — the nav bar, a swipe, a deep jump. */
+  }, [progress, transition]);
+  /** A section by name, from anywhere — the nav bar, a deep jump. */
   const selectTab = useCallback((next: SectionTab) => navigate(next), [navigate]);
   const goHome = useCallback(() => navigate('Home'), [navigate]);
   /* The jumps that land in a section from UNDER a pushed screen: nothing on
@@ -1956,51 +1938,21 @@ export function AppShell() {
   const beneathKey =
     stack.length >= 2 ? `${stack.length - 1}:${stack[stack.length - 2].name}` : 'none';
 
-  /* The section swipe: the screen follows, the blob stretches, release decides. */
-  const onSwipeDrag = (dx: number) => {
-    if (route === 'Home') return;
-    swipeX.value = swipeFollow(dx, route);
-    navDrag.value = Math.max(-1, Math.min(1, -dx / (screenWidth * 0.6)));
-  };
-  const onSwipeRelease = (dx: number, vx: number) => {
-    if (route === 'Home') return;
-    const step = swipeDecision(dx, vx, route);
-    if (step === 0) {
-      const spring = { duration: 460, easing: Easing.bezier(0.34, 1.3, 0.64, 1) };
-      swipeX.value = withTiming(0, spring);
-      navDrag.value = withTiming(0, spring);
-      return;
-    }
-    navigate(stepSection(route, step), { dragFrom: swipeFollow(dx, route) });
-  };
-
   return (
     <View className="flex-1 bg-bg">
       <StatusBar style="light" />
 
-      {/* A flick sideways is one section along, and the screen follows the
-          finger while it decides. It claims a touch only for a clearly
-          horizontal gesture, so every scroll, every row and the
-          long-press-then-slide reorder inside these screens are untouched — see
-          `components/SwipePager.tsx`. */}
       <View style={{ flex: 1, display: rootsCovered ? 'none' : 'flex' }}>
         {/* Covered roots also let go of their blurs — see `BlurGate`. */}
         <BlurGate.Provider value={!rootsCovered}>
           <Hold frozen={rootsCovered}>
-            <SwipePager
-              enabled={route !== 'Home' && stack.length === 0 && transition == null}
-              onDrag={onSwipeDrag}
-              onRelease={onSwipeRelease}
-            >
-              <ShellStage
-                route={route}
-                transition={transition}
-                progress={progress}
-                drag={swipeX}
-                covered={covered}
-                render={renderRoot}
-              />
-            </SwipePager>
+            <ShellStage
+              route={route}
+              transition={transition}
+              progress={progress}
+              covered={covered}
+              render={renderRoot}
+            />
           </Hold>
         </BlurGate.Provider>
       </View>
@@ -2012,7 +1964,6 @@ export function AppShell() {
         visible={route !== 'Home' && stack.length === 0}
         onSelect={selectTab}
         onHome={goHome}
-        drag={navDrag}
       />
 
       <PushHost

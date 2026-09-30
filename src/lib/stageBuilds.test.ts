@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { addSpare, initialBuilds, nextSpare, reconcileBuilds } from './stageBuilds';
+import { addSpare, dropGone, initialBuilds, nextSpare, reconcileBuilds } from './stageBuilds';
 
 /**
  * The pre-built sections, as bookkeeping. The rule worth pinning is the one that
@@ -25,6 +25,19 @@ describe('reconcileBuilds', () => {
     expect(settled.builds.Workout).toBeUndefined();
     const back = reconcileBuilds(settled, ['Tasks', 'Workout']);
     expect(back.builds.Workout?.id).not.toBe(0);
+  });
+
+  it('keeps a left section mounted until the stage is idle, then drops it', () => {
+    const sliding = reconcileBuilds(initialBuilds('Workout'), ['Workout', 'Tasks']);
+    const settled = reconcileBuilds(sliding, ['Tasks']);
+    expect(settled.gone).toEqual([{ route: 'Workout', id: 0 }]);
+    /* Coming straight back gets a new build beside the old one, never the old one. */
+    const back = reconcileBuilds(settled, ['Tasks', 'Workout']);
+    expect(back.builds.Workout?.id).not.toBe(0);
+    expect(back.gone).toEqual([{ route: 'Workout', id: 0 }]);
+    const dropped = dropGone(back);
+    expect(dropped.gone).toEqual([]);
+    expect(dropGone(dropped)).toBe(dropped);
   });
 
   it('builds a live root that has no spare, and leaves unseen spares alone', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { statFontSize, stepperFontSize } from './stepperFont';
+import { figureFontSize, segmentFontSize, statFontSize, stepperFontSize } from './stepperFont';
 
 describe('stepperFontSize', () => {
   it('keeps short numbers at full size from the first frame', () => {
@@ -26,5 +26,27 @@ describe('statFontSize', () => {
     expect(statFontSize('12,400')).toBe(20);
     expect(statFontSize('124,500 ֏')).toBe(16);
     expect(statFontSize('1,240,500 ֏ total')).toBe(13);
+  });
+});
+
+describe('segmentFontSize', () => {
+  it('keeps the design size when the label fits, or before the track is measured', () => {
+    expect(segmentFontSize('Every day', 74)).toBe(13.5);
+    expect(segmentFontSize('Pick days', 0)).toBe(13.5);
+  });
+
+  it('shrinks a long translation a little, and never to nothing', () => {
+    const long = segmentFontSize('Выбрать дни', 74);
+    expect(long).toBeLessThan(13.5);
+    expect(long).toBeGreaterThanOrEqual(11);
+    expect(segmentFontSize('Каждый рабочий день', 20)).toBe(10.5);
+  });
+});
+
+describe('figureFontSize', () => {
+  it('is 26 for a balance that fits the tile, smaller for a long one, never under 16', () => {
+    expect(figureFontSize('12,500', 134)).toBe(26);
+    expect(figureFontSize('-1,234,567', 134)).toBeLessThan(26);
+    expect(figureFontSize('-1,234,567,890.50', 100)).toBe(16);
   });
 });

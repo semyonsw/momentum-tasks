@@ -206,7 +206,7 @@ function Column({
         /*
          * Claimed on a vertical move, which is what takes the gesture off the
          * parent ScrollView — see the file header. Horizontal movement is left
-         * alone so a sideways swipe still changes section.
+         * alone.
          *
          * CAPTURE, and that matters: by the time the finger moves, the row
          * underneath is already the responder (that is how its tap works), and a

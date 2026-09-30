@@ -63,30 +63,6 @@ import { dropIndex, liftIndex, liftedSlotHeight, rowShift, type CardLayout } fro
 
 export type { CardLayout };
 
-/**
- * Is a row in the air ANYWHERE in the app.
- *
- * A module-level flag, which is a thing this codebase does not otherwise do, and
- * it earns it: the swipe that moves between sections lives above every screen
- * (`components/SwipePager.tsx`) and claims touches on CAPTURE, which is the only
- * way to take a gesture off a `ScrollView` — and capture runs parent-first. So a
- * drag that wandered sideways while a row was lifted could be claimed by the pager,
- * switching section and dropping the row somewhere nobody chose.
- *
- * The pager could not ask, because the lift is state inside whichever screen is
- * mounted and the pager is above all of them. Threading a callback up through four
- * screens to answer one yes-or-no would put the same flag in four more places.
- *
- * There is at most one lift at a time — the gesture is one finger and the list
- * stops accepting touches while it is up — so a boolean is honest here. It is set
- * on lift and cleared on every path out of one, including an unmount mid-drag.
- */
-let liftedSomewhere = false;
-
-export function isReordering(): boolean {
-  return liftedSomewhere;
-}
-
 export interface DragReorder {
   /** The row in the air, or null. */
   lifted: string | null;
@@ -137,7 +113,6 @@ export function useDragReorder(
       commit();
       const index = liftIndex(idsRef.current, id);
       liftedRef.current = id;
-      liftedSomewhere = true;
       // The row starts where it already is, so its own index is the first target.
       targetRef.current = index;
       setTargetIndex(index);
@@ -150,7 +125,6 @@ export function useDragReorder(
   const drop = useCallback(() => {
     const id = liftedRef.current;
     liftedRef.current = null;
-    liftedSomewhere = false;
     dragY.setValue(0);
     setLifted(null);
     if (!id) return;
@@ -215,20 +189,10 @@ export function useDragReorder(
   useEffect(() => {
     if (lifted && !ids.includes(lifted)) {
       liftedRef.current = null;
-      liftedSomewhere = false;
       dragY.setValue(0);
       setLifted(null);
     }
   }, [dragY, ids, lifted]);
-
-  /* Unmounted mid-drag — the screen was left, or the tab changed under it. The
-     flag is global, so leaving it set would disable the section swipe for good. */
-  useEffect(
-    () => () => {
-      liftedSomewhere = false;
-    },
-    [],
-  );
 
   /**
    * THE GAP. `rowShift` says which way a row goes and `liftedSlotHeight` says how

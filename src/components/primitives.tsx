@@ -40,6 +40,7 @@ import { Pressable } from './Pressable';
 
 import { useT } from '../hooks/useT';
 import { tap } from '../lib/feedback';
+import { segmentFontSize } from '../lib/stepperFont';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { curve, danger, glass, gradientFill, motion, palette, tint } from '../theme/tokens';
 import { BubblePressable } from './bubbles';
@@ -672,6 +673,8 @@ export function Segmented<T extends string>({
 }) {
   const [width, setWidth] = useState(0);
   const index = options.findIndex((option) => option.value === value);
+  /* The track's padding (4 each side) and each cell's own `px-xs`. */
+  const cellWidth = width > 0 ? (width - 8) / options.length - 8 : 0;
   return (
     <View
       accessibilityRole="radiogroup"
@@ -717,12 +720,12 @@ export function Segmented<T extends string>({
               /* A segment is a fixed-height cell in a fixed-width row, and the
                  labels are translated — `Выбрать дни` is half again the width
                  of `Pick days`. Wrapping would push the control past 42 and
-                 break the row it sits in, so it shrinks a little, then clips. */
+                 break the row it sits in, so it shrinks a little, then clips.
+                 The size comes from the label, not `adjustsFontSizeToFit` —
+                 see `lib/stepperFont.segmentFontSize`. */
               numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
               style={{
-                fontSize: 13.5,
+                fontSize: segmentFontSize(option.label, cellWidth),
                 fontWeight: '600',
                 color: selected ? palette.acc : palette.inkMuted,
               }}

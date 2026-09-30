@@ -308,7 +308,7 @@ function RowCard({
               }}
             >
               <Text
-                style={{ fontSize: 9, letterSpacing: 0.9 }}
+                style={{ fontSize: 10.5, letterSpacing: 0.9 }}
                 className={[
                   'font-semibold uppercase',
                   removed ? 'text-ink-muted' : 'text-green-bright',

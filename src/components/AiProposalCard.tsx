@@ -177,7 +177,7 @@ export function AiProposalCard({
                   </Text>
                   {tagged ? (
                     <Text
-                      style={{ fontSize: 9, letterSpacing: 0.9, marginLeft: 8 }}
+                      style={{ fontSize: 10.5, letterSpacing: 0.9, marginLeft: 8 }}
                       className={[
                         'font-semibold uppercase',
                         state === 'removed' ? 'text-ink-muted' : 'text-green-bright',

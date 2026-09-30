@@ -29,3 +29,31 @@ export function statFontSize(value: string): number {
   if (length <= 9) return 16;
   return 13;
 }
+
+/**
+ * A segmented control's label: 13.5 when it fits the cell, smaller when a
+ * translation runs long (`Выбрать дни` is half again `Pick days`), never below
+ * 10.5. It was `adjustsFontSizeToFit` too, with exactly the failure above — the
+ * four equal cells have no width on the first pass, so every label in the
+ * Repeats control opened at the floor, pinned to the cell's top-left corner.
+ *
+ * `cellWidth` is the room inside one cell, 0 before the track is measured —
+ * which answers full size, since a label that is briefly too wide clips rather
+ * than shrinking to nothing. 0.6 em is a semibold glyph's average width.
+ */
+export function segmentFontSize(label: string, cellWidth: number): number {
+  const full = 13.5;
+  const natural = label.length * 0.6 * full;
+  if (cellWidth <= 0 || natural <= cellWidth) return full;
+  return Math.max(10.5, Math.floor(((full * cellWidth) / natural) * 2) / 2);
+}
+
+/**
+ * The big number on a Home tile — the balance, anything from `0` to
+ * `-1,234,567` — sized to the tile's inner `width`: 26 when it fits, down to 16.
+ * Tabular digits at −1 letter-spacing are ~0.6 em less 1 dp each.
+ */
+export function figureFontSize(value: string, width: number): number {
+  const fits = (width / Math.max(1, value.length) + 1) / 0.6;
+  return Math.max(16, Math.min(26, Math.floor(fits)));
+}

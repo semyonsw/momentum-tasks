@@ -49,6 +49,7 @@ import { focusFamily, greetingFor, homeSubline } from '../lib/home';
 import { balanceOfAccount, formatValue, inAccount, totalsIn } from '../lib/money';
 import { type SectionTab } from '../lib/sectionNav';
 import { dayProgress } from '../lib/tasks';
+import { figureFontSize } from '../lib/stepperFont';
 import { themeName } from '../lib/theme';
 import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
@@ -466,12 +467,11 @@ function Tile({
               <Text
                 allowFontScaling={false}
                 numberOfLines={1}
-                adjustsFontSizeToFit
-                /* A floor: on Android the first fit can run before the row has a width,
-                   and without one the number opens the size of a full stop. */
-                minimumFontScale={0.6}
+                /* Sized from the figure, not `adjustsFontSizeToFit`: on Android
+                   the first fit runs before the row has a width, and the number
+                   opened the size of a full stop. */
                 style={{
-                  fontSize: 26,
+                  fontSize: figureFontSize(figure, tileWidth - 36),
                   lineHeight: 30,
                   letterSpacing: -1,
                   fontVariant: ['tabular-nums'],
