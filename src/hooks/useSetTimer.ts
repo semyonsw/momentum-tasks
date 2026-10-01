@@ -64,12 +64,19 @@ export function useSetTimer(): SetTimerApi {
   const stepSeconds = useSettings((s) => s.adjustStepSeconds);
   const keepAwakeEnabled = useSettings((s) => s.keepAwakeEnabled);
 
-  const [now, setNow] = useState(() => Date.now());
+  /*
+   * The last reading, tagged with the spec it was read from. A new spec (a start,
+   * a `+15`) is read during render, so the first frame after it is never a stale
+   * clock or a null one waiting for the effect below.
+   */
+  const [frame, setFrame] = useState<{ for: SetTimerState; reading: SetTimerReading } | null>(null);
+  const reading = useMemo(
+    () => (timer ? (frame?.for === timer ? frame.reading : readSetTimer(timer, Date.now())) : null),
+    [frame, timer],
+  );
   /** Guards the one-shot events against a second tick for the same timer. */
   const committedFor = useRef<number | null>(null);
   const wentToWorkFor = useRef<number | null>(null);
-
-  const reading = useMemo(() => (timer ? readSetTimer(timer, now) : null), [timer, now]);
 
   /* --- the two count-ins ---------------------------------------------- */
   /*
@@ -109,21 +116,39 @@ export function useSetTimer(): SetTimerApi {
   });
 
   /* --- tick ---------------------------------------------------------- */
+  /*
+   * Only a tick that changes something on screen re-renders. This hook sits at
+   * the root of focus mode, so every `setState` here re-renders the whole sheet.
+   * Ticking `now` 4× a second did that four times to draw a clock that moves
+   * once. Now it is the second, the phase, or a whole percent of the drain line,
+   * whichever moves first. A 5 s get-ready still drains smoothly, and a minute's
+   * plank re-renders under twice a second instead of four times.
+   */
   useEffect(() => {
     if (!timer) return undefined;
-    setNow(Date.now());
-    const interval = setInterval(() => setNow(Date.now()), TICK_MS);
+    const tick = () => {
+      const next = readSetTimer(timer, Date.now());
+      setFrame((current) =>
+        current?.for === timer && sameFrame(current.reading, next)
+          ? current
+          : { for: timer, reading: next },
+      );
+    };
+    tick();
+    const interval = setInterval(tick, TICK_MS);
     return () => clearInterval(interval);
   }, [timer]);
 
   /* --- resync when returning from background ------------------------- */
   useEffect(() => {
     const onChange = (state: AppStateStatus) => {
-      if (state === 'active') setNow(Date.now());
+      if (state === 'active' && timer) {
+        setFrame({ for: timer, reading: readSetTimer(timer, Date.now()) });
+      }
     };
     const sub = AppState.addEventListener('change', onChange);
     return () => sub.remove();
-  }, []);
+  }, [timer]);
 
   /* --- phase changes -------------------------------------------------- */
   useEffect(() => {
@@ -192,4 +217,14 @@ export function useSetTimer(): SetTimerApi {
   }, [cancelSetTimer]);
 
   return { timer, reading, stepSeconds, add, startNow, stop, cancel };
+}
+
+/** Would `next` draw the same frame as `current`? `workedSeconds` follows `display`. */
+function sameFrame(current: SetTimerReading, next: SetTimerReading): boolean {
+  const percent = (f: number | null) => (f == null ? null : Math.round(f * 100));
+  return (
+    current.phase === next.phase &&
+    current.display === next.display &&
+    percent(current.remainingFraction) === percent(next.remainingFraction)
+  );
 }

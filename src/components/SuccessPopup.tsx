@@ -61,10 +61,12 @@ export function SuccessPopup({
       easing: curve(motion.pop),
       useNativeDriver: true,
     }).start();
+    // Native: a scaled line, not a width, so the 3.2 s drain never touches
+    // layout or the JS thread that is busy saving the workout behind it.
     Animated.timing(drain, {
       toValue: 0,
       duration: HOLD_MS,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start();
     const timer = setTimeout(() => done.current(), HOLD_MS);
     return () => clearTimeout(timer);
@@ -76,9 +78,8 @@ export function SuccessPopup({
     () => ({
       fade: enter.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
       pop: enter.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }),
-      drainWidth: drain.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
     }),
-    [drain, enter],
+    [enter],
   );
 
   return (
@@ -152,7 +153,8 @@ export function SuccessPopup({
             style={{
               height: 3,
               backgroundColor: palette.greenBright,
-              width: nodes.drainWidth,
+              transformOrigin: 'left',
+              transform: [{ scaleX: drain }],
             }}
           />
         </View>

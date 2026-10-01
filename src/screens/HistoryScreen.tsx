@@ -166,7 +166,12 @@ import { formatMonth } from '../lib/days';
 import { HISTORY_PAGE, monthsToRender, nearEnd, rowsIn } from '../lib/historyWindow';
 import { curve, gradientBar, palette, radius, tint } from '../theme/tokens';
 import { useSettings } from '../state/settingsStore';
-import { DURATION_LIMITS, formatTimeOfDay } from '../lib/workoutEdit';
+import {
+  DURATION_LIMITS,
+  formatEndTime,
+  formatTimeOfDay,
+  formatTimeSpan,
+} from '../lib/workoutEdit';
 import type { Exercise, ID, SessionEffort, SetHistory, UnitSystem } from '../types/models';
 
 /**
@@ -742,6 +747,22 @@ interface RowActions {
  * one stable `actions`, so it redraws when THIS workout changes and not when a
  * neighbour opens. The per-workout closures are made here, below the memo.
  */
+/** One labelled clock time in an open session: `STARTED` over `18:05`. */
+function SessionTime({ label, value }: { label: string; value: string }) {
+  return (
+    <View accessible accessibilityLabel={`${label} ${value}`}>
+      <Kicker>{label}</Kicker>
+      <Text
+        allowFontScaling={false}
+        style={{ fontSize: 17, lineHeight: 22 }}
+        className="mt-[2px] font-semibold tabular-nums text-ink"
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 const HistoryRow = memo(function HistoryRow({
   workout,
   number,
@@ -850,9 +871,15 @@ function WorkoutRow({
    * ONE LINE OF FACTS under the title, the date first — the date and length used
    * to be a right-hand column, and on a 360 dp phone that column is what squeezed
    * the title to three letters. It RUNS instead of being cut.
+   *
+   * The clock times sit right after the date, `17 Aug · 18:05–19:20 · 74 min`,
+   * because "when did I train" is one question with a date half and a time half,
+   * and the length that follows them is the difference between the two.
    */
+  const span = formatTimeSpan(workout.startedAt, workout.endedAt);
   const detail = [
     formatShortDate(workout.startedAt, lang),
+    span,
     t('{minutes} min', { minutes: workout.durationMinutes }),
     t('{count} {exercises}', {
       count: exerciseCount,
@@ -900,6 +927,10 @@ function WorkoutRow({
           numbered ? `${t('Workout {number}', { number })},` : '',
           workout.title,
           formatShortDate(workout.startedAt, lang),
+          t('from {start} to {end}', {
+            start: formatTimeOfDay(workout.startedAt),
+            end: formatTimeOfDay(workout.endedAt),
+          }),
           t('{count} sets', { count: workout.setCount }),
           t('{minutes} minutes', { minutes: workout.durationMinutes }),
         ]
@@ -947,6 +978,17 @@ function WorkoutRow({
       {isOpen ? (
         <Reveal>
           <View className="border-t border-hairline pb-sm pt-xs">
+            {/* WHEN, spelled out. The row above says it in one run of facts;
+                open, the two times get a label each, because "18:05–19:20" in a
+                marquee is easy to read past and the start and end are exactly
+                what someone opens a past session to check. */}
+            <View className="flex-row px-lg pb-xs pt-sm" style={{ gap: 28 }}>
+              <SessionTime label={t('Started')} value={formatTimeOfDay(workout.startedAt)} />
+              <SessionTime
+                label={t('Ended')}
+                value={formatEndTime(workout.startedAt, workout.endedAt) ?? '--:--'}
+              />
+            </View>
             {workout.exercises.map((exercise) => {
               const total = describeTotal(exercise, t, lang);
               const listing = openExerciseId === exercise.exerciseId;
@@ -1198,6 +1240,9 @@ function WorkoutRow({
                   <Separator />
                   <StepperRow
                     label={t('Took')}
+                    // The end is not a third control: it IS start + length, so
+                    // it moves with either stepper and is stated here.
+                    hint={t('Ended at {time}', { time: formatTimeOfDay(workout.endedAt) })}
                     value={t('{minutes} min', { minutes: workout.durationMinutes })}
                     onDecrease={() => {
                       tap();

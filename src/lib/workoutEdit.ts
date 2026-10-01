@@ -359,3 +359,33 @@ export function formatTimeOfDay(iso: string): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
+
+/**
+ * `18:05–19:20` — when a workout started and when it ended, for the history row.
+ *
+ * The date is already on the row, so this is the two clock times only. A session
+ * that ran past midnight gets a `+1` on the end (`23:40–00:55 +1`), because
+ * `23:40–00:55` alone reads as a typo for a session that ended before it began.
+ * The day is compared on the phone's calendar, like `formatShortDate`, since
+ * crossing UTC midnight is not crossing midnight.
+ *
+ * An unreadable end prints the start alone rather than `--:--` beside a real
+ * time, because a range with one half invented is not a range.
+ */
+export function formatTimeSpan(startIso: string, endIso: string): string {
+  if (!Number.isFinite(new Date(startIso).getTime())) return '--:--';
+  const end = formatEndTime(startIso, endIso);
+  return end ? `${formatTimeOfDay(startIso)}–${end}` : formatTimeOfDay(startIso);
+}
+
+/** The end half of `formatTimeSpan` (`00:55 +1`), or null when it cannot be trusted. */
+export function formatEndTime(startIso: string, endIso: string): string | null {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return null;
+  if (end.getTime() < start.getTime()) return null;
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+  const days = Math.round((endDay - startDay) / 86_400_000);
+  return days > 0 ? `${formatTimeOfDay(endIso)} +${days}` : formatTimeOfDay(endIso);
+}

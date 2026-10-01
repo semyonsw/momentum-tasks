@@ -202,33 +202,36 @@ export function SessionHeader({
   );
 }
 
-/** The share of sets done, as a 2 dp line along the bar's bottom edge. */
+/**
+ * The share of sets done, as a 2 dp line along the bar's bottom edge.
+ *
+ * A full-width line SCALED from its left edge rather than a width animated from
+ * 0% to 100%. Width is layout: it can only run on the JS thread, and it re-lays
+ * the bar out on every frame of the 600 ms glide that follows each ✓, which is
+ * exactly when the session's JS is busiest. `scaleX` on a solid line draws the
+ * same thing on the native driver.
+ */
 function ProgressLine({ fraction }: { fraction: number }) {
   const scale = useMotionScale();
   const clamped = Math.max(0, Math.min(1, fraction));
-  const width = useRef(new Animated.Value(clamped)).current;
+  const progress = useRef(new Animated.Value(clamped)).current;
   useEffect(() => {
-    Animated.timing(width, {
+    Animated.timing(progress, {
       toValue: clamped,
       duration: 600 * scale,
       easing: curve(motion.ease),
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start();
-  }, [clamped, scale, width]);
-  /* Memoized: the header re-renders on every ✓, and a fresh interpolation is a
-     fresh animated node for the view to detach and re-attach. */
-  const fill = useMemo(
-    () => width.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-    [width],
-  );
+  }, [clamped, scale, progress]);
 
   return (
     <View style={{ height: 2, backgroundColor: tint(0.22) }}>
       <Animated.View
         style={{
           height: 2,
-          width: fill,
           backgroundColor: palette.greenBright,
+          transformOrigin: 'left',
+          transform: [{ scaleX: progress }],
         }}
       />
     </View>

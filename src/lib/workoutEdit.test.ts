@@ -7,6 +7,7 @@ import {
   clampWorkoutTitle,
   DURATION_LIMITS,
   formatTimeOfDay,
+  formatTimeSpan,
   reindexSets,
   removeExerciseFromWorkout,
   renameWorkout,
@@ -363,5 +364,23 @@ describe('the time of day', () => {
 
   it('says so when it cannot read the date', () => {
     expect(formatTimeOfDay('nonsense')).toBe('--:--');
+  });
+});
+
+describe('formatTimeSpan', () => {
+  const at = (d: number, h: number, m: number) => new Date(2026, 7, d, h, m).toISOString();
+
+  it('prints the start and the end on the phone clock', () => {
+    expect(formatTimeSpan(at(17, 18, 5), at(17, 19, 20))).toBe('18:05–19:20');
+  });
+
+  it('marks a session that ran past midnight', () => {
+    expect(formatTimeSpan(at(17, 23, 40), at(18, 0, 55))).toBe('23:40–00:55 +1');
+  });
+
+  it('falls back to the start alone when the end cannot be trusted', () => {
+    expect(formatTimeSpan(at(17, 9, 0), 'nonsense')).toBe('09:00');
+    expect(formatTimeSpan(at(17, 9, 0), at(17, 8, 0))).toBe('09:00');
+    expect(formatTimeSpan('nonsense', at(17, 8, 0))).toBe('--:--');
   });
 });
