@@ -161,6 +161,7 @@ const RU: Record<string, string> = {
   'Back to the workout': 'Вернуться к тренировке',
   Sequence: 'Последовательность',
   Today: 'Сегодня',
+  Tomorrow: 'Завтра',
   // The training history's three views. `Cal` is the English label's short form;
   // Russian has room for the word.
   Log: 'Журнал',
@@ -334,6 +335,17 @@ const RU: Record<string, string> = {
     'Уведомления для приложения выключены, поэтому ничего не придёт.',
   Reminders: 'Напоминания',
   'Reminds at {time}': 'Напомнит в {time}',
+  'Reminds at {time}, then every {interval}': 'Напомнит в {time}, затем каждые {interval}',
+  'Remind again': 'Напомнить снова',
+  '{hours} h': '{hours} ч',
+  'Every {interval} after that, until you tick it off or the day ends.':
+    'Затем каждые {interval}, пока не отметите задачу или не закончится день.',
+  'Just the one notification.': 'Только одно уведомление.',
+  'Still not done': 'Ещё не сделано',
+  'A notification with this task, at the time you set.':
+    'Уведомление с этой задачей в указанное время.',
+  'That time has already passed today, so pick a later one.':
+    'Это время сегодня уже прошло, выберите более позднее.',
 
   /* --- the session ------------------------------------------------- */
   'Start workout': 'Начать тренировку',

@@ -102,6 +102,36 @@ export interface TaskReminder {
   hour: number;
   /** 0–59. */
   minute: number;
+  /**
+   * Minutes between the follow-ups, or absent for one alert and no more.
+   *
+   * ── WHY A FOLLOW-UP, AND WHY IT STOPS ─────────────────────────────────
+   *
+   * One buzz at 09:00 is easy to swipe away on the way into a meeting, and the
+   * one-day task it was for then quietly does not happen. So a reminder can
+   * ask AGAIN — every 15 minutes up to every 3 hours — and it stops the moment
+   * the day is answered (ticked, or marked missed on purpose) or the day ends.
+   * Never past either: a phone that keeps nagging about a job already done is
+   * the fastest way to get the whole channel silenced. See `lib/reminders.ts`.
+   *
+   * Optional rather than `number | null` so every reminder written before this
+   * existed reads as exactly what it was — one alert.
+   */
+  every?: number;
+}
+
+/**
+ * The follow-up spacings the editor offers, in minutes.
+ *
+ * Nothing under 15: a reminder every five minutes is an alarm clock, and this
+ * channel is deliberately not one (see `CHANNEL_REMINDER` in `lib/notify.ts`).
+ */
+export const REMIND_AGAIN_MINUTES = [15, 30, 60, 120, 180] as const;
+
+/** "30 min" · "2 h" — a follow-up spacing, as the editor and the rows say it. */
+export function formatInterval(minutes: number, lang: Language = 'en'): string {
+  if (minutes < 60 || minutes % 60 !== 0) return t('{minutes} min', lang, { minutes });
+  return t('{hours} h', lang, { hours: minutes / 60 });
 }
 
 export interface Task {
@@ -216,12 +246,17 @@ export function describeSchedule(schedule: TaskSchedule, lang: Language = 'en'):
   return ordered.map((day) => labels[day]).join(' · ');
 }
 
-/** "Reminds at 07:30", or nothing at all when the task is silent. */
+/** "Reminds at 07:30" · "Reminds at 07:30, then every 30 min" · nothing when silent. */
 export function describeReminder(task: Task, lang: Language = 'en'): string | null {
   if (!task.reminder) return null;
-  return t('Reminds at {time}', lang, {
-    time: formatClockTime(task.reminder.hour, task.reminder.minute),
-  });
+  const time = formatClockTime(task.reminder.hour, task.reminder.minute);
+  if (task.reminder.every) {
+    return t('Reminds at {time}, then every {interval}', lang, {
+      time,
+      interval: formatInterval(task.reminder.every, lang),
+    });
+  }
+  return t('Reminds at {time}', lang, { time });
 }
 
 /**

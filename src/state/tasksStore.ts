@@ -37,6 +37,7 @@ import { t } from '../lib/i18n';
 import { useSettings } from './settingsStore';
 import {
   asksOn,
+  REMIND_AGAIN_MINUTES,
   reorderWithinVisible,
   type Task,
   type TaskAutoSource,
@@ -127,7 +128,16 @@ function sanitizeReminder(raw: unknown): TaskReminder | null {
   const value = raw as Partial<TaskReminder> | null | undefined;
   if (!value || typeof value !== 'object') return null;
   if (!Number.isFinite(value.hour) || !Number.isFinite(value.minute)) return null;
-  return { hour: clampHour(Number(value.hour)), minute: clampMinute(Number(value.minute)) };
+  const reminder: TaskReminder = {
+    hour: clampHour(Number(value.hour)),
+    minute: clampMinute(Number(value.minute)),
+  };
+  // Only a spacing the editor offers survives: a stray `every: 1` from a hand-
+  // edited backup would otherwise arm sixty alerts an hour.
+  if ((REMIND_AGAIN_MINUTES as readonly number[]).includes(Number(value.every))) {
+    reminder.every = Number(value.every);
+  }
+  return reminder;
 }
 
 function sanitizeTask(raw: unknown, index: number, today: string): Task | null {

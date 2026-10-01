@@ -299,3 +299,28 @@ describe('renameSeedTasks', () => {
     expect(renameSeedTasks({ tasks: [null, 7] })).toEqual({ tasks: [null, 7] });
   });
 });
+
+describe('sanitizing a reminder that asks again', () => {
+  const reminderOf = (reminder: unknown) =>
+    sanitizeTasks({
+      tasks: [{ id: 'a', name: 'Call the bank', schedule: { kind: 'daily' }, reminder }],
+      log: {},
+    } as unknown as Parameters<typeof sanitizeTasks>[0]).tasks[0].reminder;
+
+  it('keeps a spacing the editor offers', () => {
+    expect(reminderOf({ hour: 9, minute: 0, every: 30 })).toEqual({
+      hour: 9,
+      minute: 0,
+      every: 30,
+    });
+  });
+
+  it('drops one it does not, rather than nagging every minute', () => {
+    expect(reminderOf({ hour: 9, minute: 0, every: 1 })).toEqual({ hour: 9, minute: 0 });
+    expect(reminderOf({ hour: 9, minute: 0, every: 'often' })).toEqual({ hour: 9, minute: 0 });
+  });
+
+  it('reads a reminder from before follow-ups existed as one alert', () => {
+    expect(reminderOf({ hour: 9, minute: 0 })).toEqual({ hour: 9, minute: 0 });
+  });
+});

@@ -8,8 +8,9 @@
  *
  * ── WHAT IT WATCHES, AND WHY IT IS EVERY INPUT ───────────────────────────
  *
- * The plan is a function of the tasks, the workout schedule and the language
- * (`lib/reminders.ts`), so all three are subscribed. Renaming a task has to
+ * The plan is a function of the tasks, their log, the workout schedule and the
+ * language (`lib/reminders.ts`), so all four are subscribed — the log because
+ * an answered day is what stops a task's follow-ups. Renaming a task has to
  * rewrite the alert that carries its name; turning a reminder off has to cancel
  * it; switching to English has to change what the phone says tomorrow morning.
  * Any of those being missed leaves the user looking at a setting that says one
@@ -36,7 +37,7 @@
 import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
-import { planReminders } from '../lib/reminders';
+import { planKey, planReminders } from '../lib/reminders';
 import { syncReminders } from '../lib/notify';
 import { useSettings } from '../state/settingsStore';
 import { useTasks } from '../state/tasksStore';
@@ -46,35 +47,46 @@ const DEBOUNCE_MS = 500;
 
 export function useReminders(): void {
   const tasks = useTasks((s) => s.tasks);
+  /* The log too: ticking a task is what cancels the rest of its follow-ups. */
+  const log = useTasks((s) => s.log);
   const language = useSettings((s) => s.language);
   const workoutReminderEnabled = useSettings((s) => s.workoutReminderEnabled);
   const workoutReminderDays = useSettings((s) => s.workoutReminderDays);
   const workoutReminderTime = useSettings((s) => s.workoutReminderTime);
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /*
+   * What Android was last handed. The log changes on every tick and every note,
+   * and almost none of those change the plan. Without this, each one would
+   * cancel and re-arm the whole queue across the bridge while the tick is
+   * still animating.
+   */
+  const lastKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      void syncReminders(
-        planReminders({
-          tasks,
-          workout: {
-            enabled: workoutReminderEnabled,
-            days: workoutReminderDays,
-            time: workoutReminderTime,
-          },
-          lang: language,
-          now: new Date(),
-        }),
-        language,
-      );
+      const plan = planReminders({
+        tasks,
+        workout: {
+          enabled: workoutReminderEnabled,
+          days: workoutReminderDays,
+          time: workoutReminderTime,
+        },
+        lang: language,
+        now: new Date(),
+        log,
+      });
+      const key = `${language}|${planKey(plan)}`;
+      if (key === lastKey.current) return;
+      lastKey.current = key;
+      void syncReminders(plan, language);
     }, DEBOUNCE_MS);
 
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [tasks, language, workoutReminderEnabled, workoutReminderDays, workoutReminderTime]);
+  }, [tasks, log, language, workoutReminderEnabled, workoutReminderDays, workoutReminderTime]);
 
   /*
    * Read from the stores rather than from the closure above: this fires whenever
@@ -85,19 +97,22 @@ export function useReminders(): void {
     const sub = AppState.addEventListener('change', (next) => {
       if (next !== 'active') return;
       const settings = useSettings.getState();
-      void syncReminders(
-        planReminders({
-          tasks: useTasks.getState().tasks,
-          workout: {
-            enabled: settings.workoutReminderEnabled,
-            days: settings.workoutReminderDays,
-            time: settings.workoutReminderTime,
-          },
-          lang: settings.language,
-          now: new Date(),
-        }),
-        settings.language,
-      );
+      const plan = planReminders({
+        tasks: useTasks.getState().tasks,
+        log: useTasks.getState().log,
+        workout: {
+          enabled: settings.workoutReminderEnabled,
+          days: settings.workoutReminderDays,
+          time: settings.workoutReminderTime,
+        },
+        lang: settings.language,
+        now: new Date(),
+      });
+      // Always synced, whatever the key says: this is the pass that catches
+      // what only the clock changed, and the one that re-arms after a reboot
+      // cleared the queue.
+      lastKey.current = `${settings.language}|${planKey(plan)}`;
+      void syncReminders(plan, settings.language);
     });
     return () => sub.remove();
   }, []);

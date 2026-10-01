@@ -16,6 +16,8 @@
  *   │        06      28                          │
  *   │      ╭ 07  :  30 ╮                         │
  *   │        08      32                          │
+ *   │ REMIND AGAIN                               │
+ *   │ ╭Off╮ 15 min  30 min  1 h  2 h  3 h        │
  *   │ ╭──────────── ✓ Save task ──────────────╮  │
  *   ╰────────────────────────────────────────────╯
  *
@@ -57,6 +59,18 @@
  * completed it. `startedOn` is the floor that stops that, it has always existed,
  * and this is the control that finally lets it be anything else on purpose: a
  * habit that genuinely began on the 1st can say so.
+ *
+ * ── `REMIND AGAIN` IS UNDER THE WHEEL, AND IT IS `OFF` UNTIL ASKED ────────
+ *
+ * It only exists once there is a reminder, and it starts at one alert, for the
+ * same reason the switch starts off. The chips are the spacing, and the
+ * stopping rule is fixed rather than a field: it stops when the day is
+ * answered or over (`lib/reminders.ts`). "Stop after N times" was the
+ * alternative, and it asks for a number nobody has an opinion about.
+ *
+ * And a one-day task gets `Today` / `Tomorrow` beside its date, because those
+ * two are nearly every one-day task ever typed, and the month grid is three
+ * taps for either.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -80,7 +94,13 @@ import {
 import { dayKey, formatLongDay, shiftDay, weekdayLabels } from '../lib/days';
 import { ensureNotificationPermission } from '../lib/notify';
 import { useLanguage, useT } from '../hooks/useT';
-import type { TaskReminder, TaskSchedule, Weekday } from '../lib/tasks';
+import {
+  REMIND_AGAIN_MINUTES,
+  formatInterval,
+  type TaskReminder,
+  type TaskSchedule,
+  type Weekday,
+} from '../lib/tasks';
 import { curve, palette } from '../theme/tokens';
 
 /** What the segmented control shows. `workdays` and `pick` are both `weekdays`. */
@@ -165,6 +185,18 @@ export function TaskEditorSheet({
         ? { kind: 'once', day: onceDay }
         : { kind: 'weekdays', days: mode === 'workdays' ? WORKDAYS : days };
 
+  /*
+   * A one-day task for today, set to remind at a minute that has already gone,
+   * would save fine and then say nothing, which looks exactly like a broken
+   * reminder. Said here, while the wheel is still under the thumb.
+   */
+  const now = new Date();
+  const reminderPassed =
+    reminder !== null &&
+    kind === 'once' &&
+    onceDay === today &&
+    reminder.hour * 60 + reminder.minute <= now.getHours() * 60 + now.getMinutes();
+
   // A task with no name is not a task, and one that asks on no day never asks.
   const savable = name.trim() !== '' && (mode !== 'pick' || days.length > 0);
 
@@ -227,6 +259,18 @@ export function TaskEditorSheet({
           <Text className="mt-md text-label text-ink-faint">
             {t('A one-day task. It asks on that day and never again.')}
           </Text>
+          <View className="mt-md flex-row flex-wrap">
+            <SelectChip
+              label={t('Today')}
+              selected={onceDay === today}
+              onPress={() => setOnceDay(today)}
+            />
+            <SelectChip
+              label={t('Tomorrow')}
+              selected={onceDay === shiftDay(today, 1)}
+              onPress={() => setOnceDay(shiftDay(today, 1))}
+            />
+          </View>
           <DateRow
             label={t('Which day')}
             value={formatLongDay(onceDay, lang)}
@@ -274,15 +318,21 @@ export function TaskEditorSheet({
         <View className="flex-1">
           <Text className="text-[16px] font-medium text-ink">{t('Remind me')}</Text>
           <Text className="mt-[1px] text-[13.5px] text-[#6B766F]">
-            {reminder ? t('The phone will ask on the days this task asks.') : t('Off')}
+            {reminder
+              ? kind === 'once'
+                ? t('A notification with this task, at the time you set.')
+                : t('The phone will ask on the days this task asks.')
+              : t('Off')}
           </Text>
         </View>
         <Toggle
           value={reminder !== null}
           // 07:00 rather than the current time: a reminder is a thing you want
-          // in the morning far more often than you want it at 14:36.
+          // in the morning far more often than you want it at 14:36. Except on a
+          // one-day task for TODAY, where 07:00 has usually gone, so it is the
+          // next whole hour instead.
           onChange={(on) => {
-            setReminder(on ? { hour: 7, minute: 0 } : null);
+            setReminder(on ? defaultReminder(kind === 'once' && onceDay === today) : null);
             if (on)
               void ensureNotificationPermission().then((state) => setBlocked(state !== 'granted'));
           }}
@@ -301,8 +351,37 @@ export function TaskEditorSheet({
           <TimeWheel
             hour={reminder.hour}
             minute={reminder.minute}
-            onChange={(hour, minute) => setReminder({ hour, minute })}
+            onChange={(hour, minute) => setReminder({ ...reminder, hour, minute })}
           />
+          {reminderPassed ? (
+            <Text className="mt-sm text-label text-ink-faint">
+              {t('That time has already passed today, so pick a later one.')}
+            </Text>
+          ) : null}
+
+          <Kicker className="mb-sm mt-lg">{t('Remind again')}</Kicker>
+          <View className="flex-row flex-wrap">
+            <SelectChip
+              label={t('Off')}
+              selected={!reminder.every}
+              onPress={() => setReminder({ hour: reminder.hour, minute: reminder.minute })}
+            />
+            {REMIND_AGAIN_MINUTES.map((minutes) => (
+              <SelectChip
+                key={minutes}
+                label={formatInterval(minutes, lang)}
+                selected={reminder.every === minutes}
+                onPress={() => setReminder({ ...reminder, every: minutes })}
+              />
+            ))}
+          </View>
+          <Text className="mt-sm text-label text-ink-faint">
+            {reminder.every
+              ? t('Every {interval} after that, until you tick it off or the day ends.', {
+                  interval: formatInterval(reminder.every, lang),
+                })
+              : t('Just the one notification.')}
+          </Text>
         </View>
       ) : null}
 
@@ -336,6 +415,12 @@ export function TaskEditorSheet({
 }
 
 /* ------------------------------------------------------------------ */
+
+/** 07:00, or the next whole hour when the reminder is for later today. */
+function defaultReminder(forToday: boolean): TaskReminder {
+  if (!forToday) return { hour: 7, minute: 0 };
+  return { hour: Math.min(23, new Date().getHours() + 1), minute: 0 };
+}
 
 /** `(.34,1.3,.64,1)` over 420 ms — the button waking when a name appears. */
 const WAKE_CURVE = [0.34, 1.3, 0.64, 1] as const;

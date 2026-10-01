@@ -689,6 +689,7 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
     };
     if (task.reminder) {
       row.remind = `${String(task.reminder.hour).padStart(2, '0')}:${String(task.reminder.minute).padStart(2, '0')}`;
+      if (task.reminder.every) row.remindAgainEveryMin = task.reminder.every;
     }
     if (task.auto) row.ticksItself = task.auto;
     if (task.archivedAt) row.archivedOn = dayKey(task.archivedAt);

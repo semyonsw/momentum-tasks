@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { instantOn, planReminders, type ReminderInputs } from './reminders';
-import type { Task } from './tasks';
+import {
+  MAX_FOLLOW_UPS,
+  MAX_FOLLOW_UPS_PER_DAY,
+  instantOn,
+  planKey,
+  planReminders,
+  type ReminderInputs,
+} from './reminders';
+import type { Task, TaskLog } from './tasks';
 
 /**
  * The reminder plan.
@@ -228,5 +235,116 @@ describe('what the queue is handed', () => {
     const ids = alerts.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.length).toBe(7 + 1 + 1 + 3);
+  });
+});
+
+/**
+ * Follow-ups: the "and again" alerts. What these pin is the stopping rule. An
+ * answered day gets none, midnight ends them, and the caps hold, because a
+ * reminder that will not stop is the one that gets the channel silenced.
+ */
+describe('remind again', () => {
+  const at = (h: number, m = 0, day = 13) => new Date(2026, 8, day, h, m, 0, 0).getTime();
+  const once = (over: Partial<Task> = {}) =>
+    task({
+      name: 'Call the bank',
+      schedule: { kind: 'once', day: '2026-09-13' },
+      startedOn: '2026-09-13',
+      reminder: { hour: 11, minute: 0, every: 30 },
+      ...over,
+    });
+  const planWith = (tasks: Task[], log?: TaskLog) =>
+    planReminders({ tasks, workout: SILENT_WORKOUT, lang: 'en', now: now(), log });
+
+  it('asks again every interval after the first, under the same name', () => {
+    const alerts = planWith([once({ reminder: { hour: 22, minute: 0, every: 30 } })]);
+    expect(alerts.map((a) => a.trigger)).toEqual([
+      { kind: 'date', at: at(22) },
+      { kind: 'date', at: at(22, 30) },
+      { kind: 'date', at: at(23) },
+      { kind: 'date', at: at(23, 30) },
+    ]);
+    expect(alerts.every((a) => a.title === 'Call the bank')).toBe(true);
+    expect(alerts[1].body).toBe('Still not done · Once · 13 September');
+  });
+
+  it('stops at midnight, and never asks more than the daily cap', () => {
+    const alerts = planWith([once({ reminder: { hour: 11, minute: 0, every: 15 } })]);
+    expect(alerts).toHaveLength(1 + MAX_FOLLOW_UPS_PER_DAY);
+    const late = planWith([once({ reminder: { hour: 23, minute: 0, every: 180 } })]);
+    expect(late).toHaveLength(1);
+  });
+
+  it('says nothing at all once a one-day task is answered', () => {
+    const log: TaskLog = { t1: { '2026-09-13': { mark: 'done', note: '' } } };
+    expect(planWith([once()], log)).toEqual([]);
+    const skipped: TaskLog = { t1: { '2026-09-13': { mark: 'missed', note: '' } } };
+    expect(planWith([once()], skipped)).toEqual([]);
+  });
+
+  it('still asks after a note with no mark, which is not an answer', () => {
+    const log: TaskLog = { t1: { '2026-09-13': { mark: null, note: 'rang, no answer' } } };
+    expect(planWith([once()], log).length).toBeGreaterThan(1);
+  });
+
+  it('skips follow-ups that have already gone, and keeps the ones to come', () => {
+    // First alert at 08:00 has passed (it is 10:00), so only 10:30 onward remain.
+    const alerts = planWith([once({ reminder: { hour: 8, minute: 0, every: 30 } })]);
+    expect(alerts[0].trigger).toEqual({ kind: 'date', at: at(10, 30) });
+    expect(alerts.every((a) => a.trigger.kind === 'date' && a.trigger.at > now().getTime())).toBe(
+      true,
+    );
+  });
+
+  it('keeps a daily task on its repeat, with dated follow-ups for the days ahead', () => {
+    const alerts = planWith([task({ reminder: { hour: 21, minute: 0, every: 60 } })]);
+    expect(alerts.filter((a) => a.trigger.kind === 'daily')).toHaveLength(1);
+    const days = new Set(
+      alerts.filter((a) => a.trigger.kind === 'date').map((a) => a.id.split(':')[2]),
+    );
+    expect([...days]).toEqual(['2026-09-13', '2026-09-14', '2026-09-15']);
+  });
+
+  it("drops today's follow-ups for a daily task ticked today, and only today's", () => {
+    const log: TaskLog = { t1: { '2026-09-13': { mark: 'done', note: '' } } };
+    const alerts = planWith([task({ reminder: { hour: 21, minute: 0, every: 60 } })], log);
+    expect(alerts.some((a) => a.id.includes('2026-09-13'))).toBe(false);
+    expect(alerts.some((a) => a.id.includes('2026-09-14'))).toBe(true);
+    expect(alerts.find((a) => a.trigger.kind === 'daily')).toBeDefined();
+  });
+
+  it('only follows up on the days a weekday task asks', () => {
+    // 13 Sep 2026 is a Sunday; Monday = 0.
+    const alerts = planWith([
+      task({
+        schedule: { kind: 'weekdays', days: [0] },
+        reminder: { hour: 9, minute: 0, every: 60 },
+      }),
+    ]);
+    const dated = alerts.filter((a) => a.trigger.kind === 'date');
+    expect(dated.length).toBeGreaterThan(0);
+    expect(dated.every((a) => a.id.includes('2026-09-14'))).toBe(true);
+  });
+
+  it('caps the whole queue, keeping the soonest', () => {
+    const many = Array.from({ length: 30 }, (_, i) =>
+      task({ id: `t${i}`, reminder: { hour: 12, minute: 0, every: 15 } }),
+    );
+    const dated = planWith(many).filter((a) => a.trigger.kind === 'date');
+    expect(dated).toHaveLength(MAX_FOLLOW_UPS);
+    const times = dated.map((a) => (a.trigger.kind === 'date' ? a.trigger.at : 0));
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+  });
+
+  it('gives every follow-up its own id, all of them recognisable as task alerts', () => {
+    const alerts = planWith([task({ reminder: { hour: 21, minute: 0, every: 30 } })]);
+    expect(new Set(alerts.map((a) => a.id)).size).toBe(alerts.length);
+    expect(alerts.every((a) => a.id.startsWith('task:'))).toBe(true);
+  });
+
+  it('keys two identical plans the same, and a changed one differently', () => {
+    expect(planKey(planWith([once()]))).toBe(planKey(planWith([once()])));
+    const done: TaskLog = { t1: { '2026-09-13': { mark: 'done', note: '' } } };
+    expect(planKey(planWith([once()], done))).not.toBe(planKey(planWith([once()])));
   });
 });
