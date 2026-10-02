@@ -50,6 +50,7 @@ import { evaluateDeload } from '../deload';
 import { MUSCLE_CLUSTER } from '../muscles';
 import { evaluateOverloadBatch } from '../progressiveOverload';
 import { ladderOf } from '../repLadder';
+import { plannedStartWeight } from '../weightCarry';
 import { asksOn, dayProgress, entryOf, streakOf, type Task, type TaskLog } from '../tasks';
 import { totalsIn, type Amount, type MoneyAccount, type MoneyCategory } from '../money';
 import type { CompletedWorkout } from '../completedWorkout';
@@ -165,6 +166,32 @@ export function lastTopWeights(workouts: readonly CompletedWorkout[]): Record<ID
         out[exercise.exerciseId] = exercise.topWeightKg;
       }
     }
+  }
+  return out;
+}
+
+/**
+ * The weight each weighted exercise STARTS AT next session — what the prefill will
+ * actually put in the cell (`buildDraftEntry`): a starting weight planned since
+ * the last session (`plannedStartWeight`), else the last session's top set, else
+ * nothing. A proposal's "was" and the model's view of the routine both read this,
+ * so an applied weight reads as applied instead of as the same change forever.
+ */
+export function nextStartWeights(
+  exercises: readonly Exercise[],
+  workouts: readonly CompletedWorkout[],
+): Record<ID, number> {
+  const out = lastTopWeights(workouts);
+  const lastAt: Record<ID, string> = {};
+  for (const workout of workouts) {
+    for (const exercise of workout.exercises) {
+      const at = lastAt[exercise.exerciseId];
+      if (at == null || workout.startedAt > at) lastAt[exercise.exerciseId] = workout.startedAt;
+    }
+  }
+  for (const exercise of exercises) {
+    const planned = plannedStartWeight(exercise, lastAt[exercise.id]);
+    if (planned != null) out[exercise.id] = planned;
   }
   return out;
 }
@@ -315,6 +342,8 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     balance.clusters.filter((c) => c.sets > 0).map((c) => [c.cluster, c.sets]),
   );
 
+  // What the next session will prefill — the numbers a proposal is compared with.
+  const startWeights = nextStartWeights(exercises, workouts);
   const routineRows = routines.map((routine) => ({
     id: routine.id,
     name: routine.name,
@@ -331,8 +360,9 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
         const reps = repsLabel(item.targetRepsMin, item.targetRepsMax);
         if (reps) row.reps = reps;
         if (exercise.countUnit !== 'reps') row.unit = exercise.countUnit;
-        if (exercise.requiresWeight && exercise.defaultWeightKg != null) {
-          row.startKg = exercise.defaultWeightKg;
+        if (exercise.requiresWeight) {
+          const kg = startWeights[exercise.id] ?? exercise.defaultWeightKg;
+          if (kg != null) row.weightKg = kg;
         }
         const ladder = ladderOf(exercise);
         if (ladder) row.ladder = ladder.max;

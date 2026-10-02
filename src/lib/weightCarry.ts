@@ -104,3 +104,27 @@ export function defaultWeightUpdate(
   if (exercise.defaultWeightKg === weightKg) return null;
   return weightKg;
 }
+
+/**
+ * A starting weight someone PLANNED after the last session, or null.
+ *
+ * The prefill's rule is "last session first" and it stays the rule; this is the
+ * one exception, for a weight set on purpose since then (`Exercise.startWeightSetAt`
+ * — an applied AI suggestion). Null means follow history as usual: no stamp, a
+ * stamp older than the last session, or an exercise that takes no weight.
+ */
+export function plannedStartWeight(
+  exercise: Pick<Exercise, 'requiresWeight' | 'defaultWeightKg' | 'startWeightSetAt'>,
+  lastSessionAt: string | null | undefined,
+): number | null {
+  if (!carriesWeight(exercise) || !exercise.startWeightSetAt) return null;
+  const weight = exercise.defaultWeightKg;
+  if (weight == null || !Number.isFinite(weight) || weight <= 0) return null;
+  const setAt = Date.parse(exercise.startWeightSetAt);
+  if (!Number.isFinite(setAt)) return null;
+  if (lastSessionAt) {
+    const last = Date.parse(lastSessionAt);
+    if (Number.isFinite(last) && last >= setAt) return null;
+  }
+  return weight;
+}

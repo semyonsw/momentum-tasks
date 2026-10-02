@@ -42,7 +42,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
 import { formatRow } from '../components/AiProposalCard';
 import { useT } from '../hooks/useT';
-import { lastTopWeights } from '../lib/ai/aiContext';
+import { nextStartWeights } from '../lib/ai/aiContext';
 import {
   addRow,
   keepRow,
@@ -75,7 +75,7 @@ export function AiReviewScreen({ proposalId, onBack, onAccept, onDiscard }: AiRe
   const stored = useAi((s) => s.proposals[proposalId]);
   const exercises = useLibrary((s) => s.exercises);
   const workouts = useWorkoutHistory((s) => s.workouts);
-  const lastWeights = useMemo(() => lastTopWeights(workouts), [workouts]);
+  const lastWeights = useMemo(() => nextStartWeights(exercises, workouts), [exercises, workouts]);
   const [picking, setPicking] = useState(false);
   const [typing, setTyping] = useState<{ key: string; field: RowField } | null>(null);
 

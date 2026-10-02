@@ -224,7 +224,10 @@ export function buildChatRequest(params: {
       generationConfig: {
         responseMimeType: 'application/json',
         responseSchema,
-        temperature: 0.4,
+        // Low: the answers are edits of the user's own routines, where the same
+        // question should get the same card, and 0.4 drifted between turns —
+        // a removal kept in one proposal and dropped from the next.
+        temperature: 0.2,
       },
     }),
   };

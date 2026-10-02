@@ -109,7 +109,7 @@ describe('a chat request', () => {
     expect(body.generationConfig.responseSchema).toEqual(
       JSON.parse(JSON.stringify(responseSchema)),
     );
-    expect(body.generationConfig.temperature).toBe(0.4);
+    expect(body.generationConfig.temperature).toBe(0.2);
   });
 
   it('carries only the last turns, and never starts them on a model turn', () => {

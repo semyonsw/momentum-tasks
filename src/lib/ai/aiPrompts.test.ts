@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { suggestedPrompts, systemPrompt } from './aiPrompts';
+import { suggestedPrompts, suggestionNote, systemPrompt } from './aiPrompts';
 
 /**
  * What the assistant is told and what the user is offered. The system prompt's
@@ -53,5 +53,32 @@ describe('the suggested prompts', () => {
     expect(suggestedPrompts('Expenses', {}, 'en', new Date(2026, 0, 5))[1].label).toBe(
       'Where did December go?',
     );
+  });
+});
+
+describe('the note on earlier suggestions', () => {
+  it('is empty when the chat made none', () => {
+    expect(suggestionNote([])).toBe('');
+  });
+
+  it('says which were applied, oldest first', () => {
+    const note = suggestionNote([
+      { what: 'routine', name: 'Push', status: 'pending' },
+      { what: 'routine', name: 'Push', status: 'accepted' },
+      { what: 'loop', name: '', status: 'discarded' },
+    ]);
+    expect(note).toContain('1. routine "Push": NOT applied');
+    expect(note).toContain('2. routine "Push": APPLIED');
+    expect(note).toContain('3. loop: DISCARDED');
+    expect(note.startsWith('[App note')).toBe(true);
+  });
+});
+
+describe('the workout prompt', () => {
+  it('asks for removals to be listed, and for edits to carry what is not saved yet', () => {
+    const prompt = systemPrompt('Workout', 'en');
+    expect(prompt).toContain('change = "removed". Never just leave it out');
+    expect(prompt).toContain('EDITS ARE CUMULATIVE');
+    expect(prompt).toContain('CHECK THE PROPOSAL');
   });
 });

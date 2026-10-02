@@ -415,9 +415,14 @@ export const useLibrary = create<LibraryState>()(
         // would mark the library dirty for an edit that isn't one.
         if (!before || !before.requiresWeight || before.defaultWeightKg === weightKg) return;
         set({
-          exercises: exercises.map((e) =>
-            e.id === exerciseId ? { ...e, defaultWeightKg: weightKg } : e,
-          ),
+          exercises: exercises.map((e) => {
+            if (e.id !== exerciseId) return e;
+            // A set just logged at another weight is newer than any planned start
+            // (`Exercise.startWeightSetAt`), even mid-session, where the session's
+            // date is still its start: the stamp goes and history leads again.
+            const { startWeightSetAt: _planned, ...rest } = e;
+            return { ...rest, defaultWeightKg: weightKg };
+          }),
         });
       },
 

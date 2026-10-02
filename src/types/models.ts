@@ -289,6 +289,21 @@ export interface Exercise {
   defaultCount?: number;
 
   /**
+   * WHEN `defaultWeightKg` WAS MOVED ON PURPOSE, as a plan for the next session —
+   * today, only by an applied AI suggestion ("side delts at 5 kg").
+   *
+   * Without it such a weight did nothing for any exercise with history: the
+   * prefill reads last session first, so the suggestion was applied, the card
+   * said "Applied", and the next workout opened at the old weight anyway — while
+   * the next card kept offering the same change, because the routine still
+   * "was" the old number. While this stamp is NEWER than the exercise's last
+   * logged session, the starting weight beats history (`plannedStartWeight`);
+   * once a session of it is logged, that session is the newer fact and history
+   * leads again. Absent = history wins, as it always has.
+   */
+  startWeightSetAt?: ISODateTime;
+
+  /**
    * HOW MANY SETS of this movement a plan asks for.
    *
    * A fact about the exercise, the same way the starting weight and the rep target

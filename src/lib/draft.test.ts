@@ -597,3 +597,43 @@ describe('an exercise whose reps are MAX', () => {
     expect(entry.sets[0].isPrefilled).toBe(true);
   });
 });
+
+/*
+ * An applied AI suggestion ("start side delts at 5 kg") moves the starting weight
+ * and stamps when. Before the stamp, history won every time and the suggestion
+ * changed nothing in the session it was meant for.
+ */
+describe('a starting weight planned since last session', () => {
+  const entryFor = (exercise: Exercise) =>
+    buildDraftEntry({
+      exercise,
+      history: [loggedSet(), loggedSet({ id: 'sh2', setIndex: 1 })],
+      policy: DEFAULT_OVERLOAD_POLICY,
+      unitSystem: 'metric',
+      restSeconds: 120,
+      transitionRestSeconds: 150,
+      targetSets: 3,
+      targetRepsMax: 12,
+      now: new Date('2026-08-18T17:00:00.000Z'),
+    });
+
+  it('beats last session’s weight on every working set', () => {
+    const entry = entryFor({
+      ...machine,
+      defaultWeightKg: 40,
+      startWeightSetAt: '2026-08-17T09:00:00.000Z',
+    });
+    expect(entry.sets.map((s) => s.weightKg)).toEqual([40, 40, 40]);
+    // Only the weight: the reps still come from last session.
+    expect(entry.sets[0].count).toBe(8);
+  });
+
+  it('loses to a session logged after it', () => {
+    const entry = entryFor({
+      ...machine,
+      defaultWeightKg: 40,
+      startWeightSetAt: '2026-08-15T09:00:00.000Z',
+    });
+    expect(entry.sets[0].weightKg).toBe(45);
+  });
+});

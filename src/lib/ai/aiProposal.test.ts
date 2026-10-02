@@ -404,3 +404,92 @@ describe('the review screen’s edits', () => {
     expect(rowStatus(added)).toBe('new');
   });
 });
+
+/* ------------------------------------------------------------------ */
+
+describe('an exercise the model leaves out', () => {
+  /*
+   * The chat that found it: "remove the rear delts" — and the next three cards
+   * listed the routine without them, while the app kept them on every card.
+   */
+  const lib = library();
+  const ids = ['ex_dips_weighted', 'ex_pushups', 'ex_pulldown_wide', 'ex_hanging_leg_raise'];
+  lib.routines = lib.routines.map((r) =>
+    r.id === 'r_push'
+      ? {
+          ...r,
+          items: ids.map((exerciseId, order) => ({
+            id: `it_${order}`,
+            exerciseId,
+            order,
+            targetSets: 4,
+            targetRepsMax: 12,
+          })),
+        }
+      : r,
+  );
+  const row = (exerciseId: string, sets = 4) => ({
+    exerciseId,
+    name: exerciseId,
+    sets,
+    reps: 12,
+    weightKg: 0,
+    change: 'same' as const,
+  });
+
+  it('is removed when the list names most of the routine', () => {
+    const proposal = normalizeProposal(
+      editOfPush([row('ex_dips_weighted', 3), row('ex_pushups'), row('ex_hanging_leg_raise')]),
+      { ...ctx(lib), lastWeights: {} },
+    )!;
+    const dropped = proposal.rows.find((r) => r.exerciseId === 'ex_pulldown_wide')!;
+    expect(rowStatus(dropped)).toBe('removed');
+    expect(proposalTotals(proposal)).toMatchObject({ exercises: 3, changes: 2 });
+    const push = planApply(proposal, lib, { now: NOW, ownerId: OWNER })!.routines.find(
+      (r) => r.id === 'r_push',
+    )!;
+    expect(push.items.map((i) => i.exerciseId)).toEqual([
+      'ex_dips_weighted',
+      'ex_pushups',
+      'ex_hanging_leg_raise',
+    ]);
+  });
+
+  it('is kept when the list is a partial edit of one or two rows', () => {
+    const proposal = normalizeProposal(
+      editOfPush([row('ex_dips_weighted', 3), row('ex_pushups')]),
+      { ...ctx(lib), lastWeights: {} },
+    )!;
+    expect(proposal.rows.filter((r) => r.removed)).toEqual([]);
+    expect(proposal.rows).toHaveLength(4);
+  });
+});
+
+describe('a weight the suggestion moves', () => {
+  it('is stamped, so the next session starts there instead of at history', () => {
+    const lib = library();
+    const proposal = normalizeProposal(
+      editOfPush([
+        { exerciseId: 'ex_dips_weighted', name: 'Dips', sets: 4, reps: 12, weightKg: 25 },
+      ]),
+      ctx(lib),
+    )!;
+    const next = planApply(proposal, lib, { now: NOW, ownerId: OWNER })!;
+    const dips = next.exercises.find((e) => e.id === 'ex_dips_weighted')!;
+    expect(dips).toMatchObject({ defaultWeightKg: 25, startWeightSetAt: NOW.toISOString() });
+    // An exercise whose weight did not move is not stamped.
+    expect(next.exercises.find((e) => e.id === 'ex_pushups')!.startWeightSetAt).toBeUndefined();
+  });
+
+  it('reads as applied on the next card, not as the same change again', () => {
+    const lib = library();
+    // After applying: what the next session starts at is the planned 25.
+    const again = normalizeProposal(
+      editOfPush([
+        { exerciseId: 'ex_dips_weighted', name: 'Dips', sets: 4, reps: 12, weightKg: 25 },
+      ]),
+      { ...ctx(lib), lastWeights: { ex_dips_weighted: 25 } },
+    )!;
+    expect(rowStatus(again.rows[0])).toBe('same');
+  });
+});

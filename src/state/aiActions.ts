@@ -25,12 +25,12 @@ import {
   buildTasksContext,
   buildWorkoutContext,
   expensesBrief,
-  lastTopWeights,
+  nextStartWeights,
   tasksBrief,
   withBriefs,
   workoutBrief,
 } from '../lib/ai/aiContext';
-import { systemPrompt } from '../lib/ai/aiPrompts';
+import { suggestionNote, systemPrompt, type SuggestionFate } from '../lib/ai/aiPrompts';
 import { normalizeProposal, planApply, type Library } from '../lib/ai/aiProposal';
 import { AI_SECTIONS, validateBlocks, type AiSection } from '../lib/ai/aiSchema';
 import { keepSteps } from '../lib/ai/sequenceCursor';
@@ -239,6 +239,26 @@ export function sectionContext(section: AiSection): {
 /* A chat turn                                                         */
 /* ------------------------------------------------------------------ */
 
+/** Each suggestion the chat made, oldest first, and whether it was applied. */
+function fatesOf(messages: readonly AiMessage[]): SuggestionFate[] {
+  const { proposals } = useAi.getState();
+  const fates: SuggestionFate[] = [];
+  for (const message of messages) {
+    if (message.role !== 'model') continue;
+    for (const block of message.blocks) {
+      if (block.type === 'sequence') {
+        fates.push({ what: 'loop', name: '', status: block.status });
+      } else if (block.type === 'proposal') {
+        const stored = proposals[block.proposalId];
+        if (stored) {
+          fates.push({ what: 'routine', name: stored.proposal.name, status: stored.status });
+        }
+      }
+    }
+  }
+  return fates;
+}
+
 /** The chat so far, as Gemini wants it: user text, and the model's own JSON back. */
 function historyOf(messages: readonly AiMessage[]): HistoryTurn[] {
   const turns: HistoryTurn[] = [];
@@ -316,7 +336,10 @@ export async function sendMessage(
 
     const context = sectionContext(section);
     const chosen = useAi.getState().model;
-    const request = (model: string, userText = question) =>
+    // Read now, not when the question was typed: Apply may have been pressed since.
+    const note = suggestionNote(fatesOf(earlier));
+    const asked = note ? `${note}\n\n${question}` : question;
+    const request = (model: string, userText = asked) =>
       buildChatRequest({
         key,
         model,
@@ -383,7 +406,7 @@ export async function sendMessage(
     const unreadable =
       (!parsed.ok && parsed.reason === 'shape') || (parsed.ok && blocks.length === 0);
     if (unreadable && stillAsked()) {
-      const again = await send(request(model, `${question}\n\n${REPAIR_NOTE}`), CHAT_TIMEOUT_MS);
+      const again = await send(request(model, `${asked}\n\n${REPAIR_NOTE}`), CHAT_TIMEOUT_MS);
       if (again.kind === 'response' && again.status === 200) {
         const second = read(again.body);
         if (second.parsed.ok && second.blocks.length > 0) ({ parsed, blocks } = second);
@@ -409,7 +432,7 @@ export async function sendMessage(
       const review = normalizeProposal(block.proposal, {
         exercises: library.exercises,
         routines: library.routines,
-        lastWeights: lastTopWeights(useWorkoutHistory.getState().workouts),
+        lastWeights: nextStartWeights(library.exercises, useWorkoutHistory.getState().workouts),
       });
       if (!review) {
         // Nothing left to apply once matched against the library — its reason

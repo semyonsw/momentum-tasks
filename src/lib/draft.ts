@@ -28,6 +28,7 @@ import { describeLadder, ladderOf, ladderTargets } from './repLadder';
 import { countsToMax, maxLabel } from './maxReps';
 import { exerciseBests, type BodyweightLookup, type ExerciseBests } from './records';
 import { evaluateDeload, type DeloadVerdict } from './deload';
+import { plannedStartWeight } from './weightCarry';
 
 /* ------------------------------------------------------------------ */
 /* Draft shapes (in-memory, screen-local)                              */
@@ -470,6 +471,12 @@ export function buildDraftEntry(params: BuildEntryParams): DraftEntry {
    */
   const startingWeightKg = finiteOrNull(exercise.defaultWeightKg);
   const startingCount = finiteOrNull(exercise.defaultCount);
+  /*
+   * …except a starting weight PLANNED since that session (an applied AI
+   * suggestion, `Exercise.startWeightSetAt`), which is the newer decision and
+   * so goes ahead of 1 and 2 for every working set.
+   */
+  const plannedWeightKg = plannedStartWeight(exercise, previous[0]?.performedAt);
 
   /*
    * A LADDER OVERRIDES THE PREFILL, and it is the one thing that does.
@@ -512,7 +519,9 @@ export function buildDraftEntry(params: BuildEntryParams): DraftEntry {
     const reference = previous[i] ?? previous[previous.length - 1];
     return {
       localId: uid('set'),
-      weightKg: exercise.requiresWeight ? (reference?.weightKg ?? startingWeightKg) : null,
+      weightKg: exercise.requiresWeight
+        ? (plannedWeightKg ?? reference?.weightKg ?? startingWeightKg)
+        : null,
       count: toMax
         ? 0
         : (ladderPlan?.[i] ??

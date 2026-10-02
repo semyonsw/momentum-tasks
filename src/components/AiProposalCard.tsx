@@ -58,7 +58,9 @@ export function AiProposalCard({
   const bw = t('BW');
 
   const meta = [
-    isNew ? proposal.focus : t('{count} changes', { count: totals.changes }),
+    isNew
+      ? proposal.focus
+      : t(totals.changes === 1 ? '{count} change' : '{count} changes', { count: totals.changes }),
     t('{exercises} exercises · {sets} sets', { exercises: totals.exercises, sets: totals.sets }),
   ]
     .filter(Boolean)

@@ -1287,6 +1287,7 @@ const RU: Record<string, string> = {
   'new to library': 'новое в базе',
   'Suggested routine': 'Предложенная программа',
   'Suggested edit · {name}': 'Предложенная правка · {name}',
+  '{count} change': 'изменений: {count}',
   '{count} changes': 'изменений: {count}',
   Applied: 'Применено',
   Discarded: 'Отклонено',

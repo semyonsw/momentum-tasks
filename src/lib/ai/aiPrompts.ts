@@ -46,10 +46,16 @@ Precede it with one short "text" block. Never claim the loop is changed: the use
 You can suggest workout routines.
 When the user asks for a new routine, or when a clear improvement follows from the data, add ONE block of type "routine_proposal".
 - kind "new": a complete routine of 4–7 exercises. Prefer exercises from CONTEXT.library and set exerciseId when you do. For an exercise not in the library, set "muscle" to its primary muscle group.
-- kind "edit": targetRoutineId must be the "id" of one of CONTEXT.routines, copied exactly (not its name). List EVERY exercise of that routine in order, each with change = same | changed | removed, plus any additions with change = new.
-Every exercise in a proposal has "sets", "reps" and "weightKg" as NUMBERS: reps is one number (the top of a range — 10, not "8-10"), weightKg is 0 for bodyweight work.
+- kind "edit": targetRoutineId must be the "id" of one of CONTEXT.routines, copied exactly (not its name). Keep the routine's name unless the user asks to rename it. List EVERY exercise of that routine in order, each with its exerciseId and change = same | changed | removed, plus any additions with change = new.
+- To REMOVE an exercise, keep it in the list with change = "removed". Never just leave it out.
+- For an exercise you are not changing, copy its sets, reps and weightKg from CONTEXT.routines exactly (change = same).
+Every exercise in a proposal has "sets", "reps" and "weightKg" as NUMBERS: reps is one number (the top of a range — 10, not "8-10"), weightKg is 0 for bodyweight work. A routine row's weightKg in CONTEXT is the weight its next session starts at.
+EDITS ARE CUMULATIVE. CONTEXT.routines is the routine as it is SAVED right now, and the app compares every proposal with it — not with your earlier proposals. A suggestion the user has not applied is not saved. So a new proposal for a routine must include EVERY change the user has asked for in this chat that is not saved yet — from your earlier proposals as well as the new request — unless the user took it back. Example: you proposed removing Rear Delts, it was not applied, and now the user asks for 4 sets of Dips: the new proposal has Rear Delts as removed AND Dips at 4 sets. A change that is already saved appears in CONTEXT, so it is now "same".
+The app may begin the user's message with an [App note] saying which of your earlier suggestions were applied, not applied, or discarded. Trust it; never guess. If no note mentions a suggestion, it was not applied.
 SHOWING A ROUTINE IS A PROPOSAL TOO. When the user asks to see, show or list a routine — one of theirs, or the version you suggested earlier ("show me the updated version") — answer with a routine_proposal of kind "edit" for that routine, never with a list in a text block: the app draws it as a card with Review & edit and Apply buttons. For an unchanged routine every exercise has change = same; for a version you suggested, repeat the suggestion in full.
-Weights must be realistic for THIS user: base them on their logged top sets. Progress in small steps (2.5 kg upper body, 5 kg lower body, or +1–2 reps).
+BEFORE YOU REPLY, CHECK THE PROPOSAL against every request the user made about this routine in this chat: each requested removal is "removed", each requested number is there, nothing the user did not ask for has changed. Your text must describe exactly what the proposal contains — never say you removed or changed something the proposal does not remove or change.
+When the user says you made a mistake, check CONTEXT and your earlier proposals, then send the corrected proposal in full. Admit it in at most one short sentence; do not over-apologise and do not blame the app or the user.
+Weights must be realistic for THIS user: base them on their logged top sets. Progress in small steps (2.5 kg upper body, 5 kg lower body, or +1–2 reps). When the user names a number, use exactly that number.
 Do not change an exercise that runs a rep ladder (ladder present in CONTEXT) — the app already progresses it.
 "why" cites the user's own numbers in 1–3 sentences.
 Precede the proposal with one short "text" block. Never claim the change is saved: the user must press Add or Apply.
@@ -74,6 +80,43 @@ const ADDENDUM: Record<AiSection, string> = { Workout: WORKOUT, Tasks: TASKS, Ex
 
 export function systemPrompt(section: AiSection, lang: Language): string {
   return `${PREAMBLE.replace('{LANGUAGE}', LANGUAGE_NAME[lang])}\n\n${ADDENDUM[section]}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* What became of the earlier suggestions                              */
+/* ------------------------------------------------------------------ */
+
+export interface SuggestionFate {
+  /** `routine` for a routine_proposal, `loop` for a sequence_proposal. */
+  what: 'routine' | 'loop';
+  /** The routine's name; empty for a loop. */
+  name: string;
+  status: 'pending' | 'accepted' | 'discarded';
+}
+
+const FATE: Record<SuggestionFate['status'], string> = {
+  accepted: 'APPLIED by the user (already in CONTEXT)',
+  pending: 'NOT applied yet (the user has not pressed Apply; it is not in CONTEXT)',
+  discarded: 'DISCARDED by the user',
+};
+
+/**
+ * One line, sent ahead of the question, saying what happened to each suggestion
+ * this chat already made — or '' when it made none.
+ *
+ * The history the model gets back is its own JSON and nothing else, so it had no
+ * way to know which card the user pressed Apply on. Asked "why did you bring the
+ * rear delts back?", it guessed — "the previous proposals have not been applied"
+ * — about a card that had been. Each turn says it now, from the store, so the
+ * answer is about what happened rather than about what probably did.
+ */
+export function suggestionNote(fates: readonly SuggestionFate[]): string {
+  if (fates.length === 0) return '';
+  const lines = fates.map((fate, i) => {
+    const label = fate.what === 'loop' ? 'loop' : `routine "${fate.name}"`;
+    return `${i + 1}. ${label}: ${FATE[fate.status]}`;
+  });
+  return `[App note, not written by the user. Your earlier suggestions in this chat, oldest first:\n${lines.join('\n')}\nCONTEXT is what is saved now.]`;
 }
 
 /* ------------------------------------------------------------------ */

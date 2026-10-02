@@ -11,7 +11,12 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { carriesWeight, carryWeightForward, defaultWeightUpdate } from './weightCarry';
+import {
+  carriesWeight,
+  carryWeightForward,
+  defaultWeightUpdate,
+  plannedStartWeight,
+} from './weightCarry';
 import type { DraftSet } from './draft';
 
 function set(localId: string, weightKg: number | null, extra: Partial<DraftSet> = {}): DraftSet {
@@ -170,5 +175,29 @@ describe('a warm-up never becomes the starting weight', () => {
     // Stated so the split is deliberate rather than an omission someone closes
     // twice: handed 40 kg, this says 40 kg. The caller knows whose 40 it was.
     expect(defaultWeightUpdate({ ...weighted, defaultWeightKg: 70 }, 40)).toBe(40);
+  });
+});
+
+describe('a planned starting weight', () => {
+  const planned = {
+    requiresWeight: true,
+    defaultWeightKg: 5,
+    startWeightSetAt: '2026-10-01T08:00:00.000Z',
+  };
+
+  it('wins while it is newer than the last session, or there is none', () => {
+    expect(plannedStartWeight(planned, '2026-09-30T18:00:00.000Z')).toBe(5);
+    expect(plannedStartWeight(planned, null)).toBe(5);
+  });
+
+  it('gives way to a session logged since', () => {
+    expect(plannedStartWeight(planned, '2026-10-01T18:00:00.000Z')).toBeNull();
+  });
+
+  it('is nothing without a stamp, a weight, or a weighted movement', () => {
+    const { startWeightSetAt: _at, ...unstamped } = planned;
+    expect(plannedStartWeight(unstamped, null)).toBeNull();
+    expect(plannedStartWeight({ ...planned, defaultWeightKg: undefined }, null)).toBeNull();
+    expect(plannedStartWeight({ ...planned, requiresWeight: false }, null)).toBeNull();
   });
 });

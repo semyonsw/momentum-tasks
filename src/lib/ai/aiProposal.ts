@@ -12,7 +12,9 @@
  * weight would apply a change the card never showed. So every row's status is
  * DERIVED here from the routine as the store has it — `rowStatus` compares the
  * numbers — and the one label the model is believed on is `removed`, because a
- * removal cannot be inferred from numbers at all.
+ * removal cannot be inferred from numbers at all. (Or from its silence: an
+ * exercise left out of a list that names most of the routine is a removal too —
+ * see `wholeList` in `normalizeProposal`.)
  *
  * ── NAMES MAP ONTO THE LIBRARY ─────────────────────────────────────────────
  *
@@ -172,7 +174,7 @@ export function matchExercise(
 export interface NormalizeContext {
   exercises: readonly Exercise[];
   routines: readonly Routine[];
-  /** The last session's top weight per exercise — `aiContext.lastTopWeights`. */
+  /** What each exercise starts at next session — `aiContext.nextStartWeights`. */
   lastWeights: Record<ID, number>;
 }
 
@@ -281,6 +283,26 @@ export function normalizeProposal(
   if (!routine) return null;
   const byId: Record<ID, Exercise> = Object.fromEntries(exercises.map((e) => [e.id, e]));
 
+  /*
+   * A WHOLE LIST OMITS ON PURPOSE. The prompt asks for every exercise of the
+   * routine, removals included as `removed`; what the model actually does, more
+   * often than not, is write the routine as it should BE and leave the dropped
+   * exercise out — and then say in its text that it removed it. Keeping such a
+   * row drew a card that contradicted the sentence above it, three times running.
+   * So when the model's list names most of the routine (more than half, and at
+   * least two), it is the new routine, and an item it leaves out is marked
+   * removed — on the card, struck through, where the user sees it and can keep it
+   * again. A list naming one or two exercises of a long routine is a partial
+   * edit, and the rest stays exactly as it is.
+   */
+  const routineIds = new Set(routine.items.map((item) => item.exerciseId));
+  const named = new Set(
+    entries.flatMap(({ exercise }) =>
+      exercise && routineIds.has(exercise.id) ? [exercise.id] : [],
+    ),
+  );
+  const wholeList = named.size >= 2 && named.size * 2 > routineIds.size;
+
   /* Every item of the routine, in order — the model's version where it gave one. */
   const used = new Set<number>();
   const rows: ProposalRow[] = [];
@@ -291,8 +313,7 @@ export function normalizeProposal(
     const was = itemValues(item, exercise, baseWeight(exercise, lastWeights));
     const index = entries.findIndex((e, i) => !used.has(i) && e.exercise?.id === exercise.id);
     if (index === -1) {
-      // Not mentioned: kept exactly as it is. The prompt asks for every row, and
-      // a row the model forgot is not a row the user asked to lose.
+      // Not mentioned: dropped from a whole list (above), otherwise kept as it is.
       rows.push({
         key: rowKey(),
         exerciseId: exercise.id,
@@ -300,7 +321,7 @@ export function normalizeProposal(
         ...was,
         was,
         itemId: item.id,
-        removed: false,
+        removed: wholeList,
         repsLocked: repsLockedFor(exercise),
         weightLocked: !exercise.requiresWeight,
         baseWeightKg: baseWeight(exercise, lastWeights),
@@ -552,7 +573,11 @@ export function planApply(
   }
   const exercises = [
     ...library.exercises.map((e) =>
-      startingWeight.has(e.id) ? { ...e, defaultWeightKg: startingWeight.get(e.id) } : e,
+      startingWeight.has(e.id)
+        ? // Stamped, so the next session starts here rather than at last
+          // session's weight — see `Exercise.startWeightSetAt`.
+          { ...e, defaultWeightKg: startingWeight.get(e.id), startWeightSetAt: iso }
+        : e,
     ),
     ...created,
   ];

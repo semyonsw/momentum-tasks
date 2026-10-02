@@ -6,6 +6,7 @@ import {
   buildTasksContext,
   buildWorkoutContext,
   lastTopWeights,
+  nextStartWeights,
   withBriefs,
   workoutBrief,
   workoutFacts,
@@ -287,6 +288,14 @@ describe('the workout context', () => {
     ).toBe(seedExercisesById.ex_squat.name);
     expect(facts.lastRoutine?.id).toBe('r_pull');
     expect(lastTopWeights(workouts).ex_pulldown_wide).toBe(80);
+    // A starting weight planned after that session is what the next one opens at.
+    const planned = seedExercises.map((e) =>
+      e.id === 'ex_pulldown_wide'
+        ? { ...e, defaultWeightKg: 70, startWeightSetAt: NOW.toISOString() }
+        : e,
+    );
+    expect(nextStartWeights(planned, workouts).ex_pulldown_wide).toBe(70);
+    expect(nextStartWeights(seedExercises, workouts).ex_pulldown_wide).toBe(80);
   });
 });
 
