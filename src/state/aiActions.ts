@@ -157,6 +157,8 @@ export function sectionContext(section: AiSection): {
   json: string;
   count: number;
   routineIds: Set<string>;
+  /** The same routines' names — an edit naming its routine still finds it. */
+  routineNames?: Map<string, string>;
 } {
   const language = lang();
   const today = dayKey(new Date());
@@ -207,6 +209,7 @@ export function sectionContext(section: AiSection): {
       json: withBriefs(built.json, others('Workout')),
       count: built.workoutCount,
       routineIds,
+      routineNames: new Map(library.routines.map((r) => [r.id, r.name])),
     };
   }
   if (section === 'Tasks') {
@@ -368,7 +371,11 @@ export async function sendMessage(
     const read = (body: unknown) => {
       const parsed = parseChatResponse(body);
       const blocks = parsed.ok
-        ? validateBlocks(parsed.json, { section, routineIds: context.routineIds })
+        ? validateBlocks(parsed.json, {
+            section,
+            routineIds: context.routineIds,
+            routineNames: context.routineNames,
+          })
         : [];
       return { parsed, blocks };
     };

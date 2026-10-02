@@ -285,6 +285,11 @@ export interface ValidateContext {
   section: AiSection;
   /** The routine ids the context named. An `edit` must point at one of them. */
   routineIds: ReadonlySet<string>;
+  /**
+   * Those routines' names, by id — how an edit that names its routine instead of
+   * copying the id still finds it. See `resolveTarget`.
+   */
+  routineNames?: ReadonlyMap<string, string>;
 }
 
 type Rec = Record<string, unknown>;
@@ -308,6 +313,25 @@ function text(value: unknown, max: number): string | null {
 function finite(value: unknown): number | null {
   const n = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
+}
+
+/**
+ * A number a model wrote as words around it: `"12.5 kg"` → 12.5, `"8-10"` → 10.
+ *
+ * The context hands a routine's reps over as a label (`"8-10"`) and a model
+ * copying them back writes the label, not a number — which used to drop the
+ * exercise, and with enough of them the whole proposal. A range reads as its
+ * TOP, the number the plan is aiming for; anything else reads as the first
+ * number in it.
+ */
+function looseNumber(value: unknown): number | null {
+  const plain = finite(value);
+  if (plain != null) return plain;
+  if (typeof value !== 'string') return null;
+  const range = /(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?)/.exec(value);
+  if (range) return Number(range[2].replace(',', '.'));
+  const first = /\d+(?:[.,]\d+)?/.exec(value);
+  return first ? Number(first[0].replace(',', '.')) : null;
 }
 
 /** Into `[min, max]`, rounded to whole numbers — sets, reps, rest. */
@@ -386,10 +410,17 @@ function validateSummary(raw: Rec): SummaryBlock | null {
 function validateExercise(item: unknown): ProposedExercise | null {
   if (!isRecord(item)) return null;
   const name = text(item.name, LIMITS.name);
-  const sets = finite(item.sets);
-  const reps = finite(item.reps);
-  const weight = finite(item.weightKg);
-  if (!name || sets == null || reps == null || weight == null) return null;
+  const removed = item.change === 'removed';
+  /*
+   * A row being REMOVED needs no numbers — they are about to stop mattering —
+   * and a missing weight is bodyweight: models leave `weightKg` off dips and
+   * pull-ups as often as they write the 0. Either used to drop the row, and an
+   * edit that lost the row it was ABOUT was rejected as a whole.
+   */
+  const sets = looseNumber(item.sets) ?? (removed ? 1 : null);
+  const reps = looseNumber(item.reps) ?? (removed ? 1 : null);
+  const weight = looseNumber(item.weightKg ?? item.weight) ?? 0;
+  if (!name || sets == null || reps == null) return null;
 
   const out: ProposedExercise = {
     name,
@@ -424,14 +455,62 @@ function validateProposal(raw: unknown, ctx: ValidateContext): RoutineProposal |
 
   const proposal: RoutineProposal = { kind, name, why, exercises };
   if (kind === 'edit') {
-    const target = text(raw.targetRoutineId, 80);
-    // An edit of a routine the phone did not describe is an edit of nothing.
-    if (!target || !ctx.routineIds.has(target)) return null;
-    proposal.targetRoutineId = target;
+    const target = resolveTarget(raw, name, ctx);
+    if (target) {
+      proposal.targetRoutineId = target;
+    } else {
+      /*
+       * An edit of a routine the phone cannot find is still a complete routine —
+       * the prompt asks for every row. Offered as a NEW one rather than dropped:
+       * the user gets the card, Review & edit, and Add, instead of a sentence
+       * claiming a change nothing on screen can apply.
+       */
+      proposal.kind = 'new';
+      proposal.exercises = exercises.filter((e) => e.change !== 'removed');
+      if (proposal.exercises.length === 0) return null;
+    }
   }
   const focus = text(raw.focus, LIMITS.label);
   if (focus) proposal.focus = focus;
   return proposal;
+}
+
+/** Lower case, letters and digits only — how two spellings of one name compare. */
+function nameKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * The routine an edit means, as an id the phone gave — or null.
+ *
+ * The id, copied exactly, is what the prompt asks for. What models send instead
+ * is the routine's NAME in that field, the id with its case changed, or no id and
+ * the routine's name as the proposal's own — all of them unambiguous about which
+ * routine, so all of them are read.
+ */
+function resolveTarget(raw: Rec, name: string, ctx: ValidateContext): string | null {
+  const given = text(raw.targetRoutineId ?? raw.routineId, 80);
+  if (given && ctx.routineIds.has(given)) return given;
+  const ids = [...ctx.routineIds];
+  if (given) {
+    const folded = ids.find((id) => id.toLowerCase() === given.toLowerCase());
+    if (folded) return folded;
+  }
+  const names = ctx.routineNames;
+  if (!names) return null;
+  for (const candidate of [given, text(raw.targetRoutineName, 80), name]) {
+    if (!candidate) continue;
+    const key = nameKey(candidate);
+    const byName = ids.filter((id) => {
+      const routineName = names.get(id);
+      return routineName != null && nameKey(routineName) === key;
+    });
+    if (byName.length === 1) return byName[0];
+  }
+  return null;
 }
 
 /**

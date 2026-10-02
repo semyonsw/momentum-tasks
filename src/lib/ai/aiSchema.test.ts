@@ -235,20 +235,59 @@ describe('proposals', () => {
     }
   });
 
-  it('are dropped when an edit targets a routine the context did not name', () => {
-    const gone = validateBlocks(
+  it('offer an edit of a routine the phone cannot find as a NEW routine, not nothing', () => {
+    const [gone] = validateBlocks(
       { blocks: [proposal({ kind: 'edit', targetRoutineId: 'r_gone' })] },
       workout,
     );
-    expect(gone.some((b) => b.type === 'routine_proposal')).toBe(false);
-    expect(
-      validateBlocks({ blocks: [proposal({ kind: 'edit' })] }, workout).some(
-        (b) => b.type === 'routine_proposal',
-      ),
-    ).toBe(false);
-    expect(
-      validateBlocks({ blocks: [proposal({ kind: 'edit', targetRoutineId: 'r_push' })] }, workout),
-    ).toHaveLength(1);
+    expect(gone.type).toBe('routine_proposal');
+    expect(gone.type === 'routine_proposal' && gone.proposal.kind).toBe('new');
+    expect(gone.type === 'routine_proposal' && gone.proposal.targetRoutineId).toBeUndefined();
+
+    const [edit] = validateBlocks(
+      { blocks: [proposal({ kind: 'edit', targetRoutineId: 'r_push' })] },
+      workout,
+    );
+    expect(edit.type === 'routine_proposal' && edit.proposal.kind).toBe('edit');
+  });
+
+  it('find the routine an edit NAMES instead of copying its id', () => {
+    const named: ValidateContext = {
+      ...workout,
+      routineNames: new Map([['r_push', 'Push (tension on shoulders)']]),
+    };
+    for (const over of [
+      { targetRoutineId: 'Push (Tension on Shoulders)' },
+      { targetRoutineId: 'R_PUSH' },
+      { targetRoutineName: 'push tension on shoulders' },
+      { name: 'Push (Tension on Shoulders)' },
+    ]) {
+      const [block] = validateBlocks({ blocks: [proposal({ kind: 'edit', ...over })] }, named);
+      expect(block.type === 'routine_proposal' && block.proposal.targetRoutineId).toBe('r_push');
+    }
+  });
+
+  it('read reps written as a range, and a missing weight as bodyweight', () => {
+    const [block] = validateBlocks(
+      {
+        blocks: [
+          proposal({
+            exercises: [
+              { name: 'Dips', sets: '5', reps: '8-10' },
+              { name: 'Arnold press', sets: 4, reps: '7 reps', weightKg: '12.5 kg' },
+              { name: 'Reverse fly', change: 'removed' },
+            ],
+          }),
+        ],
+      },
+      workout,
+    );
+    const exercises = block.type === 'routine_proposal' ? block.proposal.exercises : [];
+    expect(exercises.map((e) => [e.name, e.sets, e.reps, e.weightKg])).toEqual([
+      ['Dips', 5, 10, 0],
+      ['Arnold press', 4, 7, 12.5],
+      ['Reverse fly', 1, 1, 0],
+    ]);
   });
 
   it('are dropped with no exercises, no name or no why', () => {
