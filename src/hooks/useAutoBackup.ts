@@ -32,8 +32,8 @@
 
 import { useEffect } from 'react';
 
-import { autoBackupBaseName, shouldBackUpNow } from '../lib/autoBackup';
-import { deleteFile, writeToFolder } from '../lib/backupFile';
+import { autoBackupBaseName, shouldBackUpNow, staleAutoBackups } from '../lib/autoBackup';
+import { deleteFile, listFolder, writeToFolder } from '../lib/backupFile';
 import { useAi } from '../state/aiStore';
 import { exportBackupText } from '../state/dataTransfer';
 import { useDebriefs } from '../state/debriefStore';
@@ -106,7 +106,8 @@ export async function runBackupNow(force = false): Promise<{ wrote: boolean; nam
      * a fresh backup on every single launch.
      */
     const { drop } = useSettings.getState().recordBackup(new Date().toISOString(), uri);
-    for (const old of drop) await deleteFile(old);
+    const swept = staleAutoBackups(await listFolder(folderUri), uri);
+    for (const old of new Set([...drop, ...swept])) await deleteFile(old);
     return { wrote: true, name };
   } catch {
     return { wrote: false };

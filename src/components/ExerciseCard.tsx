@@ -108,6 +108,7 @@ import Svg, { Circle } from 'react-native-svg';
 
 import type { DraftEntry, DraftSet } from '../lib/draft';
 import { formatTarget, workingSetLabels } from '../lib/draft';
+import { shouldCloseEditor, visibleEditor } from '../lib/inlineEditor';
 import { tap, undo } from '../lib/feedback';
 import { isTimed as isTimedExercise } from '../lib/setTimer';
 import { formatClock } from '../lib/units';
@@ -165,6 +166,12 @@ interface ExerciseCardProps {
    * was moved off the cursor to avoid.
    */
   onOpenFocus?: () => void;
+  /**
+   * Focus mode is on screen over the list. Every inline editor closes — focus
+   * mode writes the numbers past this card, and an editor left open under it came
+   * back stale. See `lib/inlineEditor.ts`.
+   */
+  focusModeOpen?: boolean;
   /** Tap: open this card, or shut it when it is already the open one. */
   onToggleExpanded: () => void;
   /** Long press — the screen turns this into a drag. Absent = not reorderable. */
@@ -261,6 +268,7 @@ function ExerciseCardComponent({
   isLifted = false,
   dimmed = false,
   onOpenFocus,
+  focusModeOpen = false,
   onToggleExpanded,
   onLift,
   onToggleSet,
@@ -284,7 +292,23 @@ function ExerciseCardComponent({
   /** Which set row has the editor open, and on which field. Card-local state. */
   const t = useT();
   const lang = useLanguage();
-  const [focus, setFocus] = useState<{ setId: ID; field: SetField } | null>(null);
+  const [openEditor, setFocus] = useState<{ setId: ID; field: SetField } | null>(null);
+  /*
+   * The editor actually drawn. Focus mode owns the up-next row's numbers, and
+   * while it is on screen it owns every number — see `lib/inlineEditor.ts` for the
+   * stale box this used to leave behind.
+   */
+  const editorContext = {
+    setIds: entry.sets.map((s) => s.localId),
+    upNextSetId: upNextSetId ?? null,
+    hasFocusDoor: onOpenFocus != null,
+    focusModeOpen,
+  };
+  const focus = visibleEditor(openEditor, editorContext);
+  const closeEditor = shouldCloseEditor(openEditor, editorContext);
+  useEffect(() => {
+    if (closeEditor) setFocus(null);
+  }, [closeEditor]);
   /** Rows on their way out — still drawn, closing, and not yet out of the store. */
   const [leaving, setLeaving] = useState<ReadonlySet<ID>>(() => new Set());
   /**

@@ -32,3 +32,37 @@ export function digitCells(value: string): DigitCell[] {
     return { kind: 'glyph', key: `${position}${char}`, char };
   });
 }
+
+/**
+ * Where a column sits to show `digit`: one cell per digit, translated up.
+ */
+export function columnOffset(digit: number, lineHeight: number): number {
+  return -digit * lineHeight;
+}
+
+/**
+ * WHAT A COLUMN DOES WHEN ITS PROPS CHANGE — roll, snap, or nothing.
+ *
+ *   same digit, same size  ─►  nothing
+ *   new digit,  same size  ─►  roll        (a number you can see change)
+ *   any digit,  new size   ─►  snap        (no animation at all)
+ *
+ * The snap is the fix. Focus mode sizes its numerals to the width they need
+ * (`lib/focusType.ts`), so `9 → 10` reps or `97.5 → 100` kg changes the line
+ * height in the same render as the digits. Rolling across a size change animated
+ * from an offset measured in the OLD cell height to one in the new, and a roll
+ * that was interrupted there — a re-render mid-flight, the sheet closing — could
+ * stop between two cells: the clipped box showed half of one digit over half of
+ * another until the next ± moved the column again. A size change is not a value
+ * change, so nothing is animated across it.
+ */
+export type ColumnMove = 'none' | 'roll' | 'snap';
+
+export function columnMove(
+  prev: { digit: number; lineHeight: number },
+  next: { digit: number; lineHeight: number },
+): ColumnMove {
+  if (prev.lineHeight !== next.lineHeight) return 'snap';
+  if (prev.digit !== next.digit) return 'roll';
+  return 'none';
+}

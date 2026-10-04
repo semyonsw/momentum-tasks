@@ -5,8 +5,10 @@ import {
   autoBackupBaseName,
   daysSince,
   describeBackupAge,
+  isAutoBackupName,
   rotateBackups,
   shouldBackUpNow,
+  staleAutoBackups,
   type AutoBackupState,
 } from './autoBackup';
 
@@ -105,9 +107,16 @@ describe('rotation', () => {
     expect(drop).toEqual(['a']);
   });
 
-  it('keeps a month of history by default', () => {
+  it('keeps exactly one copy by default, the newest', () => {
     const existing = Array.from({ length: 10 }, (_, i) => `uri-${i}`);
-    expect(rotateBackups(existing, 'new').keep).toHaveLength(AUTO_BACKUP_KEEP);
+    const { keep, drop } = rotateBackups(existing, 'new');
+    expect(AUTO_BACKUP_KEEP).toBe(1);
+    expect(keep).toEqual(['new']);
+    expect(drop).toEqual(existing);
+  });
+
+  it('drops nothing on the very first write', () => {
+    expect(rotateBackups([], 'first')).toEqual({ keep: ['first'], drop: [] });
   });
 
   it('does not list the same URI twice after a retried write', () => {
@@ -118,6 +127,38 @@ describe('rotation', () => {
 
   it('always keeps at least one, however small the cap gets', () => {
     expect(rotateBackups(['a'], 'b', 0).keep).toEqual(['b']);
+  });
+});
+
+describe('sweeping the folder down to one automatic copy', () => {
+  const file = (name: string) => ({ uri: `content://tree/Download/${name}`, name });
+
+  it('finds every older automatic copy by name, the URI list notwithstanding', () => {
+    const newest = file('workout-tracker-auto-2026-10-04.json');
+    const files = [
+      file('workout-tracker-auto-2026-09-27.json'),
+      file('workout-tracker-auto-2026-09-20.json'),
+      file('workout-tracker-auto-2026-10-04 (1).json'),
+      newest,
+    ];
+    expect(staleAutoBackups(files, newest.uri)).toEqual([files[0].uri, files[1].uri, files[2].uri]);
+  });
+
+  it('never touches manual exports or files the user named', () => {
+    const newest = file('workout-tracker-auto-2026-10-04.json');
+    const files = [
+      file('workout-tracker-backup-2026-10-01-0900.json'),
+      file('workout-tracker-auto-mine.json'),
+      file('workout-tracker-auto-2026-09-27.json.bak'),
+      file('photo.jpg'),
+      newest,
+    ];
+    expect(staleAutoBackups(files, newest.uri)).toEqual([]);
+  });
+
+  it('recognises exactly the names autoBackupBaseName writes', () => {
+    expect(isAutoBackupName(`${autoBackupBaseName(new Date(2026, 9, 4))}.json`)).toBe(true);
+    expect(isAutoBackupName(autoBackupBaseName(new Date(2026, 9, 4)))).toBe(false);
   });
 });
 

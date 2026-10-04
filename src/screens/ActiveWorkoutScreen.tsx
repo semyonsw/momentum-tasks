@@ -1052,6 +1052,7 @@ export function ActiveWorkoutScreen({
                        focus mode always shows the work, so the row that opens it
                        belongs where the work is. */
                       onOpenFocus={upNext?.entryId === entry.localId ? openFocus : undefined}
+                      focusModeOpen={focusOpen}
                       unitSystem={unitSystem}
                       /* The bracket down a superset's left edge. Computed here
                        because only the screen can see the cards either side. */

@@ -340,16 +340,23 @@ describe('the backup stamp', () => {
     expect(useSettings.getState().lastBackupAt).toBe('2026-09-02T10:00:00.000Z');
   });
 
-  it('rotates the automatic copies, keeping the newest four', () => {
+  it('rotates the automatic copies, keeping only the newest one', () => {
     const store = useSettings.getState;
-    for (const n of [1, 2, 3, 4]) {
-      store().recordBackup(`2026-0${n}-01T10:00:00.000Z`, `uri-${n}`);
-    }
-    expect(store().autoBackupUris).toEqual(['uri-4', 'uri-3', 'uri-2', 'uri-1']);
+    expect(store().recordBackup('2026-01-01T10:00:00.000Z', 'uri-1').drop).toEqual([]);
+    expect(store().autoBackupUris).toEqual(['uri-1']);
 
-    const { drop } = store().recordBackup('2026-05-01T10:00:00.000Z', 'uri-5');
-    expect(drop).toEqual(['uri-1']);
-    expect(store().autoBackupUris).toEqual(['uri-5', 'uri-4', 'uri-3', 'uri-2']);
+    for (const n of [2, 3, 4, 5]) {
+      const { drop } = store().recordBackup(`2026-0${n}-01T10:00:00.000Z`, `uri-${n}`);
+      expect(drop).toEqual([`uri-${n - 1}`]);
+      expect(store().autoBackupUris).toEqual([`uri-${n}`]);
+    }
+  });
+
+  it('drops a four-copy list from an older build down to one on the next write', () => {
+    useSettings.setState({ autoBackupUris: ['uri-4', 'uri-3', 'uri-2', 'uri-1'] });
+    const { drop } = useSettings.getState().recordBackup('2026-05-01T10:00:00.000Z', 'uri-5');
+    expect(drop).toEqual(['uri-4', 'uri-3', 'uri-2', 'uri-1']);
+    expect(useSettings.getState().autoBackupUris).toEqual(['uri-5']);
   });
 
   it('forgets the rotation list when the folder changes', () => {

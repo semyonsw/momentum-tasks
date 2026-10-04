@@ -28,11 +28,11 @@
  * renders `0` first and the real value a beat later.
  */
 
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { Animated, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 
 import { useMotionScale } from '../hooks/useMotionScale';
-import { digitCells } from '../lib/rollingDigits';
+import { columnMove, columnOffset, digitCells } from '../lib/rollingDigits';
 import { curve, motion } from '../theme/tokens';
 
 const EASE = curve(motion.ease);
@@ -118,20 +118,42 @@ const DigitColumn = memo(function DigitColumn({
   allowFontScaling: boolean;
 }) {
   const scale = useMotionScale();
-  const y = useRef(new Animated.Value(-digit * lineHeight)).current;
+  const y = useRef(new Animated.Value(columnOffset(digit, lineHeight))).current;
+  const shown = useRef({ digit, lineHeight });
+  /*
+   * Stable, so a re-render of this column (a new `style` from the caller) does
+   * not hand the native view a fresh transform mid-roll.
+   */
+  const slide = useMemo(() => ({ transform: [{ translateY: y }] }), [y]);
 
   useEffect(() => {
+    /*
+     * Roll on a new digit, SNAP on a new size — see `columnMove`. And once a roll
+     * finishes the value is set outright, so wherever a native frame stopped, the
+     * column ends exactly on its cell rather than between two.
+     */
+    const move = columnMove(shown.current, { digit, lineHeight });
+    shown.current = { digit, lineHeight };
+    if (move === 'none') return;
+    const to = columnOffset(digit, lineHeight);
+    y.stopAnimation();
+    if (move === 'snap' || duration * scale <= 0) {
+      y.setValue(to);
+      return;
+    }
     Animated.timing(y, {
-      toValue: -digit * lineHeight,
+      toValue: to,
       duration: duration * scale,
       easing: EASE,
       useNativeDriver: true,
-    }).start();
+    }).start(({ finished }) => {
+      if (finished) y.setValue(to);
+    });
   }, [digit, duration, lineHeight, scale, y]);
 
   return (
     <View style={{ height: lineHeight, overflow: 'hidden' }}>
-      <Animated.View style={{ transform: [{ translateY: y }] }}>
+      <Animated.View style={slide}>
         {DIGITS.map((d) => (
           <Text
             key={d}

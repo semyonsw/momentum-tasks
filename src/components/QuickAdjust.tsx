@@ -44,6 +44,7 @@ import { tap } from '../lib/feedback';
 import type { DraftSet } from '../lib/draft';
 import type { Exercise, UnitSystem } from '../types/models';
 import { nudgeSet, nudgeSteps } from '../lib/setNudge';
+import { chipPress, editorValueKey } from '../lib/inlineEditor';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
 import {
   countUnitLabel,
@@ -111,6 +112,20 @@ export function QuickAdjust({
     if (typing) inputRef.current?.focus();
   }, [typing]);
 
+  /*
+   * THE NUMBER MOVED UNDER THE BOX — focus mode's ±, its DONE, an AI edit. What
+   * was typed was typed against the old number, so the box goes rather than
+   * standing there with a stale value in it. See `lib/inlineEditor.ts`.
+   */
+  const valueKey = editorValueKey(set, field);
+  const lastValueKey = useRef(valueKey);
+  useEffect(() => {
+    if (lastValueKey.current === valueKey) return;
+    lastValueKey.current = valueKey;
+    setTyping(false);
+    setBuffer('');
+  }, [valueKey]);
+
   /**
    * Apply a relative nudge — the arithmetic lives in `lib/setNudge.ts`.
    *
@@ -123,10 +138,16 @@ export function QuickAdjust({
     tap();
     // A chip tapped mid-type takes what was typed first. The session list keeps
     // the keyboard up across taps, so the field's blur never ran and the typed
-    // number was thrown away under a nudge of the old one.
-    if (typing) {
+    // number was thrown away under a nudge of the old one. With NOTHING typed the
+    // chip still nudges: swallowing it is the "press + then −" bug.
+    const press = chipPress(typing, buffer);
+    if (press.kind === 'commit-typed') {
       commitTyped();
       return;
+    }
+    if (press.closeTyping) {
+      setTyping(false);
+      setBuffer('');
     }
     onChange(nudgeSet(set, field, delta, unitSystem));
   };

@@ -35,10 +35,10 @@
  *
  * SAF cannot overwrite: `createFileAsync` appends ` (1)` rather than replacing, so
  * an unattended weekly write would leave fifty files a year in somebody's Download
- * folder. `KEEP` newest copies are kept and the rest are deleted by URI, so the
- * folder holds a short history instead of a pile — and a short history rather than
- * one file, because the failure this guards against includes "the most recent backup
- * is the corrupt one".
+ * folder. `KEEP` newest copies (one) are kept and the rest are deleted by URI, so the
+ * folder holds the latest copy instead of a pile. Copies the URI list does not know
+ * about — written before a folder change, or by a build that kept four — are found
+ * by name (`staleAutoBackups`) and go too.
  */
 
 import { dayKey, daysBetween } from './days';
@@ -48,14 +48,15 @@ import { plural, t, type Language } from './i18n';
 export type ISOInstant = string;
 
 /**
- * How many automatic copies to keep in the folder.
+ * How many automatic copies to keep in the folder: one.
  *
- * Four, at the default weekly cadence, is a month of history: enough that a bad
- * backup (a crash mid-write, a library edited by mistake three weeks ago) is not the
- * only backup, and few enough that the folder stays readable. It is not a setting
- * because nobody wants to tune it, and the cost of being wrong is a few kilobytes.
+ * It was four — a month of history at the weekly default — and the folder read as
+ * a pile to the person who owns it, next to a manual export that already keeps
+ * only one (`staleExports` in `lib/backup.ts`). One file that is always the newest
+ * is what was asked for. The new copy is written BEFORE the old one is deleted, so
+ * the folder never holds zero.
  */
-export const AUTO_BACKUP_KEEP = 4;
+export const AUTO_BACKUP_KEEP = 1;
 
 /** The cadence range. */
 export const AUTO_BACKUP_INTERVAL_LIMITS = { min: 1, max: 30, step: 1 } as const;
@@ -148,6 +149,29 @@ export function rotateBackups(
   // after a partial failure can produce the same one twice.
   const all = [newest, ...existing.filter((uri) => uri !== newest)];
   return { keep: all.slice(0, Math.max(1, keep)), drop: all.slice(Math.max(1, keep)) };
+}
+
+/**
+ * An automatic copy's file name as SAF wrote it: `.json` appended, and ` (1)` when
+ * a second write landed on the same day. Exact, because whatever matches is deleted.
+ */
+const AUTO_BACKUP_NAME = /^workout-tracker-auto-\d{4}-\d{2}-\d{2}( \(\d+\))?\.json$/;
+
+export function isAutoBackupName(name: string): boolean {
+  return AUTO_BACKUP_NAME.test(name.trim());
+}
+
+/**
+ * Every automatic copy in the folder except the one just written — the sweep that
+ * makes "one file" true even for copies the URI list never saw.
+ */
+export function staleAutoBackups(
+  files: readonly { uri: string; name: string }[],
+  justWritten: string,
+): string[] {
+  return files
+    .filter((file) => file.uri !== justWritten && isAutoBackupName(file.name))
+    .map((file) => file.uri);
 }
 
 /** The file name for an automatic copy: dated, sortable, and obviously automatic. */
