@@ -184,7 +184,7 @@ export async function writeToAppFolder(
  * row would be the app not paying attention. See `lib/autoBackup.ts`.
  */
 export type SaveOutcome =
-  | { saved: true; name: string; where: string; folderUri?: string }
+  | { saved: true; name: string; where: string; folderUri?: string; uri?: string }
   | { saved: false; cancelled: true };
 
 /**
@@ -217,8 +217,26 @@ async function saveTextFile(
   const folder = await pickFolder();
   if (!folder) return { saved: false, cancelled: true };
 
-  const { name } = await writeToFolder(folder, baseName, contents, mimeType);
-  return { saved: true, name, where: folderLabel(folder, lang), folderUri: folder };
+  const { name, uri } = await writeToFolder(folder, baseName, contents, mimeType);
+  return { saved: true, name, where: folderLabel(folder, lang), folderUri: folder, uri };
+}
+
+/**
+ * The files in a granted folder, by URI and name. Empty on any failure.
+ *
+ * Exists so a manual export can REPLACE the previous one (`staleExports` in
+ * `lib/backup.ts` picks which): the picker hands back a folder, not a file, so the
+ * earlier exports have to be found by name. Failing quietly is right here — a
+ * listing that cannot be read just means the old copies stay, as they always did.
+ */
+export async function listFolder(folderUri: string): Promise<{ uri: string; name: string }[]> {
+  if (!canPickFolder()) return [];
+  try {
+    const uris = await FileSystem.StorageAccessFramework.readDirectoryAsync(folderUri);
+    return uris.map((uri) => ({ uri, name: displayName(uri) }));
+  } catch {
+    return [];
+  }
 }
 
 export interface PickedFile {

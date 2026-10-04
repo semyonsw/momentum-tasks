@@ -6,7 +6,9 @@ import {
   backupBaseName,
   countPayload,
   describeCounts,
+  isManualExportName,
   parseBackup,
+  staleExports,
   serializeBackup,
   type BackupPayload,
 } from './backup';
@@ -61,6 +63,35 @@ describe('the envelope', () => {
     expect(name).toBe(`${BACKUP_FORMAT}-2026-08-19-0912`);
     // No extension: the SAF file creator appends one from the MIME type.
     expect(name).not.toContain('.json');
+  });
+});
+
+describe('keeping one export in the folder', () => {
+  const file = (name: string) => ({ uri: `content://tree/Download/${name}`, name });
+
+  it('drops every earlier export and keeps the one just written', () => {
+    const newest = file(`${backupBaseName(new Date(2026, 9, 4, 10, 0))}.json`);
+    const files = [
+      file(`${BACKUP_FORMAT}-2026-09-01-0800.json`),
+      file(`${BACKUP_FORMAT}-2026-09-01-0800 (1).json`),
+      newest,
+    ];
+
+    expect(staleExports(files, newest.uri)).toEqual([files[0].uri, files[1].uri]);
+  });
+
+  it('leaves the automatic copies and anything the user named alone', () => {
+    const newest = file(`${BACKUP_FORMAT}-2026-10-04-1000.json`);
+    const files = [
+      file('workout-tracker-auto-2026-10-01.json'),
+      file(`${BACKUP_FORMAT}-mine.json`),
+      file(`${BACKUP_FORMAT}-2026-09-01-0800.json.bak`),
+      file('notes.json'),
+      newest,
+    ];
+
+    expect(staleExports(files, newest.uri)).toEqual([]);
+    expect(isManualExportName(`${BACKUP_FORMAT}-2026-09-01-0800.json`)).toBe(true);
   });
 });
 

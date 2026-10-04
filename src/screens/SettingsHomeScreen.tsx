@@ -96,12 +96,15 @@ import {
   countPayload,
   describeCounts,
   parseBackup,
+  staleExports,
   type BackupCounts,
   type BackupEnvelope,
 } from '../lib/backup';
 import {
+  deleteFile,
   describeError,
   folderLabel,
+  listFolder,
   pickFolder,
   pickJsonFile,
   readTextFile,
@@ -198,6 +201,17 @@ export function SettingsHomeScreen({
         return;
       }
       commit();
+      /*
+       * ONE EXPORT IN THE FOLDER, not one per tap: the earlier exports go once the
+       * new file exists. Best-effort and after the write, so a delete that fails
+       * leaves an extra copy and never no copy at all.
+       */
+      if (outcome.folderUri && outcome.uri) {
+        const justWritten = outcome.uri;
+        for (const old of staleExports(await listFolder(outcome.folderUri), justWritten)) {
+          await deleteFile(old);
+        }
+      }
       /*
        * A MANUAL EXPORT COUNTS AS A BACKUP, and it also teaches the automatic one
        * where to write. Both matter: without the first, "last backup 40 days ago"
