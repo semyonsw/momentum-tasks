@@ -81,6 +81,22 @@
  * treatment Settings gives its reset. No red: this app has one hue. It only
  * exists when there is something to delete; a new amount has no row to remove.
  *
+ * ── THE CHIPS ARE THE DIRECTION'S OWN CATEGORIES ──────────────────────────
+ *
+ * Expenses and incomes keep separate category lists (`lib/money.ts`), so the
+ * row offers only the side the switch is on, and flipping the switch swaps the
+ * row — and the selection, to the first of the other side, since an expense
+ * category is never a valid answer for an income. A side with no categories yet
+ * says where to add one rather than saving into nothing.
+ *
+ * ── AND THE SAME KEYPAD MOVES MONEY ───────────────────────────────────────
+ *
+ * `transfer` turns this into the ⇄ editor: `From` and `To` instead of the
+ * category, direction, span and note, and `Save` writes both halves at once
+ * (`addTransfer`). Opening either half of an existing transfer lands here too,
+ * edits both, and `Delete` takes both. A transfer is always on one day — money
+ * leaves a pocket at a moment — so there is no whole-month switch.
+ *
  * ── `A DAY` OR `WHOLE MONTH` ──────────────────────────────────────────────
  *
  * The one switch here people do not expect, so it keeps its explanation: a whole
@@ -113,9 +129,13 @@ import {
   type Amount,
   type AmountWhen,
   type Direction,
+  type MoneyAccount,
+  categoriesFor,
   formatMoney,
   formatValue,
+  transferPartner,
 } from '../lib/money';
+import { quickCategoryId } from '../lib/quickCategory';
 import { useMoney } from '../state/moneyStore';
 import { useLanguage, useT } from '../hooks/useT';
 import { useSettings } from '../state/settingsStore';
@@ -205,6 +225,11 @@ interface AmountEditorScreenProps {
    */
   direction?: Direction;
   /**
+   * The ⇄ editor: `accountId` is `From`. True for both halves of an existing
+   * transfer as well. See the file header.
+   */
+  transfer?: boolean;
+  /**
    * Leave.
    *
    * `saved` is true only on the path through the floating `Save`, and the shell
@@ -222,6 +247,7 @@ export function AmountEditorScreen({
   accountId,
   direction: initialDirection = 'expense',
   day: initialDay,
+  transfer = false,
   onBack,
 }: AmountEditorScreenProps) {
   const t = useT();
@@ -229,18 +255,26 @@ export function AmountEditorScreen({
   const insets = useSafeAreaInsets();
   const accounts = useMoney((s) => s.accounts);
   const categories = useMoney((s) => s.categories);
+  const amounts = useMoney((s) => s.amounts);
   const currency = useSettings((s) => s.currencyCode);
   const addAmount = useMoney((s) => s.addAmount);
   const updateAmount = useMoney((s) => s.updateAmount);
   const deleteAmount = useMoney((s) => s.deleteAmount);
+  const addTransfer = useMoney((s) => s.addTransfer);
+  const updateTransfer = useMoney((s) => s.updateTransfer);
 
-  const live = categories.filter(
-    (category) => category.archivedAt === null || category.id === amount?.categoryId,
-  );
   /* An archived subsection stays selectable while an amount still sits in it —
      otherwise editing that amount would silently move it somewhere else. */
   const liveAccounts = accounts.filter(
-    (account) => account.archivedAt === null || account.id === amount?.accountId,
+    (account) =>
+      account.archivedAt === null ||
+      account.id === amount?.accountId ||
+      amounts.some(
+        (row) =>
+          row.transferId !== undefined &&
+          row.transferId === amount?.transferId &&
+          row.accountId === account.id,
+      ),
   );
 
   const today = dayKey(new Date());
@@ -250,6 +284,13 @@ export function AmountEditorScreen({
   const landsOn = initialDay && parseDay(initialDay) ? initialDay : today;
   const [digits, setDigits] = useState(amount ? String(amount.value) : '');
   const [direction, setDirection] = useState<Direction>(amount?.direction ?? initialDirection);
+  /* Only this side's categories — plus the amount's own while it is on this
+     side, archived or not, so editing it never silently moves it. */
+  const live = categories.filter(
+    (category) =>
+      (category.id === amount?.categoryId && category.direction === direction) ||
+      categoriesFor([category], direction, { pickable: true }).length > 0,
+  );
   /* A category handed in for a NEW amount must still be live: an archived one
      opened the editor with an empty chip and saved the amount under a category
      the grid no longer shows. An existing amount keeps its own, archived or not. */
@@ -261,6 +302,20 @@ export function AmountEditorScreen({
   );
   const [account, setAccount] = useState<ID | null>(
     amount?.accountId ?? accountId ?? liveAccounts[0]?.id ?? null,
+  );
+  /*
+   * The two ends of a transfer. An existing one reads them off its halves (the
+   * expense half is `From`); a new one goes from the subsection that opened it
+   * to the next live one.
+   */
+  const partner = amount ? transferPartner(amounts, amount) : null;
+  const outHalf = amount?.direction === 'expense' ? amount : partner;
+  const inHalf = amount?.direction === 'income' ? amount : partner;
+  const [fromAccount, setFromAccount] = useState<ID | null>(
+    outHalf?.accountId ?? accountId ?? liveAccounts[0]?.id ?? null,
+  );
+  const [toAccount, setToAccount] = useState<ID | null>(
+    inHalf?.accountId ?? liveAccounts.find((row) => row.id !== fromAccount)?.id ?? null,
   );
   const [span, setSpan] = useState<'day' | 'month'>(amount?.when.kind ?? 'day');
   const [day, setDay] = useState(amount?.when.kind === 'day' ? amount.when.date : landsOn);
@@ -274,16 +329,45 @@ export function AmountEditorScreen({
   const [note, setNote] = useState(amount?.note ?? '');
   const [deleting, setDeleting] = useState(false);
   /** Which picker is open. Closed is the normal state of all three. */
-  const [picking, setPicking] = useState<'account' | 'note' | null>(null);
+  const [picking, setPicking] = useState<'account' | 'from' | 'to' | 'note' | null>(null);
   /** Said out loud when `Save` is pressed with nothing typed. */
   const [complaint, setComplaint] = useState(false);
 
   const chosen = live.find((option) => option.id === category) ?? null;
   const chosenAccount = liveAccounts.find((option) => option.id === account) ?? null;
+  const chosenFrom = liveAccounts.find((option) => option.id === fromAccount) ?? null;
+  const chosenTo = liveAccounts.find((option) => option.id === toAccount) ?? null;
 
   const value = Number(digits) || 0;
-  const savable = value > 0 && category !== null && account !== null;
-  const noun = direction === 'expense' ? t('expense') : t('income');
+  const savable = transfer
+    ? value > 0 && chosenFrom !== null && chosenTo !== null && fromAccount !== toAccount
+    : value > 0 && chosen !== null && account !== null;
+  const noun = transfer ? t('transfer') : direction === 'expense' ? t('expense') : t('income');
+
+  /* Flipping the switch flips the list, and the selection with it — see the
+     header. The amount's own category survives a flip back. */
+  const changeDirection = (next: Direction) => {
+    setDirection(next);
+    const own = categories.find((option) => option.id === category);
+    if (own?.direction === next) return;
+    const original = categories.find((option) => option.id === amount?.categoryId);
+    if (original?.direction === next) {
+      setCategory(original.id);
+      return;
+    }
+    setCategory(quickCategoryId(categoriesFor(categories, next, { pickable: true })));
+  };
+
+  /* A transfer's two ends must differ: picking the other end's subsection swaps them. */
+  const pickEnd = (end: 'from' | 'to', id: ID) => {
+    if (end === 'from') {
+      if (id === toAccount) setToAccount(fromAccount);
+      setFromAccount(id);
+    } else {
+      if (id === fromAccount) setFromAccount(toAccount);
+      setToAccount(id);
+    }
+  };
 
   const whenOf = (): AmountWhen => {
     if (span === 'day') return { kind: 'day', date: day };
@@ -303,6 +387,26 @@ export function AmountEditorScreen({
   };
 
   const save = () => {
+    if (transfer) {
+      if (!savable || fromAccount === null || toAccount === null) {
+        setComplaint(true);
+        return;
+      }
+      const draft = { fromAccountId: fromAccount, toAccountId: toAccount, value, date: day };
+      if (amount?.transferId) updateTransfer(amount.transferId, draft);
+      else addTransfer(draft);
+      onBack(
+        true,
+        chosenFrom && chosenTo
+          ? t('{from} → {to} · {amount} moved', {
+              from: chosenFrom.name,
+              to: chosenTo.name,
+              amount: formatMoney(value, currency),
+            })
+          : undefined,
+      );
+      return;
+    }
     if (!savable || category === null || account === null) {
       setComplaint(true);
       return;
@@ -356,9 +460,13 @@ export function AmountEditorScreen({
   const keypadHeight = 4 * KEY_HEIGHT + 3 * KEY_GAP;
   const saveBottom = KEYPAD_FOOT + keypadHeight + 16;
 
-  const subline = chosenAccount
-    ? `${chosenAccount.glyph} ${chosenAccount.name} · ${whenLabel}`
-    : whenLabel;
+  const subline = transfer
+    ? chosenFrom && chosenTo
+      ? `${chosenFrom.glyph} ${chosenFrom.name} → ${chosenTo.glyph} ${chosenTo.name} · ${whenLabel}`
+      : whenLabel
+    : chosenAccount
+      ? `${chosenAccount.glyph} ${chosenAccount.name} · ${whenLabel}`
+      : whenLabel;
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.bg }}>
@@ -421,83 +529,122 @@ export function AmountEditorScreen({
             </View>
             {complaint ? (
               <Text className="mt-xs text-label font-medium text-green-bright">
-                {t('Type an amount first')}
+                {value > 0
+                  ? transfer
+                    ? t('Pick two different subsections')
+                    : t('Pick a category first')
+                  : t('Type an amount first')}
               </Text>
             ) : null}
           </View>
 
-          {/* THE CATEGORY, picked right here: every live one as a chip, the
+          {transfer ? (
+            <TransferFields
+              from={chosenFrom}
+              to={chosenTo}
+              whenLabel={whenLabel}
+              onPickFrom={() => {
+                tap();
+                setPicking('from');
+              }}
+              onPickTo={() => {
+                tap();
+                setPicking('to');
+              }}
+              onSwap={() => {
+                tap();
+                setFromAccount(toAccount);
+                setToAccount(fromAccount);
+              }}
+              onEarlier={() => setDay(shiftDay(day, -1))}
+              onLater={() => setDay(shiftDay(day, 1))}
+            />
+          ) : (
+            <>
+              {/* THE CATEGORY, picked right here: every live one as a chip, the
               chosen one lit and glowing. See the file header. */}
-          <View
-            accessibilityRole="radiogroup"
-            accessibilityLabel={t('Category')}
-            className="flex-row flex-wrap px-lg"
-            style={{ gap: 8, marginTop: 14 }}
-          >
-            {live.map((option) => (
-              <CategoryChip
-                key={option.id}
-                glyph={option.glyph}
-                name={option.name}
-                selected={option.id === category}
-                onPress={() => {
-                  tap();
-                  setComplaint(false);
-                  setCategory(option.id);
-                }}
-              />
-            ))}
-          </View>
+              <View
+                accessibilityRole="radiogroup"
+                accessibilityLabel={t('Category')}
+                className="flex-row flex-wrap px-lg"
+                style={{ gap: 8, marginTop: 14 }}
+              >
+                {live.map((option) => (
+                  <CategoryChip
+                    key={option.id}
+                    glyph={option.glyph}
+                    name={option.name}
+                    selected={option.id === category}
+                    onPress={() => {
+                      tap();
+                      setComplaint(false);
+                      setCategory(option.id);
+                    }}
+                  />
+                ))}
+              </View>
+              {live.length === 0 ? (
+                <Text className="mx-lg mt-sm text-label text-ink-faint">
+                  {direction === 'expense'
+                    ? t('No expense categories yet. Add one on the Expenses tab.')
+                    : t('No income categories yet. Add one on the Incomes tab.')}
+                </Text>
+              ) : null}
 
-          {/* THE OTHER ANSWERED FIELDS, as one wrapping row. */}
-          <View className="flex-row flex-wrap items-center px-lg" style={{ gap: 8, marginTop: 12 }}>
-            <Chip
-              label={chosenAccount ? `${chosenAccount.glyph} ${chosenAccount.name}` : '—'}
-              chevron
-              onPress={() => {
-                tap();
-                setPicking('account');
-              }}
-              accessibilityLabel={t('Subsection')}
-            />
-            <DirectionSwitch
-              value={direction}
-              onChange={setDirection}
-              expenseLabel={t('Expense')}
-              incomeLabel={t('Income')}
-              accessibilityLabel={t('Money out, or money in')}
-            />
-            <StepperChip
-              label={whenLabel}
-              onEarlier={() => stepWhen(-1)}
-              onLater={() => stepWhen(1)}
-            />
-            <MiniSegmented
-              options={[
-                { value: 'day' as const, label: t('A day') },
-                { value: 'month' as const, label: t('Whole month') },
-              ]}
-              value={span}
-              onChange={setSpan}
-              accessibilityLabel={t('A single day, or a whole month')}
-            />
-            <Chip
-              label={note.trim() === '' ? t('Note') : note.trim()}
-              onPress={() => {
-                tap();
-                setPicking('note');
-              }}
-              accessibilityLabel={t('Note')}
-            />
-          </View>
+              {/* THE OTHER ANSWERED FIELDS, as one wrapping row. */}
+              <View
+                className="flex-row flex-wrap items-center px-lg"
+                style={{ gap: 8, marginTop: 12 }}
+              >
+                <Chip
+                  label={chosenAccount ? `${chosenAccount.glyph} ${chosenAccount.name}` : '—'}
+                  chevron
+                  onPress={() => {
+                    tap();
+                    setPicking('account');
+                  }}
+                  accessibilityLabel={t('Subsection')}
+                />
+                <DirectionSwitch
+                  value={direction}
+                  onChange={changeDirection}
+                  expenseLabel={t('Expense')}
+                  incomeLabel={t('Income')}
+                  accessibilityLabel={t('Money out, or money in')}
+                />
+                <StepperChip
+                  label={whenLabel}
+                  onEarlier={() => stepWhen(-1)}
+                  onLater={() => stepWhen(1)}
+                />
+                <MiniSegmented
+                  options={[
+                    { value: 'day' as const, label: t('A day') },
+                    { value: 'month' as const, label: t('Whole month') },
+                  ]}
+                  value={span}
+                  onChange={setSpan}
+                  accessibilityLabel={t('A single day, or a whole month')}
+                />
+                <Chip
+                  label={note.trim() === '' ? t('Note') : note.trim()}
+                  onPress={() => {
+                    tap();
+                    setPicking('note');
+                  }}
+                  accessibilityLabel={t('Note')}
+                />
+              </View>
 
-          {span === 'month' ? (
-            <Text className="mx-lg mt-sm text-label text-ink-faint">
-              {t(
-                'A whole month counts towards the month, the year and the balance, and towards no single day.',
-              )}
-            </Text>
-          ) : null}
+              {span === 'month' ? (
+                <Text className="mx-lg mt-sm text-label text-ink-faint">
+                  {t(
+                    'A whole month counts towards the month, the year and the balance, and towards no single day.',
+                  )}
+                </Text>
+              ) : null}
+            </>
+          )}
 
           {/* Placement rule 5: out of reach, plain, dashed, no red. */}
           {amount ? (
@@ -505,7 +652,7 @@ export function AmountEditorScreen({
               onPress={() => setDeleting(true)}
               radius={16}
               accessibilityRole="button"
-              accessibilityLabel={t('Delete this amount')}
+              accessibilityLabel={transfer ? t('Delete this transfer') : t('Delete this amount')}
               style={(state) => [
                 pressedStyle(state),
                 {
@@ -525,7 +672,7 @@ export function AmountEditorScreen({
                 style={{ fontSize: 14.5 }}
                 className="font-medium text-ink-muted"
               >
-                {t('Delete this amount')}
+                {transfer ? t('Delete this transfer') : t('Delete this amount')}
               </Text>
             </BubblePressable>
           ) : null}
@@ -585,6 +732,29 @@ export function AmountEditorScreen({
         </Sheet>
       ) : null}
 
+      {picking === 'from' || picking === 'to' ? (
+        <Sheet title={picking === 'from' ? t('From') : t('To')} onDismiss={() => setPicking(null)}>
+          <View className="overflow-hidden rounded-surface bg-surface-alt">
+            {liveAccounts.map((option, index) => (
+              <View key={option.id}>
+                {index > 0 ? <Separator inset={16} /> : null}
+                <PickRow
+                  glyph={option.glyph}
+                  name={option.name}
+                  selected={option.id === (picking === 'from' ? fromAccount : toAccount)}
+                  onPress={() => {
+                    tap();
+                    pickEnd(picking, option.id);
+                    setPicking(null);
+                  }}
+                />
+              </View>
+            ))}
+          </View>
+          <TextButton label={t('Cancel')} onPress={() => setPicking(null)} />
+        </Sheet>
+      ) : null}
+
       {picking === 'note' ? (
         <Sheet title={t('Note')} onDismiss={() => setPicking(null)}>
           <View className="h-row flex-row items-center rounded-surface border border-hairline bg-surface-alt px-lg">
@@ -609,10 +779,14 @@ export function AmountEditorScreen({
       {deleting && amount ? (
         <ConfirmSheet
           tone="danger"
-          title={t('Delete this amount?')}
-          body={t(
-            'It leaves the category, the month, the year and the balance. Nothing else changes.',
-          )}
+          title={transfer ? t('Delete this transfer?') : t('Delete this amount?')}
+          body={
+            transfer
+              ? t('Both halves go: the money returns to where it was moved from.')
+              : t(
+                  'It leaves the category, the month, the year and the balance. Nothing else changes.',
+                )
+          }
           confirmLabel={t('Delete it')}
           cancelLabel={t('Keep it')}
           onConfirm={() => {
@@ -924,6 +1098,80 @@ function Chip({
         </View>
       ) : null}
     </BubblePressable>
+  );
+}
+
+/**
+ * FROM ⇄ TO, then the day — the transfer's answered fields.
+ *
+ * Kickered rows rather than bare chips, because which pocket is which is the
+ * whole of what a transfer says and "Cash Online" in a row of chips does not
+ * say it. The ⇄ swaps the ends: the common correction is the direction.
+ */
+function TransferFields({
+  from,
+  to,
+  whenLabel,
+  onPickFrom,
+  onPickTo,
+  onSwap,
+  onEarlier,
+  onLater,
+}: {
+  from: MoneyAccount | null;
+  to: MoneyAccount | null;
+  whenLabel: string;
+  onPickFrom: () => void;
+  onPickTo: () => void;
+  onSwap: () => void;
+  onEarlier: () => void;
+  onLater: () => void;
+}) {
+  const t = useT();
+  const end = (label: string, account: MoneyAccount | null, onPress: () => void) => (
+    <View style={{ gap: 6 }}>
+      <Text
+        allowFontScaling={false}
+        style={{ fontSize: 12, letterSpacing: 1 }}
+        className="font-semibold uppercase text-ink-muted"
+      >
+        {label}
+      </Text>
+      <Chip
+        label={account ? `${account.glyph} ${account.name}` : '—'}
+        chevron
+        onPress={onPress}
+        accessibilityLabel={label}
+      />
+    </View>
+  );
+  return (
+    <View className="px-lg" style={{ marginTop: 14, gap: 12 }}>
+      <View className="flex-row items-end" style={{ gap: 10 }}>
+        {end(t('From'), from, onPickFrom)}
+        <Pressable
+          onPress={onSwap}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t('Swap From and To')}
+          style={pressedStyle}
+          className="h-[38px] w-[38px] items-center justify-center rounded-pill"
+        >
+          <Text allowFontScaling={false} style={{ fontSize: 20 }} className="text-acc">
+            ⇄
+          </Text>
+        </Pressable>
+        {end(t('To'), to, onPickTo)}
+      </View>
+      <View className="flex-row">
+        <StepperChip label={whenLabel} onEarlier={onEarlier} onLater={onLater} />
+      </View>
+      <Text className="text-label text-ink-faint">
+        {t(
+          'Counted as an expense from the first and an income into the second. Editing or deleting either half changes both.',
+        )}
+      </Text>
+    </View>
   );
 }
 

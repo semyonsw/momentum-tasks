@@ -412,8 +412,8 @@ describe('the tasks context', () => {
 
 describe('the expenses context', () => {
   const categories: MoneyCategory[] = [
-    { id: 'food', name: 'Food', glyph: '🍞', order: 0, archivedAt: null },
-    { id: 'home', name: 'Home', glyph: '🏠', order: 1, archivedAt: null },
+    { id: 'food', name: 'Food', glyph: '🍞', direction: 'expense', order: 0, archivedAt: null },
+    { id: 'home', name: 'Home', glyph: '🏠', direction: 'expense', order: 1, archivedAt: null },
   ];
   const accounts: MoneyAccount[] = [
     { id: 'cash', name: 'Cash', glyph: '💵', order: 0, opening: 1000, archivedAt: null },

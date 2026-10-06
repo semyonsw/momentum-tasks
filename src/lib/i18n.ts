@@ -365,6 +365,27 @@ const RU: Record<string, string> = {
   'Time interval': 'Период',
   'Add expense': 'Добавить расход',
   'Add income': 'Добавить доход',
+  'Add expense category': 'Добавить категорию расходов',
+  'Add income category': 'Добавить категорию доходов',
+  'No expense categories yet. Add one on the Expenses tab.':
+    'Категорий расходов пока нет. Добавьте на вкладке «Расходы».',
+  'No income categories yet. Add one on the Incomes tab.':
+    'Категорий доходов пока нет. Добавьте на вкладке «Доходы».',
+  'Pick a category first': 'Сначала выберите категорию',
+  'Move money between subsections': 'Перевести деньги между разделами',
+  Transfer: 'Перевод',
+  transfer: 'перевод',
+  From: 'Откуда',
+  To: 'Куда',
+  'Swap From and To': 'Поменять «Откуда» и «Куда»',
+  'Pick two different subsections': 'Выберите два разных раздела',
+  'Counted as an expense from the first and an income into the second. Editing or deleting either half changes both.':
+    'Считается расходом из первого и доходом во второй. Изменение или удаление одной половины меняет обе.',
+  '{from} → {to} · {amount} moved': '{from} → {to} · переведено {amount}',
+  'Delete this transfer': 'Удалить этот перевод',
+  'Delete this transfer?': 'Удалить этот перевод?',
+  'Both halves go: the money returns to where it was moved from.':
+    'Удаляются обе половины: деньги возвращаются туда, откуда были переведены.',
   Day: 'День',
   Week: 'Неделя',
   Month: 'Месяц',

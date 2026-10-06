@@ -953,16 +953,27 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
       const account = accountNames[amount.accountId];
       const where = accounts.length > 1 && account ? ` [${account}]` : '';
       const note = amount.note.trim().replace(/\s+/g, ' ');
-      const line = `${when}${month} ${amount.direction} ${catName(amount.categoryId)} ${amount.value}${where}`;
+      // A transfer half says so, so the model never reads cash withdrawn as income earned.
+      const moved = amount.transferId ? ' (transfer)' : '';
+      const line = `${when}${month} ${amount.direction}${moved} ${catName(amount.categoryId)} ${amount.value}${where}`;
       return { line: note ? `${line}: ${note}` : line, noted: note !== '' };
     });
   const ledger = ledgerEntries.map((entry) => entry.line);
+
+  /* Expenses and incomes keep separate category lists — the model is told which
+     is which, so it never files a salary under Food or suggests one. */
+  const live = categories.filter((c) => c.archivedAt === null);
+  const categoryLists = {
+    expense: live.filter((c) => c.direction === 'expense').map((c) => c.name),
+    income: live.filter((c) => c.direction === 'income').map((c) => c.name),
+  };
 
   const base = {
     today,
     language: LANGUAGE_NAME[lang],
     currency,
-    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; amounts lists every amount, newest first, as "date direction category value [account]: note" — the note, when present, is what the user wrote on it',
+    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; expense and income categories are separate lists (categories.expense, categories.income) and an amount is only ever in a category of its own direction; a "(transfer)" amount is one half of money moved between two accounts — an expense from one and an income into the other, same value, same day; amounts lists every amount, newest first, as "date direction category value [account]: note" — the note, when present, is what the user wrote on it',
+    categories: categoryLists,
     months: monthRows,
     topCategories,
     balances,

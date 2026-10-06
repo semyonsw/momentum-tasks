@@ -230,3 +230,161 @@ describe('subsections', () => {
     expect(live.map((row) => row.id)).toEqual(['cash']);
   });
 });
+
+describe('expenses and incomes keep separate categories', () => {
+  it('reads a category from before the split as an expense one', () => {
+    const value = sanitizeMoney({
+      categories: [{ id: 'food', name: 'Food', glyph: '🧊', order: 0, archivedAt: null }] as never,
+    });
+    expect(value.categories[0].direction).toBe('expense');
+  });
+
+  it('moves an income recorded under an expense category into an income Other', () => {
+    const value = sanitizeMoney({
+      categories: seedCategories,
+      amounts: [
+        {
+          id: 'a',
+          categoryId: 'food',
+          direction: 'expense',
+          value: 400,
+          when: { kind: 'day', date: '2026-09-12' },
+        },
+        {
+          id: 'b',
+          categoryId: 'family',
+          direction: 'income',
+          value: 50000,
+          when: { kind: 'day', date: '2026-09-12' },
+        },
+      ] as never,
+    });
+    const other = value.categories.find((category) => category.id === 'other_income');
+    expect(other?.direction).toBe('income');
+    expect(other?.name).toBe('Other');
+    expect(value.amounts.find((amount) => amount.id === 'a')?.categoryId).toBe('food');
+    expect(value.amounts.find((amount) => amount.id === 'b')?.categoryId).toBe('other_income');
+    // Nothing moved in the balance: only the category changed.
+    expect(balanceOf(value.amounts)).toBe(49600);
+  });
+
+  it('creates no Other when every amount already agrees with its category', () => {
+    const value = sanitizeMoney({ categories: seedCategories, amounts: [] });
+    expect(value.categories.map((category) => category.id)).toEqual(
+      seedCategories.map((category) => category.id),
+    );
+  });
+
+  it('is the identity on a log that has already been reconciled', () => {
+    const once = sanitizeMoney({
+      categories: seedCategories,
+      amounts: [
+        {
+          id: 'b',
+          categoryId: 'family',
+          direction: 'income',
+          value: 500,
+          when: { kind: 'day', date: '2026-09-12' },
+        },
+      ] as never,
+    });
+    expect(sanitizeMoney(once)).toEqual(once);
+  });
+
+  it('adds a category to the side it was added from, and only that side', () => {
+    const id = useMoney.getState().addCategory('Salary', '💼', 'income');
+    const salary = useMoney.getState().categories.find((category) => category.id === id);
+    expect(salary?.direction).toBe('income');
+  });
+});
+
+describe('moving money between subsections', () => {
+  const draft = { fromAccountId: 'online', toAccountId: 'cash', value: 10000, date: '2026-09-12' };
+  const balances = () => {
+    const { accounts, amounts } = useMoney.getState();
+    return Object.fromEntries(accounts.map((row) => [row.id, balanceOfAccount(row, amounts)]));
+  };
+
+  it('writes an expense from one and an income into the other, linked', () => {
+    const transferId = useMoney.getState().addTransfer(draft);
+    const { amounts, categories } = useMoney.getState();
+    expect(amounts).toHaveLength(2);
+    expect(amounts.every((amount) => amount.transferId === transferId)).toBe(true);
+    const out = amounts.find((amount) => amount.direction === 'expense');
+    const into = amounts.find((amount) => amount.direction === 'income');
+    expect(out?.accountId).toBe('online');
+    expect(into?.accountId).toBe('cash');
+    expect(balances()).toEqual({ cash: 10000, online: -10000 });
+    // Both Transfer categories now exist, one per side.
+    expect(categories.find((c) => c.id === 'transfer_out')?.direction).toBe('expense');
+    expect(categories.find((c) => c.id === 'transfer_in')?.direction).toBe('income');
+  });
+
+  it('refuses a transfer to the same subsection, or of nothing', () => {
+    expect(useMoney.getState().addTransfer({ ...draft, toAccountId: 'online' })).toBeNull();
+    expect(useMoney.getState().addTransfer({ ...draft, value: 0 })).toBeNull();
+    expect(useMoney.getState().amounts).toEqual([]);
+  });
+
+  it('edits both halves at once', () => {
+    const transferId = useMoney.getState().addTransfer(draft);
+    if (!transferId) throw new Error('refused');
+    useMoney.getState().updateTransfer(transferId, {
+      fromAccountId: 'cash',
+      toAccountId: 'online',
+      value: 2500,
+      date: '2026-09-13',
+    });
+    const { amounts } = useMoney.getState();
+    expect(amounts).toHaveLength(2);
+    expect(amounts.every((amount) => amount.value === 2500)).toBe(true);
+    expect(
+      amounts.every((amount) => amount.when.kind === 'day' && amount.when.date === '2026-09-13'),
+    ).toBe(true);
+    expect(balances()).toEqual({ cash: -2500, online: 2500 });
+  });
+
+  it('deletes both halves when either one is deleted', () => {
+    useMoney.getState().addTransfer(draft);
+    useMoney.getState().addAmount({
+      categoryId: 'food',
+      accountId: 'cash',
+      direction: 'expense',
+      value: 300,
+      when: { kind: 'day', date: '2026-09-12' },
+      note: '',
+    });
+    const into = useMoney.getState().amounts.find((amount) => amount.direction === 'income');
+    if (!into) throw new Error('no income half');
+    useMoney.getState().deleteAmount(into.id);
+    const left = useMoney.getState().amounts;
+    expect(left).toHaveLength(1);
+    expect(left[0].categoryId).toBe('food');
+  });
+
+  it('brings an archived Transfer category back on the next transfer', () => {
+    useMoney.getState().addTransfer(draft);
+    useMoney.getState().archiveCategory('transfer_out');
+    useMoney.getState().addTransfer(draft);
+    const out = useMoney.getState().categories.filter((c) => c.id === 'transfer_out');
+    expect(out).toHaveLength(1);
+    expect(out[0].archivedAt).toBeNull();
+  });
+
+  it('unlinks half a pair that lost its partner, so a delete reaches no further', () => {
+    const value = sanitizeMoney({
+      categories: seedCategories,
+      amounts: [
+        {
+          id: 'a',
+          categoryId: 'food',
+          direction: 'expense',
+          value: 400,
+          when: { kind: 'day', date: '2026-09-12' },
+          transferId: 'trf_lonely',
+        },
+      ] as never,
+    });
+    expect(value.amounts[0].transferId).toBeUndefined();
+  });
+});

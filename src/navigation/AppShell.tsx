@@ -133,7 +133,7 @@ import { useTasks } from '../state/tasksStore';
 import { dayKey } from '../lib/days';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { useToday } from '../hooks/useToday';
-import type { Direction, Interval } from '../lib/money';
+import { isTransferCategory, type Direction, type Interval } from '../lib/money';
 import { SECTIONS, backAction, type SectionTab, type ShellRoute } from '../lib/sectionNav';
 import { seedUser } from '../data/seed';
 import type { CompletedWorkout } from '../lib/completedWorkout';
@@ -202,6 +202,9 @@ type Route =
       accountId: ID | null;
       direction?: Direction;
       day?: string;
+      /* ⇄ — a new transfer out of `accountId`. Editing one needs no flag: the
+         amount's own `transferId` says so. */
+      transfer?: boolean;
     }
   /* The assistant. Settings is reached from a section's sparkle when no key is
      connected, and carries the section and the question along so that passing
@@ -1705,7 +1708,9 @@ export function AppShell() {
             account={account}
             interval={top.interval}
             anchor={top.anchor}
-            direction={moneyWindow.direction}
+            /* The category's own side now, not the grid's: a category is only
+               ever one of the two. */
+            direction={category.direction}
             onBack={pop}
             onOpenAmount={(amountId) =>
               push({ name: 'moneyAmount', amountId, categoryId: null, accountId: null })
@@ -1718,10 +1723,10 @@ export function AppShell() {
                 amountId: null,
                 categoryId: category.id,
                 accountId: account.id,
-                // Added from the Incomes tile, it is an income — it was always
-                // opened as an expense.
-                direction: moneyWindow.direction,
+                direction: category.direction,
                 day,
+                // `+` under the Transfer tile is a new transfer, never a lone half.
+                transfer: isTransferCategory(category.id),
               })
             }
           />
@@ -1742,6 +1747,7 @@ export function AppShell() {
           accountId={top.accountId}
           direction={top.direction}
           day={top.day}
+          transfer={top.transfer || Boolean(amount?.transferId)}
           onBack={(saved, summary) => {
             pop();
             if (saved) setToast(summary ?? (amount ? t('Saved') : t('Written down')));
@@ -1912,6 +1918,16 @@ export function AppShell() {
           }
           onOpenHistory={(accountId, anchor) =>
             push({ name: 'moneyHistory', accountId, day: anchor })
+          }
+          onTransfer={(accountId, day) =>
+            push({
+              name: 'moneyAmount',
+              amountId: null,
+              categoryId: null,
+              accountId,
+              day,
+              transfer: true,
+            })
           }
           aiReady={aiReady}
           onOpenAi={(prompt) => openAi('Expenses', prompt)}

@@ -52,6 +52,26 @@
  * arithmetic that lets the user type what they HAVE rather than the correction:
  * the screen asks for a balance and this file works out the opening behind it.
  *
+ * ── A CATEGORY POINTS ONE WAY ─────────────────────────────────────────────
+ *
+ * Food is somewhere money goes and Salary is somewhere it comes from, and a
+ * grid that offered both under both tabs made every income tab a list of things
+ * nobody gets paid by. So a category carries a `direction`, the Expenses tab and
+ * the Incomes tab each read only their own, and the two lists are independent:
+ * adding `Freelance` to incomes puts nothing in expenses. An amount always sits
+ * in a category of its own direction — `reconcileDirections` is what makes that
+ * true of a log written before categories had a side.
+ *
+ * ── A TRANSFER IS TWO AMOUNTS THAT KNOW EACH OTHER ────────────────────────
+ *
+ * Taking 10,000 out of the cash machine is an expense from Online and an income
+ * into Cash — that is how the user asked for it to be counted, in the totals and
+ * the charts alike. What makes it a transfer rather than two coincidences is the
+ * shared `transferId`: editing or deleting either half moves the other, so the
+ * two subsections can never disagree about what was moved. Both halves live in
+ * their own `Transfer` category per direction, which the app creates the first
+ * time one is recorded and which the editor's category chips never offer.
+ *
  * Amounts are whole AMD. There are no sub-units in circulation, so an integer is
  * the honest type and `0.1 + 0.2` never gets a chance to happen.
  */
@@ -104,6 +124,8 @@ export interface MoneyCategory {
   name: string;
   /** One emoji. The only pictures in the app, and the user picks them. */
   glyph: string;
+  /** Which tab it lives in. An expense category is never offered for an income. */
+  direction: Direction;
   order: number;
   /** Archived categories keep their amounts and leave the grid. */
   archivedAt: string | null;
@@ -120,6 +142,161 @@ export interface Amount {
   when: AmountWhen;
   note: string;
   createdAt: string;
+  /**
+   * Shared by the two halves of a transfer, absent on everything else. See the
+   * file header: it is what makes an edit or a delete move both.
+   */
+  transferId?: ID;
+}
+
+/** The two categories every transfer half lands in, one per direction. */
+export const TRANSFER_CATEGORY: Record<Direction, ID> = {
+  expense: 'transfer_out',
+  income: 'transfer_in',
+};
+
+export const TRANSFER_GLYPH = '🔁';
+
+export function isTransferCategory(id: ID): boolean {
+  return id === TRANSFER_CATEGORY.expense || id === TRANSFER_CATEGORY.income;
+}
+
+/** Where a pre-direction income lands: one `Other` per direction, made on demand. */
+export const OTHER_CATEGORY: Record<Direction, ID> = {
+  expense: 'other_expense',
+  income: 'other_income',
+};
+
+/**
+ * The live categories of one tab, in their order.
+ *
+ * `pickable` drops the Transfer category: it is a tile on the grid, so transfers
+ * have somewhere to be read, but a plain amount filed under it would be a
+ * transfer with no other half.
+ */
+export function categoriesFor<C extends MoneyCategory>(
+  categories: readonly C[],
+  direction: Direction,
+  options: { pickable?: boolean } = {},
+): C[] {
+  return categories.filter(
+    (category) =>
+      category.archivedAt === null &&
+      category.direction === direction &&
+      !(options.pickable && isTransferCategory(category.id)),
+  );
+}
+
+/**
+ * Every amount into a category of its own direction.
+ *
+ * Before categories had a side, an income sat in `Food` as happily as an expense
+ * did. Rather than drop those or guess where they belonged, each one moves into
+ * an `Other` category of its own direction, created only if something needs it.
+ * Idempotent: a log that already agrees with itself comes back unchanged, which
+ * is what lets it run on every load and every restore.
+ */
+export function reconcileDirections(
+  categories: readonly MoneyCategory[],
+  amounts: readonly Amount[],
+): { categories: MoneyCategory[]; amounts: Amount[] } {
+  const directionOf = new Map(categories.map((category) => [category.id, category.direction]));
+  const out = [...categories];
+  const fixed = amounts.map((amount) => {
+    if (directionOf.get(amount.categoryId) === amount.direction) return amount;
+    const otherId = OTHER_CATEGORY[amount.direction];
+    if (!directionOf.has(otherId)) {
+      out.push({
+        id: otherId,
+        name: 'Other',
+        glyph: amount.direction === 'income' ? '💰' : '🧾',
+        direction: amount.direction,
+        order: out.length,
+        archivedAt: null,
+      });
+      directionOf.set(otherId, amount.direction);
+    }
+    return { ...amount, categoryId: otherId };
+  });
+  return { categories: out, amounts: fixed };
+}
+
+/**
+ * A `transferId` only means something on a whole pair: one expense and one
+ * income. Anything else — half a pair that lost its partner to a bad restore, a
+ * third amount claiming the same id — goes back to being a plain amount, so a
+ * delete can never reach further than the one row the user is looking at.
+ */
+export function linkTransfers(amounts: readonly Amount[]): Amount[] {
+  const groups = new Map<ID, Amount[]>();
+  for (const amount of amounts) {
+    if (!amount.transferId) continue;
+    groups.set(amount.transferId, [...(groups.get(amount.transferId) ?? []), amount]);
+  }
+  return amounts.map((amount) => {
+    if (!amount.transferId) return amount;
+    const pair = groups.get(amount.transferId) ?? [];
+    const whole =
+      pair.length === 2 &&
+      pair.some((half) => half.direction === 'expense') &&
+      pair.some((half) => half.direction === 'income');
+    if (whole) return amount;
+    const { transferId: _dropped, ...plain } = amount;
+    return plain;
+  });
+}
+
+export interface TransferDraft {
+  fromAccountId: ID;
+  toAccountId: ID;
+  value: number;
+  /** A transfer is on a day: money leaves a pocket at a moment, not over a month. */
+  date: string;
+}
+
+/** The other half of a transfer, or null for an amount that is not one. */
+export function transferPartner(amounts: readonly Amount[], amount: Amount): Amount | null {
+  if (!amount.transferId) return null;
+  return (
+    amounts.find((row) => row.transferId === amount.transferId && row.id !== amount.id) ?? null
+  );
+}
+
+/**
+ * The two halves, expense first. Refuses a transfer to the same subsection or
+ * of nothing — neither moves any money.
+ */
+export function transferPair(
+  draft: TransferDraft,
+  ids: { transferId: ID; outId: ID; inId: ID },
+  createdAt: string,
+): [Amount, Amount] | null {
+  const value = Math.round(Math.abs(draft.value));
+  if (!Number.isFinite(value) || value <= 0) return null;
+  if (draft.fromAccountId === draft.toAccountId) return null;
+  const shared = {
+    value,
+    when: { kind: 'day' as const, date: draft.date },
+    note: '',
+    createdAt,
+    transferId: ids.transferId,
+  };
+  return [
+    {
+      ...shared,
+      id: ids.outId,
+      categoryId: TRANSFER_CATEGORY.expense,
+      accountId: draft.fromAccountId,
+      direction: 'expense',
+    },
+    {
+      ...shared,
+      id: ids.inId,
+      categoryId: TRANSFER_CATEGORY.income,
+      accountId: draft.toAccountId,
+      direction: 'income',
+    },
+  ];
 }
 
 /** The window the month screen reads through. */

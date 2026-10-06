@@ -19,6 +19,9 @@ import {
   inInterval,
   shiftAnchor,
   totalsIn,
+  categoriesFor,
+  transferPair,
+  transferPartner,
 } from './money';
 
 /**
@@ -339,5 +342,77 @@ describe('editBalanceInput', () => {
   it('still drops a typed or pasted fraction', () => {
     expect(editBalanceInput('1,234', '1,234.50')).toBe('1234');
     expect(editBalanceInput('', '40 000,00')).toBe('40000');
+  });
+});
+
+describe('the category lists', () => {
+  const cats = [
+    {
+      id: 'food',
+      name: 'Food',
+      glyph: '🧊',
+      direction: 'expense' as const,
+      order: 0,
+      archivedAt: null,
+    },
+    {
+      id: 'salary',
+      name: 'Salary',
+      glyph: '💼',
+      direction: 'income' as const,
+      order: 1,
+      archivedAt: null,
+    },
+    {
+      id: 'transfer_in',
+      name: 'Transfer',
+      glyph: '🔁',
+      direction: 'income' as const,
+      order: 2,
+      archivedAt: null,
+    },
+    {
+      id: 'old',
+      name: 'Old',
+      glyph: '•',
+      direction: 'income' as const,
+      order: 3,
+      archivedAt: '2026-01-01',
+    },
+  ];
+
+  it('gives each tab only its own live categories', () => {
+    expect(categoriesFor(cats, 'expense').map((c) => c.id)).toEqual(['food']);
+    expect(categoriesFor(cats, 'income').map((c) => c.id)).toEqual(['salary', 'transfer_in']);
+  });
+
+  it('never offers the Transfer category for a plain amount', () => {
+    expect(categoriesFor(cats, 'income', { pickable: true }).map((c) => c.id)).toEqual(['salary']);
+  });
+});
+
+describe('a transfer', () => {
+  it('is an expense from one subsection and an income into the other, same day and value', () => {
+    const pair = transferPair(
+      { fromAccountId: 'online', toAccountId: 'cash', value: 10000.4, date: '2026-09-12' },
+      { transferId: 't', outId: 'o', inId: 'i' },
+      '2026-09-12T10:00:00.000Z',
+    );
+    if (!pair) throw new Error('refused');
+    const [out, into] = pair;
+    expect(out).toMatchObject({
+      direction: 'expense',
+      accountId: 'online',
+      value: 10000,
+      categoryId: 'transfer_out',
+    });
+    expect(into).toMatchObject({
+      direction: 'income',
+      accountId: 'cash',
+      value: 10000,
+      categoryId: 'transfer_in',
+    });
+    expect(transferPartner(pair, out)?.id).toBe('i');
+    expect(balanceOf(pair)).toBe(0);
   });
 });

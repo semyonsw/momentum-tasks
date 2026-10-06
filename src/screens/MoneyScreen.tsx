@@ -73,6 +73,20 @@
  * the keypad grew its own Expense | Income control — an income into a category
  * whose tile is showing expenses is one tap on that control now, not a menu.
  *
+ * ── EACH TAB HAS ITS OWN CATEGORIES ───────────────────────────────────────
+ *
+ * The grid shows the categories of the direction the two tiles are reading and
+ * no others, and `+ Add category` adds to that side only. Expenses and incomes
+ * are independent lists — see `lib/money.ts`.
+ *
+ * ── ⇄ MOVES MONEY BETWEEN SUBSECTIONS ─────────────────────────────────────
+ *
+ * Beside the subsection chips, because it is a sentence about two of them: the
+ * editor opens in transfer mode with this subsection as `From` and the next one
+ * as `To`, on the day the window is reading. It only appears while there are
+ * two live subsections to move between. The `Transfer` tile a transfer creates
+ * opens the same thing on a tap.
+ *
  * ── THE ROUND + OPENS ON FOOD ─────────────────────────────────────────────
  *
  * The floating action has no tile under it, so it has to guess, and the guess
@@ -160,6 +174,8 @@ import {
   type MoneyCategory,
   balanceOfAccount,
   byCategory,
+  categoriesFor,
+  isTransferCategory,
   describeInterval,
   formatMoney,
   formatValue,
@@ -213,6 +229,8 @@ interface MoneyScreenProps {
    * particular day rather than about a range.
    */
   onOpenHistory: (accountId: ID, anchor: string) => void;
+  /** ⇄ — a new transfer out of `accountId`, on `day`. See the header. */
+  onTransfer: (accountId: ID, day: string) => void;
   /**
    * WHICH SUBSECTION, WHICH WINDOW, WHICH DIRECTION — held by the shell.
    *
@@ -247,6 +265,7 @@ export function MoneyScreen({
   onOpenCategory,
   onAddAmount,
   onOpenHistory,
+  onTransfer,
   window: view,
   onChangeWindow,
   aiReady,
@@ -311,10 +330,8 @@ export function MoneyScreen({
     () => byCategory(mine, direction, interval, anchor),
     [mine, direction, interval, anchor],
   );
-  const live = useMemo(
-    () => categories.filter((category) => category.archivedAt === null),
-    [categories],
-  );
+  /* This tab's categories only — the other direction's are another list. */
+  const live = useMemo(() => categoriesFor(categories, direction), [categories, direction]);
   /*
    * What each tile's ring is a fraction OF. The direction's own total for the
    * window — not the balance, and not both directions summed: a ring is only
@@ -407,6 +424,33 @@ export function MoneyScreen({
           >
             <Icon name="plus" size={17} color={palette.inkMuted} />
           </Pressable>
+          {liveAccounts.length > 1 ? (
+            <Pressable
+              onPress={() => {
+                tap();
+                onTransfer(account.id, onDay);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t('Move money between subsections')}
+              style={pressedStyle}
+              className="h-[38px] flex-row items-center rounded-pill border border-hairline bg-surface-alt px-md"
+            >
+              <Text
+                allowFontScaling={false}
+                style={{ fontSize: 17, lineHeight: 20 }}
+                className="font-semibold text-ink"
+              >
+                ⇄
+              </Text>
+              <Text
+                allowFontScaling={false}
+                style={{ fontSize: 14, marginLeft: 6 }}
+                className="font-semibold text-ink"
+              >
+                {t('Transfer')}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {/* The balance IS the editor — see the header. `button`, not text, and it
@@ -537,7 +581,11 @@ export function MoneyScreen({
                 total={perCategory[category.id] ?? 0}
                 share={directionTotal > 0 ? (perCategory[category.id] ?? 0) / directionTotal : 0}
                 currency={currency}
-                onPress={() => onAddAmount(category.id, account.id, direction, onDay)}
+                onPress={() =>
+                  isTransferCategory(category.id)
+                    ? onTransfer(account.id, onDay)
+                    : onAddAmount(category.id, account.id, direction, onDay)
+                }
                 onLongPress={() => {
                   tap();
                   onOpenCategory(category.id, account.id, interval, anchor);
@@ -577,7 +625,14 @@ export function MoneyScreen({
         round
         label={direction === 'expense' ? t('Add expense') : t('Add income')}
         icon="plus"
-        onPress={() => onAddAmount(quickCategoryId(live), account.id, direction, onDay)}
+        onPress={() =>
+          onAddAmount(
+            quickCategoryId(categoriesFor(categories, direction, { pickable: true })),
+            account.id,
+            direction,
+            onDay,
+          )
+        }
       />
 
       {picking ? (
@@ -682,9 +737,9 @@ export function MoneyScreen({
 
       {naming ? (
         <CategoryEditorSheet
-          title={t('Add category')}
+          title={direction === 'expense' ? t('Add expense category') : t('Add income category')}
           onSave={(name, glyph) => {
-            addCategory(name, glyph);
+            addCategory(name, glyph, direction);
             setNaming(false);
           }}
           onDismiss={() => setNaming(false)}

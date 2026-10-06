@@ -23,6 +23,20 @@
  * logged. `setAccountBalance` is how it is edited, and it is the reason the
  * money screen never has to ask anybody to invent an income.
  *
+ * ── EXPENSES AND INCOMES KEEP SEPARATE CATEGORIES ─────────────────────────
+ *
+ * Each category belongs to one tab (`direction`), so the two grids are two
+ * independent lists. The eight seeds are expenses and the income list starts
+ * empty: what somebody is paid by is not something the app can guess. Incomes
+ * recorded before the split move into an income `Other` (`reconcileDirections`).
+ *
+ * ── A TRANSFER IS RECORDED, EDITED AND DELETED AS ONE ─────────────────────
+ *
+ * `addTransfer` writes both halves under one `transferId`, `updateTransfer`
+ * rewrites both, and `deleteAmount` on either half takes the other with it. The
+ * two `Transfer` categories are created by the first transfer — and brought back
+ * if the user archived them — rather than seeded into every grid.
+ *
  * ── THE SEED IS EIGHT EMPTY CATEGORIES ────────────────────────────────────
  *
  * No amounts ship, exactly as no training history ships. The categories do,
@@ -37,12 +51,18 @@ import { persistedStorage } from './persistStorage';
 
 import { dayKey } from '../lib/days';
 import {
+  TRANSFER_CATEGORY,
+  TRANSFER_GLYPH,
+  linkTransfers,
   openingFor,
+  reconcileDirections,
+  transferPair,
   type Amount,
   type AmountWhen,
   type Direction,
   type MoneyAccount,
   type MoneyCategory,
+  type TransferDraft,
 } from '../lib/money';
 import type { ID } from '../types/models';
 import { tickTaskSource } from './tasksStore';
@@ -75,7 +95,14 @@ export const seedCategories: MoneyCategory[] = [
   ['charity', 'Charity', '🙂'],
   ['family', 'Family', '👪'],
   ['clothes', 'Clothes', '👕'],
-].map(([id, name, glyph], order) => ({ id, name, glyph, order, archivedAt: null }));
+].map(([id, name, glyph], order) => ({
+  id,
+  name,
+  glyph,
+  direction: 'expense' as Direction,
+  order,
+  archivedAt: null,
+}));
 
 function sanitizeAccount(raw: unknown, index: number): MoneyAccount | null {
   const value = raw as Partial<MoneyAccount> | undefined;
@@ -104,6 +131,8 @@ function sanitizeCategory(raw: unknown, index: number): MoneyCategory | null {
     id: value.id,
     name,
     glyph: typeof value.glyph === 'string' && value.glyph !== '' ? value.glyph : '•',
+    // Every category written before the split was offered under Expenses first.
+    direction: value.direction === 'income' ? 'income' : 'expense',
     order: Number.isFinite(value.order) ? Number(value.order) : index,
     archivedAt: typeof value.archivedAt === 'string' ? value.archivedAt : null,
   };
@@ -151,7 +180,7 @@ function sanitizeAmount(
   // expense restored from a bad backup would otherwise read as income.
   const amount = Math.round(Math.abs(Number(value.value)));
   if (!Number.isFinite(amount)) return null;
-  return {
+  const sanitized: Amount = {
     id: value.id,
     categoryId: value.categoryId,
     accountId,
@@ -161,6 +190,10 @@ function sanitizeAmount(
     note: typeof value.note === 'string' ? value.note : '',
     createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date(0).toISOString(),
   };
+  if (typeof value.transferId === 'string' && value.transferId !== '') {
+    sanitized.transferId = value.transferId;
+  }
+  return sanitized;
 }
 
 /** The one validator. Total: `unknown` in, a complete value out. */
@@ -177,21 +210,27 @@ export function sanitizeMoney(input: Partial<MoneyValue> | undefined | null): Mo
     sanitized.length > 0 ? sanitized : seedAccounts.map((account) => ({ ...account }));
 
   const rawCategories = Array.isArray(input?.categories) ? input.categories : [];
-  const categories = rawCategories
+  const sortedCategories = rawCategories
     .map(sanitizeCategory)
     .filter((category): category is MoneyCategory => category !== null)
     .sort((a, b) => a.order - b.order)
     .map((category, order) => ({ ...category, order }));
 
-  const known = new Set(categories.map((category) => category.id));
+  const known = new Set(sortedCategories.map((category) => category.id));
   const accountIds = new Set(accounts.map((account) => account.id));
   const fallback = accounts[0].id;
   const rawAmounts = Array.isArray(input?.amounts) ? input.amounts : [];
-  const amounts = rawAmounts
+  const valid = rawAmounts
     .map((amount) => sanitizeAmount(amount, known, accountIds, fallback))
     .filter((amount): amount is Amount => amount !== null);
+  // Every amount into a category of its own side, then only whole pairs linked.
+  const reconciled = reconcileDirections(sortedCategories, valid);
 
-  return { accounts, categories, amounts };
+  return {
+    accounts,
+    categories: reconciled.categories,
+    amounts: linkTransfers(reconciled.amounts),
+  };
 }
 
 export interface AmountDraft {
@@ -203,16 +242,48 @@ export interface AmountDraft {
   note: string;
 }
 
+/**
+ * The two Transfer categories present and live, appended if they were never
+ * made, un-archived if the user archived them. The same array back when there
+ * was nothing to do.
+ */
+function withTransferCategories(categories: MoneyCategory[]): MoneyCategory[] {
+  let next = categories;
+  for (const direction of ['expense', 'income'] as const) {
+    const id = TRANSFER_CATEGORY[direction];
+    const existing = next.find((category) => category.id === id);
+    if (existing && existing.archivedAt === null) continue;
+    next = existing
+      ? next.map((category) => (category.id === id ? { ...category, archivedAt: null } : category))
+      : [
+          ...next,
+          {
+            id,
+            name: 'Transfer',
+            glyph: TRANSFER_GLYPH,
+            direction,
+            order: next.length,
+            archivedAt: null,
+          },
+        ];
+  }
+  return next;
+}
+
 interface MoneyState extends MoneyValue {
   addAmount: (draft: AmountDraft) => ID | null;
   updateAmount: (id: ID, draft: AmountDraft) => void;
+  /** Deletes a transfer's other half too. */
   deleteAmount: (id: ID) => void;
+  /** Both halves at once. Returns the shared `transferId`, or null when refused. */
+  addTransfer: (draft: TransferDraft) => ID | null;
+  updateTransfer: (transferId: ID, draft: TransferDraft) => void;
   addAccount: (name: string, glyph: string) => ID | null;
   updateAccount: (id: ID, patch: { name?: string; glyph?: string }) => void;
   /** The tap on the big figure: say what you HAVE, the opening absorbs the rest. */
   setAccountBalance: (id: ID, balance: number) => void;
   archiveAccount: (id: ID) => void;
-  addCategory: (name: string, glyph: string) => ID | null;
+  addCategory: (name: string, glyph: string, direction: Direction) => ID | null;
   updateCategory: (id: ID, patch: { name?: string; glyph?: string }) => void;
   archiveCategory: (id: ID) => void;
   importMoney: (raw: unknown) => void;
@@ -266,7 +337,60 @@ export const useMoney = create<MoneyState>()(
         })),
 
       deleteAmount: (id) =>
-        set((state) => ({ amounts: state.amounts.filter((amount) => amount.id !== id) })),
+        set((state) => {
+          const target = state.amounts.find((amount) => amount.id === id);
+          const pair = target?.transferId;
+          return {
+            amounts: state.amounts.filter(
+              (amount) => amount.id !== id && !(pair && amount.transferId === pair),
+            ),
+          };
+        }),
+
+      addTransfer: (draft) => {
+        const stamp = Date.now().toString(36);
+        const transferId = `trf_${stamp}`;
+        const pair = transferPair(
+          draft,
+          { transferId, outId: `amt_${stamp}_out`, inId: `amt_${stamp}_in` },
+          new Date().toISOString(),
+        );
+        if (!pair) return null;
+        set((state) => ({
+          categories: withTransferCategories(state.categories),
+          amounts: [...state.amounts, ...pair],
+        }));
+        return transferId;
+      },
+
+      /*
+       * Rewritten in place: both halves keep their ids and `createdAt`, so a
+       * corrected transfer stays where it was in the day list.
+       */
+      updateTransfer: (transferId, draft) =>
+        set((state) => {
+          const halves = state.amounts.filter((amount) => amount.transferId === transferId);
+          const out = halves.find((amount) => amount.direction === 'expense');
+          const into = halves.find((amount) => amount.direction === 'income');
+          if (!out || !into) return {};
+          const pair = transferPair(
+            draft,
+            { transferId, outId: out.id, inId: into.id },
+            out.createdAt,
+          );
+          if (!pair) return {};
+          const [nextOut, nextIn] = pair;
+          return {
+            categories: withTransferCategories(state.categories),
+            amounts: state.amounts.map((amount) =>
+              amount.id === out.id
+                ? { ...nextOut, note: out.note }
+                : amount.id === into.id
+                  ? { ...nextIn, note: into.note, createdAt: into.createdAt }
+                  : amount,
+            ),
+          };
+        }),
 
       addAccount: (name, glyph) => {
         const trimmed = name.trim();
@@ -332,7 +456,7 @@ export const useMoney = create<MoneyState>()(
           };
         }),
 
-      addCategory: (name, glyph) => {
+      addCategory: (name, glyph, direction) => {
         const trimmed = name.trim();
         if (trimmed === '') return null;
         const id = `cat_${Date.now().toString(36)}`;
@@ -343,6 +467,7 @@ export const useMoney = create<MoneyState>()(
               id,
               name: trimmed,
               glyph: glyph || '•',
+              direction,
               order: state.categories.length,
               archivedAt: null,
             },
@@ -385,8 +510,12 @@ export const useMoney = create<MoneyState>()(
        * zustand does not hand the old blob to `merge` at all — it logs "couldn't
        * be migrated", merges `undefined`, and the next write saves an empty log
        * over the one on disk. Every future bump needs one too.
+       *
+       * 3 — a category has a side. `sanitizeMoney` reads a missing `direction` as
+       * `expense` and moves every income into an income `Other`, so this one is
+       * the identity as well.
        */
-      version: 2,
+      version: 3,
       migrate: (persisted) => persisted,
       storage: persistedStorage(),
       partialize: (state) => ({
