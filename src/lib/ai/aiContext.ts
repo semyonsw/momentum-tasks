@@ -45,7 +45,7 @@
  */
 
 import { clusterBalance } from '../balance';
-import { dayKey, parseDay, shiftDay, weekdayLabels } from '../days';
+import { dayKey, parseDay, shiftDay, weekdayIndex, weekdayLabels } from '../days';
 import { evaluateDeload } from '../deload';
 import { MUSCLE_CLUSTER } from '../muscles';
 import { evaluateOverloadBatch } from '../progressiveOverload';
@@ -683,10 +683,13 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
     let best = 0;
     const byWeekday = labels.map(() => ({ counted: 0, done: 0 }));
     for (const day of window) {
-      if (!asksOn(task, day)) continue;
+      // Every window day comes off `shiftDay`, so it always parses; the guard is
+      // the type's, not a case that happens.
+      const date = parseDay(day);
+      if (!date || !asksOn(task, day)) continue;
       asked += 1;
       const { mark } = entryOf(log, task.id, day);
-      const weekday = (parseDay(day)!.getDay() + 6) % 7;
+      const weekday = weekdayIndex(date);
       if (mark === 'missed') {
         // Excused ON PURPOSE: out of the denominator, and the run steps over it.
         excused += 1;

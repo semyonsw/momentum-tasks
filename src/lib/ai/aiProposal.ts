@@ -541,12 +541,14 @@ export function planApply(
   const takenItem = new Set(library.routines.flatMap((r) => r.items.map((i) => i.id)));
 
   /* 1. Exercises: create the unknown ones, move the starting weight on the rest. */
+  /* Each kept row with the exercise it lands on, so step 2 reads the id off the
+     row instead of looking it up in a side map that the type cannot promise. */
   const created: Exercise[] = [];
-  const idOfRow = new Map<string, ID>();
+  const resolved: (ProposalRow & { exerciseId: ID })[] = [];
   const startingWeight = new Map<ID, number>();
   for (const row of live) {
     if (row.exerciseId) {
-      idOfRow.set(row.key, row.exerciseId);
+      resolved.push({ ...row, exerciseId: row.exerciseId });
       if (!row.weightLocked && row.weightKg > 0 && row.weightKg !== row.baseWeightKg) {
         startingWeight.set(row.exerciseId, row.weightKg);
       }
@@ -569,7 +571,7 @@ export function planApply(
       createdAt: iso,
     };
     created.push(exercise);
-    idOfRow.set(row.key, exercise.id);
+    resolved.push({ ...row, exerciseId: exercise.id });
   }
   const exercises = [
     ...library.exercises.map((e) =>
@@ -582,9 +584,9 @@ export function planApply(
     ...created,
   ];
 
-  const newItem = (row: ProposalRow, order: number): RoutineItem => ({
+  const newItem = (row: ProposalRow & { exerciseId: ID }, order: number): RoutineItem => ({
     id: freshId('ri_ai', `${stamp}_${order}`, takenItem),
-    exerciseId: idOfRow.get(row.key)!,
+    exerciseId: row.exerciseId,
     order,
     targetSets: row.sets,
     targetRepsMax: row.reps,
@@ -597,7 +599,7 @@ export function planApply(
       id: freshId('r_ai', stamp, takenRoutine),
       ownerId: opts.ownerId,
       name,
-      items: live.map((row, order) => newItem(row, order)),
+      items: resolved.map((row, order) => newItem(row, order)),
       createdAt: iso,
       updatedAt: iso,
     };
@@ -614,8 +616,7 @@ export function planApply(
   if (!target) return null;
   const itemsById = new Map(target.items.map((item) => [item.id, item]));
   let items: RoutineItem[] = [];
-  for (const row of proposal.rows) {
-    if (row.removed) continue;
+  for (const row of resolved) {
     const order = items.length;
     const original = row.itemId ? itemsById.get(row.itemId) : undefined;
     if (!original) {

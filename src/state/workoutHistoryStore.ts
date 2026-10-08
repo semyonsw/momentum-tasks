@@ -766,6 +766,16 @@ function sanitizeNumbering(
 const COUNT_UNITS = new Set(['reps', 'seconds', 'meters', 'rounds']);
 const LOAD_MODES = new Set(['external', 'added_bodyweight', 'assisted', 'none']);
 
+/* Guards rather than `as` casts, so a value read from storage is narrowed by the
+   same check that admits it — the sets above stay the one list of what is valid. */
+function isCountUnit(value: unknown): value is CountUnit {
+  return typeof value === 'string' && COUNT_UNITS.has(value);
+}
+
+function isLoadMode(value: unknown): value is LoadMode {
+  return typeof value === 'string' && LOAD_MODES.has(value);
+}
+
 function finiteOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -852,8 +862,8 @@ function sanitizeCompletedExercise(
   return {
     exerciseId: raw.exerciseId,
     name: raw.name,
-    countUnit: COUNT_UNITS.has(raw.countUnit as string) ? raw.countUnit! : 'reps',
-    loadMode: LOAD_MODES.has(raw.loadMode as string) ? raw.loadMode! : 'none',
+    countUnit: isCountUnit(raw.countUnit) ? raw.countUnit : 'reps',
+    loadMode: isLoadMode(raw.loadMode) ? raw.loadMode : 'none',
     setCount: Math.max(0, Math.round(finiteOr(raw.setCount, 0))),
     summary: raw.summary,
     totalCount: Math.max(
@@ -903,8 +913,8 @@ function sanitizeSetRow(value: unknown): SetHistory | null {
   if (!isIsoish(row.performedAt)) return null;
   if (!Number.isFinite(row.setIndex) || !Number.isFinite(row.count)) return null;
   if (row.weightKg != null && !Number.isFinite(row.weightKg)) return null;
-  if (!COUNT_UNITS.has(row.countUnit as string)) return null;
-  if (!LOAD_MODES.has(row.loadMode as string)) return null;
+  if (!isCountUnit(row.countUnit)) return null;
+  if (!isLoadMode(row.loadMode)) return null;
   if (typeof row.isWarmup !== 'boolean') return null;
 
   return {
