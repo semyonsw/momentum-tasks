@@ -141,7 +141,9 @@ import { SectionTopBar } from '../components/SectionTopBar';
 import { AiEntryCard } from '../components/AiEntryCard';
 import { SparkBurst, SPARK_MS } from '../components/SparkBurst';
 import { PauseSheet, raisePauseToast } from '../components/PauseSheet';
+import { ProgressRing } from '../components/ProgressRing';
 import { StreakFlame } from '../components/StreakFlame';
+import { habitStrength, strengthPercent } from '../lib/habitStrength';
 import {
   CommitMark,
   FloatingAction,
@@ -310,6 +312,9 @@ export function TasksScreen({
         task,
         mark: entryOf(log, task.id, day).mark,
         streak: streakOf(task, log, day),
+        // T4: the 22 dp ring beside the flame — as of the day on screen, like
+        // the streak. Null for a one-day task, which then draws no ring.
+        strength: habitStrength(task, log, day),
         // `false`: the flame beside the row already says the number, and saying
         // it twice in one 72 dp card makes both copies read as decoration.
         detail: describeTaskRow(task, log, day, lang, false),
@@ -550,7 +555,7 @@ export function TasksScreen({
             geometry still adds up. 16 above it — card to card is the rhythm's
             short step; the old 24 read as a new section starting. */}
         <View {...panHandlers} className="mx-lg mt-md">
-          {rowViews.map(({ task, mark, streak, detail }) => {
+          {rowViews.map(({ task, mark, streak, strength, detail }) => {
             const isLifted = task.id === lifted;
             return (
               <ReorderRow
@@ -571,6 +576,7 @@ export function TasksScreen({
                     task={task}
                     mark={mark}
                     streak={streak}
+                    strength={strength}
                     detail={detail}
                     dimmed={lifted != null && !isLifted}
                     onToggle={toggleRow}
@@ -902,6 +908,7 @@ const TaskRow = memo(function TaskRow({
   task,
   mark,
   streak,
+  strength,
   detail,
   dimmed,
   onToggle,
@@ -911,6 +918,8 @@ const TaskRow = memo(function TaskRow({
   task: Task;
   mark: TaskMark | null;
   streak: number;
+  /** Habit strength 0–100 (T4), or null for a one-day task. */
+  strength: number | null;
   detail: string;
   dimmed: boolean;
   onToggle: (taskId: ID) => void;
@@ -969,7 +978,14 @@ const TaskRow = memo(function TaskRow({
           onLongPress={onLongPress ? () => onLongPress(task.id) : undefined}
           delayLongPress={280}
           accessibilityRole="button"
-          accessibilityLabel={`${task.name}. ${detail}. ${t('Open the month.')}`}
+          accessibilityLabel={[
+            task.name,
+            detail,
+            strength !== null ? t('Habit strength {n}%', { n: strengthPercent(strength) }) : null,
+            t('Open the month.'),
+          ]
+            .filter(Boolean)
+            .join('. ')}
           accessibilityHint={onLongPress ? t('Hold for more: skip today, pause, move') : undefined}
           style={pressedStyle}
           className="h-[60px] flex-1 flex-row items-center pr-lg"
@@ -993,8 +1009,20 @@ const TaskRow = memo(function TaskRow({
               className="tabular-nums"
             />
           </View>
-          {/* Hidden while excused: the run is kept, but that day's row is not
-              about the run. */}
+          {/* T4: habit strength, 22 dp, then the flame — the design's order.
+              Both hidden while excused: the run is kept, but that day's row is
+              not about the run. No ring on a one-day task. Decorative here: the
+              row's label says the number. 28 dp in all, so at 360 dp the name
+              still has ~140 dp before it runs (RunningText scrolls the rest). */}
+          {missed || strength === null ? null : (
+            <View className="mr-[6px]" accessible={false}>
+              <ProgressRing
+                fraction={strengthPercent(strength) / 100}
+                size={ROW_RING}
+                stroke={ROW_RING_STROKE}
+              />
+            </View>
+          )}
           {missed ? null : <StreakFlame streak={streak} />}
           <View className="ml-sm">
             <Icon name="chevron-right" size={16} color={palette.inkFaint} />
@@ -1011,6 +1039,9 @@ const TaskRow = memo(function TaskRow({
  * card's edges, and is what puts six or seven rows above the fold.
  */
 const ROW_HEIGHT = 60;
+/** The habit-strength ring on a row (T4): the design's 22 dp, 3 dp stroke. */
+const ROW_RING = 22;
+const ROW_RING_STROKE = 3;
 /** The day dial (U1): 196 → 132, the design's figure, with a lighter stroke. */
 const DIAL = 132;
 const DIAL_STROKE = 8;

@@ -1579,6 +1579,17 @@ const RU: Record<string, string> = {
   '{day}, paused · not counted': '{day}, пауза · не считается',
   'Hatched days were paused: every task excused, and out of the count.':
     'Заштрихованные дни — пауза: все задачи освобождены, и в счёт они не входят.',
+  // T4 · habit strength
+  'Habit strength': 'Сила привычки',
+  'Recent days weigh more than old ones. A skipped or paused day counts as neither.':
+    'Недавние дни весят больше старых. Пропуск или пауза не считаются ни в плюс, ни в минус.',
+  'Last 90 days': 'Последние 90 дней',
+  today: 'сегодня',
+  Strong: 'Крепкая',
+  Steady: 'Устойчивая',
+  Building: 'Растёт',
+  Forming: 'Формируется',
+  'Habit strength {n}%': 'Сила привычки {n}%',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

@@ -5,6 +5,8 @@
  *   │ ‹ TASKS                                      │
  *   │ Morning Bible/Narek reading                  │   30 / 35
  *   │ Every day · since 4 January 2026             │
+ *   │ ┌ ( 94% ) Habit strength ─────────────────┐  │   140 dp ring, the note (T4)
+ *   │ ┌ LAST 90 DAYS ╱╲╱──╱ ────────────────────┐  │   sparkline, fixed 0–100
  *   │ ┌─ STREAK ────────┐┌─ THIS MONTH ──────────┐ │
  *   │ │ 12 🜂            ││ 11 of 13              │ │   lit | card
  *   │ └─────────────────┘└───────────────────────┘ │
@@ -74,6 +76,15 @@ import { TaskEditorSheet } from '../components/TaskEditorSheet';
 import { pressedStyle } from '../components/motion';
 import { FloatingAction, Lamps, type ToastAction } from '../components/glass';
 import { PauseDoorRow, PauseSheet, raisePauseToast } from '../components/PauseSheet';
+import { ProgressRing } from '../components/ProgressRing';
+import { Sparkline } from '../components/Sparkline';
+import {
+  habitStrength,
+  strengthBand,
+  strengthPercent,
+  strengthSeries,
+  type StrengthPoint,
+} from '../lib/habitStrength';
 import { DangerFootAction, FieldWell, Kicker } from '../components/primitives';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import {
@@ -131,6 +142,10 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
   const streak = streakOf(task, log, today);
   const note = entryOf(log, task.id, noteDay).note;
   const pausedTo = pausedUntil(task, log, today);
+  /* Habit strength (T4): the score and its last 90 days. Null for a one-day
+     task, which has no habit to be strong at — the card is then left out. */
+  const strength = useMemo(() => habitStrength(task, log, today), [task, log, today]);
+  const series = useMemo(() => strengthSeries(task, log, today), [task, log, today]);
 
   /*
    * `Resume now` clears this task's excusals AFTER today — by construction a
@@ -194,6 +209,8 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
             .filter(Boolean)
             .join(' · ')}
         </Text>
+
+        {strength !== null && series ? <StrengthCards score={strength} series={series} /> : null}
 
         {/* The streak is what this screen is ABOUT, so it is the lit one; the
             month beside it is the context that makes a streak mean something. */}
@@ -431,6 +448,77 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * The habit-strength ring (140 dp, the design's) with the note beside it, and
+ * the last 90 days as a sparkline under it. The ring is the number; the line is
+ * whether it is going anywhere.
+ */
+function StrengthCards({ score, series }: { score: number; series: StrengthPoint[] }) {
+  const t = useT();
+  const lang = useLanguage();
+  const percent = strengthPercent(score);
+  const band = t(strengthBand(score));
+  // The line starts where the task did, if that is inside the window.
+  const first = series.find((point) => point.value !== null);
+  const values = useMemo(() => series.map((point) => point.value), [series]);
+  return (
+    <>
+      <View
+        accessible
+        accessibilityLabel={`${t('Habit strength')}: ${percent}%, ${band}`}
+        className="mx-lg mt-lg flex-row items-center"
+        style={[STAT_CARD, PLAIN_CARD, { flex: 0, gap: 16 }]}
+      >
+        <ProgressRing fraction={percent / 100} size={RING} stroke={RING_STROKE}>
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 34, lineHeight: 38, letterSpacing: -1 }}
+            className="font-semibold tabular-nums text-ink"
+          >
+            {percent}%
+          </Text>
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 12.5, lineHeight: 16 }}
+            className="font-semibold text-green-bright"
+          >
+            {band}
+          </Text>
+        </ProgressRing>
+        <View className="flex-1">
+          <Text maxFontSizeMultiplier={1.3} className="text-body text-ink">
+            {t('Habit strength')}
+          </Text>
+          <Text maxFontSizeMultiplier={1.3} className="mt-xs text-label text-ink-muted">
+            {t('Recent days weigh more than old ones. A skipped or paused day counts as neither.')}
+          </Text>
+        </View>
+      </View>
+
+      <View className="mx-lg mt-[10px]" style={[STAT_CARD, PLAIN_CARD, { flex: 0 }]}>
+        <Text style={STAT_KICKER} className="font-semibold uppercase text-ink-faint">
+          {t('Last 90 days')}
+        </Text>
+        <View className="mt-sm">
+          <Sparkline values={values} />
+        </View>
+        <View className="mt-xs flex-row justify-between">
+          <Text maxFontSizeMultiplier={1.3} className="text-label text-ink-faint">
+            {first ? formatShortDay(first.day, lang) : ''}
+          </Text>
+          <Text maxFontSizeMultiplier={1.3} className="text-label text-ink-faint">
+            {t('today')}
+          </Text>
+        </View>
+      </View>
+    </>
+  );
+}
+
+/** The design's ring: 140 dp. */
+const RING = 140;
+const RING_STROKE = 10;
 
 /* The cell skins, as in the prototype. Colours that follow the theme are read in
    render (functions), never captured at module load. */
