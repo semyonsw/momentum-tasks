@@ -45,11 +45,40 @@
  * Where no bodyweight is known at all the effective load is null, those two records
  * are absent, and `mostCount` carries the exercise on its own. That is the same
  * silence `sessionVolume` keeps rather than printing a figure it knows undercounts.
+ *
+ * ── THE e1RM, AFTER ALL — AS AN ESTIMATE THAT SAYS SO ──────────────────────
+ *
+ * The case above against a 1RM was a case against a number shown as if it were a
+ * fact. Roadmap W5 (T-02) brought it back for one job the bests cannot do: put
+ * `100 × 3` and `85 × 8` on ONE line over time, so "is this going up" has an answer
+ * on the weeks the weight stood still and the reps moved. It comes back on terms:
+ *
+ *  - Epley (`load × (1 + reps / 30)`), on the EFFECTIVE load, rep work only — and a
+ *    single is its own weight, not 3% more than what was actually lifted.
+ *  - ONE POINT PER SESSION: that session's best set, the granularity every chart
+ *    and the overload engine use (`lib/trends.ts`).
+ *  - Every screen that shows it says "estimate" beside it. Still never on a set row.
+ *
+ * `prTimeline` is the bests told as a history: each time a session moved one of
+ * them. It rejects the obvious per-set version — a session that climbs 95, 100,
+ * 105 is one record, not three — and it gives the first session no entry, the
+ * same rule the Finish sheet keeps (IMPLEMENTATION_DECISIONS, T-09): a record
+ * needs a previous best to beat, otherwise everybody's first day is a wall of
+ * "records". Heaviest is not kept for `loadMode: 'none'`, where the only load is
+ * the scale's reading and a "record" would mean the lifter got heavier.
  */
 
 import { t, type Language } from './i18n';
-import { effectiveLoadKg } from './units';
-import type { CountUnit, Exercise, SetHistory } from '../types/models';
+import type { TrendPoint } from './trends';
+import {
+  countUnitLabel,
+  effectiveLoadKg,
+  formatClock,
+  formatShortDate,
+  formatWeight,
+  unitLabel,
+} from './units';
+import type { CountUnit, Exercise, ID, LoadMode, SetHistory, UnitSystem } from '../types/models';
 
 /** One record: the number, and enough of the set to recognise it. */
 export interface RecordSet {
@@ -214,4 +243,274 @@ export function describeBests(
   }
 
   return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/* ------------------------------------------------------------------ */
+/* e1RM trend and the records timeline                                 */
+/* ------------------------------------------------------------------ */
+
+/** Two decimals: what every record compares on, so float drift is never a "record". */
+function settle(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+/**
+ * Epley's estimated one-rep max for `reps` at `loadKg`.
+ *
+ * A single is returned as itself: a 1RM you actually lifted is not an estimate,
+ * and Epley's 1 + 1/30 would put the "estimate" above the measured fact.
+ */
+export function e1rm(loadKg: number, reps: number): number {
+  if (!Number.isFinite(loadKg) || loadKg <= 0 || !Number.isFinite(reps) || reps <= 0) return 0;
+  return reps === 1 ? loadKg : loadKg * (1 + reps / 30);
+}
+
+/** One session on the e1RM line, and the set that put it there. */
+export interface E1rmPoint extends TrendPoint {
+  /** Estimated 1RM in kilograms, two decimals. */
+  value: number;
+  sessionId: ID;
+  /** The set's own logged weight (`+20` on a belt), for "the set: +20 × 5". */
+  weightKg: number | null;
+  count: number;
+  loadMode: LoadMode;
+}
+
+/** Rows of one exercise that count, grouped per session, sessions oldest first. */
+function sessionsOf(history: readonly SetHistory[], exerciseId: ID): SetHistory[][] {
+  const bySession = new Map<ID, SetHistory[]>();
+  for (const row of history) {
+    if (row.exerciseId !== exerciseId || !counts(row)) continue;
+    const bucket = bySession.get(row.sessionId);
+    if (bucket) bucket.push(row);
+    else bySession.set(row.sessionId, [row]);
+  }
+  const started = (rows: SetHistory[]) => Math.min(...rows.map((r) => Date.parse(r.performedAt)));
+  return [...bySession.values()]
+    .map((rows) => [...rows].sort((a, b) => a.setIndex - b.setIndex))
+    .sort((a, b) => started(a) - started(b));
+}
+
+/** The load on the body for a row, or null when there is none worth comparing. */
+function loadOf(row: SetHistory, bodyweightAtDate: BodyweightLookup): number | null {
+  const load = effectiveLoadKg(row.weightKg, row.loadMode, bodyweightAtDate(row.performedAt));
+  return load != null && Number.isFinite(load) && load > 0 ? load : null;
+}
+
+/** One session's best e1RM (earliest set on a tie), or null if it had no rep set with a load. */
+function sessionE1rm(
+  rows: readonly SetHistory[],
+  bodyweightAtDate: BodyweightLookup,
+): { value: number; row: SetHistory } | null {
+  let best: { value: number; row: SetHistory } | null = null;
+  for (const row of rows) {
+    if (row.countUnit !== 'reps') continue;
+    const load = loadOf(row, bodyweightAtDate);
+    if (load == null) continue;
+    const value = settle(e1rm(load, row.count));
+    if (best == null || value > best.value) best = { value, row };
+  }
+  return best;
+}
+
+/**
+ * Oldest first, one point per session: that session's best estimated 1RM.
+ *
+ * Warm-ups and unlogged rows never count; neither do timed or distance sets (an
+ * Epley of seconds is not a number). Bodyweight lifts are estimated on the load the
+ * body moved that day, so `+20 × 5` at 78 kg and at 82 kg are different points. A
+ * session with nothing to estimate from is left out, not plotted as a zero.
+ */
+export function e1rmSeries(
+  history: readonly SetHistory[],
+  exerciseId: ID,
+  bodyweightAtDate: BodyweightLookup = () => null,
+): E1rmPoint[] {
+  const points: E1rmPoint[] = [];
+  for (const rows of sessionsOf(history, exerciseId)) {
+    const best = sessionE1rm(rows, bodyweightAtDate);
+    if (!best) continue;
+    points.push({
+      at: rows[0].performedAt,
+      value: best.value,
+      sessionId: best.row.sessionId,
+      weightKg: best.row.weightKg,
+      count: best.row.count,
+      loadMode: best.row.loadMode,
+    });
+  }
+  return points;
+}
+
+/** Which best moved. */
+export type RecordKind = 'e1rm' | 'heaviest' | 'mostCount';
+
+/** One moment a best moved: the new value, and the set that did it. */
+export interface TimelineEntry {
+  kind: RecordKind;
+  /** Kilograms for `e1rm` and `heaviest`; reps / seconds / metres for `mostCount`. */
+  value: number;
+  /** When the session happened. */
+  at: string;
+  sessionId: ID;
+  weightKg: number | null;
+  count: number;
+  countUnit: CountUnit;
+  loadMode: LoadMode;
+}
+
+/** Display order of entries from the same session: the estimate, then the two facts. */
+const KIND_ORDER: readonly RecordKind[] = ['e1rm', 'heaviest', 'mostCount'];
+
+/**
+ * Newest first: every session that moved a best, one entry per best it moved.
+ *
+ * Each session is reduced to its own best on each axis and compared, STRICTLY, with
+ * the best of every session before it. Equalling a best is not a record. The first
+ * session sets the bar and has no entry. Kept separate from `exerciseBests` (which
+ * answers "what stands now") so `recordsBrokenIn` can ask the same question of one
+ * session without building the whole history twice.
+ */
+export function prTimeline(
+  history: readonly SetHistory[],
+  exerciseId: ID,
+  bodyweightAtDate: BodyweightLookup = () => null,
+): TimelineEntry[] {
+  const standing: Partial<Record<RecordKind, number>> = {};
+  const entries: TimelineEntry[] = [];
+  let first = true;
+
+  for (const rows of sessionsOf(history, exerciseId)) {
+    const at = rows[0].performedAt;
+    const tops: Partial<Record<RecordKind, { value: number; row: SetHistory }>> = {};
+
+    const e = sessionE1rm(rows, bodyweightAtDate);
+    if (e) tops.e1rm = e;
+    for (const row of rows) {
+      if (tops.mostCount == null || row.count > tops.mostCount.value) {
+        tops.mostCount = { value: row.count, row };
+      }
+      if (row.loadMode === 'none') continue;
+      const load = loadOf(row, bodyweightAtDate);
+      if (load == null) continue;
+      const value = settle(load);
+      if (tops.heaviest == null || value > tops.heaviest.value) tops.heaviest = { value, row };
+    }
+
+    const moved: TimelineEntry[] = [];
+    for (const kind of KIND_ORDER) {
+      const top = tops[kind];
+      if (!top) continue;
+      const before = standing[kind];
+      if (!first && (before == null || top.value > before)) {
+        moved.push({
+          kind,
+          value: top.value,
+          at,
+          sessionId: top.row.sessionId,
+          weightKg: top.row.weightKg,
+          count: top.row.count,
+          countUnit: top.row.countUnit,
+          loadMode: top.row.loadMode,
+        });
+      }
+      if (before == null || top.value > before) standing[kind] = top.value;
+    }
+    entries.push(...moved.reverse());
+    first = false;
+  }
+
+  return entries.reverse();
+}
+
+/** Where the line went: the sentence above the e1RM chart. */
+export interface TrendConclusion {
+  direction: 'up' | 'down' | 'level';
+  text: string;
+}
+
+/**
+ * "Up 7.5 kg since 12 Jun, to 96.3 kg." — first session against the latest.
+ *
+ * The latest, not the peak: the line is read for where it stands now, and a
+ * sentence that said "to 100" under a line ending at 92 would be the chart
+ * disagreeing with itself. The difference is judged in the unit the user reads,
+ * so a 0.02 kg wobble that prints as "0" is called level, not "up 0 lb".
+ * Null under two points — there is no direction to state.
+ */
+export function describeE1rmTrend(
+  points: readonly TrendPoint[],
+  unitSystem: UnitSystem,
+  lang: Language = 'en',
+): TrendConclusion | null {
+  if (points.length < 2) return null;
+  const firstPoint = points[0];
+  const last = points[points.length - 1];
+  const unit = unitLabel(unitSystem, lang);
+  // Both ends as printed, then their difference — so the sentence's three numbers
+  // always add up on screen (88.8 → 96.3 is "up 7.5", never "up 7.4").
+  const shown = (kg: number) => Number(formatWeight(kg, unitSystem));
+  const from = shown(firstPoint.value);
+  const to = shown(last.value);
+  const delta = Number((to - from).toFixed(1));
+  const date = formatShortDate(firstPoint.at, lang);
+  const latest = `${formatWeight(last.value, unitSystem)} ${unit}`;
+  if (delta === 0) {
+    return {
+      direction: 'level',
+      text: t('Level since {date}, at {latest}.', lang, { date, latest }),
+    };
+  }
+  const magnitude = Math.abs(delta);
+  const amount = `${Number.isInteger(magnitude) ? magnitude : magnitude.toFixed(1)} ${unit}`;
+  return {
+    direction: delta > 0 ? 'up' : 'down',
+    text: t(
+      delta > 0
+        ? 'Up {delta} since {date}, to {latest}.'
+        : 'Down {delta} since {date}, to {latest}.',
+      lang,
+      { delta: amount, date, latest },
+    ),
+  };
+}
+
+/** The kicker on a timeline row: BEST e1RM / HEAVIEST / MOST REPS (or its timed twin). */
+export function recordLabel(kind: RecordKind, countUnit: CountUnit, lang: Language = 'en'): string {
+  if (kind === 'e1rm') return t('Best e1RM', lang);
+  if (kind === 'heaviest') return t('Heaviest', lang);
+  if (countUnit === 'seconds') return t('Longest', lang);
+  if (countUnit === 'meters') return t('Furthest', lang);
+  if (countUnit === 'rounds') return t('Most rounds', lang);
+  return t('Most reps', lang);
+}
+
+/** "96.3 kg" / "15 reps" / "3:10" — the record's own value, in the user's units. */
+export function recordValue(
+  entry: Pick<TimelineEntry, 'kind' | 'value' | 'countUnit'>,
+  unitSystem: UnitSystem,
+  lang: Language = 'en',
+): string {
+  if (entry.kind !== 'mostCount') {
+    return `${formatWeight(entry.value, unitSystem)} ${unitLabel(unitSystem, lang)}`;
+  }
+  if (entry.countUnit === 'seconds' || entry.countUnit === 'rounds')
+    return formatClock(entry.value);
+  return `${entry.value} ${countUnitLabel(entry.countUnit, lang)}`;
+}
+
+/** "82.5 × 5" / "+20 × 5" / "15" — the set that did it, as the history shorthand writes it. */
+export function recordSet(
+  entry: Pick<TimelineEntry, 'weightKg' | 'count' | 'countUnit' | 'loadMode'>,
+  unitSystem: UnitSystem,
+): string {
+  const count =
+    entry.countUnit === 'seconds' || entry.countUnit === 'rounds'
+      ? formatClock(entry.count)
+      : String(entry.count);
+  // Bodyweight work with nothing on the belt has no weight to write.
+  if (entry.weightKg == null || (entry.loadMode !== 'external' && entry.weightKg === 0)) {
+    return count;
+  }
+  return `${formatWeight(entry.weightKg, unitSystem, entry.loadMode)} × ${count}`;
 }

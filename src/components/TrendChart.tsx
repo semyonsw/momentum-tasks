@@ -87,9 +87,15 @@ interface TrendChartProps {
    * integer, which is right for reps, kilograms and counts.
    */
   formatValue?: (value: number) => string;
+  /**
+   * A flat wash at this opacity instead of the fading one. The e1RM chart (T-02)
+   * takes the design's 12% fill: one hue, an even wash, so the area under an
+   * ESTIMATE does not glow brighter near the line than the facts beside it.
+   */
+  flatWash?: number;
 }
 
-export function TrendChart({ points, formatValue = defaultFormat }: TrendChartProps) {
+export function TrendChart({ points, formatValue = defaultFormat, flatWash }: TrendChartProps) {
   const lang = useLanguage();
   /*
    * Hooks run before the `points.length < 2` bail-out below, so a chart that
@@ -214,7 +220,11 @@ export function TrendChart({ points, formatValue = defaultFormat }: TrendChartPr
           </SvgText>
         ))}
 
-        <Polyline points={area} fill="url(#trendWash)" stroke="none" />
+        {flatWash != null ? (
+          <Polyline points={area} fill={palette.greenBright} fillOpacity={flatWash} stroke="none" />
+        ) : (
+          <Polyline points={area} fill="url(#trendWash)" stroke="none" />
+        )}
 
         <AnimatedPolyline
           points={polyline}

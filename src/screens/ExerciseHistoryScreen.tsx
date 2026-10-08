@@ -5,23 +5,37 @@
  *   │ ‹  HISTORY                                   │
  *   │ Wide pull-ups machine                        │
  *   │ 8 sessions · top 80 kg · same weight 16 days │
+ *   │ ESTIMATED 1-REP MAX                          │
+ *   │ Up 7.5 kg since 12 Jun, to 96.3 kg.          │
+ *   │   ╱╲ chart ╱╲                                │
+ *   │ An estimate, from your best set each session.│
+ *   │ RECORDS                                      │
+ *   │ ○ BEST E1RM 28 Sep  96.3 kg · the set: 82.5×5│
+ *   │ ○ HEAVIEST 14 Sep   87.5 kg · the set: 87.5×2│
  *   │ TOP WORKING WEIGHT                           │
  *   │   ╱╲ chart ╱╲                                │
  *   │ SESSIONS                                     │
  *   │ 8 Aug   80 kg · 8 6 5 5                      │
- *   │ 23 Jul  80 kg · 7 · 75 kg · 7 7 6            │
  *   └──────────────────────────────────────────────┘
  *
- * The screen answers one question and refuses the others. No volume totals, no
- * 1RM estimate, no PR badge: those are numbers that go up on their own and tell
- * you nothing about whether to add a plate. Top working weight per session, the
- * sessions that produced it, and how long it has been stuck — that's the whole
- * screen, and it's the same data the nudge fires on.
+ * The screen answers one question. Top working weight per session, the sessions
+ * that produced it and how long it has been stuck are the same data the nudge
+ * fires on, and they still lead nothing but themselves: no volume totals, no badge.
  *
- * The 1RM refusal outlived a field: `SetHistory.estimated1RM` was computed and
- * stored on every rep set for two releases and rendered nowhere, because this is
- * the screen it would have been rendered on and this is the screen that says no.
- * It is deleted as of 0.12.0 — the argument here was the whole case against it.
+ * ── THE 1RM, REVISITED ─────────────────────────────────────────────────────
+ *
+ * This header used to refuse an estimated 1RM outright: a number that goes up on
+ * its own and tells you nothing about whether to add a plate. Roadmap W5 (T-02)
+ * reversed that, for the one thing top weight cannot show — `100 × 3` becoming
+ * `100 × 5` is progress the weight line draws flat. It came back on the terms
+ * that answered the old objection: one point per session from its best set, a
+ * written conclusion above it, and the word "estimate" printed under it every
+ * time (`lib/records.ts` has the rules). It is NOT stored on `SetHistory` again
+ * — derived on read, so a change of formula never leaves old numbers on disk.
+ *
+ * The records are the bests told as a history, newest first, each with the set
+ * that did it and a tap through to that session. Still no medal: a record row
+ * is the same quiet text as everything else here.
  */
 
 import { useMemo } from 'react';
@@ -40,11 +54,21 @@ import {
   sessionsToNextMax,
 } from '../lib/repLadder';
 import type { OverloadVerdict } from '../lib/progressiveOverload';
-import { describeBests, exerciseBests } from '../lib/records';
+import {
+  describeBests,
+  describeE1rmTrend,
+  e1rmSeries,
+  exerciseBests,
+  prTimeline,
+  recordLabel,
+  recordSet,
+  recordValue,
+} from '../lib/records';
 import { bodyweightAt } from '../lib/bodyweightLog';
-import { formatCount, formatShortDate, formatWeight } from '../lib/units';
+import { formatCount, formatShortDate, formatWeight, kgToLb } from '../lib/units';
 import { term } from '../lib/i18n';
 import { useSettings } from '../state/settingsStore';
+import { chartWash, palette } from '../theme/tokens';
 import { useLanguage, useT } from '../hooks/useT';
 import type { Exercise, ID, SetHistory } from '../types/models';
 
@@ -102,7 +126,8 @@ export function ExerciseHistoryScreen({
    * THE STANDING BESTS. Read from the same rows the list below is built from, and
    * compared on EFFECTIVE load — so a pull-up at `+20 kg` last year when the lifter
    * weighed 78 does not out-rank the same set at 82 today. `lib/records.ts` has the
-   * argument for these three numbers and against an estimated 1RM.
+   * argument for these three numbers, and for why the e1RM below is only ever an
+   * estimate that says so.
    */
   const bodyweightLog = useSettings((s) => s.bodyweightLog);
   const unitSystem = useSettings((s) => s.unitSystem);
@@ -110,6 +135,23 @@ export function ExerciseHistoryScreen({
     () => exerciseBests(history, exercise, (at) => bodyweightAt(bodyweightLog, at)),
     [bodyweightLog, exercise, history],
   );
+  /*
+   * THE e1RM LINE AND THE RECORDS. Same bodyweight lookup as the bests, so the
+   * three never disagree about what a `+20` set weighed. Kilograms throughout;
+   * the chart's gridlines and every sentence convert on the way out.
+   */
+  const lookup = useMemo(() => (at: string) => bodyweightAt(bodyweightLog, at), [bodyweightLog]);
+  const e1rmPoints = useMemo(
+    () => e1rmSeries(history, exercise.id, lookup),
+    [exercise.id, history, lookup],
+  );
+  const timeline = useMemo(
+    () => prTimeline(history, exercise.id, lookup),
+    [exercise.id, history, lookup],
+  );
+  const trend = describeE1rmTrend(e1rmPoints, unitSystem, lang);
+  // Timed, distance and round work has no e1RM to estimate; the section is not drawn.
+  const estimates = exercise.countUnit === 'reps';
   const bestsLine = describeBests(
     bests,
     exercise.countUnit,
@@ -181,6 +223,102 @@ export function ExerciseHistoryScreen({
             </Text>
           </>
         ) : null}
+
+        {/*
+          ESTIMATED 1-REP MAX — the conclusion is written ABOVE the line, so the
+          chart is the evidence for a sentence rather than a puzzle. One hue, an
+          even 12% wash, and the word "estimate" under it every time.
+        */}
+        {estimates ? (
+          <>
+            <Kicker className="mx-lg mt-xl">{t('Estimated 1-rep max')}</Kicker>
+            {trend ? (
+              <>
+                <Text className="mx-lg mt-xs text-body tabular-nums text-ink">{trend.text}</Text>
+                <View className="mx-lg mt-md">
+                  <TrendChart
+                    points={e1rmPoints}
+                    flatWash={chartWash.flat}
+                    formatValue={(kg) =>
+                      String(Math.round(unitSystem === 'imperial' ? kgToLb(kg) : kg))
+                    }
+                  />
+                </View>
+                <Text className="mx-lg mt-xs text-label text-ink-faint">
+                  {t('An estimate, from your best set each session.')}{' '}
+                  {t('e1RM = weight × (1 + reps / 30); a single counts as its own weight.')}
+                </Text>
+              </>
+            ) : (
+              <Text className="mx-lg mt-xs text-label text-ink-muted">
+                {t(
+                  'Your estimated 1-rep max is drawn here from your second session with a weighted set of reps.',
+                )}
+              </Text>
+            )}
+          </>
+        ) : null}
+
+        <Kicker className="mx-lg mb-sm mt-xl">{t('Records')}</Kicker>
+        {timeline.length > 0 ? (
+          <View className="mx-lg">
+            {/* The rail the dots sit on — structure, so `hairline`. */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: 7,
+                top: 12,
+                bottom: 12,
+                width: 2,
+                backgroundColor: palette.hairline,
+              }}
+            />
+            {timeline.map((entry) => {
+              const label = recordLabel(entry.kind, entry.countUnit, lang);
+              const date = formatShortDate(entry.at, lang);
+              const value = recordValue(entry, unitSystem, lang);
+              const theSet = t('the set: {set}', { set: recordSet(entry, unitSystem) });
+              return (
+                <Pressable
+                  key={`${entry.sessionId}-${entry.kind}`}
+                  onPress={onOpenSession ? () => onOpenSession(entry.sessionId) : undefined}
+                  disabled={!onOpenSession}
+                  accessibilityRole={onOpenSession ? 'button' : 'text'}
+                  accessibilityLabel={`${label}, ${date}: ${value}, ${theSet}`}
+                  className="min-h-[56px] flex-row items-center py-xs"
+                >
+                  <View
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 8,
+                      borderWidth: 2,
+                      borderColor: palette.greenBright,
+                      backgroundColor: palette.bg,
+                    }}
+                  />
+                  <View className="ml-md flex-1">
+                    <View className="flex-row items-baseline">
+                      <Kicker tone="green">{label}</Kicker>
+                      <Text className="ml-sm text-label tabular-nums text-ink-faint">{date}</Text>
+                    </View>
+                    <Text className="text-body tabular-nums text-ink">
+                      <Text className="font-semibold">{value}</Text>
+                      <Text className="text-ink-muted"> · {theSet}</Text>
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : (
+          <Text className="mx-lg text-label text-ink-muted">
+            {t(
+              'A record appears here when a session beats your best so far: the heaviest set, the most reps, or the best e1RM. Your first session sets the bar.',
+            )}
+          </Text>
+        )}
 
         {series.length >= 2 ? (
           <>

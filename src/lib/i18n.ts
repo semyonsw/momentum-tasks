@@ -1529,6 +1529,26 @@ const RU: Record<string, string> = {
     'На клавиатуре есть десятичная точка: суммы хранятся в сотых долях.',
   'This log was started in whole units, so the keypad keeps its 000 key. Nothing already recorded is ever rescaled.':
     'Этот журнал начат в целых единицах, поэтому на клавиатуре остаётся клавиша 000. Уже записанные суммы никогда не пересчитываются.',
+  'Up {delta} since {date}, to {latest}.': 'Плюс {delta} с {date}, до {latest}.',
+  'Down {delta} since {date}, to {latest}.': 'Минус {delta} с {date}, до {latest}.',
+  'Level since {date}, at {latest}.': 'Без изменений с {date}: {latest}.',
+  'Estimated 1-rep max': 'Расчётный максимум на 1 повтор',
+  'An estimate, from your best set each session.':
+    'Это оценка по лучшему подходу каждой тренировки.',
+  'e1RM = weight × (1 + reps / 30); a single counts as its own weight.':
+    'e1RM = вес × (1 + повторы / 30); одиночный повтор считается своим весом.',
+  'Your estimated 1-rep max is drawn here from your second session with a weighted set of reps.':
+    'Со второй тренировки с подходом на повторы с весом здесь появится график расчётного максимума.',
+  Records: 'Рекорды',
+  'Best e1RM': 'Лучший e1RM',
+  Heaviest: 'Самый тяжёлый',
+  'Most reps': 'Больше всего повторов',
+  Longest: 'Дольше всего',
+  Furthest: 'Дальше всего',
+  'Most rounds': 'Больше всего раундов',
+  'the set: {set}': 'подход: {set}',
+  'A record appears here when a session beats your best so far: the heaviest set, the most reps, or the best e1RM. Your first session sets the bar.':
+    'Рекорд появится здесь, когда тренировка превзойдёт ваш лучший результат: самый тяжёлый подход, больше всего повторов или лучший e1RM. Первая тренировка задаёт планку.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

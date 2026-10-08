@@ -666,6 +666,13 @@ export const dangerTint = {
 } as const;
 
 /**
+ * The e1RM chart's area: one even 12% wash of the line's own hue, from the design
+ * (Wave 1 · item 1). An opacity rather than a colour, so it follows the theme's
+ * accent like the line does.
+ */
+export const chartWash = { flat: 0.12 } as const;
+
+/**
  * One of the `motion` curves as an `Easing`, for `Animated.timing`.
  *
  * The only thing in this file that imports React Native, and it is here rather
