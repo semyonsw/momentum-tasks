@@ -31,6 +31,18 @@
  * NON-committal answer — nothing here is destructive, so the cheap gesture can
  * safely be the one that closes it.
  *
+ * ── UNLESS THE SHEET HOLDS A DRAFT ───────────────────────────────────────
+ *
+ * The one exception is a sheet that is a form someone has typed into (the task
+ * editor): there the non-committal answer LOSES the draft, and a stray tap on
+ * the dimmed edge is the cheapest gesture there is. So a sheet may pass
+ * `guard`, asked before every one of the four ways out. It answers `true` to let
+ * the exit run, or `false` to hold the sheet where it is — a dragged handle
+ * springs back — and raise its own question; the `proceed` it was handed runs
+ * the exit anyway once that question is answered "Discard". A guard rather than
+ * a `dirty` flag, so the frame knows nothing about what the question is.
+ * Without one, every other sheet closes exactly as it always did.
+ *
  * Two `BlurView`s while up (the scrim's 10 and the pane's 34). The nav pill hides
  * under an overlay, so a screen with a sheet still stays inside the budget of 3.
  */
@@ -78,6 +90,13 @@ const HANDLE = 'rgba(236,241,238,0.22)';
 export const SHEET_RADIUS = 34;
 
 /**
+ * Asked before a sheet closes: `true` lets it go now; `false` holds it, and
+ * `proceed` closes it (animated, unasked) once the sheet's own question is
+ * answered.
+ */
+export type SheetGuard = (proceed: () => void) => boolean;
+
+/**
  * The animated way out, for a control INSIDE a sheet — its `Cancel`. Outside a
  * sheet it is null, so a caller can fall back to its own prop.
  */
@@ -93,11 +112,14 @@ export function useSheetDismiss(): (() => void) | null {
 export function SheetFrame({
   onDismiss,
   dismissLabel,
+  guard,
   children,
 }: {
   onDismiss: () => void;
   /** The scrim's accessibility label — the non-committal answer's own name. */
   dismissLabel?: string;
+  /** See the header: `false` holds the sheet; `proceed` closes it later. */
+  guard?: SheetGuard;
   children: ReactNode;
 }) {
   const t = useT();
@@ -116,6 +138,8 @@ export function SheetFrame({
 
   const dismissRef = useRef(onDismiss);
   dismissRef.current = onDismiss;
+  const guardRef = useRef(guard);
+  guardRef.current = guard;
 
   const close = useCallback(() => {
     if (closing.current) return;
@@ -137,9 +161,18 @@ export function SheetFrame({
     ]).start(() => dismissRef.current());
   }, [enter, scrim]);
 
+  /** Every way out comes through here; true when the exit is running. */
+  const requestClose = useCallback((): boolean => {
+    if (closing.current) return true;
+    const ask = guardRef.current;
+    if (ask && !ask(close)) return false;
+    close();
+    return true;
+  }, [close]);
+
   // The nav pill is a sibling of the whole section and would paint over this.
   // See `components/overlay.ts`. Back dismisses, like the scrim — animated.
-  useIsOverlay(close);
+  useIsOverlay(requestClose);
 
   // The entrance waits for the first measurement, so 110% is of the real pane.
   useEffect(() => {
@@ -168,10 +201,8 @@ export function SheetFrame({
       },
       onPanResponderRelease: (_, g) => {
         if (closing.current) return;
-        if (g.dy > DISMISS_DRAG) {
-          closeRef.current();
-          return;
-        }
+        // A held close (a guarded sheet asking first) springs back like a nudge.
+        if (g.dy > DISMISS_DRAG && closeRef.current()) return;
         Animated.timing(drag, {
           toValue: 0,
           duration: SPRING_BACK.duration,
@@ -181,8 +212,13 @@ export function SheetFrame({
       },
     }),
   ).current;
-  const closeRef = useRef(close);
-  closeRef.current = close;
+  const closeRef = useRef(requestClose);
+  closeRef.current = requestClose;
+
+  // A child's `Cancel` is a way out like the others, so it is guarded too.
+  const dismissForChild = useCallback(() => {
+    requestClose();
+  }, [requestClose]);
 
   // Before it is measured the pane waits a whole window below, out of sight.
   const offscreen = (height > 0 ? height : windowHeight) * 1.1 + insets.bottom + 8;
@@ -195,7 +231,7 @@ export function SheetFrame({
   );
 
   return (
-    <DismissContext.Provider value={close}>
+    <DismissContext.Provider value={dismissForChild}>
       <View className="absolute inset-0" accessibilityViewIsModal>
         {/* `style`, not `className`: NativeWind's classes don't reach a node
             wrapped by `Animated.createAnimatedComponent`. */}
@@ -216,7 +252,7 @@ export function SheetFrame({
           />
         </Animated.View>
         <Pressable
-          onPress={close}
+          onPress={dismissForChild}
           accessibilityRole="button"
           accessibilityLabel={dismissLabel ?? t('Close')}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -327,12 +363,14 @@ export function SheetTitle({ children }: { children: ReactNode }) {
 interface SheetProps {
   title: string;
   onDismiss: () => void;
+  /** Passed to the frame — a sheet holding a draft asks before it goes. */
+  guard?: SheetGuard;
   children: ReactNode;
 }
 
-export function Sheet({ title, onDismiss, children }: SheetProps) {
+export function Sheet({ title, onDismiss, guard, children }: SheetProps) {
   return (
-    <SheetFrame onDismiss={onDismiss}>
+    <SheetFrame onDismiss={onDismiss} guard={guard}>
       <View className="mb-lg">
         <SheetTitle>{title}</SheetTitle>
       </View>

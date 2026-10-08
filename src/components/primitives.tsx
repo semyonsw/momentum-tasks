@@ -492,6 +492,8 @@ export function FieldWell({
   selectAllOnFocus = false,
   keyboardType = 'default',
   onBlur,
+  onSubmitEditing,
+  keyboardReach = 0,
   lit = false,
   accessibilityLabel,
 }: {
@@ -523,6 +525,23 @@ export function FieldWell({
    * `Pull, short` would rebuild the screen under the keyboard. See `HistoryScreen`.
    */
   onBlur?: () => void;
+  /**
+   * The keyboard's ✓ ("done"). Present = return SAVES, under the same rule as
+   * the sheet's button (`lib/sheetSubmit.ts`); the field keeps focus, so an
+   * unsavable value leaves the keyboard up instead of closing it for nothing.
+   * Absent = return just closes the keyboard, as before.
+   */
+  onSubmitEditing?: () => void;
+  /**
+   * How far below the field the keyboard must clear — the Save under it. The
+   * app runs Android's `pan` mode, which scrolls the window only far enough to
+   * reveal the focused field's rect (its line plus its bottom padding), so a
+   * button under the field stayed under the keyboard. The field's bottom
+   * padding reaches that far, pulled back by a matching negative margin so it
+   * looks the same: what Android reveals is now the field AND the button. The
+   * AI composer's trick (`AiChatScreen`), here for a sheet.
+   */
+  keyboardReach?: number;
   /**
    * The v3 sheet field: an 18 corner, a c2 edge and a 4 dp glow ring round it,
    * 17 / 500 text. For the one field a sheet exists to fill — a new task's name.
@@ -568,9 +587,22 @@ export function FieldWell({
           selectTextOnFocus={selectAllOnFocus}
           keyboardType={keyboardType}
           onBlur={onBlur}
+          onSubmitEditing={onSubmitEditing}
+          submitBehavior={onSubmitEditing ? 'submit' : 'blurAndSubmit'}
           accessibilityLabel={accessibilityLabel}
           returnKeyType="done"
           className={`flex-1 ${textClass}`}
+          style={
+            keyboardReach > 0
+              ? {
+                  alignSelf: 'stretch',
+                  paddingTop: 0,
+                  paddingBottom: keyboardReach,
+                  marginBottom: -keyboardReach,
+                  textAlignVertical: 'center',
+                }
+              : undefined
+          }
         />
       </View>
     );

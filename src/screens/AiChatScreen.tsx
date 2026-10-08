@@ -54,6 +54,10 @@ import { discardSequence, sectionContext, sendMessage } from '../state/aiActions
 import { useAi, type AiMessage } from '../state/aiStore';
 import { glassTier, gradientFill, motion, palette, radius } from '../theme/tokens';
 
+/** The composer's line, and how many lines it shows before it scrolls inside. */
+const COMPOSER_LINE = 22;
+const COMPOSER_MAX_LINES = 4;
+
 const META: Record<
   AiSection,
   { kicker: string; line: string; title: string; body: string; placeholder: string }
@@ -166,7 +170,10 @@ export function AiChatScreen({
    */
   const startNew = () => useAi.getState().clearChat(section);
 
+  /** The pill's resting height — one line. It grows to four (`Composer`). */
   const composerHeight = 60;
+  /** What the pill measures now, so the thread clears a grown composer too. */
+  const [composerDrawn, setComposerDrawn] = useState(composerHeight);
   /** From the composer's foot to the screen's — see the note on the field. */
   const keyboardReach = insets.bottom + 12 + 8;
 
@@ -228,7 +235,7 @@ export function AiChatScreen({
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         contentContainerStyle={{
           paddingTop: insets.top + 64 + 16,
-          paddingBottom: insets.bottom + composerHeight + chipsHeight + 36,
+          paddingBottom: insets.bottom + composerDrawn + chipsHeight + 36,
           paddingHorizontal: 16,
           gap: 14,
         }}
@@ -312,6 +319,7 @@ export function AiChatScreen({
           pending={pending}
           height={composerHeight}
           keyboardReach={keyboardReach}
+          onHeight={setComposerDrawn}
           onAsk={ask}
           clearRef={clearDraft}
         />
@@ -516,28 +524,47 @@ function RoundButton({
  * each message, each proposal card, each entrance — and a long chat typed like a
  * slow one. `clearRef` is how the screen empties it: a chip or a suggestion asked
  * from the thread clears the draft in the same batch as it always did.
+ *
+ * ── IT GROWS TO FOUR LINES, AND RETURN IS A NEW LINE (U26) ────────────────
+ *
+ * A question about a training block is often two sentences, and a one-line
+ * field scrolled the start of it out of sight while it was typed. The field
+ * grows 1 → 4 lines (22 each) and then scrolls inside itself; ➤ stays at the
+ * bottom of the pill, where the thumb already is. Return now inserts a line
+ * break rather than sending: a multi-line field whose return sends cannot hold
+ * a second line, and ➤ is right there. The rejected alternative was keeping
+ * return-sends on a growing field, which only grows by wrapping.
  */
 function Composer({
   placeholder,
   pending,
   height,
   keyboardReach,
+  onHeight,
   onAsk,
   clearRef,
 }: {
   placeholder: string;
   pending: boolean;
+  /** One line's pill. */
   height: number;
   keyboardReach: number;
+  onHeight: (height: number) => void;
   onAsk: (text: string) => void;
   clearRef: MutableRefObject<() => void>;
 }) {
   const [draft, setDraft] = useState('');
   const clear = useCallback(() => setDraft(''), []);
   clearRef.current = clear;
+  // One 22 line centred in the resting pill; four of them at most.
+  const padY = (height - COMPOSER_LINE) / 2;
   return (
     <GlassBar radius={radius.navPill}>
-      <View style={{ height }} className="flex-row items-center pl-lg pr-sm">
+      <View
+        style={{ minHeight: height }}
+        className="flex-row items-end pl-lg pr-sm"
+        onLayout={(e) => onHeight(Math.round(e.nativeEvent.layout.height))}
+      >
         {/*
           THE KEYBOARD. The app runs Android's `pan` mode, which scrolls the
           window just far enough to show the FOCUSED RECT of the field — and
@@ -553,24 +580,26 @@ function Composer({
           onChangeText={setDraft}
           placeholder={placeholder}
           placeholderTextColor={palette.inkFaint}
-          onSubmitEditing={() => onAsk(draft)}
-          returnKeyType="send"
-          blurOnSubmit={false}
-          multiline={false}
+          multiline
+          scrollEnabled
           accessibilityLabel={placeholder}
           style={{
             flex: 1,
-            alignSelf: 'stretch',
             fontSize: 16,
+            lineHeight: COMPOSER_LINE,
             color: palette.ink,
             paddingHorizontal: 0,
-            paddingTop: 0,
-            paddingBottom: keyboardReach,
+            paddingTop: padY,
+            paddingBottom: padY + keyboardReach,
             marginBottom: -keyboardReach,
-            textAlignVertical: 'center',
+            // Grows with its text to four lines, then scrolls inside.
+            maxHeight: COMPOSER_LINE * COMPOSER_MAX_LINES + padY * 2 + keyboardReach,
+            textAlignVertical: 'top',
           }}
         />
-        <SendButton live={draft.trim() !== '' && !pending} onPress={() => onAsk(draft)} />
+        <View style={{ paddingBottom: (height - 44) / 2 }}>
+          <SendButton live={draft.trim() !== '' && !pending} onPress={() => onAsk(draft)} />
+        </View>
       </View>
     </GlassBar>
   );

@@ -1165,6 +1165,9 @@ const RU: Record<string, string> = {
   'Removed a logged set from {name}': 'Удалён выполненный подход: {name}',
   'Removed a set': 'Подход удалён',
   'Discard your changes?': 'Отменить изменения?',
+  'Discard changes?': 'Отменить изменения?',
+  'This task hasn’t been saved.': 'Эта задача ещё не сохранена.',
+  'Your changes to this task aren’t saved yet.': 'Изменения этой задачи ещё не сохранены.',
   'This routine goes back to how it was when you opened it.':
     'Программа вернётся к тому виду, в котором вы её открыли.',
   'Your edits to this exercise are not saved yet.': 'Изменения этого упражнения ещё не сохранены.',

@@ -71,16 +71,26 @@
  * And a one-day task gets `Today` / `Tomorrow` beside its date, because those
  * two are nearly every one-day task ever typed, and the month grid is three
  * taps for either.
+ *
+ * ── A DRAFT IS NOT THROWN AWAY BY A STRAY TAP ─────────────────────────────
+ *
+ * Scrim, handle, back and `Cancel` used to drop whatever was typed. Now, when
+ * saving would write something different from what was opened
+ * (`lib/sheetDirty.ts`), they ask "Discard changes?" — `Keep editing` first,
+ * under the thumb and on the scrim, `Discard` in coral. An untouched sheet still
+ * closes on one tap. And the keyboard's ✓ saves, when `Save task` would
+ * (`lib/sheetSubmit.ts`), so a name-only task never needs the reach past it.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Text, View } from 'react-native';
+import { Animated, Keyboard, Text, View } from 'react-native';
 
 import { BubblePressable } from './bubbles';
+import { ConfirmSheet } from './ConfirmSheet';
 import { DayPicker } from './DayPicker';
 import { Icon } from './Icon';
 import { MaterialSymbol } from './MaterialSymbol';
-import { Sheet, SheetCancel } from './Sheet';
+import { Sheet, SheetCancel, type SheetGuard } from './Sheet';
 import { TimeWheel } from './TimeWheel';
 import {
   FieldWell,
@@ -92,7 +102,10 @@ import {
   Toggle,
 } from './primitives';
 import { dayKey, formatLongDay, shiftDay, weekdayLabels } from '../lib/days';
+import { editorBack } from '../lib/editorLeave';
 import { ensureNotificationPermission } from '../lib/notify';
+import { taskDraftChanged } from '../lib/sheetDirty';
+import { taskSavable } from '../lib/sheetSubmit';
 import { useLanguage, useT } from '../hooks/useT';
 import {
   REMIND_AGAIN_MINUTES,
@@ -198,7 +211,39 @@ export function TaskEditorSheet({
     reminder.hour * 60 + reminder.minute <= now.getHours() * 60 + now.getMinutes();
 
   // A task with no name is not a task, and one that asks on no day never asks.
-  const savable = name.trim() !== '' && (mode !== 'pick' || days.length > 0);
+  const savable = taskSavable(name, mode === 'pick' ? days : null);
+
+  /** What `Save task` would send — and so what a close would lose. */
+  const draft: TaskDraft = {
+    name: name.trim(),
+    schedule,
+    // A one-day task's two dates are one fact — the store enforces it too, and
+    // this is the half that keeps the sheet honest about what it is about to send.
+    startedOn: kind === 'once' ? onceDay : startedOn,
+    reminder,
+  };
+  // What the sheet opened with, frozen: the props are the saved task.
+  const opened = useRef<TaskDraft>({
+    name: initialName,
+    schedule: initialSchedule,
+    startedOn: initialSchedule.kind === 'once' ? initialSchedule.day : (initialStartedOn ?? today),
+    reminder: initialReminder,
+  }).current;
+  const dirty = taskDraftChanged(opened, draft);
+
+  const save = () => {
+    if (savable) onSave(draft);
+  };
+
+  /** The held exit, waiting on "Discard changes?". */
+  const [pendingClose, setPendingClose] = useState<(() => void) | null>(null);
+  const guard: SheetGuard = (proceed) => {
+    if (editorBack(dirty) === 'leave') return true;
+    // The keyboard would sit over the question's two answers.
+    Keyboard.dismiss();
+    setPendingClose(() => proceed);
+    return false;
+  };
 
   const MODES = [
     { value: 'daily' as const, label: t('Every day') },
@@ -208,209 +253,219 @@ export function TaskEditorSheet({
   ];
 
   return (
-    <Sheet title={title} onDismiss={onDismiss}>
-      <Kicker className="mb-sm">{t('Name')}</Kicker>
-      <FieldWell
-        value={name}
-        size="body"
-        lit
-        placeholder={t('What are you asking yourself to do?')}
-        onChangeText={setName}
-        autoFocus={initialName === ''}
-        accessibilityLabel={t('Task name')}
-      />
+    <>
+      <Sheet title={title} onDismiss={onDismiss} guard={guard}>
+        <Kicker className="mb-sm">{t('Name')}</Kicker>
+        <FieldWell
+          value={name}
+          size="body"
+          lit
+          placeholder={t('What are you asking yourself to do?')}
+          onChangeText={setName}
+          onSubmitEditing={save}
+          autoFocus={initialName === ''}
+          accessibilityLabel={t('Task name')}
+        />
 
-      <Kicker className="mb-sm mt-lg">{t('Repeats')}</Kicker>
-      <Segmented
-        options={MODES}
-        value={mode}
-        onChange={(next) => {
-          setMode(next);
-          // The grid belongs to whichever date is in play; switching kind while
-          // it is open would leave it editing a date the sheet no longer shows.
-          setDatePicker(null);
-        }}
-        accessibilityLabel={t('Repeats')}
-      />
+        <Kicker className="mb-sm mt-lg">{t('Repeats')}</Kicker>
+        <Segmented
+          options={MODES}
+          value={mode}
+          onChange={(next) => {
+            setMode(next);
+            // The grid belongs to whichever date is in play; switching kind while
+            // it is open would leave it editing a date the sheet no longer shows.
+            setDatePicker(null);
+          }}
+          accessibilityLabel={t('Repeats')}
+        />
 
-      {mode === 'pick' ? (
-        <View className="mt-md flex-row flex-wrap">
-          {weekdayLabels(lang).map((label, index) => {
-            const weekday = index as Weekday;
-            const selected = days.includes(weekday);
-            return (
-              <SelectChip
-                key={label + index}
-                label={label}
-                selected={selected}
-                onPress={() =>
-                  setDays((current) =>
-                    selected ? current.filter((day) => day !== weekday) : [...current, weekday],
-                  )
-                }
-              />
-            );
-          })}
-        </View>
-      ) : null}
-
-      {kind === 'once' ? (
-        <>
-          <Text className="mt-md text-label text-ink-faint">
-            {t('A one-day task. It asks on that day and never again.')}
-          </Text>
+        {mode === 'pick' ? (
           <View className="mt-md flex-row flex-wrap">
-            <SelectChip
-              label={t('Today')}
-              selected={onceDay === today}
-              onPress={() => setOnceDay(today)}
-            />
-            <SelectChip
-              label={t('Tomorrow')}
-              selected={onceDay === shiftDay(today, 1)}
-              onPress={() => setOnceDay(shiftDay(today, 1))}
-            />
+            {weekdayLabels(lang).map((label, index) => {
+              const weekday = index as Weekday;
+              const selected = days.includes(weekday);
+              return (
+                <SelectChip
+                  key={label + index}
+                  label={label}
+                  selected={selected}
+                  onPress={() =>
+                    setDays((current) =>
+                      selected ? current.filter((day) => day !== weekday) : [...current, weekday],
+                    )
+                  }
+                />
+              );
+            })}
           </View>
-          <DateRow
-            label={t('Which day')}
-            value={formatLongDay(onceDay, lang)}
-            open={datePicker === 'once'}
-            onToggle={() => setDatePicker(datePicker === 'once' ? null : 'once')}
-          />
-          {datePicker === 'once' ? (
-            <View className="mt-sm">
-              <DayPicker value={onceDay} onChange={setOnceDay} />
-            </View>
-          ) : null}
-        </>
-      ) : (
-        <>
-          <DateRow
-            label={t('Starts on')}
-            value={formatLongDay(startedOn, lang)}
-            open={datePicker === 'start'}
-            onToggle={() => setDatePicker(datePicker === 'start' ? null : 'start')}
-          />
-          {datePicker === 'start' ? (
-            <>
-              <View className="mt-sm">
-                <DayPicker value={startedOn} onChange={setStartedOn} />
-              </View>
-              <Text className="mt-sm text-label text-ink-faint">
-                {t('The day it first asks. Days before it stay exactly as you left them.')}
-              </Text>
-            </>
-          ) : null}
-        </>
-      )}
+        ) : null}
 
-      <View
-        className="mt-md flex-row items-center rounded-[18px] border"
-        style={{
-          gap: 12,
-          paddingVertical: 12,
-          paddingHorizontal: 14,
-          backgroundColor: 'rgba(236,241,238,0.03)',
-          borderColor: 'rgba(236,241,238,0.05)',
-        }}
-      >
-        <MaterialSymbol name="notifications" size={22} color={palette.acc} filled />
-        <View className="flex-1">
-          <Text className="text-[16px] font-medium text-ink">{t('Remind me')}</Text>
-          <Text className="mt-[1px] text-[13.5px] text-ink-faint">
-            {reminder
-              ? kind === 'once'
-                ? t('A notification with this task, at the time you set.')
-                : t('The phone will ask on the days this task asks.')
-              : t('Off')}
-          </Text>
-        </View>
-        <Toggle
-          value={reminder !== null}
-          // 07:00 rather than the current time: a reminder is a thing you want
-          // in the morning far more often than you want it at 14:36. Except on a
-          // one-day task for TODAY, where 07:00 has usually gone, so it is the
-          // next whole hour instead.
-          onChange={(on) => {
-            setReminder(on ? defaultReminder(kind === 'once' && onceDay === today) : null);
-            if (on)
-              void ensureNotificationPermission().then((state) => setBlocked(state !== 'granted'));
-          }}
-          accessibilityLabel={t('Remind me about this')}
-        />
-      </View>
-
-      {reminder && blocked ? (
-        <Text className="mt-sm text-label text-ink-faint">
-          {t('Notifications are switched off for this app, so nothing will arrive.')}
-        </Text>
-      ) : null}
-
-      {reminder ? (
-        <View className="mt-lg">
-          <TimeWheel
-            hour={reminder.hour}
-            minute={reminder.minute}
-            onChange={(hour, minute) => setReminder({ ...reminder, hour, minute })}
-          />
-          {reminderPassed ? (
-            <Text className="mt-sm text-label text-ink-faint">
-              {t('That time has already passed today, so pick a later one.')}
+        {kind === 'once' ? (
+          <>
+            <Text className="mt-md text-label text-ink-faint">
+              {t('A one-day task. It asks on that day and never again.')}
             </Text>
-          ) : null}
-
-          <Kicker className="mb-sm mt-lg">{t('Remind again')}</Kicker>
-          <View className="flex-row flex-wrap">
-            <SelectChip
-              label={t('Off')}
-              selected={!reminder.every}
-              onPress={() => setReminder({ hour: reminder.hour, minute: reminder.minute })}
-            />
-            {REMIND_AGAIN_MINUTES.map((minutes) => (
+            <View className="mt-md flex-row flex-wrap">
               <SelectChip
-                key={minutes}
-                label={formatInterval(minutes, lang)}
-                selected={reminder.every === minutes}
-                onPress={() => setReminder({ ...reminder, every: minutes })}
+                label={t('Today')}
+                selected={onceDay === today}
+                onPress={() => setOnceDay(today)}
               />
-            ))}
-          </View>
-          <Text className="mt-sm text-label text-ink-faint">
-            {reminder.every
-              ? t('Every {interval} after that, until you tick it off or the day ends.', {
-                  interval: formatInterval(reminder.every, lang),
-                })
-              : t('Just the one notification.')}
-          </Text>
-        </View>
-      ) : null}
+              <SelectChip
+                label={t('Tomorrow')}
+                selected={onceDay === shiftDay(today, 1)}
+                onPress={() => setOnceDay(shiftDay(today, 1))}
+              />
+            </View>
+            <DateRow
+              label={t('Which day')}
+              value={formatLongDay(onceDay, lang)}
+              open={datePicker === 'once'}
+              onToggle={() => setDatePicker(datePicker === 'once' ? null : 'once')}
+            />
+            {datePicker === 'once' ? (
+              <View className="mt-sm">
+                <DayPicker value={onceDay} onChange={setOnceDay} />
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <DateRow
+              label={t('Starts on')}
+              value={formatLongDay(startedOn, lang)}
+              open={datePicker === 'start'}
+              onToggle={() => setDatePicker(datePicker === 'start' ? null : 'start')}
+            />
+            {datePicker === 'start' ? (
+              <>
+                <View className="mt-sm">
+                  <DayPicker value={startedOn} onChange={setStartedOn} />
+                </View>
+                <Text className="mt-sm text-label text-ink-faint">
+                  {t('The day it first asks. Days before it stay exactly as you left them.')}
+                </Text>
+              </>
+            ) : null}
+          </>
+        )}
 
-      {savable ? null : (
-        <Text className="mt-sm text-label text-ink-faint">
-          {name.trim() === '' ? t('Give it a name.') : t('Pick at least one day.')}
-        </Text>
-      )}
-
-      <View style={{ marginTop: 18 }}>
-        <SaveButton
-          label={t('Save task')}
-          awake={savable}
-          onPress={() => {
-            if (!savable) return;
-            onSave({
-              name: name.trim(),
-              schedule,
-              // A one-day task's two dates are one fact — the store enforces it
-              // too, and this is the half that keeps the sheet honest about what
-              // it is about to send.
-              startedOn: kind === 'once' ? onceDay : startedOn,
-              reminder,
-            });
+        <View
+          className="mt-md flex-row items-center rounded-[18px] border"
+          style={{
+            gap: 12,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            backgroundColor: 'rgba(236,241,238,0.03)',
+            borderColor: 'rgba(236,241,238,0.05)',
           }}
+        >
+          <MaterialSymbol name="notifications" size={22} color={palette.acc} filled />
+          <View className="flex-1">
+            <Text className="text-[16px] font-medium text-ink">{t('Remind me')}</Text>
+            <Text className="mt-[1px] text-[13.5px] text-ink-faint">
+              {reminder
+                ? kind === 'once'
+                  ? t('A notification with this task, at the time you set.')
+                  : t('The phone will ask on the days this task asks.')
+                : t('Off')}
+            </Text>
+          </View>
+          <Toggle
+            value={reminder !== null}
+            // 07:00 rather than the current time: a reminder is a thing you want
+            // in the morning far more often than you want it at 14:36. Except on a
+            // one-day task for TODAY, where 07:00 has usually gone, so it is the
+            // next whole hour instead.
+            onChange={(on) => {
+              setReminder(on ? defaultReminder(kind === 'once' && onceDay === today) : null);
+              if (on)
+                void ensureNotificationPermission().then((state) =>
+                  setBlocked(state !== 'granted'),
+                );
+            }}
+            accessibilityLabel={t('Remind me about this')}
+          />
+        </View>
+
+        {reminder && blocked ? (
+          <Text className="mt-sm text-label text-ink-faint">
+            {t('Notifications are switched off for this app, so nothing will arrive.')}
+          </Text>
+        ) : null}
+
+        {reminder ? (
+          <View className="mt-lg">
+            <TimeWheel
+              hour={reminder.hour}
+              minute={reminder.minute}
+              onChange={(hour, minute) => setReminder({ ...reminder, hour, minute })}
+            />
+            {reminderPassed ? (
+              <Text className="mt-sm text-label text-ink-faint">
+                {t('That time has already passed today, so pick a later one.')}
+              </Text>
+            ) : null}
+
+            <Kicker className="mb-sm mt-lg">{t('Remind again')}</Kicker>
+            <View className="flex-row flex-wrap">
+              <SelectChip
+                label={t('Off')}
+                selected={!reminder.every}
+                onPress={() => setReminder({ hour: reminder.hour, minute: reminder.minute })}
+              />
+              {REMIND_AGAIN_MINUTES.map((minutes) => (
+                <SelectChip
+                  key={minutes}
+                  label={formatInterval(minutes, lang)}
+                  selected={reminder.every === minutes}
+                  onPress={() => setReminder({ ...reminder, every: minutes })}
+                />
+              ))}
+            </View>
+            <Text className="mt-sm text-label text-ink-faint">
+              {reminder.every
+                ? t('Every {interval} after that, until you tick it off or the day ends.', {
+                    interval: formatInterval(reminder.every, lang),
+                  })
+                : t('Just the one notification.')}
+            </Text>
+          </View>
+        ) : null}
+
+        {savable ? null : (
+          <Text className="mt-sm text-label text-ink-faint">
+            {name.trim() === '' ? t('Give it a name.') : t('Pick at least one day.')}
+          </Text>
+        )}
+
+        <View style={{ marginTop: 18 }}>
+          <SaveButton label={t('Save task')} awake={savable} onPress={save} />
+          <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
+        </View>
+      </Sheet>
+
+      {pendingClose ? (
+        <ConfirmSheet
+          tone="danger"
+          title={t('Discard changes?')}
+          body={
+            initialName === ''
+              ? t('This task hasn’t been saved.')
+              : t('Your changes to this task aren’t saved yet.')
+          }
+          confirmLabel={t('Discard changes')}
+          cancelLabel={t('Keep editing')}
+          onConfirm={() => {
+            const proceed = pendingClose;
+            setPendingClose(null);
+            proceed();
+          }}
+          onCancel={() => setPendingClose(null)}
         />
-        <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
-      </View>
-    </Sheet>
+      ) : null}
+    </>
   );
 }
 
