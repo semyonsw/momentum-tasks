@@ -13,7 +13,13 @@
  *    is one constant so it can be turned back into `inkMuted` in one line.
  *  - Green-on-black TEXT is `greenBright` only; `green` fails contrast at small
  *    sizes and is for fills. Text on a `green` fill is `ink` at 600.
- *  - TWO radii (14 for surfaces, pill for the rest), both in `tailwind.config.js`.
+ *  - ONE radius SCALE, named by what a corner holds: 18 a row or tile, 20 a
+ *    card, 22 a sheet, 24 the hero — plus 14 for a well or set row inside one,
+ *    and the pill. It used to be two radii (14 and pill); the design board
+ *    (tiles 16–17, "components → tokens") draws nested glass, and a card whose
+ *    corner equals the row inside it stops reading as a container. Each step is
+ *    2 dp apart so nesting is visible without any corner going soft. `radius`
+ *    below holds them as numbers, `tailwind.config.js` as classes.
  *  - Elevation is hairlines + surface steps. Exactly ONE real shadow exists,
  *    under the timer pill, and exactly ONE glow (`glow`), behind the two marks
  *    that say "this is the work". Neither carries meaning on its own.
@@ -26,6 +32,7 @@ import { Easing, type BoxShadowValue, type TextStyle } from 'react-native';
 import {
   DEFAULT_THEME_ID,
   DEFAULT_CUSTOM_COLORS,
+  NEUTRALS,
   deriveTheme,
   rgba,
   themeColors,
@@ -119,13 +126,15 @@ export const ai = {
 } as const;
 
 export const palette = {
-  bg: '#060807', // page — near-black (OLED off-pixels)
-  surface: '#0E1211', // cards, set rows
-  surfaceAlt: '#141A18', // wells, the primed next set, inline editors, timer pill
-  hairline: '#1E2523', // 1px separators — the only "border" in the app
-  ink: '#ECF1EE', // primary text. never pure white
-  inkMuted: '#8A968F', // secondary text
-  inkFaint: '#57615C', // micro-labels, ghosted prefilled values
+  // The neutrals' values live in `lib/theme.ts` (`NEUTRALS`), where the
+  // contrast test can reach them.
+  bg: NEUTRALS.bg, // page — near-black (OLED off-pixels)
+  surface: NEUTRALS.surface, // cards, set rows
+  surfaceAlt: NEUTRALS.surfaceAlt, // wells, the primed next set, inline editors, timer pill
+  hairline: NEUTRALS.hairline, // 1px separators — the only "border" in the app
+  ink: NEUTRALS.ink, // primary text. never pure white
+  inkMuted: NEUTRALS.inkMuted, // secondary text, and any text you can act on
+  inkFaint: NEUTRALS.inkFaint, // micro-labels, ghosted prefilled values — never an action
   /** Tinted card background — overload nudge only. */
   get greenWash(): string {
     return current.wash;
@@ -164,25 +173,34 @@ export const palette = {
 /**
  * GLASS — the raised translucent surfaces the sections are built from.
  *
- * A few percent of ink over the near-black, with the same hairline holding the
+ * A few percent of ink over the near-black, with a few percent more holding the
  * edge, so a card is legible over the lamps without punching a hole in them.
- * Flat alpha: every surface is one value, and `bg-ink/5` in a className is the
- * same decision as `glass.raised` here.
+ * Flat alpha: every surface is one value, and `bg-ink/[0.055]` in a className is
+ * the same decision as `glass.raised` here.
+ *
+ * The values are the design board's (decision 3): raised 5.5% with a 6% edge,
+ * lit c2 at 13% with a 30% edge — the same numbers as `glassTier.card` and
+ * `glassTier.lit` below, so a flat card and a glass pane of the same rank no
+ * longer disagree by half a percent. The edge replaced the opaque `hairline` on
+ * raised cards: a solid #1E2523 line over a lamp reads as a cut-out, a
+ * translucent one as the rim of the pane.
  */
 export const glass = {
   /** Cards, rows, tiles — the default raised surface. */
-  raised: 'rgba(236,241,238,0.05)',
+  raised: 'rgba(236,241,238,0.055)',
+  /** Its edge. */
+  raisedEdge: 'rgba(236,241,238,0.06)',
   /** Chips, wells and the second step down: present, but not a card. */
   sunken: 'rgba(236,241,238,0.03)',
   /** A dashed "add one" target — barely there until you look for it. */
   ghost: 'rgba(236,241,238,0.015)',
   /** The lit version: a surface that is currently the answer. */
   get green(): string {
-    return tint(0.12);
+    return tint(0.13);
   },
   /** Its edge. The hairline is invisible against a lit fill. */
   get greenEdge(): string {
-    return tint(0.32);
+    return tint(0.3);
   },
 };
 
@@ -406,8 +424,12 @@ export const elevation = {
 };
 
 /**
- * RADIUS — one step softer than the flat design, because a blurred pane with a
- * tight corner reads as a cut-out rather than as glass.
+ * RADIUS — the design board's scale (tiles 16–17): 18 a row or tile, 20 a card,
+ * 22 a sheet, 24 a hero. Softer than the flat design's 14, because a pane with a
+ * tight corner reads as a cut-out rather than as glass, and 2 dp apart so a card
+ * holding rows, or a sheet holding cards, shows its nesting at the corner.
+ * `sheet` is new with the scale: sheets borrowed `hero` before, which made the
+ * finish sheet's corner the same as the hero card it slides over.
  *
  * These live here as NUMBERS as well as in `tailwind.config.js` because a
  * `BlurView` has to be told its corner in `style` — NativeWind's transform does
@@ -418,7 +440,8 @@ export const radius = {
   cell: 10, // a calendar square
   row: 18, // a row, a chip container, a keypad key
   card: 20, // a card with contents of its own
-  hero: 24, // a hero, a sheet, an instrument
+  sheet: 22, // a bottom sheet's top corners
+  hero: 24, // a hero, an instrument
   navPill: 26, // the nav pill, and only it
   pill: 9999,
 } as const;

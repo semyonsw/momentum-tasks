@@ -436,14 +436,14 @@ export function MoneyScreen({
               className="h-[38px] flex-row items-center rounded-pill border border-hairline bg-surface-alt px-md"
             >
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 style={{ fontSize: 17, lineHeight: 20 }}
                 className="font-semibold text-ink"
               >
                 ⇄
               </Text>
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 style={{ fontSize: 14, marginLeft: 6 }}
                 className="font-semibold text-ink"
               >
@@ -497,7 +497,7 @@ export function MoneyScreen({
                   className="font-semibold text-ink"
                 />
                 <Text
-                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1.3}
                   style={{ fontSize: 21, lineHeight: 24, marginBottom: 7 }}
                   className="ml-sm font-semibold text-ink-muted"
                 >
@@ -541,7 +541,7 @@ export function MoneyScreen({
             ]}
           >
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ fontSize: 14 }}
               className="mr-sm font-medium tabular-nums text-ink"
             >
@@ -868,16 +868,16 @@ function DirectionHalf({
     >
       <View>
         <Text
-          allowFontScaling={false}
-          style={{ fontSize: 11.5, letterSpacing: 1.1 }}
+          maxFontSizeMultiplier={1.3}
+          style={{ fontSize: 12.5, letterSpacing: 1.1 }}
           className="font-semibold uppercase text-ink-muted"
         >
           {label}
         </Text>
         <Animated.View style={{ position: 'absolute', top: 0, left: 0, opacity: lit }}>
           <Text
-            allowFontScaling={false}
-            style={{ fontSize: 11.5, letterSpacing: 1.1 }}
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 12.5, letterSpacing: 1.1 }}
             className="font-semibold uppercase text-ink"
           >
             {label}
@@ -1091,7 +1091,7 @@ function CategoryTile({
       </ProgressRing>
       <Text
         numberOfLines={1}
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{ fontSize: 14.5, marginTop: 11 }}
         className="w-full text-center font-medium text-ink"
       >
@@ -1107,8 +1107,8 @@ function CategoryTile({
         className={['font-semibold', total > 0 ? 'text-green-bright' : 'text-ink-faint'].join(' ')}
       />
       <Text
-        allowFontScaling={false}
-        style={{ fontSize: 11.5, letterSpacing: 1.1 }}
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 12.5, letterSpacing: 1.1 }}
         className="mt-[2px] font-semibold uppercase tabular-nums text-ink-faint"
       >
         {total > 0 ? `${Math.round(share * 100)}%` : '\u2014'}

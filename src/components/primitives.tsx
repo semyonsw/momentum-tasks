@@ -69,11 +69,12 @@ export function Kicker({
   tone?: 'faint' | 'green' | 'dim';
   className?: string;
 }) {
-  // v3's kicker grey (#6B766F) sits one step above `ink-faint`: at 12.5 dp and
-  // uppercase the old #57615C was below what reads over the lamps. Margins stay
+  // v3 drew the kicker in #6B766F, one step above the old `ink-faint` (#57615C),
+  // which was below what reads over the lamps at 12.5 dp. U3 raised `ink-faint`
+  // past both (#7D8882, 5.5:1), so the kicker is the token again. Margins stay
   // the caller's — the section rhythm is `mt-kicker mb-kicker-gap` (22 / 10).
   const toneClass =
-    tone === 'green' ? 'text-acc' : tone === 'dim' ? 'text-green-dim' : 'text-[#6B766F]';
+    tone === 'green' ? 'text-acc' : tone === 'dim' ? 'text-green-dim' : 'text-ink-faint';
   return (
     <Text
       className={['text-micro font-semibold uppercase tabular-nums', toneClass, className].join(
@@ -147,7 +148,11 @@ export function GlassCard({
     <View
       style={{
         backgroundColor: green ? glass.green : tone === 'sunken' ? glass.sunken : glass.raised,
-        borderColor: green ? glass.greenEdge : palette.hairline,
+        borderColor: green
+          ? glass.greenEdge
+          : tone === 'raised'
+            ? glass.raisedEdge
+            : palette.hairline,
       }}
       className={[
         'overflow-hidden border',

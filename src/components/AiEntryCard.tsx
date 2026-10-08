@@ -246,7 +246,10 @@ function GradientLine({ text }: { text: string }) {
       {/* The measuring copy — natural width, never clipped, never seen. */}
       <View style={{ position: 'absolute', left: 0, top: 0, width: 4000, opacity: 0 }}>
         <View style={{ alignSelf: 'flex-start' }} onLayout={onText}>
-          <Text allowFontScaling={false} style={{ fontSize: LINE_SIZE, lineHeight: LINE_HEIGHT }}>
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: LINE_SIZE, lineHeight: LINE_HEIGHT }}
+          >
             {text}
           </Text>
         </View>

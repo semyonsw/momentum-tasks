@@ -130,7 +130,7 @@ export function ScreenHeader({
           <RunningText
             text={kicker}
             fadeColor={FADE_ON.page}
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={{
               fontSize: 13,
               lineHeight: 16,

@@ -215,8 +215,8 @@ export function FinishSheet({
           paddingTop: 12,
           paddingHorizontal: 16,
           paddingBottom: insets.bottom + 24,
-          borderTopLeftRadius: radius.hero,
-          borderTopRightRadius: radius.hero,
+          borderTopLeftRadius: radius.sheet,
+          borderTopRightRadius: radius.sheet,
           backgroundColor: palette.surface,
           borderTopWidth: 1,
           borderTopColor: 'rgba(236,241,238,0.08)',
@@ -226,7 +226,7 @@ export function FinishSheet({
         <View className="mb-[18px] h-[4px] w-[36px] self-center rounded-pill bg-hairline" />
         <Kicker tone="green">{t('Session complete')}</Kicker>
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.9 }}
           className="mt-[6px] font-semibold text-ink"
         >
@@ -335,7 +335,7 @@ export function FinishSheet({
                     style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
                   >
                     <Text
-                      allowFontScaling={false}
+                      maxFontSizeMultiplier={1.3}
                       style={{ fontSize: 13 }}
                       className={
                         selected ? 'font-semibold text-on-acc' : 'font-medium text-ink-muted'
@@ -406,9 +406,9 @@ function StatTile({
       }}
     >
       <Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         numberOfLines={1}
-        style={{ fontSize: 10, letterSpacing: 1.1 }}
+        style={{ fontSize: 12.5, letterSpacing: 1.1 }}
         className={['font-semibold uppercase', lit ? 'text-green-bright' : 'text-ink-faint'].join(
           ' ',
         )}
@@ -454,7 +454,7 @@ function SaveButton({ label, onPress }: { label: string; onPress: () => void }) 
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
         />
         <SpecularEdge color="rgba(236,241,238,0.22)" radius={radius.pill} height={2} />
-        <Text allowFontScaling={false} className="text-body font-semibold text-on-acc">
+        <Text maxFontSizeMultiplier={1.3} className="text-body font-semibold text-on-acc">
           {label}
         </Text>
       </Pressable>

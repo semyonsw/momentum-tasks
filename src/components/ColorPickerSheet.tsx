@@ -108,7 +108,7 @@ export function ColorPickerSheet({
             }}
           >
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ fontFamily: 'monospace', fontSize: 13, color: preview.onAcc }}
             >
               {hex}
@@ -199,7 +199,7 @@ export function ColorPickerSheet({
         }}
       >
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontFamily: 'monospace', fontSize: 16, color: palette.inkFaint }}
         >
           #
@@ -264,7 +264,7 @@ export function ColorPickerSheet({
           <Icon name="check" size={16} color={palette.onAcc} />
           <Text
             numberOfLines={1}
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={{ marginLeft: 8, color: palette.onAcc }}
             className="text-body font-semibold"
           >

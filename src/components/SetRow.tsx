@@ -281,7 +281,7 @@ function SetRowComponent({
           the numbers beside it: it is the label OF those numbers, and a micro
           `ink-faint` 3 next to a 30 dp green weight reads as a different row's. */}
       <Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         className={[
           'w-[22px] font-semibold uppercase tabular-nums',
           ring ? 'text-acc' : 'text-ink-faint',

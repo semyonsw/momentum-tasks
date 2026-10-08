@@ -121,7 +121,7 @@ export function FocusClockBlock({
   const labelNode = (
     <Text
       numberOfLines={1}
-      allowFontScaling={false}
+      maxFontSizeMultiplier={1.3}
       style={{ color: labelColor ?? tone.label }}
       className={`text-micro font-semibold uppercase ${labelPlacement === 'above' ? 'mb-xs' : 'mt-xs'}`}
     >

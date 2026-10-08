@@ -455,7 +455,7 @@ export function FocusMode({ unitSystem, elapsedMinutes, onClose, onFinish }: Foc
         />
         <Text
           numberOfLines={1}
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           className="flex-1 text-center text-micro font-semibold uppercase text-ink-faint"
         >
           {kicker}
@@ -565,7 +565,7 @@ function Lift({
             text={exercise.name}
             fadeColor={palette.bg}
             containerStyle={{ maxWidth: '100%' }}
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={{ fontSize: 22, lineHeight: 28 }}
             className="font-medium text-ink"
           />
@@ -800,7 +800,7 @@ function StepCircle({
         }}
       >
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontSize, color: palette.inkMuted }}
           className="font-semibold tabular-nums"
         >

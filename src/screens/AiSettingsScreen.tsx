@@ -246,7 +246,7 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
                 <Text
                   numberOfLines={1}
                   style={{ fontFamily: 'monospace' }}
-                  className="mt-[2px] text-[12px] tabular-nums text-ink-muted"
+                  className="mt-[2px] text-[12.5px] tabular-nums text-ink-muted"
                 >
                   {testedLine}
                 </Text>
@@ -537,7 +537,7 @@ function ProviderControl() {
           </Text>
           {option.live ? null : (
             <Text
-              style={{ fontSize: 10.5, letterSpacing: 0.9, marginLeft: 4 }}
+              style={{ fontSize: 12.5, letterSpacing: 0.9, marginLeft: 4 }}
               className="font-semibold uppercase text-ink-faint"
             >
               {t('soon')}

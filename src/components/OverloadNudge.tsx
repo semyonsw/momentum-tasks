@@ -116,7 +116,7 @@ export function OverloadNudge({
         </View>
         <Text
           numberOfLines={2}
-          style={{ fontSize: 11.5, lineHeight: 16, letterSpacing: 1.1 }}
+          style={{ fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1 }}
           className="flex-1 font-semibold uppercase tabular-nums text-acc"
         >
           {fact}

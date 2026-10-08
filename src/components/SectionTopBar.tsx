@@ -165,7 +165,7 @@ export function SectionTopBar({
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text
                 numberOfLines={1}
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 style={{
                   fontSize: 13,
                   lineHeight: 16,
@@ -378,7 +378,7 @@ export function LanguageToggle({
             }}
           >
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{
                 fontSize: 14.5,
                 lineHeight: 20,

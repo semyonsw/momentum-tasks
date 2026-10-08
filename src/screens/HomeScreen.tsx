@@ -117,11 +117,12 @@ import {
 import type { ID, RecentSessionSummary } from '../types/models';
 
 /**
- * The second line of a routine or a Recent row — between `ink-faint` and
- * `ink-muted`, because at 14 px the faint step stops being legible on a bench
- * and the muted one competes with the name above it.
+ * The second line of a routine or a Recent row — a step below `ink-muted`,
+ * because the muted one competes with the name above it. It was #6B766F, between
+ * the old faint and muted; the raised `inkFaint` (U3) is that step now, and
+ * legible on a bench where #6B766F (4.3:1) was not quite.
  */
-const DETAIL_INK = '#6B766F';
+const DETAIL_INK = palette.inkFaint;
 
 /** One routine, described well enough to choose it without opening it. */
 export interface RoutineChoice {
@@ -674,8 +675,8 @@ function InProgressCard({
           </View>
           <ProgressDial fraction={fraction} size={52} stroke={4}>
             <Text
-              allowFontScaling={false}
-              style={{ fontSize: 12 }}
+              maxFontSizeMultiplier={1.3}
+              style={{ fontSize: 12.5 }}
               className="font-semibold tabular-nums text-green-bright"
             >
               {`${Math.round(fraction * 100)}%`}
@@ -697,7 +698,7 @@ function TickingClock({ startedAt, className }: { startedAt: string; className?:
   }, []);
   return (
     <Text
-      allowFontScaling={false}
+      maxFontSizeMultiplier={1.3}
       className={['text-micro font-semibold uppercase tabular-nums', className ?? ''].join(' ')}
     >
       {formatElapsed(Number.isFinite(startMs) ? now - startMs : 0)}
@@ -863,9 +864,9 @@ function WorkoutBubble({
       >
         <View className="flex-row items-center">
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             numberOfLines={1}
-            style={{ fontSize: 10.5, letterSpacing: 1.1 }}
+            style={{ fontSize: 12.5, letterSpacing: 1.1 }}
             className="font-semibold uppercase text-acc"
           >
             {inProgress ? `${t('In progress')} · ` : `${t('Up next')} · ${t('Workout')}`}
@@ -876,7 +877,7 @@ function WorkoutBubble({
           text={name}
           fadeColor="#171C1A"
           containerStyle={{ marginTop: 2 }}
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontSize: 16, lineHeight: 20 }}
           className="font-semibold text-ink"
         />
@@ -921,8 +922,8 @@ function TickingClockSmall({ startedAt }: { startedAt: string }) {
   }, []);
   return (
     <Text
-      allowFontScaling={false}
-      style={{ fontSize: 10.5, letterSpacing: 1.1 }}
+      maxFontSizeMultiplier={1.3}
+      style={{ fontSize: 12.5, letterSpacing: 1.1 }}
       className="font-semibold tabular-nums text-acc"
     >
       {formatElapsed(Number.isFinite(startMs) ? now - startMs : 0)}
@@ -1044,7 +1045,7 @@ function Hero({
               text={plan.focus ? `${t('Today')} · ${plan.focus}` : t('Today')}
               fadeColor={FADE_ON.lit}
               containerStyle={{ flex: 1 }}
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ letterSpacing: 1.1 }}
               className="text-micro font-semibold uppercase text-acc"
             />
@@ -1061,8 +1062,8 @@ function Hero({
                 }}
               >
                 <Text
-                  allowFontScaling={false}
-                  style={{ fontSize: 11.5, letterSpacing: 0.9 }}
+                  maxFontSizeMultiplier={1.3}
+                  style={{ fontSize: 12.5, letterSpacing: 0.9 }}
                   className="font-semibold uppercase tabular-nums text-acc"
                 >
                   {`${plan.nudgeCount} ${plural(plan.nudgeCount, {
@@ -1077,7 +1078,7 @@ function Hero({
 
           <Text
             numberOfLines={2}
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={focalType.heroName}
             className="mt-sm font-semibold text-ink"
           >
@@ -1132,8 +1133,8 @@ function HeroStat({
   return (
     <View className="mr-[22px]">
       <Text
-        allowFontScaling={false}
-        style={{ fontSize: 11.5, letterSpacing: 1.1 }}
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 12.5, letterSpacing: 1.1 }}
         className="font-semibold uppercase text-ink-faint"
       >
         {label}
@@ -1225,7 +1226,7 @@ function SequenceStrip({ sequence, onPress }: { sequence: SequenceView; onPress:
           text={summary}
           fadeColor={FADE_ON.page}
           containerStyle={{ flex: 1, marginLeft: 12 }}
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           className="text-label tabular-nums text-ink-faint"
         />
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={16} color={palette.inkFaint} />
@@ -1264,7 +1265,7 @@ function SequenceChip({
       style={(state) => [pressedStyle(state), { flexDirection: 'row', alignItems: 'center' }]}
     >
       {divided ? (
-        <Text className="mx-[3px] text-label text-ink-faint" allowFontScaling={false}>
+        <Text className="mx-[3px] text-label text-ink-faint" maxFontSizeMultiplier={1.3}>
           ›
         </Text>
       ) : null}
@@ -1402,8 +1403,8 @@ function AiPill() {
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
       />
       <Text
-        allowFontScaling={false}
-        style={{ fontSize: 10, letterSpacing: 0.9, color: '#FFFFFF' }}
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 12.5, letterSpacing: 0.9, color: '#FFFFFF' }}
         className="font-bold uppercase"
       >
         AI
@@ -1469,7 +1470,7 @@ function RecentRow({
         <View className="flex-row items-center">
           {numbered ? (
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ fontSize: 13.5 }}
               className="mr-sm font-semibold tabular-nums text-acc"
             >

@@ -190,7 +190,7 @@ export function FocusRest({
             />
             <Text
               numberOfLines={1}
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ color: isPaused ? palette.greenBright : palette.inkFaint }}
               className="mt-xs text-micro font-semibold uppercase"
             >
@@ -442,7 +442,7 @@ function RestControl({
         {icon ? <Icon name={icon} size={18} color={palette.ink} /> : null}
         {label ? (
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={{ fontSize: 15, color: lit ? palette.greenBright : palette.inkMuted }}
             className={lit ? 'font-semibold tabular-nums' : 'font-medium tabular-nums'}
           >
@@ -512,7 +512,7 @@ function UpNextCard({
           {isNewExercise ? `${t('Up next')} · ${t('new machine')}` : t('Up next')}
         </Text>
         {onPress ? (
-          <Text allowFontScaling={false} className="ml-md text-title text-ink-faint">
+          <Text maxFontSizeMultiplier={1.3} className="ml-md text-title text-ink-faint">
             {isOpen ? '×' : '±'}
           </Text>
         ) : null}
@@ -521,13 +521,13 @@ function UpNextCard({
         text={exercise.name}
         fadeColor="#121615"
         containerStyle={{ marginTop: 6 }}
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{ fontSize: 20, lineHeight: 26 }}
         className="font-medium text-ink"
       />
       <Text
         numberOfLines={1}
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{ fontSize: 28, lineHeight: 34 }}
         className="mt-xs font-semibold tabular-nums text-ink"
       >

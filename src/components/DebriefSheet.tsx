@@ -293,8 +293,8 @@ export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
         <View
           style={{
             paddingBottom: insets.bottom + 16,
-            borderTopLeftRadius: radius.hero,
-            borderTopRightRadius: radius.hero,
+            borderTopLeftRadius: radius.sheet,
+            borderTopRightRadius: radius.sheet,
           }}
           className="border-t border-t-hairline bg-surface px-lg pt-lg"
         >
@@ -407,7 +407,7 @@ export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
                     style={pressedStyle}
                     className="h-[44px] justify-center"
                   >
-                    <Text className="text-label font-medium text-ink-faint">
+                    <Text className="text-label font-medium text-ink-muted">
                       {t('Not this time')}
                     </Text>
                   </Pressable>

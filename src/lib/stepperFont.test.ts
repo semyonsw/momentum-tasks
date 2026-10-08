@@ -12,11 +12,11 @@ describe('stepperFontSize', () => {
   it('steps down for longer values instead of auto-shrinking', () => {
     expect(stepperFontSize('100')).toBe(17);
     expect(stepperFontSize('22.5')).toBe(14);
-    expect(stepperFontSize('102.5')).toBe(12);
+    expect(stepperFontSize('102.5')).toBe(12.5);
   });
 
   it('never returns a size smaller than readable', () => {
-    expect(stepperFontSize('1234567')).toBeGreaterThanOrEqual(12);
+    expect(stepperFontSize('1234567')).toBeGreaterThanOrEqual(12.5);
   });
 });
 
@@ -38,8 +38,8 @@ describe('segmentFontSize', () => {
   it('shrinks a long translation a little, and never to nothing', () => {
     const long = segmentFontSize('Выбрать дни', 74);
     expect(long).toBeLessThan(13.5);
-    expect(long).toBeGreaterThanOrEqual(11);
-    expect(segmentFontSize('Каждый рабочий день', 20)).toBe(10.5);
+    expect(long).toBeGreaterThanOrEqual(12.5);
+    expect(segmentFontSize('Каждый рабочий день', 20)).toBe(12.5);
   });
 });
 

@@ -290,7 +290,7 @@ function RowCard({
               {row.name}
             </Text>
             {row.was && (state === 'changed' || removed) ? (
-              <Text className="mt-[2px] text-[12px] tabular-nums text-ink-faint">
+              <Text className="mt-[2px] text-[12.5px] tabular-nums text-ink-faint">
                 {t('was {value}', { value: formatRow(row.was, kg, bw) })}
               </Text>
             ) : null}
@@ -308,7 +308,7 @@ function RowCard({
               }}
             >
               <Text
-                style={{ fontSize: 10.5, letterSpacing: 0.9 }}
+                style={{ fontSize: 12.5, letterSpacing: 0.9 }}
                 className={[
                   'font-semibold uppercase',
                   removed ? 'text-ink-muted' : 'text-green-bright',
@@ -419,8 +419,8 @@ function Stepper({
       }}
     >
       <Text
-        allowFontScaling={false}
-        style={{ fontSize: 10, letterSpacing: 1 }}
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 12.5, letterSpacing: 1 }}
         className="text-center font-semibold uppercase text-ink-faint"
       >
         {label}
@@ -441,7 +441,7 @@ function Stepper({
         >
           <Text
             numberOfLines={1}
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={[
               { fontSize: stepperFontSize(value), lineHeight: 22 },
               differs ? textGlow.live : null,

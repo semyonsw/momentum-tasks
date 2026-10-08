@@ -53,8 +53,11 @@ import { SlidingThumb } from './SlidingThumb';
 
 /** The design's Finance pill width; `FloatingBubble` caps it at the screen. */
 const BUBBLE_WIDTH = 326;
-/** The unselected half's name: between `inkMuted` and `inkFaint`, as drawn. */
-const QUIET_KICKER = '#6B766F';
+/**
+ * The unselected half's name. It was the prototype's #6B766F, "between muted and
+ * faint"; the raised `inkFaint` (U3) is now that step, and #6B766F was 4.3:1.
+ */
+const QUIET_KICKER = palette.inkFaint;
 /* `RollingNumber` is memoised; inline style objects here would be new every
    render and defeat it. Both are theme-free, so module scope is safe. */
 const BALANCE_CONTAINER = { marginTop: 1 };
@@ -159,16 +162,16 @@ export function BalanceBubble({
               transform: [{ scale: pressed ? 0.94 : 1 }],
             })}
           >
-            <Text allowFontScaling={false} style={{ fontSize: 22, lineHeight: 26 }}>
+            <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 22, lineHeight: 26 }}>
               {account.glyph}
             </Text>
             <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 numberOfLines={1}
                 style={{
-                  fontSize: 10.5,
-                  lineHeight: 13,
+                  fontSize: 12.5,
+                  lineHeight: 16,
                   letterSpacing: 1.1,
                   color: selected ? palette.acc : QUIET_KICKER,
                 }}

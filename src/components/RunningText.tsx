@@ -95,6 +95,7 @@ export function RunningText({
   pxPerSecond = MARQUEE_PX_PER_SECOND,
   delayMs = MARQUEE_DELAY_MS,
   allowFontScaling,
+  maxFontSizeMultiplier,
   accessibilityLabel,
 }: {
   text: string;
@@ -111,6 +112,8 @@ export function RunningText({
   pxPerSecond?: number;
   delayMs?: number;
   allowFontScaling?: boolean;
+  /** The OS font-scale ceiling, passed to both copies so they measure alike. */
+  maxFontSizeMultiplier?: number;
   /** Defaults to the full string, which is the point: a reader gets all of it. */
   accessibilityLabel?: string;
 }) {
@@ -182,7 +185,12 @@ export function RunningText({
         style={{ position: 'absolute', left: 0, top: 0, width: 4000, opacity: 0 }}
       >
         <View style={{ alignSelf: 'flex-start' }} onLayout={onText}>
-          <Text style={style} className={className} allowFontScaling={allowFontScaling}>
+          <Text
+            style={style}
+            className={className}
+            allowFontScaling={allowFontScaling}
+            maxFontSizeMultiplier={maxFontSizeMultiplier}
+          >
             {text}
           </Text>
         </View>
@@ -201,6 +209,7 @@ export function RunningText({
           style={style}
           className={className}
           allowFontScaling={allowFontScaling}
+          maxFontSizeMultiplier={maxFontSizeMultiplier}
           numberOfLines={1}
           ellipsizeMode={travel > 0 ? 'clip' : 'tail'}
         >

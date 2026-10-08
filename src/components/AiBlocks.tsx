@@ -38,8 +38,8 @@ import { glassTier, gradientFill, greenSteps, palette, radius } from '../theme/t
 function AnswerKicker({ children }: { children: string }) {
   return (
     <Text
-      allowFontScaling={false}
-      style={{ fontSize: 10, letterSpacing: 1.2 }}
+      maxFontSizeMultiplier={1.3}
+      style={{ fontSize: 12.5, letterSpacing: 1.2 }}
       className="mb-xs font-semibold uppercase text-green-bright"
     >
       {children}
@@ -105,9 +105,9 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
             {block.stats.map((stat) => (
               <View key={stat.label} className="flex-1 pr-sm">
                 <Text
-                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1.3}
                   numberOfLines={1}
-                  style={{ fontSize: 10, letterSpacing: 1 }}
+                  style={{ fontSize: 12.5, letterSpacing: 1 }}
                   className="font-semibold uppercase text-ink-faint"
                 >
                   {stat.label}
@@ -135,7 +135,7 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
                 <View key={`${bar.label}-${index}`} className="flex-1 items-center">
                   <Text
                     numberOfLines={1}
-                    style={{ fontSize: 10 }}
+                    style={{ fontSize: 12.5 }}
                     className={[
                       'mb-xs tabular-nums',
                       top ? 'text-green-bright' : 'text-ink-faint',
@@ -159,7 +159,11 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
                       />
                     ) : null}
                   </View>
-                  <Text numberOfLines={1} style={{ fontSize: 10 }} className="mt-xs text-ink-faint">
+                  <Text
+                    numberOfLines={1}
+                    style={{ fontSize: 12.5 }}
+                    className="mt-xs text-ink-faint"
+                  >
                     {bar.label}
                   </Text>
                 </View>
@@ -188,7 +192,7 @@ export function SummaryCard({ block }: { block: SummaryBlock }) {
                   </Text>
                   <Text
                     numberOfLines={1}
-                    className="mt-[1px] text-[12px] tabular-nums text-ink-faint"
+                    className="mt-[1px] text-[12.5px] tabular-nums text-ink-faint"
                   >
                     {row.value}
                   </Text>

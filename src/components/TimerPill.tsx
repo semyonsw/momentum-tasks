@@ -329,7 +329,7 @@ export function PillKicker({
     <View className="flex-row items-center" style={{ gap: 8 }}>
       <Text
         numberOfLines={1}
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{ color: tone.label }}
         className="flex-1 text-micro font-semibold uppercase"
       >
@@ -338,7 +338,7 @@ export function PillKicker({
       {aside ? (
         <Text
           numberOfLines={1}
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ color: tone.secondary, fontSize: 13.5, lineHeight: 18, maxWidth: '60%' }}
         >
           {aside}
@@ -468,7 +468,7 @@ export function PillControl({
         ) : null}
         {typeof children === 'string' ? (
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             numberOfLines={1}
             style={{ color: tone.primary, fontSize: 15, fontWeight: '600' }}
             className="tabular-nums"

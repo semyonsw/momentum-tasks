@@ -147,7 +147,11 @@ export function SessionHeader({
                     style={PHRASE_STYLE}
                     className="text-ink"
                   />
-                  <Text allowFontScaling={false} style={SUBLINE} className="tabular-nums text-ink">
+                  <Text
+                    maxFontSizeMultiplier={1.3}
+                    style={SUBLINE}
+                    className="tabular-nums text-ink"
+                  >
                     {' · '}
                   </Text>
                   <ElapsedClock startedAt={startedAt} />
@@ -185,8 +189,8 @@ export function SessionHeader({
             }}
           >
             <Text
-              allowFontScaling={false}
-              style={{ fontSize: 12 }}
+              maxFontSizeMultiplier={1.3}
+              style={{ fontSize: 12.5 }}
               className="font-semibold tabular-nums text-green-bright"
             >
               {`#${workoutNumber}`}
@@ -247,7 +251,7 @@ function ElapsedClock({ startedAt }: { startedAt: string }) {
     return () => clearInterval(interval);
   }, []);
   return (
-    <Text allowFontScaling={false} style={SUBLINE} className="tabular-nums text-ink">
+    <Text maxFontSizeMultiplier={1.3} style={SUBLINE} className="tabular-nums text-ink">
       {formatElapsed(Number.isFinite(startMs) ? now - startMs : 0)}
     </Text>
   );

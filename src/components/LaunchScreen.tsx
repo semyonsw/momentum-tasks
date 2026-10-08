@@ -450,13 +450,13 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
         ))}
       </View>
       <Animated.Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{
           marginTop: 8,
           fontSize: 12.5,
           letterSpacing: 1.4,
           fontWeight: '600',
-          color: '#6B766F',
+          color: palette.inkFaint,
           textTransform: 'uppercase',
           opacity: tagline,
           transform: [{ translateY: nodes.taglineY }],
@@ -590,7 +590,7 @@ const Letter = memo(function Letter({
   );
   return (
     <Animated.Text
-      allowFontScaling={false}
+      maxFontSizeMultiplier={1.3}
       style={{
         fontSize: 26,
         letterSpacing: -0.5,
@@ -697,7 +697,7 @@ function StatusChip({
         className="font-semibold"
       />
       <Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{ fontSize: 13, color: done ? palette.inkMuted : palette.inkFaint }}
         className="font-medium"
       >

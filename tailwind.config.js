@@ -1,7 +1,7 @@
 /**
  * Tailwind / NativeWind configuration.
  *
- * The scale is deliberately amputated: no default colour palette, four radii,
+ * The scale is deliberately amputated: no default colour palette, five radii,
  * five spacing steps, five type sizes. A design system you cannot deviate from
  * is what keeps a minimal app minimal six months in.
  *
@@ -40,22 +40,22 @@ module.exports = {
       c2: 'rgb(var(--c2) / <alpha-value>)',
       c3: 'rgb(var(--c3) / <alpha-value>)',
     },
-    // FOUR radii, 10 / 14 / 18 / 22, and each one names what it is for rather
-    // than how big it is. `surface` was the only one for a long time; the
-    // redesign draws a card that holds other cards (a section's glass panel) and
-    // a sheet that holds a whole screen, and those cannot be the same corner as
-    // the row inside them or the nesting stops reading.
+    // THE RADIUS SCALE is the design board's (tiles 16–17, decision 3): 18 a
+    // row or tile, 20 a card, 22 a sheet, 24 a hero, each 2 apart so a container
+    // reads as one at its corner — a card's corner equal to the row inside it is
+    // how nesting stops reading. Below that sit `cell` and `surface` (14), the
+    // well or set row INSIDE a row; the design keeps set rows at 14 on purpose.
     //
-    // The GLASS redesign deliberately did not add a fifth.
-    // Its softer corners live in `radius` in `theme/tokens.ts` as NUMBERS,
-    // because a `BlurView` has to be told its corner in `style` — NativeWind's
-    // transform does not reach a native component — and a second spelling of
-    // the same scale is a second thing to keep in sync for nobody's benefit.
+    // Only the steps a className needs are here. Cards (20) and heroes (24) are
+    // glass panes, and their corners live in `radius` in `theme/tokens.ts` as
+    // NUMBERS, because a native backdrop has to be told its corner in `style` —
+    // NativeWind's transform does not reach a native component — and a second
+    // spelling of the same step is a second thing to keep in sync for nobody.
     borderRadius: {
       none: '0',
       cell: '10px', // a calendar square, a keypad key
-      surface: '14px', // rows, wells, the standard card
-      card: '18px', // a tile with its own contents — category tiles, task rows
+      surface: '14px', // wells, set rows, inline editors — inside a row or card
+      card: '18px', // a row or tile with its own contents — category tiles, task rows
       sheet: '22px', // a bottom sheet, the balance panel
       pill: '9999px',
     },

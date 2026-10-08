@@ -42,7 +42,7 @@ export function StreakFlame({ streak }: { streak: number }) {
   // Above the early return, for the rules of hooks: a fresh style object would
   // defeat RollingNumber's memo.
   const numberStyle = useMemo(
-    () => ({ fontSize: 12, color: warm ? palette.greenBright : palette.inkMuted }),
+    () => ({ fontSize: 12.5, color: warm ? palette.greenBright : palette.inkMuted }),
     [warm],
   );
 

@@ -192,8 +192,8 @@ const MINUTES_PER_DAY = 1440;
  */
 const TIME_STEP_MINUTES = 15;
 
-/** The second line of a session card — between faint and muted. See HomeScreen. */
-const DETAIL_INK = '#6B766F';
+/** The second line of a session card — a step below muted. See HomeScreen. */
+const DETAIL_INK = palette.inkFaint;
 
 /*
  * The motion curves the design gives this screen: the range thumb and the
@@ -590,7 +590,7 @@ export function HistoryScreen({
                 <View className="p-[18px]">
                   <View className="flex-row items-center" style={{ gap: 8 }}>
                     <Text
-                      allowFontScaling={false}
+                      maxFontSizeMultiplier={1.3}
                       numberOfLines={1}
                       style={{ letterSpacing: 1.1 }}
                       className="flex-1 text-micro font-semibold uppercase text-acc"
@@ -753,7 +753,7 @@ function SessionTime({ label, value }: { label: string; value: string }) {
     <View accessible accessibilityLabel={`${label} ${value}`}>
       <Kicker>{label}</Kicker>
       <Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{ fontSize: 17, lineHeight: 22 }}
         className="mt-[2px] font-semibold tabular-nums text-ink"
       >
@@ -944,7 +944,7 @@ function WorkoutRow({
             gutter is reserved even when a workout has no number, because a row
             that shifts left is harder to scan than one with a gap. */}
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontSize: 14 }}
           className="w-[38px] font-semibold tabular-nums text-acc"
         >
@@ -1100,8 +1100,9 @@ function WorkoutRow({
 
                     `+ Add a set` is the way back from a mis-tapped ✕, and it is
                     the reason a set row's ✕ can stay a single tap. `Remove
-                    exercise` is `ink-faint` rather than green because it takes
-                    something away, the same weight `Delete this workout` has. */}
+                    exercise` is `ink-muted` rather than green because it takes
+                    something away, the same weight `Delete this workout` has —
+                    and not `ink-faint`, which is for labels, never actions (U3). */}
                   {listing ? (
                     <View className="flex-row px-lg pb-sm">
                       <Pressable
@@ -1135,7 +1136,7 @@ function WorkoutRow({
                           style={pressedStyle}
                           className="h-hit justify-center"
                         >
-                          <Text className="text-label font-medium text-ink-faint">
+                          <Text className="text-label font-medium text-ink-muted">
                             {t('Remove exercise')}
                           </Text>
                         </Pressable>
@@ -1288,7 +1289,7 @@ function WorkoutRow({
               style={pressedStyle}
               className="h-hit justify-center px-lg"
             >
-              <Text className="text-label font-medium text-ink-faint">
+              <Text className="text-label font-medium text-ink-muted">
                 {t('Delete this workout')}
               </Text>
             </Pressable>
@@ -1398,7 +1399,7 @@ function RangeSwitch({
               }}
             >
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 numberOfLines={1}
                 style={{ fontSize: 13.5, color: selected ? palette.onAcc : palette.inkMuted }}
                 className="font-semibold"

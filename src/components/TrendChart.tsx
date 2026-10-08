@@ -206,7 +206,7 @@ export function TrendChart({ points, formatValue = defaultFormat }: TrendChartPr
             x={0}
             y={y(value) + 4}
             fill={palette.inkFaint}
-            fontSize={11}
+            fontSize={12.5}
             fontWeight="600"
             letterSpacing={1.1}
           >
@@ -247,7 +247,7 @@ export function TrendChart({ points, formatValue = defaultFormat }: TrendChartPr
             y={LABEL_Y}
             textAnchor={index === 0 ? 'start' : index === lastIndex ? 'end' : 'middle'}
             fill={palette.inkFaint}
-            fontSize={11}
+            fontSize={12.5}
             fontWeight="600"
             letterSpacing={1.1}
           >

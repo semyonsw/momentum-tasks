@@ -138,7 +138,7 @@ export function LandingScreen({
         <Rise>
           <View style={{ paddingHorizontal: 4 }}>
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{
                 fontSize: 12.5,
                 lineHeight: 16,
@@ -159,7 +159,7 @@ export function LandingScreen({
               }}
             >
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 style={{ flex: 1, fontSize: 34, lineHeight: 38, letterSpacing: -1 }}
                 className="font-semibold text-ink"
               >
@@ -168,7 +168,7 @@ export function LandingScreen({
               <AppMark size={46} />
             </View>
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ marginTop: 6, fontSize: 15.5, lineHeight: 21 }}
               className="text-ink-muted"
             >
@@ -219,8 +219,8 @@ export function LandingScreen({
             lamp={{ stop: 3, alpha: 0.34, corner: 'bottomLeft' }}
             extra={
               <Text
-                allowFontScaling={false}
-                style={{ paddingTop: 6, fontSize: 12, letterSpacing: 1.1, color: palette.acc }}
+                maxFontSizeMultiplier={1.3}
+                style={{ paddingTop: 6, fontSize: 12.5, letterSpacing: 1.1, color: palette.acc }}
                 className="font-semibold"
               >
                 {currency}
@@ -482,14 +482,14 @@ function Tile({
             ) : kicker ? (
               <RunningText
                 text={kicker}
-                allowFontScaling={false}
-                style={{ fontSize: 12, lineHeight: 16, letterSpacing: 1.1, color: palette.acc }}
+                maxFontSizeMultiplier={1.3}
+                style={{ fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1, color: palette.acc }}
                 className="font-semibold uppercase"
                 fadeColor={FADE_ON.card}
               />
             ) : null}
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               numberOfLines={1}
               style={{ marginTop: bar ? 12 : 6, fontSize: 23, lineHeight: 28, letterSpacing: -0.5 }}
               className="font-semibold text-ink"
@@ -498,7 +498,7 @@ function Tile({
             </Text>
             <RunningText
               text={detail}
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               containerStyle={{ marginTop: 4 }}
               style={{ fontSize: 14.5, lineHeight: 20 }}
               className="text-ink-muted"
@@ -525,7 +525,7 @@ function Badge({ label }: { label: string }) {
       }}
     >
       <Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{ fontSize: 13, color: palette.acc, fontVariant: ['tabular-nums'] }}
         className="font-bold"
       >
@@ -559,7 +559,7 @@ function MiniRing({ fraction, label }: { fraction: number; label: string }) {
           strokeDashoffset={length * (1 - Math.min(1, Math.max(0, fraction)))}
         />
       </Svg>
-      <Text allowFontScaling={false} style={{ fontSize: 12 }} className="font-bold text-ink">
+      <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 12.5 }} className="font-bold text-ink">
         {label}
       </Text>
     </View>

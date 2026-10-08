@@ -317,7 +317,7 @@ export function TaskEditorSheet({
         <MaterialSymbol name="notifications" size={22} color={palette.acc} filled />
         <View className="flex-1">
           <Text className="text-[16px] font-medium text-ink">{t('Remind me')}</Text>
-          <Text className="mt-[1px] text-[13.5px] text-[#6B766F]">
+          <Text className="mt-[1px] text-[13.5px] text-ink-faint">
             {reminder
               ? kind === 'once'
                 ? t('A notification with this task, at the time you set.')

@@ -153,7 +153,7 @@ function Star({
   return (
     <View pointerEvents="none" style={{ position: 'absolute', ...position }}>
       <Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{
           fontSize: glyphSize,
           lineHeight: glyphSize + 2,

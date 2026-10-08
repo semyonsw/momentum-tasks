@@ -154,7 +154,7 @@ export function AiProposalCard({
                   {state === 'changed' && row.was ? (
                     <Text
                       numberOfLines={1}
-                      style={{ fontSize: 12, textDecorationLine: 'line-through', marginRight: 6 }}
+                      style={{ fontSize: 12.5, textDecorationLine: 'line-through', marginRight: 6 }}
                       className="tabular-nums text-ink-faint"
                     >
                       {formatRow(row.was, kg, bw)}
@@ -179,7 +179,7 @@ export function AiProposalCard({
                   </Text>
                   {tagged ? (
                     <Text
-                      style={{ fontSize: 10.5, letterSpacing: 0.9, marginLeft: 8 }}
+                      style={{ fontSize: 12.5, letterSpacing: 0.9, marginLeft: 8 }}
                       className={[
                         'font-semibold uppercase',
                         state === 'removed' ? 'text-ink-muted' : 'text-green-bright',

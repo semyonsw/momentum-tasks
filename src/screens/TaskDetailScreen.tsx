@@ -137,14 +137,14 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
         showsVerticalScrollIndicator={false}
       >
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontSize: 30, lineHeight: 35, letterSpacing: -0.8 }}
           className="mx-lg mt-sm font-semibold text-ink"
         >
           {task.name}
         </Text>
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontSize: 15, lineHeight: 20 }}
           className="mx-lg mt-[6px] text-ink-muted"
         >
@@ -179,7 +179,7 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
             </Text>
             <View className="mt-[6px] flex-row items-center" style={{ gap: 6 }}>
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 style={STAT_VALUE}
                 className="font-semibold tabular-nums text-ink"
               >
@@ -194,7 +194,7 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
             </Text>
             <View className="mt-[6px] flex-row items-baseline">
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 style={STAT_VALUE}
                 className="font-semibold tabular-nums text-ink"
               >
@@ -218,7 +218,7 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
             <Icon name="chevron-left" size={22} color={palette.inkMuted} />
           </Pressable>
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={{ fontSize: 16 }}
             className="font-medium tabular-nums text-ink"
           >
@@ -243,8 +243,8 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
           {weekdayInitials(lang).map((initial, index) => (
             <Text
               key={`${initial}${index}`}
-              allowFontScaling={false}
-              style={{ fontSize: 11.5, lineHeight: 16, letterSpacing: 1.1 }}
+              maxFontSizeMultiplier={1.3}
+              style={{ fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1 }}
               className="flex-1 text-center font-semibold uppercase text-ink-faint"
             >
               {initial}
@@ -326,7 +326,7 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
           ]}
         >
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={{ fontSize: 15, color: danger }}
             className="font-medium"
           >
@@ -387,7 +387,8 @@ const CELL_GAP = 6;
 const CELL_RADIUS = 11;
 const DASHED = 'rgba(138,150,143,0.5)';
 const NOT_ANSWERED = 'rgba(236,241,238,0.05)';
-const CELL_MUTED = '#6B766F';
+/** Was #6B766F (4.3:1); the raised `inkFaint` (U3) is that step now. */
+const CELL_MUTED = palette.inkFaint;
 const CELL_FUTURE = '#3A433F';
 const POP_MS = 380;
 const POP_DELAY = 160;
@@ -411,7 +412,7 @@ function LegendItem({ label, swatch }: { label: string; swatch: object }) {
   return (
     <View className="flex-row items-center" style={{ gap: 6 }}>
       <View style={[{ width: 12, height: 12, borderRadius: 4 }, swatch]} />
-      <Text allowFontScaling={false} style={{ fontSize: 13, color: CELL_MUTED }}>
+      <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 13, color: CELL_MUTED }}>
         {label}
       </Text>
     </View>
@@ -510,7 +511,7 @@ function Cell({
         ]}
       >
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontSize: 13.5, fontWeight: '600', color }}
           className="tabular-nums"
         >

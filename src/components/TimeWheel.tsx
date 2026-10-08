@@ -120,7 +120,7 @@ export function TimeWheel({ hour, minute, onChange }: TimeWheelProps) {
           onSelect={(next) => onChange(next, minute)}
         />
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           className="mx-sm text-title-lg font-semibold text-ink-muted"
           style={{ lineHeight: ROW }}
         >
@@ -282,7 +282,7 @@ function Column({
               className="items-center justify-center"
             >
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 className={[
                   'text-title-lg tabular-nums',
                   selected && !dragging ? 'font-semibold text-ink' : 'font-medium text-ink-faint',

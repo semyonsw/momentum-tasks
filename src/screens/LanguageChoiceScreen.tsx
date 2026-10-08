@@ -111,7 +111,7 @@ function Choice({ language, onPress }: { language: Language; onPress: () => void
       className="mb-sm h-row-lg flex-row items-center rounded-surface border border-hairline bg-surface px-lg"
     >
       <View className="h-[36px] w-[44px] items-center justify-center rounded-pill border border-green-bright bg-surface-alt">
-        <Text allowFontScaling={false} className="text-label font-semibold text-green-bright">
+        <Text maxFontSizeMultiplier={1.3} className="text-label font-semibold text-green-bright">
           {LANGUAGE_LABELS[language]}
         </Text>
       </View>

@@ -414,7 +414,7 @@ export function TasksScreen({
                       {dayNumber(day)}
                     </Text>
                     <Text
-                      allowFontScaling={false}
+                      maxFontSizeMultiplier={1.3}
                       style={{ fontSize: 12.5, letterSpacing: 1.4 }}
                       className="mt-[6px] font-semibold uppercase tabular-nums text-ink-faint"
                     >
@@ -744,13 +744,13 @@ const TaskRow = memo(function TaskRow({
                 the detail line in Russian is routinely longer than the name. */}
             <RunningText
               text={task.name}
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               fadeColor={fade}
               className={['text-task', missed ? 'text-ink-muted' : 'text-ink'].join(' ')}
             />
             <RunningText
               text={missed ? `${detail} · ${t('streak kept')}` : detail}
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               fadeColor={fade}
               containerStyle={{ marginTop: 2 }}
               style={{ fontSize: 13.5, lineHeight: 18, color: DETAIL_INK }}
@@ -771,8 +771,8 @@ const TaskRow = memo(function TaskRow({
 
 /** Taller by two than the old 72: the name grew to 16.5/22 and kept its air. */
 const ROW_HEIGHT = 74;
-/** The detail line's grey — between muted and faint, the prototype's `#6B766F`. */
-const DETAIL_INK = '#6B766F';
+/** The detail line's grey — was the prototype's #6B766F; the raised `inkFaint` (U3) is that step now. */
+const DETAIL_INK = palette.inkFaint;
 /** The done mark and the two it replaces are one 36 dp footprint. */
 const MARK = 36;
 
@@ -1001,7 +1001,7 @@ function DayBubble({
           />
         </Svg>
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{
             fontSize: 17,
             letterSpacing: -0.5,
@@ -1020,14 +1020,14 @@ function DayBubble({
       >
         <RunningText
           text={kicker}
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           fadeColor={bubbleFade}
-          style={{ fontSize: 10.5, lineHeight: 14, letterSpacing: 1.1, color: palette.acc }}
+          style={{ fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1, color: palette.acc }}
           className="font-semibold uppercase"
         />
         <RunningText
           text={formatShortDay(day, lang)}
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           fadeColor={bubbleFade}
           containerStyle={{ marginTop: 2 }}
           style={{ fontSize: 16, lineHeight: 20 }}

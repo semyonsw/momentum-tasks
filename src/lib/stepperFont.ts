@@ -16,7 +16,9 @@ export function stepperFontSize(value: string): number {
   if (length <= 2) return 20;
   if (length === 3) return 17;
   if (length === 4) return 14;
-  return 12;
+  // Micro, the type scale's floor (U21): a five-character value is tight in the
+  // slot, but text smaller than the app's smallest step is not a size, it's a smudge.
+  return 12.5;
 }
 
 /**
@@ -33,7 +35,7 @@ export function statFontSize(value: string): number {
 /**
  * A segmented control's label: 13.5 when it fits the cell, smaller when a
  * translation runs long (`Выбрать дни` is half again `Pick days`), never below
- * 10.5. It was `adjustsFontSizeToFit` too, with exactly the failure above — the
+ * micro (12.5, U21). It was `adjustsFontSizeToFit` too, with exactly the failure above — the
  * four equal cells have no width on the first pass, so every label in the
  * Repeats control opened at the floor, pinned to the cell's top-left corner.
  *
@@ -45,7 +47,7 @@ export function segmentFontSize(label: string, cellWidth: number): number {
   const full = 13.5;
   const natural = label.length * 0.6 * full;
   if (cellWidth <= 0 || natural <= cellWidth) return full;
-  return Math.max(10.5, Math.floor(((full * cellWidth) / natural) * 2) / 2);
+  return Math.max(12.5, Math.floor(((full * cellWidth) / natural) * 2) / 2);
 }
 
 /**

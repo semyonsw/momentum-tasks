@@ -231,7 +231,36 @@ const DARK_GLYPH_ABOVE = 0.45;
 export const ON_ACC_DARK = '#06120A';
 export const ON_ACC_LIGHT = '#FFFFFF';
 
-const PAGE = '#060807';
+/**
+ * THE NEUTRALS — the page, its two surface steps, the hairline and the three
+ * inks. They never change with the theme, and they live here rather than only in
+ * `theme/tokens.ts` so the contrast rule below can be TESTED: tokens.ts imports
+ * `react-native`, which the suite deliberately cannot load.
+ *
+ * `inkFaint` was #57615C, which is 3.1:1 on the page — the colour of 166 labels,
+ * empty states and two undo-able actions, unreadable at arm's length under gym
+ * light. #7D8882 is the design's raised value (U3): 5.5:1 on the page and still
+ * ≥ 4.5:1 on `surfaceAlt`, the lightest thing text sits on, while staying a clear
+ * step below `inkMuted` so the three inks remain three. `global.css` repeats
+ * these as channels, and a test holds the two spellings together.
+ */
+export const NEUTRALS = {
+  bg: '#060807',
+  surface: '#0E1211',
+  surfaceAlt: '#141A18',
+  hairline: '#1E2523',
+  ink: '#ECF1EE',
+  inkMuted: '#8A968F',
+  inkFaint: '#7D8882',
+} as const;
+
+/** WCAG 2 contrast ratio between two colours, 1 to 21. */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+const PAGE = NEUTRALS.bg;
 
 export interface DerivedTheme {
   c1: string;

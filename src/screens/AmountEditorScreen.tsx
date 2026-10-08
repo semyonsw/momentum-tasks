@@ -496,7 +496,7 @@ export function AmountEditorScreen({
               reads as the thing being typed into. */}
           <View className="px-lg pt-[16px]">
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1 }}
               className="font-semibold uppercase text-acc"
             >
@@ -520,7 +520,7 @@ export function AmountEditorScreen({
               />
               <Caret />
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 style={{ fontSize: 22, lineHeight: 26, marginBottom: 10 }}
                 className="ml-sm font-semibold text-ink-muted"
               >
@@ -668,7 +668,7 @@ export function AmountEditorScreen({
               ]}
             >
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 style={{ fontSize: 14.5 }}
                 className="font-medium text-ink-muted"
               >
@@ -919,7 +919,7 @@ function SavePill({
         <SpecularEdge color={specularHeavy} radius={radius.pill} height={2} />
         <Icon name="check" size={20} color={palette.onAcc} />
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontSize: 17, marginLeft: 8, color: palette.onAcc }}
           className="font-semibold"
         >
@@ -985,7 +985,7 @@ function Key({
             <MaterialSymbol name="backspace" size={26} color={INK_SOFT} />
           ) : (
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ fontSize: 27 }}
               className="font-medium tabular-nums text-ink"
             >
@@ -1035,11 +1035,11 @@ function CategoryChip({
           backgroundColor: selected ? tint(0.15) : 'rgba(236,241,238,0.035)',
         }}
       >
-        <Text allowFontScaling={false} style={{ fontSize: 14.5 }}>
+        <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 14.5 }}>
           {glyph}
         </Text>
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           numberOfLines={1}
           style={{ fontSize: 14.5, marginLeft: 6, maxWidth: 160 }}
           className={selected ? 'font-semibold text-acc' : 'font-medium text-ink-muted'}
@@ -1086,7 +1086,7 @@ function Chip({
     >
       <Text
         numberOfLines={1}
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{ fontSize: 14.5, maxWidth: 190 }}
         className="font-medium text-ink"
       >
@@ -1131,8 +1131,8 @@ function TransferFields({
   const end = (label: string, account: MoneyAccount | null, onPress: () => void) => (
     <View style={{ gap: 6 }}>
       <Text
-        allowFontScaling={false}
-        style={{ fontSize: 12, letterSpacing: 1 }}
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 12.5, letterSpacing: 1 }}
         className="font-semibold uppercase text-ink-muted"
       >
         {label}
@@ -1157,7 +1157,7 @@ function TransferFields({
           style={pressedStyle}
           className="h-[38px] w-[38px] items-center justify-center rounded-pill"
         >
-          <Text allowFontScaling={false} style={{ fontSize: 20 }} className="text-acc">
+          <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 20 }} className="text-acc">
             ⇄
           </Text>
         </Pressable>
@@ -1218,7 +1218,7 @@ function StepperChip({
       </Pressable>
       <Text
         numberOfLines={1}
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         style={{ fontSize: 14.5, maxWidth: 170, color: INK_SOFT }}
         className="tabular-nums"
       >
@@ -1305,7 +1305,7 @@ function DirectionSwitch({
           >
             <Text
               numberOfLines={1}
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{
                 width: SEGMENT_WIDTH,
                 textAlign: 'center',
@@ -1390,7 +1390,7 @@ function MiniSegmented<T extends string>({
           >
             <Text
               numberOfLines={1}
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ fontSize: 13.5 }}
               className={selected ? 'font-semibold text-acc' : 'font-semibold text-ink-muted'}
             >

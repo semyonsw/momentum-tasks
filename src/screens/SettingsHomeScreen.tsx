@@ -394,8 +394,8 @@ export function SettingsHomeScreen({
             <View style={{ padding: 14 }}>
               <ThemePreview name={t(themeName(settings.themeId))} />
               <Text
-                allowFontScaling={false}
-                style={{ marginTop: 14, fontSize: 12, letterSpacing: 1.1 }}
+                maxFontSizeMultiplier={1.3}
+                style={{ marginTop: 14, fontSize: 12.5, letterSpacing: 1.1 }}
                 className="font-semibold uppercase text-ink-faint"
               >
                 {t('Presets')}
@@ -436,7 +436,7 @@ export function SettingsHomeScreen({
             </View>
           </GlassSurface>
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={{ marginTop: 8, fontSize: 14, lineHeight: 20 }}
             className="mx-lg text-ink-faint"
           >
@@ -514,7 +514,7 @@ export function SettingsHomeScreen({
             <View className="p-[18px]">
               <Kicker tone="green">{t('Last backup')}</Kicker>
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 numberOfLines={1}
                 style={{ fontSize: 28, lineHeight: 32, letterSpacing: -0.8 }}
                 className="mt-xs font-semibold tabular-nums text-ink"
@@ -625,14 +625,14 @@ export function SettingsHomeScreen({
             ]}
           >
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ fontSize: 14.5, color: danger }}
               className="font-medium"
             >
               {t('Reset every setting to its default')}
             </Text>
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ fontSize: 13.5, lineHeight: 18 }}
               className="mt-[2px] text-ink-faint"
             >
@@ -785,7 +785,7 @@ function ThemePreview({ name }: { name: string }) {
       >
         <View className="flex-row items-center justify-between">
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             numberOfLines={1}
             style={{ flex: 1, fontSize: 19, fontWeight: '600', color: palette.onAcc }}
           >
@@ -795,9 +795,9 @@ function ThemePreview({ name }: { name: string }) {
         </View>
         <RunningText
           text={cssFor(themeColors(themeId, custom))}
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           fadeColor={FADE_ON.gradient}
-          style={{ fontFamily: 'monospace', fontSize: 11.5, color: palette.onAcc, opacity: 0.88 }}
+          style={{ fontFamily: 'monospace', fontSize: 12.5, color: palette.onAcc, opacity: 0.88 }}
         />
       </LinearGradient>
     </View>
@@ -859,7 +859,7 @@ function PresetCard({
       </View>
       <View className="flex-row items-center" style={{ marginTop: 8, gap: 6 }}>
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           numberOfLines={1}
           style={{ flex: 1, fontSize: 14.5, lineHeight: 19 }}
           className="font-medium text-ink"
@@ -870,10 +870,10 @@ function PresetCard({
       </View>
       <RunningText
         text={t(preset.tag)}
-        allowFontScaling={false}
+        maxFontSizeMultiplier={1.3}
         fadeColor={selected ? PRESET_FADE.selected : PRESET_FADE.idle}
         containerStyle={{ marginTop: 1 }}
-        style={{ fontSize: 12.5, lineHeight: 16, color: '#6B766F' }}
+        style={{ fontSize: 12.5, lineHeight: 16, color: palette.inkFaint }}
       />
     </BubblePressable>
   );
@@ -919,7 +919,7 @@ function CustomCard({
       <View className="flex-row items-center" style={{ gap: 10 }}>
         <View className="flex-1" style={{ minWidth: 0 }}>
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             numberOfLines={1}
             style={{ fontSize: 15.5, lineHeight: 20 }}
             className="font-medium text-ink"
@@ -927,9 +927,9 @@ function CustomCard({
             {t('Custom')}
           </Text>
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             numberOfLines={2}
-            style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: '#6B766F' }}
+            style={{ marginTop: 2, fontSize: 13, lineHeight: 17, color: palette.inkFaint }}
           >
             {t('Pick your own three colours')}
           </Text>
@@ -1004,7 +1004,7 @@ function AiSettingsRow({ onPress }: { onPress: () => void }) {
         </View>
         <View className="flex-1 pr-md">
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             style={{ fontSize: 17, lineHeight: 22 }}
             className="font-medium text-ink"
           >
@@ -1023,7 +1023,7 @@ function AiSettingsRow({ onPress }: { onPress: () => void }) {
               />
             ) : null}
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               numberOfLines={1}
               style={{ fontSize: 13.5, color: ready ? ai.subline[1] : palette.inkFaint }}
             >
@@ -1091,7 +1091,7 @@ function SectionRow({
         </View>
         <View className="flex-1 pr-md" style={{ minWidth: 0 }}>
           <Text
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             numberOfLines={1}
             style={{ fontSize: 17, lineHeight: 22 }}
             className="font-medium text-ink"
@@ -1100,10 +1100,10 @@ function SectionRow({
           </Text>
           <RunningText
             text={hint}
-            allowFontScaling={false}
+            maxFontSizeMultiplier={1.3}
             fadeColor={FADE_ON.card}
             containerStyle={{ marginTop: 2 }}
-            style={{ fontSize: 13.5, lineHeight: 18, color: '#6B766F' }}
+            style={{ fontSize: 13.5, lineHeight: 18, color: palette.inkFaint }}
           />
         </View>
         <Icon name="chevron-right" size={18} color={palette.inkFaint} />

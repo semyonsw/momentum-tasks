@@ -2,7 +2,7 @@
  * The controls at the bottom of focus mode — the only things in it you press.
  *
  *   ┌──────────────────────────────┐
- *   │        undo last set         │  ← FocusUndoRow, ghost until there is one
+ *   │      ( undo last set )       │  ← FocusUndoRow, an outlined chip, ghost until there is one
  *   │           ╭────╮             │
  *   │           │ ✓  │             │  ← FocusDone, 176 dp
  *   │           │DONE│             │
@@ -138,7 +138,7 @@ export function FocusDone({
                 above needs. */}
             <Icon name="check" size={56} color={palette.onAcc} />
             <Text
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ marginTop: 6, fontSize: 15, letterSpacing: 2 }}
               className="font-bold uppercase text-on-acc"
             >
@@ -179,7 +179,15 @@ export function FocusFinish({ onPress }: { onPress: () => void }) {
 }
 
 /**
- * `undo last set` — a ghost row above the primary control.
+ * `undo last set` — an outlined chip above the primary control.
+ *
+ * A CHIP, IN `inkMuted`, because it is the one thing on this screen that saves
+ * you from a mis-tap (U22). It used to be bare micro text in `ink-faint`, which
+ * read as a caption: present, legible on a desk, and not obviously pressable from
+ * two metres. The outline is what says "button"; muted rather than accent because
+ * it is an escape hatch and must not compete with DONE. Rejected: a filled chip
+ * (a second primary beside a 176 dp primary), and accent text (green means
+ * "this is the work" everywhere else in focus mode).
  *
  * PRESENT EVEN WHEN THERE IS NOTHING TO UNDO, at 25% opacity, because the row
  * under it is 176 dp of green and a control that appears and disappears above it
@@ -206,9 +214,14 @@ export function FocusUndoRow({ onPress }: { onPress: (() => void) | null }) {
       style={({ pressed }) => [{ opacity: onPress == null ? 0.25 : pressed ? 0.45 : 1 }]}
       className="h-hit items-center justify-center"
     >
-      <Text className="text-micro font-semibold uppercase text-ink-faint">
-        {t('undo last set')}
-      </Text>
+      <View className="h-[36px] items-center justify-center rounded-pill border border-ink-muted/50 px-lg">
+        <Text
+          maxFontSizeMultiplier={1.3}
+          className="text-micro font-semibold uppercase text-ink-muted"
+        >
+          {t('undo last set')}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -314,7 +327,7 @@ export function FocusQuietAction({
   );
 }
 
-/** The bottom stack: the ghost undo row, then whatever the state's answer is. */
+/** The bottom stack: the undo chip, then whatever the state's answer is. */
 export function FocusBottom({
   children,
   onUndo,

@@ -56,6 +56,7 @@ import {
 } from '../lib/units';
 import type { SetField } from './SetRow';
 import { useLanguage, useT } from '../hooks/useT';
+import { palette } from '../theme/tokens';
 
 interface QuickAdjustProps {
   field: SetField;
@@ -205,7 +206,7 @@ export function QuickAdjust({
             keyboardType={isWeight || isTimeCount ? 'decimal-pad' : 'number-pad'}
             selectTextOnFocus
             placeholder={displayValue}
-            placeholderTextColor="#57615C"
+            placeholderTextColor={palette.inkFaint}
             className="mx-xs min-w-[110px] text-center text-display font-semibold tabular-nums text-ink"
           />
         ) : (

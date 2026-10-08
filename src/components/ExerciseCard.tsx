@@ -737,8 +737,8 @@ function ExerciseCardComponent({
                       <Text className="text-label font-medium text-acc">{`+ ${t('Warm-up')}`}</Text>
                       <Text
                         numberOfLines={1}
-                        className="text-[11px] tabular-nums text-ink-faint"
-                        allowFontScaling={false}
+                        className="text-[12.5px] tabular-nums text-ink-faint"
+                        maxFontSizeMultiplier={1.3}
                       >
                         {warmupSummary}
                       </Text>
@@ -1099,7 +1099,7 @@ function DonePill({ onPress }: { onPress: () => void }) {
       >
         <Icon name="check" size={14} color={palette.onAcc} />
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           style={{ fontSize: 13, marginLeft: 6, color: palette.onAcc }}
           className="font-semibold"
         >

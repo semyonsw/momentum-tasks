@@ -651,7 +651,7 @@ export function FloatingAction({
             ) : null}
             <RunningText
               text={label}
-              allowFontScaling={false}
+              maxFontSizeMultiplier={1.3}
               style={{ color: filled ? palette.onAcc : palette.inkMuted }}
               className="text-body font-semibold"
               // The fill's END colour: the fade has to match what is behind the
@@ -727,7 +727,7 @@ export function FloatingPair({
           </View>
         ) : null}
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={1.3}
           numberOfLines={1}
           style={{ color: palette.onAcc }}
           className="text-body font-semibold"
@@ -789,7 +789,7 @@ export function FloatingPair({
               />
               <SpecularEdge color="rgba(236,241,238,0.14)" radius={RADIUS.pill} />
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={1.3}
                 numberOfLines={1}
                 style={{ color: palette.inkMuted }}
                 className="text-label font-medium"
