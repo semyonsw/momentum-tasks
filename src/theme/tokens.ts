@@ -566,6 +566,17 @@ export const LAMPS: Record<string, readonly LampSpec[]> = {
 export const floatingSlot = { right: 16, bottom: 102, height: 64, paddingH: 24 } as const;
 
 /**
+ * The same slot on a PUSHED screen (an editor, a detail): no nav pill under it,
+ * so 28 off the bottom (the design's worded pill sits at 24 + the pill's edge).
+ * `clearance` is what a scroll on such a screen leaves under its last row so the
+ * pill never sits on it: 28, the pill, and 24 of air.
+ */
+export const pushedSlot = {
+  bottom: 28,
+  clearance: 28 + floatingSlot.height + 24,
+} as const;
+
+/**
  * What a scroll must clear so the two translucent bars never hide a row.
  *
  * Content scrolls visibly UNDER both bars — that is the single clearest read on

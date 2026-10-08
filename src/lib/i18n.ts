@@ -171,8 +171,6 @@ const RU: Record<string, string> = {
   'Start a workout': 'Начать тренировку',
   Recent: 'Недавние',
   'Nothing to open': 'Нечего открыть',
-  'Put some exercises in a routine — the list glyph in the corner of this screen — and it shows up here, ready to open.':
-    'Добавьте упражнения в программу — значок списка в углу этого экрана — и она появится здесь, готовая к запуску.',
   '{exercises} exercises · {sets} sets': 'упражнений: {exercises} · подходов: {sets}',
   'Open {name}': 'Открыть «{name}»',
   'Deleted routine': 'Удалённая программа',
@@ -1471,6 +1469,12 @@ const RU: Record<string, string> = {
   '{name} is in progress': '{name} — идёт тренировка',
   '{name} is up next': '{name} — следующая',
   'No routine yet': 'Программ пока нет',
+  'No routines yet': 'Программ пока нет',
+  'Make your first routine': 'Создайте первую программу',
+  'It appears here, one tap from starting.': 'Она появится здесь — в одном касании от старта.',
+  'Put some exercises in one of your routines and it shows up here, ready to open.':
+    'Добавьте упражнения в одну из программ, и она появится здесь, готовая к запуску.',
+  'Open routines': 'Открыть программы',
   '{account} · all time · {spent} spent in {month}':
     '{account} · за всё время · потрачено {spent} за {month}',
   'No accounts yet': 'Счетов пока нет',

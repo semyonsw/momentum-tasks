@@ -93,7 +93,7 @@ import {
   useBarInsets,
 } from '../components/glass';
 import { GrowIn, Reveal, Stagger, pressedStyle, usePressScale } from '../components/motion';
-import { Kicker } from '../components/primitives';
+import { Kicker, PrimaryButton } from '../components/primitives';
 import { Pressable } from '../components/Pressable';
 import { RollingNumber, RollingPhrase } from '../components/RollingNumber';
 import { FADE_ON, RunningText } from '../components/RunningText';
@@ -208,6 +208,11 @@ interface HomeScreenProps {
    */
   onOpenRoutines: () => void;
   onOpenLibrary: () => void;
+  /**
+   * Make an empty routine and open its editor — the empty screen's way forward
+   * (U12), the same create the Routines list's `Add routine` does.
+   */
+  onNewRoutine: () => void;
   /** A key has passed its test: the sparkle is lit. See `components/AiEntryCard.tsx`. */
   aiReady: boolean;
   /** The training chat, asking `prompt` if a chip was tapped. */
@@ -234,6 +239,7 @@ export function HomeScreen({
   onOpenHistory,
   onOpenRoutines,
   onOpenLibrary,
+  onNewRoutine,
   aiReady,
   onOpenAi,
   justSaved = null,
@@ -272,8 +278,8 @@ export function HomeScreen({
    * THE FLOATING SLOT IS NEVER EMPTY, and what fills it is the one thing this
    * screen is for. A live session outranks everything — it is the workout you
    * are actually in — then the routine whose turn it is, then simply the first
-   * one that has exercises in it. Only a phone with no usable routine at all
-   * leaves the slot empty, and that screen says so in words instead.
+   * one that has exercises in it. A phone with no usable routine at all gets
+   * `+ New routine` there (U12), beside an empty card that says so in words.
    */
   const openable = next ?? others[0] ?? null;
 
@@ -286,7 +292,13 @@ export function HomeScreen({
    * as the card's last row leaves, and the 50 of hysteresis keeps a thumb
    * resting near the line from making it flicker.
    */
-  const { visible: bubbleUp, onScroll, scrollRef, scrollToTop } = useBubbleOnScroll(300, 250);
+  const {
+    visible: bubbleUp,
+    fabHidden,
+    onScroll,
+    scrollRef,
+    scrollToTop,
+  } = useBubbleOnScroll(300, 250);
   const heroRecede = useHeroRecede(bubbleUp);
 
   /*
@@ -362,7 +374,13 @@ export function HomeScreen({
             </>
           ) : null}
 
-          {others.length === 0 && !next ? <Empty /> : null}
+          {others.length === 0 && !next ? (
+            <Empty
+              first={choices.length === 0}
+              onNewRoutine={onNewRoutine}
+              onOpenRoutines={onOpenRoutines}
+            />
+          ) : null}
 
           {recent.length > 0 ? (
             <>
@@ -396,13 +414,16 @@ export function HomeScreen({
     [
       aiReady,
       celebrating,
+      choices.length,
       heroRecede,
       inProgress,
       next,
       nextNumber,
       numbers,
+      onNewRoutine,
       onOpen,
       onOpenAi,
+      onOpenRoutines,
       onOpenSequence,
       onOpenSession,
       onResume,
@@ -480,6 +501,7 @@ export function HomeScreen({
       {inProgress ? (
         <FloatingAction
           round
+          hidden={fabHidden}
           label={t('Back to {name}', { name: inProgress.title })}
           icon="play"
           onPress={onResume}
@@ -487,9 +509,21 @@ export function HomeScreen({
       ) : openable ? (
         <FloatingAction
           round
+          hidden={fabHidden}
           label={t('Open {name}', { name: openable.name })}
           icon="play"
           onPress={() => onOpen(openable.routineId)}
+        />
+      ) : ready ? (
+        /* Nothing to open, so the slot offers the step before opening (U12):
+           `+` where every other section's `+` is. Waits for the log, like the
+           empty card it goes with. */
+        <FloatingAction
+          round
+          hidden={fabHidden}
+          label={t('New routine')}
+          icon="plus"
+          onPress={onNewRoutine}
         />
       ) : null}
     </View>
@@ -1496,18 +1530,52 @@ function RecentRow({
   );
 }
 
-/** Nothing to open: every routine is empty, or there are none. */
-function Empty() {
+/**
+ * Nothing to open: there are no routines, or every one of them is empty.
+ *
+ * It used to be one card for both, pointing at "the list glyph in the corner" —
+ * directions to a button instead of the button (U12). Now each case has its own
+ * way forward IN the card, and the floating slot offers the same `+`:
+ *   • no routines at all — `Make your first routine`, and `New routine` creates
+ *     one and opens its editor;
+ *   • routines that are all empty — `Nothing to open`, and `Open routines`, because
+ *     the thing to do is fill one of those in, not make another.
+ */
+function Empty({
+  first,
+  onNewRoutine,
+  onOpenRoutines,
+}: {
+  first: boolean;
+  onNewRoutine: () => void;
+  onOpenRoutines: () => void;
+}) {
   const t = useT();
   return (
     <GlassSurface tier="card" radius={radius.card} shadow="e1" flat className="mx-lg mt-kicker">
       <View className="p-lg">
-        <Kicker>{t('Nothing to open')}</Kicker>
+        <Kicker>{first ? t('No routines yet') : t('Nothing to open')}</Kicker>
+        {first ? (
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 22, lineHeight: 28, letterSpacing: -0.4 }}
+            className="mt-sm font-semibold text-ink"
+          >
+            {t('Make your first routine')}
+          </Text>
+        ) : null}
         <Text className="mt-sm text-body text-ink-muted">
-          {t(
-            'Put some exercises in a routine — the list glyph in the corner of this screen — and it shows up here, ready to open.',
-          )}
+          {first
+            ? t('It appears here, one tap from starting.')
+            : t('Put some exercises in one of your routines and it shows up here, ready to open.')}
         </Text>
+        <View className="mt-lg self-start">
+          {first ? (
+            <PrimaryButton label={t('New routine')} onPress={onNewRoutine} />
+          ) : (
+            <PrimaryButton label={t('Open routines')} variant="ghost" onPress={onOpenRoutines} />
+          )}
+        </View>
       </View>
     </GlassSurface>
   );

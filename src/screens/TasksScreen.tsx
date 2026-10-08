@@ -306,6 +306,7 @@ export function TasksScreen({
   // on the threshold does not flicker the pill.
   const {
     visible: bubbleUp,
+    fabHidden,
     onScroll,
     scrollRef,
     scrollToTop,
@@ -577,7 +578,13 @@ export function TasksScreen({
           one commit action. It was a dashed row at the foot of the list, which
           is a target that moves as the day fills. */}
       {lifted ? null : (
-        <FloatingAction round label={t('Add task')} icon="plus" onPress={() => setAdding(true)} />
+        <FloatingAction
+          round
+          label={t('Add task')}
+          icon="plus"
+          hidden={fabHidden}
+          onPress={() => setAdding(true)}
+        />
       )}
 
       {adding ? (

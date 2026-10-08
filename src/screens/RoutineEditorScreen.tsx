@@ -2,7 +2,7 @@
  * RoutineEditorScreen — the template, and the order you do it in.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ ‹  EDIT ROUTINE                      [ Save ]│
+ *   │ ‹  EDIT ROUTINE                           ⚄  │
  *   │ ROUTINE NAME                                 │
  *   │ ╭ Pull + swimming|                         ╮ │
  *   │ EXERCISES · 6                                │
@@ -21,6 +21,7 @@
  *   │ │ +  Add exercise                          │ │
  *   │ └──────────────────────────────────────────┘ │
  *   │            Delete routine                    │
+ *   │                                  ( ✓ Save )  │  ← the floating slot
  *   └──────────────────────────────────────────────┘
  *
  * ── THE PLAN IS EDITABLE, AND IT EXPANDS IN PLACE ───────────────────────────
@@ -136,6 +137,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
+import { FloatingAction } from '../components/glass';
 import { useLeaveGuard } from '../navigation/leaveGuard';
 import { RandomRoutineSheet } from '../components/RandomRoutineSheet';
 import { ReorderRow } from '../components/ReorderRow';
@@ -154,6 +156,7 @@ import {
 import { useDragReorder, type CardLayout } from '../hooks/useDragReorder';
 import { useLanguage, useT, type Translate } from '../hooks/useT';
 import type { Language } from '../lib/i18n';
+import { editorBack, editorCommitSlot, editorGuardsBack } from '../lib/editorLeave';
 import { tap, undo } from '../lib/feedback';
 import { countsToMax, maxLabel } from '../lib/maxReps';
 import {
@@ -177,7 +180,7 @@ import { REST_LIMITS, bumpExerciseRest, clearExerciseRest, resolveRest } from '.
 import { moveToIndex } from '../lib/reorder';
 import { describeLadder, ladderOf, ladderTargets, ladderTotal } from '../lib/repLadder';
 import { countUnitLabel, formatClock, formatDuration } from '../lib/units';
-import { palette } from '../theme/tokens';
+import { palette, pushedSlot } from '../theme/tokens';
 import type { Exercise, ID, Routine, RoutineItem } from '../types/models';
 
 interface RoutineEditorScreenProps {
@@ -431,7 +434,7 @@ export function RoutineEditorScreen({
    */
   const dirty = routineDraftChanged(routine, { name, items });
   const handleBack = () => {
-    if (dirty) setConfirmingLeave(true);
+    if (editorBack(dirty) === 'ask') setConfirmingLeave(true);
     else onBack();
   };
   /*
@@ -439,8 +442,8 @@ export function RoutineEditorScreen({
    * — `navigation/leaveGuard.ts`. Not while a sheet is up (it answers back
    * itself) or a row is in the air.
    */
-  const interceptBack =
-    dirty && !left && !lifted && !asking && !confirmingLeave && !removing && !confirmingDelete;
+  const busy = lifted != null || asking || confirmingLeave || removing != null || confirmingDelete;
+  const interceptBack = editorGuardsBack({ dirty, leaving: left, busy });
   useLeaveGuard(interceptBack, () => setConfirmingLeave(true));
 
   const dimmed = removing != null || confirmingDelete || confirmingLeave;
@@ -485,16 +488,15 @@ export function RoutineEditorScreen({
                   },
                 }
           }
-          action={
-            lifted
-              ? { label: t('Drop'), onPress: drop }
-              : { label: t('Save'), onPress: () => onSave(draft()) }
-          }
+          /* `Drop` only: it ends a mode the header is announcing, and is not a
+             commit. `Save` is the floating pill at the foot (U5). */
+          action={lifted ? { label: t('Drop'), onPress: drop } : undefined}
         />
 
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ paddingTop: 24, paddingBottom: 40 }}
+          // Clears the floating Save.
+          contentContainerStyle={{ paddingTop: 24, paddingBottom: pushedSlot.clearance }}
           showsVerticalScrollIndicator={false}
           scrollEnabled={!lifted && !dimmed}
         >
@@ -654,6 +656,19 @@ export function RoutineEditorScreen({
           )}
         </ScrollView>
       </View>
+
+      {/* THE COMMIT, in the floating slot like every other one (U5). It was
+          `[ Save ]` in the header's top-right, the one corner this app keeps
+          for destinations. Gone while a row is in the air or a sheet is up —
+          `lib/editorLeave.ts`. At 28: a pushed screen has no nav pill under it. */}
+      {editorCommitSlot({ busy, canCommit: true }) === 'hidden' ? null : (
+        <FloatingAction
+          label={t('Save')}
+          icon="check"
+          bottom={pushedSlot.bottom}
+          onPress={() => onSave(draft())}
+        />
+      )}
 
       {asking ? (
         <RandomRoutineSheet

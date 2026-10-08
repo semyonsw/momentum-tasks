@@ -354,7 +354,13 @@ export function MoneyScreen({
   /* The bubble, and the balance card stepping back while it is up. */
   // Finance's own line: 240 is where the balance card has left the top bar, and
   // the 40 below it is the hysteresis every bubble keeps.
-  const { visible: bubbleUp, onScroll, scrollRef, scrollToTop } = useBubbleOnScroll(240, 200);
+  const {
+    visible: bubbleUp,
+    fabHidden,
+    onScroll,
+    scrollRef,
+    scrollToTop,
+  } = useBubbleOnScroll(240, 200);
   const heroRecede = useHeroRecede(bubbleUp);
   /* Every live account's balance, for the bubble — one pill each, never a sum. */
   const bubbleAccounts = useMemo(
@@ -629,6 +635,7 @@ export function MoneyScreen({
       {/* Round, and it opens on Food — see the header. */}
       <FloatingAction
         round
+        hidden={fabHidden}
         label={direction === 'expense' ? t('Add expense') : t('Add income')}
         icon="plus"
         onPress={() =>

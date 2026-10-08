@@ -57,6 +57,7 @@ import { BubblePressable } from './bubbles';
 import { Icon, type IconName } from './Icon';
 import { MaterialSymbol, type SymbolName } from './MaterialSymbol';
 import { Pop, usePressScale } from './motion';
+import { FAB_HIDE_DISTANCE, FAB_HIDE_MS } from '../lib/fabScroll';
 import { FADE_ON, RunningText } from './RunningText';
 import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
@@ -469,6 +470,13 @@ export function GlassBar({
  * place in all four it is learned by position after a day; the label stays as
  * the accessibility label. Pushed screens keep the worded pill, because `Save`
  * and `Test & connect` are not things a glyph says unambiguously.
+ *
+ * `hidden` slides it 180 dp down, off the screen's edge, over 320 ms (U27): a
+ * section passes its scroll's `fabHidden` (`hooks/useBubbleOnScroll`,
+ * `lib/fabScroll`) so the circle stops covering the right-hand column of the
+ * rows being read. Slid, not faded or unmounted: it leaves the way it would be
+ * pushed, comes back from the same place, and the arrival motion is not re-run.
+ * At reduced motion it simply goes and comes back.
  */
 export function FloatingAction({
   label,
@@ -480,6 +488,7 @@ export function FloatingAction({
   symbol,
   onPress,
   accessibilityHint,
+  hidden = false,
 }: {
   label: string;
   icon?: IconName;
@@ -493,6 +502,8 @@ export function FloatingAction({
   bottom?: number;
   onPress: () => void;
   accessibilityHint?: string;
+  /** Stepped aside for a scroll down. See the header. */
+  hidden?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const filled = variant === 'filled' && !asleep;
@@ -529,6 +540,19 @@ export function FloatingAction({
       useNativeDriver: true,
     }).start();
   }, [asleep, motionScale, wake]);
+  const aside = useRef(new Animated.Value(hidden ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(aside, {
+      toValue: hidden ? 1 : 0,
+      duration: FAB_HIDE_MS * motionScale,
+      easing: curve(motion.ease),
+      useNativeDriver: true,
+    }).start();
+  }, [aside, hidden, motionScale]);
+  const asideY = useMemo(
+    () => aside.interpolate({ inputRange: [0, 1], outputRange: [0, FAB_HIDE_DISTANCE] }),
+    [aside],
+  );
   const opacity = useMemo(() => Animated.multiply(arrive, wake), [arrive, wake]);
   const translateY = useMemo(
     () => arrive.interpolate({ inputRange: [0, 1], outputRange: [round ? 18 : 10, 0] }),
@@ -541,6 +565,11 @@ export function FloatingAction({
 
   return (
     <Animated.View
+      // Off the screen is out of reach for a finger; make it so for a screen
+      // reader too, rather than leaving it announcing a button nobody can see.
+      pointerEvents={hidden ? 'none' : 'auto'}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
+      accessibilityElementsHidden={hidden}
       style={{
         position: 'absolute',
         right: floatingSlot.right,
@@ -559,6 +588,7 @@ export function FloatingAction({
         opacity,
         transform: [
           { translateY },
+          { translateY: asideY },
           ...(round ? [{ scale: popScale }] : []),
           ...press.style.transform,
         ],

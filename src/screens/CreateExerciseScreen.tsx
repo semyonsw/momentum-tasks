@@ -12,8 +12,8 @@
  * making it again — which, before this, silently cost the history filed under its id.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ ‹  NEW EXERCISE                    [ Create ]│
- *   │ ‹  EDIT EXERCISE                     [ Save ]│
+ *   │ ‹  NEW EXERCISE                              │
+ *   │ ‹  EDIT EXERCISE                             │
  *   │ NAME                                         │
  *   │ ╭ Weighted dips                            ╮ │
  *   │ MUSCLES · PULL · BACK, BICEPS                │
@@ -121,6 +121,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
+import { FloatingAction } from '../components/glass';
 import { useLeaveGuard } from '../navigation/leaveGuard';
 import { ScreenHeader } from '../components/ScreenHeader';
 import {
@@ -147,6 +148,7 @@ import {
 } from '../lib/exerciseDraft';
 import { REST_LIMITS } from '../lib/rest';
 import { describeSetInputs, wellsFor, type WellSpec } from '../lib/exerciseShape';
+import { editorBack, editorCommitSlot, editorGuardsBack } from '../lib/editorLeave';
 import { tap } from '../lib/feedback';
 import { countsToMax, maxLabel } from '../lib/maxReps';
 import {
@@ -167,6 +169,7 @@ import {
 import { formatClock, weightSteps } from '../lib/units';
 import { useLanguage, useT, type Translate } from '../hooks/useT';
 import { term, type Language } from '../lib/i18n';
+import { pushedSlot } from '../theme/tokens';
 import type { CountUnit, LoadMode, MuscleCluster, MuscleGroup, TimerMode } from '../types/models';
 
 /*
@@ -291,32 +294,25 @@ export function CreateExerciseScreen({
   const [left, setLeft] = useState(false);
   const dirty = exerciseDraftChanged(initial, draft);
   const handleBack = () => {
-    if (dirty) setConfirmingLeave(true);
+    if (editorBack(dirty) === 'ask') setConfirmingLeave(true);
     else onBack();
   };
-  const interceptBack = dirty && !left && !confirmingLeave;
+  const interceptBack = editorGuardsBack({ dirty, leaving: left, busy: confirmingLeave });
   useLeaveGuard(interceptBack, () => setConfirmingLeave(true));
+  const named = draft.name.trim() !== '';
+  const commitSlot = editorCommitSlot({ busy: confirmingLeave, canCommit: named });
 
   return (
     <View className="flex-1 bg-bg">
       <ScreenHeader
         kicker={mode === 'edit' ? t('Edit exercise') : t('New exercise')}
         onBack={handleBack}
-        action={{
-          label: mode === 'edit' ? t('Save') : t('Create'),
-          // Demoted while the name is empty: an exercise with no name is a row you
-          // cannot find again.
-          tone: draft.name.trim() === '' ? 'muted' : 'primary',
-          onPress: () => {
-            if (draft.name.trim() === '') return;
-            onSubmit(draft);
-          },
-        }}
       />
 
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingTop: 24, paddingBottom: 40 }}
+        // Clears the floating Save / Create.
+        contentContainerStyle={{ paddingTop: 24, paddingBottom: pushedSlot.clearance }}
         showsVerticalScrollIndicator={false}
       >
         <Kicker className="mx-lg mb-sm">{t('Name')}</Kicker>
@@ -674,6 +670,23 @@ export function CreateExerciseScreen({
           </Text>
         )}
       </ScrollView>
+
+      {/* THE COMMIT, in the floating slot (U5) rather than the header's corner.
+          Asleep while the name is empty — an exercise with no name is a row you
+          cannot find again — and a press then does nothing, as the demoted
+          header button did. */}
+      {commitSlot === 'hidden' ? null : (
+        <FloatingAction
+          label={mode === 'edit' ? t('Save') : t('Create')}
+          icon="check"
+          asleep={commitSlot === 'asleep'}
+          bottom={pushedSlot.bottom}
+          onPress={() => {
+            if (!named) return;
+            onSubmit(draft);
+          }}
+        />
+      )}
 
       {confirmingLeave ? (
         <ConfirmSheet

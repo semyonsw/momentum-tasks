@@ -1874,6 +1874,7 @@ export function AppShell() {
           onOpenHistory={() => push({ name: 'workoutHistory' })}
           onOpenRoutines={() => push({ name: 'routines' })}
           onOpenLibrary={() => push({ name: 'library' })}
+          onNewRoutine={handleAddRoutine}
           aiReady={aiReady}
           onOpenAi={(prompt) => openAi('Workout', prompt)}
           justSaved={justSaved}
