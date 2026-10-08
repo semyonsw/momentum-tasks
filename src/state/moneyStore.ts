@@ -64,6 +64,7 @@ import {
   type MoneyCategory,
   type TransferDraft,
 } from '../lib/money';
+import { sanitizeScale } from '../lib/moneyUnits';
 import type { ID } from '../types/models';
 import { tickTaskSource } from './tasksStore';
 
@@ -71,6 +72,13 @@ export interface MoneyValue {
   accounts: MoneyAccount[];
   categories: MoneyCategory[];
   amounts: Amount[];
+  /**
+   * Digits after the point every stored integer carries — 0 whole units, 2
+   * hundredths. ABSENT until the first write pins it, and absent in every log
+   * and backup from before cents existed, which therefore reads as whole units.
+   * See `lib/moneyUnits.ts`; nothing ever rescales a stored amount.
+   */
+  scale?: number;
 }
 
 /**
@@ -176,8 +184,9 @@ function sanitizeAmount(
       : fallbackAccount;
   const when = sanitizeWhen(value.when);
   if (!when) return null;
-  // Whole AMD, always positive. `direction` carries the sign, so a negative
-  // expense restored from a bad backup would otherwise read as income.
+  // An integer in the log's scale, always positive. `direction` carries the
+  // sign, so a negative expense restored from a bad backup would otherwise read
+  // as income.
   const amount = Math.round(Math.abs(Number(value.value)));
   if (!Number.isFinite(amount)) return null;
   const sanitized: Amount = {
@@ -226,10 +235,13 @@ export function sanitizeMoney(input: Partial<MoneyValue> | undefined | null): Mo
   // Every amount into a category of its own side, then only whole pairs linked.
   const reconciled = reconcileDirections(sortedCategories, valid);
 
+  const scale = sanitizeScale(input?.scale);
   return {
     accounts,
     categories: reconciled.categories,
     amounts: linkTransfers(reconciled.amounts),
+    // Only when pinned, so a log that never was writes no key at all.
+    ...(scale === undefined ? {} : { scale }),
   };
 }
 
@@ -287,6 +299,11 @@ interface MoneyState extends MoneyValue {
   updateCategory: (id: ID, patch: { name?: string; glyph?: string }) => void;
   archiveCategory: (id: ID) => void;
   importMoney: (raw: unknown) => void;
+  /**
+   * Fix the log's scale before its first write — a no-op once pinned. Called by
+   * whatever is about to write money, with the scale it computed the value in.
+   */
+  pinScale: (scale: number) => void;
 }
 
 export const useMoney = create<MoneyState>()(
@@ -496,8 +513,16 @@ export const useMoney = create<MoneyState>()(
           ),
         })),
 
+      // `scale: undefined` first: a backup from before cents carries no scale, and
+      // its amounts must not be read in the scale of the log they replace.
       importMoney: (raw) =>
-        set({ ...sanitizeMoney(raw as Partial<MoneyValue> | undefined | null) }),
+        set({ scale: undefined, ...sanitizeMoney(raw as Partial<MoneyValue> | undefined | null) }),
+
+      pinScale: (scale) =>
+        set((state) => {
+          const pinned = sanitizeScale(scale);
+          return state.scale !== undefined || pinned === undefined ? {} : { scale: pinned };
+        }),
     }),
     {
       name: 'money',
@@ -522,6 +547,7 @@ export const useMoney = create<MoneyState>()(
         accounts: state.accounts,
         categories: state.categories,
         amounts: state.amounts,
+        ...(state.scale === undefined ? {} : { scale: state.scale }),
       }),
       /*
        * NOTHING STORED IS NOT AN EMPTY LOG. zustand calls `merge` on a first

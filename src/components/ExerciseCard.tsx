@@ -113,7 +113,7 @@ import { tap, undo } from '../lib/feedback';
 import { isTimed as isTimedExercise } from '../lib/setTimer';
 import { formatClock } from '../lib/units';
 import type { ID, UnitSystem } from '../types/models';
-import { curve, danger, glassTier, motion, palette, tint } from '../theme/tokens';
+import { curve, glass, glassTier, motion, palette, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
 import { DragHandle, Icon } from './Icon';
 import { useLanguage, useT } from '../hooks/useT';
@@ -784,15 +784,16 @@ function ExerciseCardComponent({
                 </>
               ) : null}
 
-              {/* The way out of an exercise in one tap, in the one hue that means
-                  "this deletes plan". It does not ask: the screen offers the Undo. */}
+              {/* The way out of an exercise in one tap. It does not ask: the
+                  screen offers the Undo. Muted like every other destructive
+                  control (U19) — coral is kept for the confirm sheet. */}
               {onRemoveExercise ? (
                 <>
                   <View className="h-hairline bg-hairline" />
                   <FooterButton
                     icon="minus"
                     label={t('Remove exercise')}
-                    tone="danger"
+                    tone="muted"
                     accessibilityLabel={t('Remove {name} from this workout', {
                       name: entry.exercise.name,
                     })}
@@ -977,18 +978,13 @@ function FooterButton({
 }: {
   icon: 'plus' | 'minus' | 'edit' | 'pause' | 'play';
   label: string;
-  tone: 'green' | 'muted' | 'danger';
+  tone: 'green' | 'muted';
   onPress: () => void;
   accessibilityLabel?: string;
 }) {
-  const color = tone === 'green' ? palette.acc : tone === 'danger' ? danger : palette.inkMuted;
+  const color = tone === 'green' ? palette.acc : palette.inkMuted;
   const glyph = tone === 'muted' ? palette.inkFaint : color;
-  const wash =
-    tone === 'danger'
-      ? 'rgba(224,115,95,0.08)'
-      : tone === 'green'
-        ? tint(0.08)
-        : 'rgba(236,241,238,0.04)';
+  const wash = tone === 'green' ? tint(0.08) : 'rgba(236,241,238,0.04)';
   return (
     <Pressable
       onPress={onPress}
@@ -1051,8 +1047,9 @@ function EditCircle({ onPress, name }: { onPress: () => void; name: string }) {
 }
 
 /**
- * The bin beside the ✎: the same 36 dp glass circle, coral glyph. It does not
- * ask — the screen slides the card out and offers the Undo, logged sets and all.
+ * The bin beside the ✎: the same 36 dp glass circle, muted glyph (U19 — coral is
+ * the confirm sheet's alone). It does not ask — the screen slides the card out
+ * and offers the Undo, logged sets and all.
  */
 function RemoveCircle({ onPress, name }: { onPress: () => void; name: string }) {
   const t = useT();
@@ -1077,13 +1074,13 @@ function RemoveCircle({ onPress, name }: { onPress: () => void; name: string }) 
           borderRadius: 9999,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: 'rgba(224,115,95,0.06)',
+          backgroundColor: glass.sunken,
           borderWidth: 1,
-          borderColor: 'rgba(224,115,95,0.16)',
+          borderColor: glass.ghostEdge,
           transform: press.style.transform,
         }}
       >
-        <Icon name="trash" size={16} color={danger} />
+        <Icon name="trash" size={16} color={palette.inkMuted} />
       </Animated.View>
     </Pressable>
   );

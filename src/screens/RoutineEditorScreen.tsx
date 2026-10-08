@@ -146,6 +146,7 @@ import { ShuffleReel } from '../components/ShuffleReel';
 import { DragHandle, Icon } from '../components/Icon';
 import {
   AddRow,
+  DangerFootAction,
   FieldWell,
   Kicker,
   ListCard,
@@ -654,7 +655,10 @@ export function RoutineEditorScreen({
                   />
                 </View>
               ) : null}
-              <TextButton label={t('Delete routine')} onPress={() => setConfirmingDelete(true)} />
+              <DangerFootAction
+                label={t('Delete routine')}
+                onPress={() => setConfirmingDelete(true)}
+              />
             </View>
           )}
         </ScrollView>

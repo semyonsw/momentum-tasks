@@ -136,7 +136,13 @@ import { pressedStyle, Reveal } from '../components/motion';
 import { NumberSheet } from '../components/NumberSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SettingsFootRow } from '../components/SettingsFootRow';
-import { FieldWell, Kicker, Separator, StepperRow } from '../components/primitives';
+import {
+  DangerFootAction,
+  FieldWell,
+  Kicker,
+  Separator,
+  StepperRow,
+} from '../components/primitives';
 import {
   BALANCE_WINDOWS,
   balanceWindowDays,
@@ -1306,17 +1312,12 @@ function WorkoutRow({
             <View className="mt-xl">
               <Separator inset={16} />
             </View>
-            <Pressable
-              onPress={onDelete}
-              accessibilityRole="button"
+            <DangerFootAction
+              label={t('Delete this workout')}
               accessibilityLabel={t('Delete the {title} workout', { title: workout.title })}
-              style={pressedStyle}
-              className="h-hit justify-center px-lg"
-            >
-              <Text className="text-label font-medium text-ink-muted">
-                {t('Delete this workout')}
-              </Text>
-            </Pressable>
+              onPress={onDelete}
+              className="mx-md"
+            />
           </View>
         </Reveal>
       ) : null}

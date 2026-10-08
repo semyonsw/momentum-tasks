@@ -644,15 +644,26 @@ export const motion = {
 } as const;
 
 /**
- * THE ONE NON-GREEN HUE, and the rule that keeps it rare: destructive actions,
- * and only where they are already out of the way — the per-row `−` and
- * `Remove exercise` inside session edit mode, and the Settings reset.
+ * THE ONE NON-GREEN HUE, and the rule that keeps it rare (U19): it lives on the
+ * DESTRUCTIVE CONFIRM and nowhere else — the sheet's edge, its kicker and its
+ * outlined answer (`ConfirmSheet tone="danger"`). The control that opens that
+ * sheet is muted text at the foot of its screen (`DangerFootAction`), not
+ * coral: one rule for every delete, archive, reset and discard, so the colour
+ * means "this sheet is the last chance" and not "this word is scary".
  *
- * It exists because edit mode puts a delete next to every set row, and in green
- * a `−` beside a ✓ reads as another way of logging. Set this to
- * `palette.inkMuted` and the app is one hue again.
+ * It used to sit on the controls too — the Settings reset, `Archive this task`,
+ * `Remove exercise`, the per-set `−` — each with its own reason, and the result
+ * was three treatments for one idea. A `−` beside a ✓ in edit mode is told apart
+ * by its ring and its glyph, in `inkMuted`, the same as every other way out.
  */
 export const danger = '#E0735F';
+
+/** The danger confirm's washes, from the design: edge .35, outline .40, fill .08. */
+export const dangerTint = {
+  edge: 'rgba(224,115,95,0.35)',
+  outline: 'rgba(224,115,95,0.40)',
+  wash: 'rgba(224,115,95,0.08)',
+} as const;
 
 /**
  * One of the `motion` curves as an `Easing`, for `Animated.timing`.

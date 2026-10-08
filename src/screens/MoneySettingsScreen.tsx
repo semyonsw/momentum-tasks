@@ -43,6 +43,8 @@ import { FieldWell, Kicker, SelectChip } from '../components/primitives';
 import { useT, type Translate } from '../hooks/useT';
 import { tap } from '../lib/feedback';
 import { INTERVALS, INTERVAL_LABELS } from '../lib/money';
+import { centsNote } from '../lib/moneyUnits';
+import { useMoneyScale } from '../hooks/useMoneyScale';
 import { TREND_RANGES, TREND_RANGE_LABELS } from '../lib/trends';
 import { useSettings } from '../state/settingsStore';
 
@@ -69,6 +71,7 @@ export function MoneySettingsScreen({ onBack }: { onBack: () => void }) {
    * while the field has focus, and the store hears about it on blur.
    */
   const [draft, setDraft] = useState(settings.currencyCode);
+  const cents = centsNote(useMoneyScale(), settings.currencyCode);
 
   return (
     <View className="flex-1 bg-bg">
@@ -111,6 +114,18 @@ export function MoneySettingsScreen({ onBack }: { onBack: () => void }) {
             'A label, not a conversion. Every amount is stored as a plain number, so changing this changes what is printed after each figure and nothing else — no rate, no rewriting of what you already recorded. Up to four characters; points and tokens are as valid here as a currency.',
           )}
         </Text>
+        {/* Why the keypad has a `.` — or why, with this label, it does not (U25). */}
+        {cents === 'cents' ? (
+          <Text className="mx-lg mt-sm text-label text-ink-faint">
+            {t('The keypad has a decimal key: amounts here are kept in cents.')}
+          </Text>
+        ) : cents === 'wholeLog' ? (
+          <Text className="mx-lg mt-sm text-label text-ink-faint">
+            {t(
+              'This log was started in whole units, so the keypad keeps its 000 key. Nothing already recorded is ever rescaled.',
+            )}
+          </Text>
+        ) : null}
 
         <Kicker className="mx-lg mb-sm mt-xxl">{t('Opens on')}</Kicker>
         <View className="mx-lg flex-row flex-wrap">

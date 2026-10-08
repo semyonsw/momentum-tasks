@@ -15,7 +15,7 @@
  *   │ └──────┘└──────┘└──────┘                     │
  *   │   4       5       6                          │
  *   │   7       8       9                          │
- *   │  000      0       ⌫                          │
+ *   │  000      0       ⌫                          │  ← `.` for cents (U25)
  *   └──────────────────────────────────────────────┘
  *
  * ── THE KEYPAD IS A GRID OF VIEWS, NOT A `TextInput` ──────────────────────
@@ -77,9 +77,10 @@
  *
  * ── DELETE IS A SENTENCE, NOT A RED BUTTON ────────────────────────────────
  *
- * `ink-muted` text in a dashed box under the chips — placement rule 5, the same
- * treatment Settings gives its reset. No red: this app has one hue. It only
- * exists when there is something to delete; a new amount has no row to remove.
+ * `ink-muted` text at the foot, under the chips — `DangerFootAction`, the one
+ * destructive rule every screen follows (U19) — and the coral is saved for the
+ * confirm it opens. It only exists when there is something to delete; a new
+ * amount has no row to remove.
  *
  * ── THE CHIPS ARE THE DIRECTION'S OWN CATEGORIES ──────────────────────────
  *
@@ -122,7 +123,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { SlidingThumb } from '../components/SlidingThumb';
 import { Stagger, pressedStyle, usePressScale } from '../components/motion';
 import { RollingNumber } from '../components/RollingNumber';
-import { Separator, TextButton } from '../components/primitives';
+import { DangerFootAction, Separator, TextButton } from '../components/primitives';
 import { dayKey, formatLongDay, formatMonth, parseDay, shiftDay } from '../lib/days';
 import { tap } from '../lib/feedback';
 import {
@@ -135,7 +136,16 @@ import {
   formatValue,
   transferPartner,
 } from '../lib/money';
+import {
+  entryToMinor,
+  formatEntry,
+  keypadDecimals,
+  keypadKeys,
+  keypadPress,
+  minorToEntry,
+} from '../lib/moneyUnits';
 import { quickCategoryId } from '../lib/quickCategory';
+import { useMoneyScale } from '../hooks/useMoneyScale';
 import { useMoney } from '../state/moneyStore';
 import { useLanguage, useT } from '../hooks/useT';
 import { useSettings } from '../state/settingsStore';
@@ -143,6 +153,7 @@ import { TOUCH_MIN, slopInsets } from '../lib/hitTarget';
 import {
   curve,
   focalType,
+  glass,
   gradientFill,
   motion,
   palette,
@@ -169,31 +180,14 @@ const WAKE_SPRING = [0.34, 1.56, 0.64, 1] as const;
 /** The direction thumb: 360 ms, a slight overshoot. */
 const THUMB_SPRING = [0.34, 1.3, 0.64, 1] as const;
 
-/** The twelve keys, in reading order. `back` is the ⌫. */
-const KEYS: readonly (string | 'back')[] = [
-  '1',
-  '2',
-  '3',
-  '4',
-  '5',
-  '6',
-  '7',
-  '8',
-  '9',
-  '000',
-  '0',
-  'back',
-];
-
-/**
- * How many digits an amount may hold.
- *
- * Twelve, which is a trillion in any currency this app is likely to count in,
- * and the point of the cap is not the ceiling — it is that `000` exists. Three
- * taps on it is nine zeroes, and without a limit a pocketed phone can produce a
- * number that overflows the field and then the `Number` behind it.
+/*
+ * The twelve keys, the entry they edit and the 12-digit cap live in
+ * `lib/moneyUnits.ts` (`keypadKeys`, `keypadPress`): with cents the bottom-left
+ * key is `.` instead of `000` (U25), and the rules for a second point, the
+ * two-decimal cap and backspacing across the point are tested there. The cap is
+ * still the reason `000` is safe — three taps on it is nine zeroes, and without
+ * a limit a pocketed phone can overflow the field and the `Number` behind it.
  */
-const MAX_DIGITS = 12;
 
 interface AmountEditorScreenProps {
   /** The amount being edited, or null for a new one. */
@@ -258,6 +252,13 @@ export function AmountEditorScreen({
   const categories = useMoney((s) => s.categories);
   const amounts = useMoney((s) => s.amounts);
   const currency = useSettings((s) => s.currencyCode);
+  /* The log's scale (whole units, or hundredths) and how many decimals the
+     keypad offers in it — see `lib/moneyUnits.ts`. Stored amounts are integers
+     in that scale; the keypad's string is converted at this edge only. */
+  const scale = useMoneyScale();
+  const decimals = keypadDecimals(scale, currency);
+  const keys = keypadKeys(decimals);
+  const pinScale = useMoney((s) => s.pinScale);
   const addAmount = useMoney((s) => s.addAmount);
   const updateAmount = useMoney((s) => s.updateAmount);
   const deleteAmount = useMoney((s) => s.deleteAmount);
@@ -283,7 +284,7 @@ export function AmountEditorScreen({
      Guarded, because a route that predates the prop — or a malformed one — must
      not put an amount on `undefined`. */
   const landsOn = initialDay && parseDay(initialDay) ? initialDay : today;
-  const [digits, setDigits] = useState(amount ? String(amount.value) : '');
+  const [digits, setDigits] = useState(amount ? minorToEntry(amount.value, scale) : '');
   const [direction, setDirection] = useState<Direction>(amount?.direction ?? initialDirection);
   /* Only this side's categories — plus the amount's own while it is on this
      side, archived or not, so editing it never silently moves it. */
@@ -339,7 +340,7 @@ export function AmountEditorScreen({
   const chosenFrom = liveAccounts.find((option) => option.id === fromAccount) ?? null;
   const chosenTo = liveAccounts.find((option) => option.id === toAccount) ?? null;
 
-  const value = Number(digits) || 0;
+  const value = entryToMinor(digits, scale);
   const savable = transfer
     ? value > 0 && chosenFrom !== null && chosenTo !== null && fromAccount !== toAccount
     : value > 0 && chosen !== null && account !== null;
@@ -379,15 +380,12 @@ export function AmountEditorScreen({
   const press = (key: string | 'back') => {
     tap();
     setComplaint(false);
-    setDigits((current) => {
-      if (key === 'back') return current.slice(0, -1);
-      // A leading zero is never a digit anybody meant: `0` then `5` is five.
-      const next = (current === '0' ? '' : current) + key;
-      return next.replace(/^0+(?=\d)/, '').slice(0, MAX_DIGITS);
-    });
+    setDigits((current) => keypadPress(current, key, decimals));
   };
 
   const save = () => {
+    // The first amount a log ever gets fixes the scale it is kept in.
+    if (savable) pinScale(scale);
     if (transfer) {
       if (!savable || fromAccount === null || toAccount === null) {
         setComplaint(true);
@@ -402,7 +400,7 @@ export function AmountEditorScreen({
           ? t('{from} → {to} · {amount} moved', {
               from: chosenFrom.name,
               to: chosenTo.name,
-              amount: formatMoney(value, currency),
+              amount: formatMoney(value, currency, scale),
             })
           : undefined,
       );
@@ -429,7 +427,7 @@ export function AmountEditorScreen({
       chosen
         ? t('{category} · {amount} saved', {
             category: chosen.name,
-            amount: formatMoney(value, currency),
+            amount: formatMoney(value, currency, scale),
           })
         : undefined,
     );
@@ -506,10 +504,10 @@ export function AmountEditorScreen({
             <View style={{ marginTop: 4, height: 70 }} className="flex-row items-end">
               {/* It ROLLS as digits land — the number is seen growing. */}
               <RollingNumber
-                value={formatValue(value)}
+                value={formatEntry(digits)}
                 lineHeight={focalType.amount.lineHeight}
                 duration={350}
-                accessibilityLabel={`${t('Amount in {currency}', { currency })}: ${formatValue(value)}`}
+                accessibilityLabel={`${t('Amount in {currency}', { currency })}: ${formatValue(value, scale)}`}
                 style={[
                   {
                     fontSize: focalType.amount.fontSize,
@@ -647,35 +645,13 @@ export function AmountEditorScreen({
             </>
           )}
 
-          {/* Placement rule 5: out of reach, plain, dashed, no red. */}
+          {/* The one destructive rule (U19): muted, at the foot, and it asks. */}
           {amount ? (
-            <BubblePressable
+            <DangerFootAction
+              label={transfer ? t('Delete this transfer') : t('Delete this amount')}
               onPress={() => setDeleting(true)}
-              radius={16}
-              accessibilityRole="button"
-              accessibilityLabel={transfer ? t('Delete this transfer') : t('Delete this amount')}
-              style={(state) => [
-                pressedStyle(state),
-                {
-                  marginTop: 22,
-                  marginHorizontal: 16,
-                  paddingVertical: 14,
-                  paddingHorizontal: 16,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderStyle: 'dashed',
-                  borderColor: 'rgba(138,150,143,0.22)',
-                },
-              ]}
-            >
-              <Text
-                maxFontSizeMultiplier={1.3}
-                style={{ fontSize: 14.5 }}
-                className="font-medium text-ink-muted"
-              >
-                {transfer ? t('Delete this transfer') : t('Delete this amount')}
-              </Text>
-            </BubblePressable>
+              className="mx-md mt-xl"
+            />
           ) : null}
         </Stagger>
       </ScrollView>
@@ -691,7 +667,7 @@ export function AmountEditorScreen({
       >
         {[0, 1, 2, 3].map((row) => (
           <View key={row} className="flex-row" style={{ gap: KEY_GAP }}>
-            {KEYS.slice(row * 3, row * 3 + 3).map((key, column) => (
+            {keys.slice(row * 3, row * 3 + 3).map((key, column) => (
               <Key
                 key={key}
                 value={key}
@@ -952,6 +928,9 @@ function Key({
 }) {
   const t = useT();
   const back = value === 'back';
+  /* The design's lit `.` — the one key that is new, and the one that changes
+     what the next two digits mean. */
+  const point = value === '.';
   const press = usePressScale(0.92);
   return (
     <Stagger delay={delay} duration={420} rise={14} style={{ flex: 1 }}>
@@ -967,7 +946,9 @@ function Key({
           onPressOut={press.onPressOut}
           radius={KEY_RADIUS}
           accessibilityRole="button"
-          accessibilityLabel={back ? t('Delete the last digit') : value}
+          accessibilityLabel={
+            back ? t('Delete the last digit') : point ? t('Decimal point') : value
+          }
           style={({ pressed }) => ({
             height: KEY_HEIGHT,
             alignItems: 'center',
@@ -975,10 +956,10 @@ function Key({
             borderRadius: KEY_RADIUS,
             overflow: 'hidden',
             borderWidth: 1,
-            borderColor: 'rgba(236,241,238,0.06)',
+            borderColor: point ? glass.greenEdge : 'rgba(236,241,238,0.06)',
             // Under the finger it tints: the key being pressed is the one thing
             // on the pad that is currently the answer.
-            backgroundColor: pressed ? tint(0.18) : 'rgba(236,241,238,0.055)',
+            backgroundColor: pressed ? tint(0.18) : point ? glass.green : 'rgba(236,241,238,0.055)',
           })}
         >
           <SpecularEdge color="rgba(236,241,238,0.10)" radius={KEY_RADIUS} />
@@ -988,7 +969,7 @@ function Key({
             <Text
               maxFontSizeMultiplier={1.3}
               style={{ fontSize: 27 }}
-              className="font-medium tabular-nums text-ink"
+              className={`font-medium tabular-nums ${point ? 'text-acc' : 'text-ink'}`}
             >
               {value}
             </Text>

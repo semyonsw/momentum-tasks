@@ -82,6 +82,7 @@ import { pressedStyle } from '../components/motion';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TimeWheel } from '../components/TimeWheel';
 import {
+  DangerFootAction,
   Kicker,
   ListCard,
   Segmented,
@@ -210,7 +211,7 @@ export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
    */
   const measured = useMemo(() => restMedians(workouts), [workouts]);
   /** The whole log, held while the sheet asks. The only sheet on this screen. */
-  const [confirming, setConfirming] = useState<'history' | null>(null);
+  const [confirming, setConfirming] = useState<'history' | 'gym' | null>(null);
   /** One line, for the one thing on this screen that can be refused elsewhere. */
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -638,12 +639,14 @@ export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
             {gymBeingEdited && settings.gyms.length > 1 ? (
               <>
                 <Separator inset={0} />
+                {/* In place rather than at the foot — it belongs to the gym
+                    open above it — but muted and asking, like every other
+                    delete (U19): a gym's plate list is typed in by hand. */}
                 <TextButton
-                  label={t('Remove {name}', { name: gymBeingEdited.name })}
+                  label={`${t('Remove {name}', { name: gymBeingEdited.name })}…`}
                   onPress={() => {
                     tap();
-                    settings.removeGym(gymBeingEdited.id);
-                    setEditingGymId(null);
+                    setConfirming('gym');
                   }}
                 />
               </>
@@ -798,17 +801,6 @@ export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
                 />
               </>
             ) : null}
-            {/* Last, and only when there is something to lose. One workout at a
-                time is deleted from the history screen; this is the whole log. */}
-            {workoutCount > 0 ? (
-              <>
-                <Separator inset={0} />
-                <TextButton
-                  label={t('Delete all workout history')}
-                  onPress={() => setConfirming('history')}
-                />
-              </>
-            ) : null}
           </View>
 
           {notice ? <Text className="mx-lg mt-md text-label text-ink-muted">{notice}</Text> : null}
@@ -818,6 +810,17 @@ export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
               'Everything on this screen is about training. The daily tasks and the expenses have settings screens of their own, and the backup that carries all three is one row in the general section.',
             )}
           </Text>
+
+          {/* The foot of the screen, and only when there is something to lose
+              (U19). One workout at a time is deleted from the history screen;
+              this is the whole log. */}
+          {workoutCount > 0 ? (
+            <DangerFootAction
+              label={t('Delete all workout history')}
+              onPress={() => setConfirming('history')}
+              className="mx-md mt-xl"
+            />
+          ) : null}
         </ScrollView>
       </View>
 
@@ -842,6 +845,22 @@ export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
           cancelLabel={t('Keep my history')}
           onConfirm={() => {
             clearHistory();
+            setConfirming(null);
+          }}
+          onCancel={() => setConfirming(null)}
+        />
+      ) : null}
+
+      {confirming === 'gym' && gymBeingEdited ? (
+        <ConfirmSheet
+          tone="danger"
+          title={t('Remove {name}?', { name: gymBeingEdited.name })}
+          body={t('Its plate list goes with it. Your workouts are untouched.')}
+          confirmLabel={t('Remove it')}
+          cancelLabel={t('Keep it')}
+          onConfirm={() => {
+            settings.removeGym(gymBeingEdited.id);
+            setEditingGymId(null);
             setConfirming(null);
           }}
           onCancel={() => setConfirming(null)}

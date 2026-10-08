@@ -262,8 +262,10 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
                   { height: 44, justifyContent: 'center', paddingLeft: 8 },
                 ]}
               >
-                <Text style={{ color: danger }} className="text-label font-semibold">
-                  {t('Disconnect')}
+                {/* Muted, like every way into a destructive confirm (U19); the
+                    coral is on the sheet it opens. */}
+                <Text className="text-label font-semibold text-ink-muted">
+                  {`${t('Disconnect')}…`}
                 </Text>
               </BubblePressable>
             </View>
@@ -459,6 +461,7 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
 
       {confirmingDisconnect ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Disconnect the AI?')}
           body={t(
             'The key is removed from this phone. Your chats stay, and nothing in your log changes.',

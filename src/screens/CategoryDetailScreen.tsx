@@ -52,11 +52,11 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { pressedStyle } from '../components/motion';
 import {
   AddRow,
+  DangerFootAction,
   FieldWell,
   Kicker,
   ListCard,
   Separator,
-  TextButton,
 } from '../components/primitives';
 import {
   type Amount,
@@ -76,6 +76,7 @@ import { lastGlyph } from '../lib/glyph';
 import { useMoney } from '../state/moneyStore';
 import { useLanguage, useT } from '../hooks/useT';
 import { useSettings } from '../state/settingsStore';
+import { useMoneyScale } from '../hooks/useMoneyScale';
 import { palette } from '../theme/tokens';
 import type { ID } from '../types/models';
 import type { Direction } from '../lib/money';
@@ -112,6 +113,7 @@ export function CategoryDetailScreen({
   const updateCategory = useMoney((s) => s.updateCategory);
   const archiveCategory = useMoney((s) => s.archiveCategory);
   const currency = useSettings((s) => s.currencyCode);
+  const units = useMoneyScale();
 
   const [archiving, setArchiving] = useState(false);
   /*
@@ -159,7 +161,9 @@ export function CategoryDetailScreen({
         <Text className="mx-lg mt-sm text-title font-semibold text-ink">{category.name}</Text>
         <Text className="mx-lg mt-xs text-label text-ink-muted">
           {account.glyph} {account.name} · {describeInterval(interval, anchor, lang)} ·{' '}
-          <Text className="tabular-nums text-green-bright">{formatMoney(total, currency)}</Text>
+          <Text className="tabular-nums text-green-bright">
+            {formatMoney(total, currency, units)}
+          </Text>
         </Text>
 
         <View className="mx-lg mt-lg flex-row">
@@ -211,16 +215,19 @@ export function CategoryDetailScreen({
         </View>
 
         <View className="mx-lg mt-sm h-hairline bg-hairline" />
-        <View className="mx-lg">
-          <TextButton label={t('Archive this category')} onPress={() => setArchiving(true)} />
-        </View>
-        <Text className="mx-lg text-label text-ink-faint">
-          {t('Archived, not deleted — its amounts stay in the month, the year and the balance.')}
-        </Text>
+        <DangerFootAction
+          label={t('Archive this category')}
+          hint={t(
+            'Archived, not deleted — its amounts stay in the month, the year and the balance.',
+          )}
+          onPress={() => setArchiving(true)}
+          className="mx-md mt-sm"
+        />
       </ScrollView>
 
       {archiving ? (
         <ConfirmSheet
+          tone="danger"
           title={t('Archive “{name}”?', { name: category.name })}
           body={t(
             'It leaves the grid and the chips. Every amount in it stays in the month, the year and the balance.',
@@ -252,19 +259,20 @@ function AmountRow({
   onPress: () => void;
 }) {
   const lang = useLanguage();
+  const units = useMoneyScale();
   const detail = describeAmount(amount, lang);
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${formatMoney(amount.value, currency)}. ${detail}`}
+      accessibilityLabel={`${formatMoney(amount.value, currency, units)}. ${detail}`}
       style={pressedStyle}
       className="h-row-lg flex-row items-center px-lg"
     >
       <View className="flex-1 pr-md">
         <Text className="text-body tabular-nums text-ink">
           {amount.direction === 'income' ? '+' : ''}
-          {formatMoney(amount.value, currency)}
+          {formatMoney(amount.value, currency, units)}
         </Text>
         <Text numberOfLines={1} className="mt-[2px] text-label tabular-nums text-ink-faint">
           {detail}

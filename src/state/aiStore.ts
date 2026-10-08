@@ -42,6 +42,7 @@ import { persist } from 'zustand/middleware';
 import { persistedStorage } from './persistStorage';
 
 import { DEFAULT_MODEL } from '../lib/ai/gemini';
+import { droppedEntries, removeById, restoreAt, type Removed } from '../lib/ai/chatArchive';
 import {
   AI_SECTIONS,
   validateBlocks,
@@ -111,6 +112,13 @@ export interface ArchivedChat {
   messages: AiMessage[];
 }
 
+/** What `deleteArchived` leaves for its Undo — see `lib/ai/chatArchive.ts`. */
+export interface DeletedChat extends Removed<ArchivedChat> {
+  section: AiSection;
+  /** The suggestions only this chat pointed at, pruned with it. */
+  proposals: Record<string, StoredProposal>;
+}
+
 /** Past chats kept per section; the oldest go first. */
 export const ARCHIVE_CAP = 30;
 
@@ -172,7 +180,13 @@ interface AiState extends AiValue {
   clearChat: (section: AiSection) => void;
   /** Bring a past chat back; whatever was open takes its place in the history. */
   openArchived: (section: AiSection, id: string) => void;
-  deleteArchived: (section: AiSection, id: string) => void;
+  /**
+   * Take a past chat out of the list. Returns what its Undo needs (U14), or null
+   * when there was no such chat.
+   */
+  deleteArchived: (section: AiSection, id: string) => DeletedChat | null;
+  /** The Undo: the chat back in its place, with the suggestions it took along. */
+  restoreArchived: (deleted: DeletedChat) => void;
   setPending: (section: AiSection, pending: boolean) => void;
   setRetrying: (section: AiSection, retrying: boolean) => void;
 
@@ -282,8 +296,21 @@ export const useAi = create<AiState>()(
       },
       deleteArchived: (section, id) => {
         const { chats, archive, proposals } = get();
-        const nextArchive = { ...archive, [section]: archive[section].filter((c) => c.id !== id) };
-        set({ archive: nextArchive, proposals: prune(proposals, chats, nextArchive) });
+        const taken = removeById(archive[section], id);
+        if (!taken) return null;
+        const nextArchive = { ...archive, [section]: taken.list };
+        const kept = prune(proposals, chats, nextArchive);
+        set({ archive: nextArchive, proposals: kept });
+        return { section, ...taken.removed, proposals: droppedEntries(proposals, kept) };
+      },
+      restoreArchived: (deleted) => {
+        const { archive, proposals } = get();
+        const list = restoreAt(archive[deleted.section], deleted, ARCHIVE_CAP);
+        set({
+          archive: { ...archive, [deleted.section]: list },
+          // Its own suggestions back as they were; anything newer wins.
+          proposals: { ...deleted.proposals, ...proposals },
+        });
       },
       setPending: (section, pending) =>
         set((state) => ({

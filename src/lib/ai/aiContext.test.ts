@@ -453,6 +453,40 @@ describe('the expenses context', () => {
     expect(json.currency).toBe('֏');
   });
 
+  it('says nothing about units for a whole-unit log — the context is what it was', () => {
+    expect(json.valueUnit).toBeUndefined();
+    const zero = JSON.parse(
+      buildExpensesContext({
+        amounts,
+        categories,
+        accounts,
+        currency: 'AMD',
+        scale: 0,
+        today: '2026-09-27',
+        lang: 'en',
+      }).json,
+    );
+    expect(zero.valueUnit).toBeUndefined();
+  });
+
+  it('tells the model how to read a log kept in cents, without changing a figure (U25)', () => {
+    const cents = JSON.parse(
+      buildExpensesContext({
+        amounts,
+        categories,
+        accounts,
+        currency: 'USD',
+        scale: 2,
+        today: '2026-09-27',
+        lang: 'en',
+      }).json,
+    );
+    expect(cents.valueUnit).toContain('1/100 USD');
+    expect(cents.valueUnit).toContain('1250 means 12.50 USD');
+    const september = cents.months.find((m: { month: string }) => m.month === '2026-09');
+    expect(september.spent).toBe(5100);
+  });
+
   it('puts a whole-month amount in its month, named, and on no day', () => {
     const september = json.months.find((m: { month: string }) => m.month === '2026-09');
     expect(september.spent).toBe(5100);

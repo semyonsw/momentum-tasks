@@ -148,7 +148,9 @@ import { RollingNumber } from '../components/RollingNumber';
 import { SlidingThumb } from '../components/SlidingThumb';
 import { useBubbleOnScroll } from '../hooks/useBubbleOnScroll';
 import { useMotionScale } from '../hooks/useMotionScale';
+import { useMoneyScale } from '../hooks/useMoneyScale';
 import { CategoryEditorSheet } from '../components/CategoryEditorSheet';
+import { ConfirmSheet } from '../components/ConfirmSheet';
 import { BubblePressable } from '../components/bubbles';
 import { Icon } from '../components/Icon';
 import {
@@ -287,6 +289,7 @@ export function MoneyScreen({
   const updateAccount = useMoney((s) => s.updateAccount);
   const archiveAccount = useMoney((s) => s.archiveAccount);
   const setAccountBalance = useMoney((s) => s.setAccountBalance);
+  const pinScale = useMoney((s) => s.pinScale);
 
   /*
    * The window, the direction and the subsection are the SHELL's — see the
@@ -296,6 +299,7 @@ export function MoneyScreen({
    */
   const bars = useBarInsets();
   const currency = useSettings((s) => s.currencyCode);
+  const units = useMoneyScale();
   const { interval, anchor, direction, accountId } = view;
   /* `setWindowInterval` and not `setInterval`: the short name SHADOWS the global
      one inside this component, so the first timer anybody ever adds to this file
@@ -310,6 +314,8 @@ export function MoneyScreen({
   const [addingAccount, setAddingAccount] = useState(false);
   /** The subsection a long press is asking about, and the one being renamed. */
   const [heldAccount, setHeldAccount] = useState<MoneyAccount | null>(null);
+  /** The subsection whose `Archive…` is waiting on the danger confirm. */
+  const [archivingAccount, setArchivingAccount] = useState<MoneyAccount | null>(null);
   const [renamingAccount, setRenamingAccount] = useState<MoneyAccount | null>(null);
   const [settingBalance, setSettingBalance] = useState(false);
 
@@ -497,13 +503,13 @@ export function MoneyScreen({
               <Pressable
                 onPress={() => setSettingBalance(true)}
                 accessibilityRole="button"
-                accessibilityLabel={`${account.name}. ${formatMoney(balance, currency)}. ${t('Set what you have here.')}`}
+                accessibilityLabel={`${account.name}. ${formatMoney(balance, currency, units)}. ${t('Set what you have here.')}`}
                 style={pressedStyle}
                 className="mt-sm flex-row items-end"
               >
                 {/* It ROLLS: a saved amount is seen landing on the number it moved. */}
                 <RollingNumber
-                  value={formatValue(balance)}
+                  value={formatValue(balance, units)}
                   lineHeight={focalType.balance.lineHeight}
                   duration={900}
                   style={[
@@ -683,7 +689,10 @@ export function MoneyScreen({
           title={`${account.glyph}  ${account.name}`}
           balance={balance}
           currency={currency}
+          scale={units}
           onSave={(next) => {
+            // The first write pins the scale the figure was typed in.
+            pinScale(units);
             setAccountBalance(account.id, next);
             setSettingBalance(false);
           }}
@@ -745,13 +754,14 @@ export function MoneyScreen({
                     />
                   ) : (
                     <SheetRow
-                      label={t('Archive this subsection')}
+                      label={`${t('Archive this subsection')}…`}
                       detail={t('It leaves the row. Everything recorded in it stays recorded.')}
                       onPress={() => {
+                        // It asks first, like archiving a category (U19): there
+                        // is no un-archive, and this row used to act on one tap.
                         const held = heldAccount;
                         setHeldAccount(null);
-                        archiveAccount(held.id);
-                        if (held.id === accountId) setAccountId(null);
+                        setArchivingAccount(held);
                       }}
                     />
                   )}
@@ -761,6 +771,23 @@ export function MoneyScreen({
           </View>
           <TextButton label={t('Cancel')} onPress={() => setHeldAccount(null)} />
         </Sheet>
+      ) : null}
+
+      {archivingAccount ? (
+        <ConfirmSheet
+          tone="danger"
+          title={t('Archive “{name}”?', { name: archivingAccount.name })}
+          body={t('It leaves the row. Everything recorded in it stays recorded.')}
+          confirmLabel={t('Archive it')}
+          cancelLabel={t('Keep it')}
+          onConfirm={() => {
+            const held = archivingAccount;
+            setArchivingAccount(null);
+            archiveAccount(held.id);
+            if (held.id === accountId) setAccountId(null);
+          }}
+          onCancel={() => setArchivingAccount(null)}
+        />
       ) : null}
 
       {naming ? (
@@ -875,8 +902,9 @@ function DirectionHalf({
   onPress: () => void;
 }) {
   const scale = useMotionScale();
+  const units = useMoneyScale();
   const lit = useRef(new Animated.Value(selected ? 1 : 0)).current;
-  const figure = formatMoney(value, currency);
+  const figure = formatMoney(value, currency, units);
   useEffect(() => {
     Animated.timing(lit, {
       toValue: selected ? 1 : 0,
@@ -1122,6 +1150,7 @@ function CategoryTile({
   onOpen: () => void;
 }) {
   const t = useT();
+  const units = useMoneyScale();
 
   return (
     <BubblePressable
@@ -1130,7 +1159,7 @@ function CategoryTile({
       delayLongPress={280}
       radius={radius.card}
       accessibilityRole="button"
-      accessibilityLabel={`${category.name}, ${formatMoney(total, currency)}`}
+      accessibilityLabel={`${category.name}, ${formatMoney(total, currency, units)}`}
       accessibilityHint={t(
         'Tap to add an amount here. Long press or tap the arrow to open the category.',
       )}
@@ -1166,7 +1195,7 @@ function CategoryTile({
       </Text>
       {/* The total ROLLS to a new month's figure, with the ring beside it. */}
       <RollingNumber
-        value={formatMoney(total, currency)}
+        value={formatMoney(total, currency, units)}
         lineHeight={19}
         duration={700}
         containerStyle={{ marginTop: 2 }}

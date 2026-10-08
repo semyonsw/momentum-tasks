@@ -177,6 +177,46 @@ describe('the history of past chats', () => {
     expect(useAi.getState().proposals.p2).toBeUndefined();
   });
 
+  it('puts a deleted past chat back exactly on Undo — messages, order, suggestions (U14)', () => {
+    // Three past chats, newest first: C, B (with a suggestion), A.
+    const store = useAi.getState();
+    store.appendMessage('Workout', user('qa', 'A'));
+    useAi.getState().clearChat('Workout');
+    useAi.getState().appendMessage('Workout', user('qb', 'B'));
+    useAi.getState().putProposal('pb', proposal);
+    useAi.getState().setProposalStatus('pb', 'accepted');
+    useAi.getState().appendMessage('Workout', model('ab', 'pb'));
+    useAi.getState().clearChat('Workout');
+    useAi.getState().appendMessage('Workout', user('qc', 'C'));
+    useAi.getState().clearChat('Workout');
+    useAi.getState().appendMessage('Workout', user('open', 'Still open'));
+    const before = useAi.getState();
+    const middle = before.archive.Workout[1];
+    expect(middle.title).toBe('B');
+
+    const deleted = useAi.getState().deleteArchived('Workout', middle.id);
+    expect(deleted).not.toBeNull();
+    expect(useAi.getState().archive.Workout.map((c) => c.title)).toEqual(['C', 'A']);
+    expect(useAi.getState().proposals.pb).toBeUndefined();
+
+    useAi.getState().restoreArchived(deleted!);
+    const after = useAi.getState();
+    expect(after.archive).toEqual(before.archive);
+    expect(after.archive.Workout[1]).toEqual(middle);
+    expect(after.proposals).toEqual(before.proposals);
+    expect(after.proposals.pb.status).toBe('accepted');
+    // Still a PAST chat: the open one is untouched.
+    expect(after.chats).toEqual(before.chats);
+
+    // A second Undo changes nothing.
+    useAi.getState().restoreArchived(deleted!);
+    expect(useAi.getState().archive).toEqual(before.archive);
+  });
+
+  it('returns null for a past chat that is not there', () => {
+    expect(useAi.getState().deleteArchived('Tasks', 'nope')).toBeNull();
+  });
+
   it('survives a relaunch, and caps how many it keeps', () => {
     for (let i = 0; i < ARCHIVE_CAP + 3; i += 1) {
       useAi.getState().appendMessage('Expenses', user(`q${i}`, `Q${i}`));

@@ -27,7 +27,9 @@
  *
  * A proposal's `Add to routines` goes to the shell rather than straight to the
  * store, because the toast that says what happened — with its Undo — has to be
- * raised by something that outlives this screen.
+ * raised by something that outlives this screen. Deleting a past chat raises
+ * the same toast (`onToast`): the ✕ acts at once and Undo puts the chat back
+ * where it was, messages and suggestions and all (U14).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
@@ -42,7 +44,7 @@ import { AiProposalCard } from '../components/AiProposalCard';
 import { AiSequenceCard } from '../components/AiSequenceCard';
 import { BubblePressable } from '../components/bubbles';
 import { Sheet } from '../components/Sheet';
-import { GlassBar, GlassSurface, Lamps } from '../components/glass';
+import { GlassBar, GlassSurface, Lamps, type ToastAction } from '../components/glass';
 import { Icon } from '../components/Icon';
 import { Stagger, pressedStyle } from '../components/motion';
 import { useAiPrompts } from '../hooks/useAiPrompts';
@@ -96,6 +98,8 @@ export interface AiChatScreenProps {
   onAccept: (proposalId: string) => void;
   /** `Apply loop` on a suggested training loop — the shell shows the Undo. */
   onApplySequence: (messageId: string) => void;
+  /** The shell's toast, which outlives this screen — the past-chat delete's Undo. */
+  onToast: (text: string, action?: ToastAction) => void;
 }
 
 export function AiChatScreen({
@@ -106,6 +110,7 @@ export function AiChatScreen({
   onReview,
   onAccept,
   onApplySequence,
+  onToast,
 }: AiChatScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -356,7 +361,16 @@ export function AiChatScreen({
                 </Text>
               </BubblePressable>
               <BubblePressable
-                onPress={() => useAi.getState().deleteArchived(section, chat.id)}
+                onPress={() => {
+                  // One tap, and the Undo puts it back exactly (U14) — see
+                  // `lib/ai/chatArchive.ts` for why not a confirm.
+                  const deleted = useAi.getState().deleteArchived(section, chat.id);
+                  if (!deleted) return;
+                  onToast(t('Chat deleted'), {
+                    label: t('Undo'),
+                    onPress: () => useAi.getState().restoreArchived(deleted),
+                  });
+                }}
                 hitSlop={10}
                 radius="pill"
                 accessibilityRole="button"

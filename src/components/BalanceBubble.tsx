@@ -45,6 +45,7 @@ import { Text, View, useWindowDimensions } from 'react-native';
 
 import { useT } from '../hooks/useT';
 import { formatMoney, formatValue } from '../lib/money';
+import { useMoneyScale } from '../hooks/useMoneyScale';
 import { palette, radius, tint } from '../theme/tokens';
 import { FloatingBubble } from './FloatingBubble';
 import { Pressable } from './Pressable';
@@ -86,6 +87,7 @@ export function BalanceBubble({
   onTop: () => void;
 }) {
   const t = useT();
+  const scale = useMoneyScale();
   const screen = useWindowDimensions();
   /* The capsule's width as `FloatingBubble` caps it, less its 1 dp border, 5 dp
      padding and the 4 dp gaps — divided into one equal half per account. */
@@ -149,7 +151,7 @@ export function BalanceBubble({
             onPress={() => (selected ? onTop() : onSelect(account.id))}
             accessibilityRole="button"
             accessibilityState={{ selected }}
-            accessibilityLabel={`${account.name}, ${formatMoney(account.balance, currency)}`}
+            accessibilityLabel={`${account.name}, ${formatMoney(account.balance, currency, scale)}`}
             accessibilityHint={selected ? t('Back to the top') : t('Switch to this subsection')}
             style={({ pressed }) => ({
               width: halfWidth,
@@ -180,7 +182,7 @@ export function BalanceBubble({
                 {account.name}
               </Text>
               <RollingNumber
-                value={formatValue(account.balance)}
+                value={formatValue(account.balance, scale)}
                 lineHeight={22}
                 duration={800}
                 containerStyle={BALANCE_CONTAINER}

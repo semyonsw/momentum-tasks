@@ -462,3 +462,53 @@ describe('the closed assistant cards', () => {
     expect(useSettings.getState().aiCardsDismissed).toBeUndefined();
   });
 });
+
+describe('the money scale (U25)', () => {
+  it('a 2.2.0 backup with amounts imports them unchanged, in whole units', async () => {
+    const { useMoney } = await import('./moneyStore');
+    useMoney.getState().pinScale(2);
+    const v220 = JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 2,
+      exercises: [],
+      routines: [],
+      workouts: [],
+      money: {
+        accounts: [{ id: 'cash', name: 'Cash', glyph: '💵', order: 0, opening: 0 }],
+        categories: [{ id: 'food', name: 'Food', glyph: '🧊', order: 0, direction: 'expense' }],
+        amounts: [
+          {
+            id: 'a1',
+            categoryId: 'food',
+            accountId: 'cash',
+            direction: 'expense',
+            value: 12500,
+            when: { kind: 'day', date: '2026-09-01' },
+            note: '',
+            createdAt: '2026-09-01T10:00:00.000Z',
+          },
+        ],
+      },
+    });
+    const parsed = parseBackup(v220);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+
+    expect(useMoney.getState().amounts.map((amount) => amount.value)).toEqual([12500]);
+    expect(useMoney.getState().scale).toBeUndefined();
+  });
+
+  it('a pinned scale travels in a backup and comes back', async () => {
+    const { useMoney } = await import('./moneyStore');
+    useMoney.getState().importMoney({});
+    useMoney.getState().pinScale(2);
+    const text = exportBackupText();
+    useMoney.getState().importMoney({});
+    expect(useMoney.getState().scale).toBeUndefined();
+
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useMoney.getState().scale).toBe(2);
+  });
+});

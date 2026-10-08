@@ -113,11 +113,14 @@ export function SheetFrame({
   onDismiss,
   dismissLabel,
   guard,
+  edge,
   children,
 }: {
   onDismiss: () => void;
   /** The scrim's accessibility label — the non-committal answer's own name. */
   dismissLabel?: string;
+  /** The pane's edge colour — the danger confirm's coral. The glass edge otherwise. */
+  edge?: string;
   /** See the header: `false` holds the sheet; `proceed` closes it later. */
   guard?: SheetGuard;
   children: ReactNode;
@@ -276,7 +279,7 @@ export function SheetFrame({
             style={{
               borderRadius: SHEET_RADIUS,
               borderWidth: 1,
-              borderColor: EDGE,
+              borderColor: edge ?? EDGE,
               overflow: 'hidden',
               paddingHorizontal: 18,
               paddingTop: 6,

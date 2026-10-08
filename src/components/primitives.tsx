@@ -43,7 +43,16 @@ import { tap } from '../lib/feedback';
 import { segmentFontSize } from '../lib/stepperFont';
 import { TOUCH_MIN_WORKOUT, slopInsets } from '../lib/hitTarget';
 import { useMotionScale } from '../hooks/useMotionScale';
-import { curve, danger, glass, gradientFill, motion, palette, tint } from '../theme/tokens';
+import {
+  curve,
+  danger,
+  dangerTint,
+  glass,
+  gradientFill,
+  motion,
+  palette,
+  tint,
+} from '../theme/tokens';
 import { BubblePressable } from './bubbles';
 import { Icon } from './Icon';
 import { pressedStyle } from './motion';
@@ -946,16 +955,15 @@ export function Toggle({
 /** The design's ghost pill: a wash of ink on a slightly stronger edge. */
 const GHOST_FILL = 'rgba(236,241,238,0.07)';
 const GHOST_EDGE = 'rgba(236,241,238,0.10)';
-/** Text on the danger fill — the design's near-black red. */
-const ON_DANGER = '#1A0B08';
 
 /**
  * 56-high full-width pill.
  *
  *   primary  the theme gradient (135deg c1 → c2 55% → c3), text in `onAcc`
  *   ghost    ink wash on a 10% edge, ink text
- *   danger   `#E0735F` with its own glow — for an answer that deletes or
- *            throws something away, and nothing else
+ *   danger   a coral OUTLINE on a coral wash, coral text — the destructive
+ *            answer of a danger confirm, and nothing else. Outlined, not
+ *            filled: the safe answer beside it is the filled one (U19)
  *
  * `onAcc` rather than ink on the gradient is load-bearing: the light themes
  * put a near-white c2 under the label, and ink on it vanished.
@@ -971,7 +979,7 @@ export function PrimaryButton({
 }) {
   const primary = variant === 'primary';
   const isDanger = variant === 'danger';
-  const textColor = primary ? palette.onAcc : isDanger ? ON_DANGER : palette.ink;
+  const textColor = primary ? palette.onAcc : isDanger ? danger : palette.ink;
   return (
     <BubblePressable
       onPress={onPress}
@@ -986,7 +994,7 @@ export function PrimaryButton({
         primary
           ? null
           : isDanger
-            ? { backgroundColor: danger }
+            ? { backgroundColor: dangerTint.wash, borderColor: dangerTint.outline, borderWidth: 1 }
             : { backgroundColor: GHOST_FILL, borderColor: GHOST_EDGE, borderWidth: 1 },
       ]}
       className="h-row items-center justify-center rounded-pill px-lg"
@@ -1060,6 +1068,68 @@ export function TextButton({
       >
         {label}
       </Text>
+    </BubblePressable>
+  );
+}
+
+/**
+ * THE ONE WAY INTO A DESTRUCTIVE CONFIRM (U19): muted text at the foot of the
+ * screen — `Archive this task…`, `Reset every setting…`, `Delete this workout…`.
+ *
+ * Muted and not coral, because the colour belongs to the confirm it opens
+ * (`ConfirmSheet tone="danger"`), where it means "last chance"; on the control
+ * it only meant "scary word", and three screens had three versions of it (coral
+ * text, a dashed box, a centred muted row). Left-aligned at 48 dp so it reads as
+ * a sentence at the end of the page and not as a button competing with the
+ * floating commit. The `…` is added here: it is the promise that a question
+ * comes next, so every caller makes it, and the spoken label leaves it out.
+ */
+export function DangerFootAction({
+  label,
+  onPress,
+  hint,
+  accessibilityLabel,
+  accessibilityHint,
+  className = '',
+}: {
+  label: string;
+  onPress: () => void;
+  /** A faint line under the label — what the action leaves alone. */
+  hint?: string;
+  /** Defaults to `label` — for one that names its subject out loud. */
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  className?: string;
+}) {
+  return (
+    <BubblePressable
+      onPress={onPress}
+      radius={14}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityHint={accessibilityHint ?? hint}
+      style={(state) => [
+        pressedStyle(state),
+        { alignSelf: 'flex-start', minHeight: 48, paddingHorizontal: 4, justifyContent: 'center' },
+      ]}
+      className={className}
+    >
+      <Text
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 14.5 }}
+        className="font-medium text-ink-muted"
+      >
+        {`${label}…`}
+      </Text>
+      {hint ? (
+        <Text
+          maxFontSizeMultiplier={1.3}
+          style={{ fontSize: 13.5, lineHeight: 18 }}
+          className="text-ink-faint"
+        >
+          {hint}
+        </Text>
+      ) : null}
     </BubblePressable>
   );
 }

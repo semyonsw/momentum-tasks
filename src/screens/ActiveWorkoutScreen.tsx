@@ -1226,7 +1226,9 @@ export function ActiveWorkoutScreen({
       ) : null}
 
       {confirming === 'clock' ? (
+        // Danger: the time already on the clock is overwritten, not kept.
         <ConfirmSheet
+          tone="danger"
           title={t('Restart the clock?')}
           body={t(
             'This workout reads {minutes} min. Restarting the clock makes it 0, and history will record it from this moment — the sets you already logged stay exactly as they are.',

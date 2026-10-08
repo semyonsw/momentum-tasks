@@ -14,7 +14,7 @@
  *   │  ■  ■  ■  ■  ■  ■  ◉  ← today                │
  *   │  ■ Done  ┆ On purpose  ▫ Not answered        │
  *   │ NOTE · 12 SEPTEMBER                          │
- *   │ Archive this task                            │   in danger
+ *   │ Archive this task…                           │   muted, asks
  *   │                              ╭ ✎ Edit task ╮ │   ghost, floating
  *   └──────────────────────────────────────────────┘
  *
@@ -48,8 +48,9 @@
  *
  * Archiving keeps the months that were already drawn; deleting would silently
  * remove a year of answered days from a log whose only job is to remember them.
- * It is a plain text action in `danger` at the foot of the scroll — the one
- * thing here that takes the task off the day list — and it asks first.
+ * It is muted text at the foot of the scroll (`DangerFootAction`) — the one
+ * thing here that takes the task off the day list — and it asks first, in the
+ * danger sheet: there is no un-archive.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -62,9 +63,8 @@ import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TaskEditorSheet } from '../components/TaskEditorSheet';
 import { pressedStyle } from '../components/motion';
-import { BubblePressable } from '../components/bubbles';
 import { FloatingAction, Lamps } from '../components/glass';
-import { FieldWell, Kicker } from '../components/primitives';
+import { DangerFootAction, FieldWell, Kicker } from '../components/primitives';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import {
   dayKey,
@@ -84,7 +84,7 @@ import {
   taskMonth,
 } from '../lib/tasks';
 import { useTasks } from '../state/tasksStore';
-import { danger, palette, radius, tint } from '../theme/tokens';
+import { palette, radius, tint } from '../theme/tokens';
 
 interface TaskDetailScreenProps {
   task: Task;
@@ -303,36 +303,16 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
           />
         </View>
 
-        {/* Plain text at the foot of the scroll, out of a thumb's resting reach,
-            and it opens a confirm rather than acting. */}
-        <BubblePressable
-          onPress={() => setArchiving(true)}
-          radius={14}
-          accessibilityRole="button"
-          accessibilityLabel={t('Archive this task')}
+        {/* Muted text at the foot of the scroll, out of a thumb's resting reach,
+            and it opens the danger confirm rather than acting (U19). */}
+        <DangerFootAction
+          label={t('Archive this task')}
           accessibilityHint={t(
             'It leaves the day list. Every day you already answered stays where it is.',
           )}
-          style={(state) => [
-            pressedStyle(state),
-            {
-              marginTop: 24,
-              marginHorizontal: 12,
-              alignSelf: 'flex-start',
-              height: 44,
-              paddingHorizontal: 4,
-              justifyContent: 'center',
-            },
-          ]}
-        >
-          <Text
-            maxFontSizeMultiplier={1.3}
-            style={{ fontSize: 15, color: danger }}
-            className="font-medium"
-          >
-            {t('Archive this task')}
-          </Text>
-        </BubblePressable>
+          onPress={() => setArchiving(true)}
+          className="mx-md mt-xl"
+        />
       </ScrollView>
 
       {/* Ghost, not filled: this screen's point is reading the month, and
@@ -363,6 +343,7 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
 
       {archiving ? (
         <ConfirmSheet
+          tone="danger"
           title={`${t('Archive this task')} — “${task.name}”?`}
           body={t('It leaves the day list. Every day you already answered stays where it is.')}
           confirmLabel={t('Archive it')}

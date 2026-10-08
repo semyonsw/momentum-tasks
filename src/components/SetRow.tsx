@@ -66,11 +66,12 @@
  *     common edit, and the row's own editor is one ✓ or one tap on another row
  *     away. What that buys is the numbers you are about to lift at 56 dp instead
  *     of 30, on a screen with nothing else on it.
- *   • IN EDIT MODE EVERY ROW GROWS A `−` ON THE LEFT — a 28 dp coral ring that
- *     pops in and removes THAT row. It used to be one `Remove set` that always
- *     took the bottom row, which is the right answer for "three today, not four"
- *     and the wrong one for "that warm-up was a mistake". Coral is `danger`, the
- *     one non-green hue, and it only exists inside edit mode.
+ *   • IN EDIT MODE EVERY ROW GROWS A `−` ON THE LEFT — a 28 dp `inkMuted` ring
+ *     that pops in and removes THAT row. It used to be one `Remove set` that
+ *     always took the bottom row, which is the right answer for "three today,
+ *     not four" and the wrong one for "that warm-up was a mistake". It was coral
+ *     until U19 kept that hue for the destructive confirm alone; the ring and the
+ *     glyph are what tell it from a ✓, and the screen offers the Undo.
  *   • THE ✓ IS CAUGHT, AND THE ROW FLASHES. On the tap that logs it the fill pops
  *     in on the overshoot curve and the whole row washes green and fades — both
  *     only on the transition, never on a row that was already logged when the
@@ -99,7 +100,7 @@ import { countUnitLabel, formatCount, formatWeight, unitLabel } from '../lib/uni
 import { useLanguage, useT } from '../hooks/useT';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { danger, gradientFill, palette, tint } from '../theme/tokens';
+import { gradientFill, palette, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
 import { Icon } from './Icon';
 import { Flash, Pop, usePressScale } from './motion';
@@ -491,13 +492,13 @@ function RemoveMark({ onPress }: { onPress: () => void }) {
             height: 28,
             borderRadius: 9999,
             borderWidth: 1.5,
-            borderColor: danger,
+            borderColor: palette.inkMuted,
             alignItems: 'center',
             justifyContent: 'center',
             transform: press.style.transform,
           }}
         >
-          <Icon name="minus" size={12} color={danger} />
+          <Icon name="minus" size={12} color={palette.inkMuted} />
         </Animated.View>
       </Pressable>
     </Pop>

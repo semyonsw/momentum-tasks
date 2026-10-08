@@ -72,8 +72,11 @@
  * their own `Transfer` category per direction, which the app creates the first
  * time one is recorded and which the editor's category chips never offer.
  *
- * Amounts are whole AMD. There are no sub-units in circulation, so an integer is
- * the honest type and `0.1 + 0.2` never gets a chance to happen.
+ * Amounts are INTEGERS — whole AMD, which has no sub-units in circulation, so an
+ * integer is the honest type and `0.1 + 0.2` never gets a chance to happen. A log
+ * counting in a currency with cents keeps integers too, in hundredths: the log's
+ * `scale` says which, and only `formatValue` ever puts a point back in. See
+ * `lib/moneyUnits.ts` for why the scale is pinned per log, not read off the label.
  */
 
 import {
@@ -350,10 +353,16 @@ export function editBalanceInput(shown: string, text: string): string {
   return parseBalanceInput(text).digits;
 }
 
-export function formatValue(value: number): string {
+export function formatValue(value: number, scale = 0): string {
   const rounded = Math.round(Math.abs(value));
   const sign = value < 0 ? '-' : '';
-  return sign + rounded.toLocaleString('en-US');
+  if (scale <= 0) return sign + rounded.toLocaleString('en-US');
+  // A log in cents (`lib/moneyUnits.ts`): `1250` is 12.50, and a whole `1200` is
+  // `12` — the point only appears when there is something after it.
+  const unit = 10 ** scale;
+  const fraction = rounded % unit;
+  const whole = Math.floor(rounded / unit).toLocaleString('en-US');
+  return sign + whole + (fraction === 0 ? '' : `.${String(fraction).padStart(scale, '0')}`);
 }
 
 /**
@@ -366,8 +375,8 @@ export function formatValue(value: number): string {
  * settings store to find out would make every money test a store test, so the
  * screens pass it down.
  */
-export function formatMoney(value: number, code: string): string {
-  return `${formatValue(value)} ${code}`;
+export function formatMoney(value: number, code: string, scale = 0): string {
+  return `${formatValue(value, scale)} ${code}`;
 }
 
 /** The month's name on its own, without the year. */

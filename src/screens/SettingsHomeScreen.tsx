@@ -86,7 +86,14 @@ import {
   useBarInsets,
 } from '../components/glass';
 import { pressedStyle } from '../components/motion';
-import { Kicker, Separator, StepperRow, TextButton, Toggle } from '../components/primitives';
+import {
+  DangerFootAction,
+  Kicker,
+  Separator,
+  StepperRow,
+  TextButton,
+  Toggle,
+} from '../components/primitives';
 import { SparkleCircle } from '../components/AiEntryCard';
 import { useAi } from '../state/aiStore';
 import { runBackupNow } from '../hooks/useAutoBackup';
@@ -117,7 +124,7 @@ import { applyBackup, currentSnapshot, exportBackupText } from '../state/dataTra
 import { SuccessPopup } from '../components/SuccessPopup';
 import { SETTING_LIMITS, useSettings } from '../state/settingsStore';
 import { THEME_PRESETS, themeColors, themeName, type ThemePreset } from '../lib/theme';
-import { ai, danger, gradientBar, palette, radius, tint } from '../theme/tokens';
+import { ai, gradientBar, palette, radius, tint } from '../theme/tokens';
 
 /** A file that has been read and understood, waiting for a yes. */
 interface PendingImport {
@@ -599,47 +606,6 @@ export function SettingsHomeScreen({
             <Separator inset={0} />
           </GlassSurface>
 
-          {/* PLACEMENT RULE 5. The one action on this screen that cannot be
-              undone is plain text in a dashed box at the foot of the scroll —
-              deliberately out of the thumb's arc. A reset should cost a scroll,
-              not a flick. Its label is `danger` coral — the one non-green hue,
-              which the motion pass allows on exactly the controls that delete
-              plan, and this is the one on this screen that does. */}
-          <BubblePressable
-            onPress={() => setConfirmingReset(true)}
-            radius={16}
-            accessibilityRole="button"
-            accessibilityLabel={t('Reset every setting to its default')}
-            style={(state) => [
-              pressedStyle(state),
-              {
-                marginTop: 22,
-                marginHorizontal: 16,
-                paddingVertical: 14,
-                paddingHorizontal: 16,
-                borderRadius: 16,
-                borderWidth: 1,
-                borderStyle: 'dashed',
-                borderColor: 'rgba(138,150,143,0.22)',
-              },
-            ]}
-          >
-            <Text
-              maxFontSizeMultiplier={1.3}
-              style={{ fontSize: 14.5, color: danger }}
-              className="font-medium"
-            >
-              {t('Reset every setting to its default')}
-            </Text>
-            <Text
-              maxFontSizeMultiplier={1.3}
-              style={{ fontSize: 13.5, lineHeight: 18 }}
-              className="mt-[2px] text-ink-faint"
-            >
-              {t('Nothing you have logged is touched.')}
-            </Text>
-          </BubblePressable>
-
           {status ? (
             <Text
               className={[
@@ -668,6 +634,16 @@ export function SettingsHomeScreen({
               'puts all three sections’ settings back to their defaults at once. It does not touch a single thing you have logged — not an exercise, not a routine, not an answered day, not an amount.',
             )}
           </Text>
+
+          {/* THE FOOT OF THE SCREEN (U19): the one action here that cannot be
+              undone is the last thing on the page, muted, and it asks in the
+              danger sheet. A reset should cost a scroll, not a flick. */}
+          <DangerFootAction
+            label={t('Reset every setting')}
+            hint={t('Nothing you have logged is touched.')}
+            onPress={() => setConfirmingReset(true)}
+            className="mx-md mt-xl"
+          />
         </ScrollView>
       </View>
 

@@ -23,6 +23,10 @@
  * instead would mean asking somebody to do the subtraction the app is holding
  * all the numbers for.
  *
+ * IN WHOLE UNITS, even in a log kept in cents (`lib/moneyUnits.ts`): the field
+ * converts at the edge, and Save on an untouched field keeps the cents as they
+ * were rather than rounding them off.
+ *
  * A MINUS SIGN IS ALLOWED. An account can honestly hold less than nothing, and
  * a field that silently ate the `-` would make that unsayable.
  */
@@ -34,6 +38,7 @@ import { Sheet, SheetCancel } from './Sheet';
 import { Kicker, PrimaryButton } from './primitives';
 import { useT } from '../hooks/useT';
 import { editBalanceInput, formatValue, parseBalanceInput } from '../lib/money';
+import { majorToMinor } from '../lib/moneyUnits';
 import { palette, tint } from '../theme/tokens';
 
 interface BalanceSheetProps {
@@ -42,14 +47,28 @@ interface BalanceSheetProps {
   /** What the screen is currently showing, so the field opens on it. */
   balance: number;
   currency: string;
+  /** The log's scale (`lib/moneyUnits.ts`): `balance` and the saved value are in it. */
+  scale?: number;
   onSave: (balance: number) => void;
   onDismiss: () => void;
 }
 
-export function BalanceSheet({ title, balance, currency, onSave, onDismiss }: BalanceSheetProps) {
+export function BalanceSheet({
+  title,
+  balance,
+  currency,
+  scale = 0,
+  onSave,
+  onDismiss,
+}: BalanceSheetProps) {
   const t = useT();
-  const [digits, setDigits] = useState(String(balance));
+  /* Whole units in the field, whatever the scale: what is in a pocket is read
+     off to the unit. The cents already in the balance survive a Save that did
+     not change the whole part — see `save`. */
+  const opened = String(Math.trunc(balance / 10 ** scale));
+  const [digits, setDigits] = useState(opened);
   const parsed = parseBalanceInput(digits);
+  const save = () => onSave(digits === opened ? balance : majorToMinor(parsed.value, scale));
   const shown = digits === '' || digits === '-' ? digits : formatValue(parsed.value);
 
   return (
@@ -89,7 +108,7 @@ export function BalanceSheet({ title, balance, currency, onSave, onDismiss }: Ba
       </Text>
 
       <View className="mt-xl">
-        <PrimaryButton label={t('Save')} onPress={() => onSave(parsed.value)} />
+        <PrimaryButton label={t('Save')} onPress={save} />
         <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
       </View>
     </Sheet>

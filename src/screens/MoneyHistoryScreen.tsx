@@ -93,6 +93,7 @@ import {
 import { useMoney } from '../state/moneyStore';
 import { palette } from '../theme/tokens';
 import { useSettings } from '../state/settingsStore';
+import { useMoneyScale } from '../hooks/useMoneyScale';
 import { useLanguage, useT, type Translate } from '../hooks/useT';
 import { plural, t as translate, type Language } from '../lib/i18n';
 import type { ID } from '../types/models';
@@ -144,6 +145,7 @@ export function MoneyHistoryScreen({
   const all = useMoney((s) => s.amounts);
   const amounts = useMemo(() => inAccount(all, account.id), [all, account.id]);
   const currency = useSettings((s) => s.currencyCode);
+  const scale = useMoneyScale();
   /*
    * Seeded from the setting, then the chips own it — the same rule the task
    * history follows. A range that wrote itself back would make "what this opens
@@ -193,7 +195,7 @@ export function MoneyHistoryScreen({
     [categories],
   );
 
-  const money = (value: number) => formatMoney(value, currency);
+  const money = (value: number) => formatMoney(value, currency, scale);
 
   return (
     <View className="flex-1 bg-bg">
@@ -326,7 +328,7 @@ export function MoneyHistoryScreen({
         {series.length >= 2 && trend.total > 0 ? (
           <>
             <View className="mx-lg mt-md">
-              <TrendChart points={series} formatValue={(value) => formatValue(value)} />
+              <TrendChart points={series} formatValue={(value) => formatValue(value, scale)} />
             </View>
             <Text className="mx-lg mt-sm text-label tabular-nums text-ink-faint">
               {t('{total} over {count} {buckets} · about {average} each', {
@@ -345,7 +347,7 @@ export function MoneyHistoryScreen({
 
             <Kicker className="mx-lg mb-sm mt-xl">{t('Balance over the same range')}</Kicker>
             <View className="mx-lg">
-              <TrendChart points={balanceLine} formatValue={(value) => formatValue(value)} />
+              <TrendChart points={balanceLine} formatValue={(value) => formatValue(value, scale)} />
             </View>
             <Text className="mx-lg mt-sm text-label text-ink-faint">
               {t(
@@ -444,13 +446,14 @@ function DayRow({
   onPress: () => void;
 }) {
   const t = useT();
+  const scale = useMoneyScale();
   const note = amount.note.trim();
   const name = category?.name ?? t('Archived');
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${name}. ${formatMoney(amount.value, currency)}. ${note === '' ? t('no note') : note}`}
+      accessibilityLabel={`${name}. ${formatMoney(amount.value, currency, scale)}. ${note === '' ? t('no note') : note}`}
       style={pressedStyle}
       className="justify-center px-lg py-md"
     >
@@ -461,7 +464,7 @@ function DayRow({
         </Text>
         <Text className="ml-md text-body tabular-nums text-ink">
           {amount.direction === 'income' ? '+' : ''}
-          {formatMoney(amount.value, currency)}
+          {formatMoney(amount.value, currency, scale)}
         </Text>
         <Icon name="chevron-right" size={16} color={palette.inkFaint} />
       </View>
@@ -496,6 +499,7 @@ function ShareRow({
   /** Passed down rather than read here: the lib formats, the screen decides. */
   currency: string;
 }) {
+  const scale = useMoneyScale();
   return (
     <View className="h-row-lg justify-center px-lg">
       <View className="flex-row items-center">
@@ -504,7 +508,7 @@ function ShareRow({
           {name}
         </Text>
         <Text className="ml-md text-body tabular-nums text-green-bright">
-          {formatMoney(value, currency)}
+          {formatMoney(value, currency, scale)}
         </Text>
         <Text className="ml-sm w-[40px] text-right text-label tabular-nums text-ink-faint">
           {percent}%

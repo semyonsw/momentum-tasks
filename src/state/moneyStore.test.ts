@@ -388,3 +388,75 @@ describe('moving money between subsections', () => {
     expect(value.amounts[0].transferId).toBeUndefined();
   });
 });
+
+describe('the scale — cents without rescaling anything (U25)', () => {
+  const amount = (value: number) => ({
+    id: `a${value}`,
+    categoryId: 'food',
+    accountId: 'cash',
+    direction: 'expense' as const,
+    value,
+    when: { kind: 'day' as const, date: '2026-09-12' },
+    note: '',
+    createdAt: '2026-09-12T10:00:00.000Z',
+  });
+
+  it('is absent on a log that never pinned one, and on a 2.2.0 log', () => {
+    expect(useMoney.getState().scale).toBeUndefined();
+    const v220 = sanitizeMoney({ categories: seedCategories, amounts: [amount(12500)] as never });
+    expect('scale' in v220).toBe(false);
+    expect(v220.amounts[0].value).toBe(12500);
+  });
+
+  it('is pinned once by the first write, and never moved after', () => {
+    useMoney.getState().pinScale(2);
+    expect(useMoney.getState().scale).toBe(2);
+    useMoney.getState().pinScale(0);
+    expect(useMoney.getState().scale).toBe(2);
+  });
+
+  it('refuses a junk scale', () => {
+    useMoney.getState().pinScale(7);
+    expect(useMoney.getState().scale).toBeUndefined();
+  });
+
+  it('keeps amounts integers in minor units: 12.50 is stored as 1250', () => {
+    useMoney.getState().pinScale(2);
+    useMoney.getState().addAmount({
+      categoryId: 'food',
+      accountId: 'cash',
+      direction: 'expense',
+      value: 1250,
+      when: { kind: 'day', date: '2026-09-12' },
+      note: '',
+    });
+    const [stored] = useMoney.getState().amounts;
+    expect(stored.value).toBe(1250);
+    expect(Number.isInteger(stored.value)).toBe(true);
+  });
+
+  it('leaves existing AMD amounts exactly as they were — pinned or not', () => {
+    useMoney.getState().importMoney({
+      accounts: seedAccounts,
+      categories: seedCategories,
+      amounts: [amount(12500), amount(2600)],
+    });
+    expect(useMoney.getState().amounts.map((a) => a.value)).toEqual([12500, 2600]);
+    useMoney.getState().pinScale(0);
+    expect(useMoney.getState().amounts.map((a) => a.value)).toEqual([12500, 2600]);
+  });
+
+  it('travels with the amounts it describes, and an import without one clears it', () => {
+    useMoney.getState().pinScale(2);
+    const exported = sanitizeMoney(useMoney.getState());
+    expect(exported.scale).toBe(2);
+
+    // A backup from before cents: its amounts are whole units, whatever was here.
+    useMoney.getState().importMoney({ categories: seedCategories, amounts: [amount(500)] });
+    expect(useMoney.getState().scale).toBeUndefined();
+    expect(useMoney.getState().amounts[0].value).toBe(500);
+
+    useMoney.getState().importMoney(exported);
+    expect(useMoney.getState().scale).toBe(2);
+  });
+});

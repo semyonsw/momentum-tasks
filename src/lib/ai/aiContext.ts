@@ -807,6 +807,13 @@ export interface ExpensesContextInput {
   accounts: readonly MoneyAccount[];
   /** The label exactly as the user typed it. */
   currency: string;
+  /**
+   * The log's scale (`lib/moneyUnits.ts`). 0 or absent: every figure is whole
+   * units, and the context is exactly what it always was. 2: every figure is in
+   * hundredths, and the context SAYS so rather than dividing — sums of integers
+   * stay exact, and the model is told how to read them.
+   */
+  scale?: number;
   today: string;
   lang: Language;
   /** Defaults to every month from the first amount to this one, at least six. */
@@ -852,6 +859,15 @@ function monthAnchor(day: string, offset: number): string {
   const date = parseDay(day) ?? new Date();
   const shifted = new Date(date.getFullYear(), date.getMonth() + offset, 1);
   return dayKey(shifted);
+}
+
+/** `{ valueUnit }` for a log kept in hundredths; nothing at all for whole units. */
+function valueUnit(currency: string, scale: number | undefined): Record<string, string> {
+  if (!scale || scale <= 0) return {};
+  const unit = 10 ** scale;
+  return {
+    valueUnit: `every money figure is an integer count of 1/${unit} ${currency}: ${unit * 12 + 50} means ${(12.5).toFixed(scale)} ${currency}; divide by ${unit} before showing one`,
+  };
 }
 
 export function buildExpensesContext(input: ExpensesContextInput): ExpensesContext {
@@ -972,6 +988,7 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
     today,
     language: LANGUAGE_NAME[lang],
     currency,
+    ...valueUnit(currency, input.scale),
     note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; expense and income categories are separate lists (categories.expense, categories.income) and an amount is only ever in a category of its own direction; a "(transfer)" amount is one half of money moved between two accounts — an expense from one and an income into the other, same value, same day; amounts lists every amount, newest first, as "date direction category value [account]: note" — the note, when present, is what the user wrote on it',
     categories: categoryLists,
     months: monthRows,
@@ -1057,6 +1074,7 @@ export function expensesBrief(input: {
   categories: readonly MoneyCategory[];
   accounts: readonly MoneyAccount[];
   currency: string;
+  scale?: number;
   today: string;
 }): Record<string, unknown> {
   const context = buildExpensesContext({ ...input, lang: 'en', months: 2 });
@@ -1070,6 +1088,7 @@ export function expensesBrief(input: {
     .map(([name, total]) => `${name} ${total}`);
   return {
     currency: input.currency,
+    ...valueUnit(input.currency, input.scale),
     thisMonth: month ? { month: month.month, spent: month.spent, income: month.income } : null,
     topCategoriesThisMonth: top,
     recentNotes: context.notes.slice(0, 10),

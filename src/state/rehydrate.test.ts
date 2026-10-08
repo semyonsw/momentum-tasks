@@ -69,6 +69,50 @@ describe('a money log written by version 1', () => {
   });
 });
 
+describe('a money log written by 2.2.0, before cents (U25)', () => {
+  it('cold-starts with every amount as it was and no scale pinned', async () => {
+    const category = seedCategories[0];
+    await AsyncStorage.setItem(
+      'money',
+      JSON.stringify({
+        version: 3,
+        state: {
+          accounts: [{ id: 'cash', name: 'Cash', glyph: '💵', order: 0, opening: 40000 }],
+          categories: [category],
+          amounts: [
+            {
+              id: 'a1',
+              categoryId: category.id,
+              accountId: 'cash',
+              direction: 'expense',
+              value: 12500,
+              when: { kind: 'day', date: '2026-09-01' },
+              note: '',
+              createdAt: '2026-09-01T10:00:00.000Z',
+            },
+          ],
+        },
+      }),
+    );
+
+    await useMoney.persist.rehydrate();
+
+    const { amounts, accounts, scale } = useMoney.getState();
+    expect(amounts.map((amount) => amount.value)).toEqual([12500]);
+    expect(accounts[0].opening).toBe(40000);
+    expect(scale).toBeUndefined();
+  });
+
+  it('reads a pinned scale back after a restart', async () => {
+    await AsyncStorage.setItem(
+      'money',
+      JSON.stringify({ version: 3, state: { categories: seedCategories, amounts: [], scale: 2 } }),
+    );
+    await useMoney.persist.rehydrate();
+    expect(useMoney.getState().scale).toBe(2);
+  });
+});
+
 describe('settings written by 2.2.0', () => {
   it('cold-start with every assistant card showing, and nothing else lost', async () => {
     const { useSettings, DEFAULT_SETTINGS } = await import('./settingsStore');

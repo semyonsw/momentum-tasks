@@ -1519,6 +1519,16 @@ const RU: Record<string, string> = {
     'Удерживайте или нажмите на точки, чтобы изменить раздел',
   'Random routine options': 'Настройки случайной программы',
   'Editing the library': 'Правка базы',
+  'Can’t be undone': 'Нельзя отменить',
+  'Chat deleted': 'Чат удалён',
+  'Remove {name}?': 'Удалить «{name}»?',
+  'Its plate list goes with it. Your workouts are untouched.':
+    'Вместе с ним удалится список блинов. Тренировки не изменятся.',
+  'Decimal point': 'Десятичная точка',
+  'The keypad has a decimal key: amounts here are kept in cents.':
+    'На клавиатуре есть десятичная точка: суммы хранятся в сотых долях.',
+  'This log was started in whole units, so the keypad keeps its 000 key. Nothing already recorded is ever rescaled.':
+    'Этот журнал начат в целых единицах, поэтому на клавиатуре остаётся клавиша 000. Уже записанные суммы никогда не пересчитываются.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

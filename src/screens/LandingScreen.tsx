@@ -75,6 +75,7 @@ import { themeName } from '../lib/theme';
 import { formatElapsed } from '../lib/units';
 import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
+import { useMoneyScale } from '../hooks/useMoneyScale';
 import { useTasks } from '../state/tasksStore';
 import { curve, glass, gradientFill, palette, radius, stopTint, tint } from '../theme/tokens';
 
@@ -144,6 +145,7 @@ export function LandingScreen({
   const amounts = useMoney((s) => s.amounts);
   const categories = useMoney((s) => s.categories);
   const currency = useSettings((s) => s.currencyCode);
+  const scale = useMoneyScale();
   // U9: never an archived account — the one the money section would open on.
   const account = useMemo(
     () => landingAccount(accounts, moneyAccountId),
@@ -359,13 +361,13 @@ export function LandingScreen({
 
         <FinanceRow
           width={wide}
-          figure={money ? formatValue(money.balance) : null}
+          figure={money ? formatValue(money.balance, scale) : null}
           currency={currency}
           detail={
             account && money
               ? t('Finance · {account} · {spent} spent in {month}', {
                   account: account.name,
-                  spent: `${formatValue(money.spent)} ${currency}`,
+                  spent: `${formatValue(money.spent, scale)} ${currency}`,
                   month: monthName,
                 })
               : `${t('Finance')} · ${t('No accounts yet')}`

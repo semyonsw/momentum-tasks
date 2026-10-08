@@ -62,6 +62,7 @@ import { useAi, type AiMessage, type ChatBlock } from './aiStore';
 import { useDebriefs } from './debriefStore';
 import { useLibrary } from './libraryStore';
 import { useMoney } from './moneyStore';
+import { logIsEmpty, moneyScale } from '../lib/moneyUnits';
 import { useSettings } from './settingsStore';
 import { useTasks } from './tasksStore';
 import { useWorkoutHistory } from './workoutHistoryStore';
@@ -167,6 +168,12 @@ export function sectionContext(section: AiSection): {
   const settings = useSettings.getState();
   const { tasks, log } = useTasks.getState();
   const money = useMoney.getState();
+  /* What `1250` means in this log — see `lib/moneyUnits.ts`. */
+  const moneyScaleNow = moneyScale({
+    pinned: money.scale,
+    empty: logIsEmpty(money.amounts, money.accounts),
+    currency: settings.currencyCode,
+  });
   const routineIds = new Set(library.routines.map((r) => r.id));
 
   /* What the OTHER two sections look like, briefly — see `withBriefs`. */
@@ -184,6 +191,7 @@ export function sectionContext(section: AiSection): {
         categories: money.categories,
         accounts: money.accounts,
         currency: settings.currencyCode,
+        scale: moneyScaleNow,
         today,
       }),
   };
@@ -225,6 +233,7 @@ export function sectionContext(section: AiSection): {
     categories: money.categories,
     accounts: money.accounts,
     currency: settings.currencyCode,
+    scale: moneyScaleNow,
     today,
     lang: language,
   });

@@ -1226,6 +1226,7 @@ export function AppShell() {
               const applied = applySequence(route.section, messageId);
               if (applied) setToast(applied.message, { label: t('Undo'), onPress: applied.undo });
             }}
+            onToast={setToast}
           />
           {toast ? (
             <Toast key={toast.key} label={toast.text} action={toast.action} bottom={132} />
