@@ -9,7 +9,7 @@ import { renameSeedTasks, sanitizeTasks, seedTasks, useTasks } from './tasksStor
  * The task store.
  *
  * Two things here are worth a test rather than a reading. The first is that the
- * log stays SPARSE — an entry cycled back to unanswered has to leave the blob
+ * log stays SPARSE — an entry toggled back to unanswered has to leave the blob
  * entirely, or a year of tapping leaves a record per task per day saying nothing.
  * The second is that `tickAuto` never overrules a deliberate answer: the app
  * noticing you trained is not grounds for it to erase "missed on purpose".
@@ -69,26 +69,57 @@ describe('sanitizing', () => {
 });
 
 describe('answering a day', () => {
-  it('cycles unanswered, done, missed on purpose, and back', () => {
-    const { cycleMark } = useTasks.getState();
+  it('toggles done and unanswered, and a tap never excuses a day', () => {
+    const { toggleMark } = useTasks.getState();
     const id = useTasks.getState().tasks[0].id;
 
-    cycleMark(id, '2026-09-13');
+    toggleMark(id, '2026-09-13');
     expect(entryOf(useTasks.getState().log, id, '2026-09-13').mark).toBe('done');
-    cycleMark(id, '2026-09-13');
-    expect(entryOf(useTasks.getState().log, id, '2026-09-13').mark).toBe('missed');
-    cycleMark(id, '2026-09-13');
+    toggleMark(id, '2026-09-13');
     expect(entryOf(useTasks.getState().log, id, '2026-09-13').mark).toBeNull();
+    toggleMark(id, '2026-09-13');
+    expect(entryOf(useTasks.getState().log, id, '2026-09-13').mark).toBe('done');
+  });
+
+  it('returns the mark it replaced, so an Undo can put it back', () => {
+    const { toggleMark } = useTasks.getState();
+    const id = useTasks.getState().tasks[0].id;
+
+    expect(toggleMark(id, '2026-09-13')).toBeNull();
+    expect(toggleMark(id, '2026-09-13')).toBe('done');
   });
 
   it('leaves no row behind when a day goes back to unanswered', () => {
-    const { cycleMark } = useTasks.getState();
+    const { toggleMark } = useTasks.getState();
     const id = useTasks.getState().tasks[0].id;
 
-    cycleMark(id, '2026-09-13');
-    cycleMark(id, '2026-09-13');
-    cycleMark(id, '2026-09-13');
+    toggleMark(id, '2026-09-13');
+    toggleMark(id, '2026-09-13');
     expect(useTasks.getState().log).toEqual({});
+  });
+
+  it('skips only through the explicit action, and the skip can be undone', () => {
+    const { setMark } = useTasks.getState();
+    const id = useTasks.getState().tasks[0].id;
+
+    useTasks.getState().toggleMark(id, '2026-09-13');
+    setMark(id, '2026-09-13', 'missed');
+    expect(entryOf(useTasks.getState().log, id, '2026-09-13').mark).toBe('missed');
+    // The toast's Undo writes back what was there before the skip.
+    setMark(id, '2026-09-13', 'done');
+    expect(entryOf(useTasks.getState().log, id, '2026-09-13').mark).toBe('done');
+  });
+
+  it('a tap on an excused day makes it done; the note stays', () => {
+    const id = useTasks.getState().tasks[0].id;
+    useTasks.getState().setMark(id, '2026-09-13', 'missed');
+    useTasks.getState().setNote(id, '2026-09-13', 'ill');
+
+    expect(useTasks.getState().toggleMark(id, '2026-09-13')).toBe('missed');
+    expect(entryOf(useTasks.getState().log, id, '2026-09-13')).toEqual({
+      mark: 'done',
+      note: 'ill',
+    });
   });
 
   it('keeps a day that has only a note on it', () => {
@@ -137,6 +168,38 @@ describe('the automatic tick', () => {
     useTasks.getState().archiveTask(gym.id);
     useTasks.getState().tickAuto('workout', ASKED);
     expect(entryOf(useTasks.getState().log, gym.id, ASKED).mark).toBeNull();
+  });
+});
+
+describe('a log written while the tap still cycled', () => {
+  const OLD = {
+    tasks: [
+      { id: 'a', name: 'Read', startedOn: '2026-01-01' },
+      { id: 'b', name: 'Sleep', startedOn: '2026-01-01' },
+    ],
+    log: {
+      a: {
+        '2026-09-10': { mark: 'missed', note: '' },
+        '2026-09-11': { mark: 'done', note: '' },
+        '2026-09-12': { mark: 'missed', note: 'ill' },
+      },
+      b: { '2026-09-12': { mark: 'missed', note: '' } },
+    },
+  };
+
+  it('imports with every missed on purpose exactly where it was', () => {
+    useTasks.getState().importTasks(OLD);
+    expect(useTasks.getState().log).toEqual(OLD.log);
+  });
+
+  it('keeps the old marks when another row or another day is tapped', () => {
+    useTasks.getState().importTasks(OLD);
+    useTasks.getState().toggleMark('b', '2026-09-13');
+    useTasks.getState().toggleMark('a', '2026-09-13');
+    const { log } = useTasks.getState();
+    expect(entryOf(log, 'a', '2026-09-10').mark).toBe('missed');
+    expect(entryOf(log, 'a', '2026-09-12')).toEqual({ mark: 'missed', note: 'ill' });
+    expect(entryOf(log, 'b', '2026-09-12').mark).toBe('missed');
   });
 });
 

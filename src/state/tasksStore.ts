@@ -34,6 +34,7 @@ import { persistedStorage } from './persistStorage';
 
 import { clampHour, clampMinute, dayKey } from '../lib/days';
 import { t } from '../lib/i18n';
+import { toggledMark } from '../lib/taskTap';
 import { useSettings } from './settingsStore';
 import {
   asksOn,
@@ -238,8 +239,12 @@ interface TasksState extends TasksValue {
    */
   reorderTasks: (visibleIds: readonly ID[], movedId: ID, toIndex: number) => void;
   setMark: (id: ID, day: string, mark: TaskMark | null) => void;
-  /** The circle's tap: unanswered → done → missed on purpose → unanswered. */
-  cycleMark: (id: ID, day: string) => void;
+  /**
+   * The circle's tap: done ↔ unanswered, and an excused day becomes done. It
+   * never writes `missed` — that is `setMark(…, 'missed')`, behind the row's hold
+   * menu. `lib/taskTap.ts` has why. Returns the mark it replaced, for an Undo.
+   */
+  toggleMark: (id: ID, day: string) => TaskMark | null;
   setNote: (id: ID, day: string, note: string) => void;
   /**
    * Tick every live task fed by `source`, for `day`, if nobody has answered it.
@@ -363,11 +368,11 @@ export const useTasks = create<TasksState>()(
       setMark: (id, day, mark) =>
         set((state) => ({ log: writeEntry(state.log, id, day, { mark }) })),
 
-      cycleMark: (id, day) => {
+      toggleMark: (id, day) => {
         const current = get().log[id]?.[day]?.mark ?? null;
-        const next: TaskMark | null =
-          current === null ? 'done' : current === 'done' ? 'missed' : null;
+        const next = toggledMark(current);
         set((state) => ({ log: writeEntry(state.log, id, day, { mark: next }) }));
+        return current;
       },
 
       setNote: (id, day, note) =>

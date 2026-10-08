@@ -54,6 +54,7 @@ import {
   type Gym,
 } from '../lib/gyms';
 import { formatClockTime, parseClockTime } from '../lib/days';
+import { AI_SECTIONS, type AiSection } from '../lib/ai/aiSchema';
 import { usableLanguage, type Language } from '../lib/i18n';
 import { INTERVALS, type Direction, type Interval } from '../lib/money';
 import type { Weekday } from '../lib/tasks';
@@ -285,6 +286,18 @@ export interface Settings {
    * ones go.
    */
   autoBackupUris: string[];
+
+  /* --- the assistant's entry card (U2) ------------------------------- */
+  /**
+   * The sections whose assistant card is gone for good: the ✕ was pressed, or a
+   * chat was had there. After that the ✦ in the corner is the way in.
+   *
+   * OPTIONAL, and absent means "none": a phone upgrading from 2.2.0 and a backup
+   * written by it have no such key, and both must come up showing all three
+   * cards exactly as before. A list rather than three booleans so a section added
+   * later needs no new key.
+   */
+  aiCardsDismissed?: AiSection[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -341,6 +354,8 @@ export const DEFAULT_SETTINGS: Settings = {
   shareToHealthConnect: false,
   lastBackupAt: undefined,
   autoBackupUris: [],
+  // Declared so the key set is complete; absent on disk means "no card closed".
+  aiCardsDismissed: undefined,
 };
 
 /**
@@ -474,6 +489,7 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     shareToHealthConnect: raw.shareToHealthConnect === true,
     lastBackupAt: usableInstant(raw.lastBackupAt),
     autoBackupUris: usableUriList(raw.autoBackupUris),
+    aiCardsDismissed: usableSections(raw.aiCardsDismissed),
   };
 }
 
@@ -570,6 +586,16 @@ function usableCurrency(value: unknown): string {
   return trimmed === '' ? 'AMD' : trimmed;
 }
 
+/**
+ * Known sections, once each, in the app's own order — or `undefined` for none,
+ * so a device that never dismissed a card writes no key at all.
+ */
+function usableSections(value: unknown): AiSection[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const kept = AI_SECTIONS.filter((section) => value.includes(section));
+  return kept.length > 0 ? kept : undefined;
+}
+
 /** The rotation list: strings only, and capped so a corrupt blob cannot grow. */
 function usableUriList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -657,6 +683,9 @@ interface SettingsState extends Settings {
    * pointed the picker, which is not a folder this app rotates.
    */
   recordBackup: (at: string, uri?: string) => { drop: string[] };
+
+  /** Hide one section's assistant card for good (U2). */
+  dismissAiCard: (section: AiSection) => void;
 
   resetToDefaults: () => void;
   /**
@@ -807,6 +836,9 @@ export const useSettings = create<SettingsState>()(
         return { drop };
       },
 
+      dismissAiCard: (section) =>
+        set({ aiCardsDismissed: usableSections([...(get().aiCardsDismissed ?? []), section]) }),
+
       resetToDefaults: () =>
         /*
          * The gyms, the bodyweight log and the granted folder are NOT settings in
@@ -839,6 +871,9 @@ export const useSettings = create<SettingsState>()(
           autoBackupFolderUri: get().autoBackupFolderUri,
           lastBackupAt: get().lastBackupAt,
           autoBackupUris: get().autoBackupUris,
+          // A card the user closed is not a duration or a switch; resetting the
+          // timers is no reason for it to come back.
+          aiCardsDismissed: get().aiCardsDismissed,
         }),
 
       importSettings: (raw) =>

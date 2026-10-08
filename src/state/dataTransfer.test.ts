@@ -429,3 +429,36 @@ describe('the debriefs', () => {
     expect(useDebriefs.getState().debriefs).toHaveLength(1);
   });
 });
+
+describe('the closed assistant cards', () => {
+  it('travel in a backup and come back', () => {
+    useSettings.getState().dismissAiCard('Tasks');
+    const text = exportBackupText();
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    expect(useSettings.getState().aiCardsDismissed).toBeUndefined();
+
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useSettings.getState().aiCardsDismissed).toEqual(['Tasks']);
+  });
+
+  it('a 2.2.0 backup, written before the key existed, imports unchanged and shows every card', () => {
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    const v220 = JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 1,
+      settings: { restSecondsBetweenSets: 90, autoTickTasks: false },
+      exercises: [],
+      routines: [],
+      workouts: [],
+    });
+    const parsed = parseBackup(v220);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
+    expect(useSettings.getState().autoTickTasks).toBe(false);
+    expect(useSettings.getState().aiCardsDismissed).toBeUndefined();
+  });
+});

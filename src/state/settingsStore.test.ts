@@ -601,3 +601,37 @@ describe('the language and the workout reminder', () => {
     expect(useSettings.getState().workoutReminderEnabled).toBe(false);
   });
 });
+
+describe('the assistant cards that were closed (U2)', () => {
+  it('is absent by default and on a blob from 2.2.0, which had no such key', () => {
+    expect(DEFAULT_SETTINGS.aiCardsDismissed).toBeUndefined();
+    expect(sanitizeSettings({}).aiCardsDismissed).toBeUndefined();
+    expect(sanitizeSettings(undefined).aiCardsDismissed).toBeUndefined();
+  });
+
+  it('keeps known sections once each and drops anything else', () => {
+    expect(
+      sanitizeSettings({
+        aiCardsDismissed: ['Expenses', 'Tasks', 'Tasks', 'Garden'],
+      } as unknown as Partial<Settings>).aiCardsDismissed,
+    ).toEqual(['Tasks', 'Expenses']);
+    expect(
+      sanitizeSettings({ aiCardsDismissed: 'Tasks' } as unknown as Partial<Settings>)
+        .aiCardsDismissed,
+    ).toBeUndefined();
+  });
+
+  it('persists a ✕ per section, and a second ✕ changes nothing', () => {
+    useSettings.getState().dismissAiCard('Tasks');
+    useSettings.getState().dismissAiCard('Tasks');
+    expect(currentSettings().aiCardsDismissed).toEqual(['Tasks']);
+    useSettings.getState().dismissAiCard('Workout');
+    expect(currentSettings().aiCardsDismissed).toEqual(['Workout', 'Tasks']);
+  });
+
+  it('survives Reset settings to defaults — a closed card is not a timer', () => {
+    useSettings.getState().dismissAiCard('Expenses');
+    useSettings.getState().resetToDefaults();
+    expect(currentSettings().aiCardsDismissed).toEqual(['Expenses']);
+  });
+});

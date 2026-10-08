@@ -7,13 +7,18 @@
  *   │ [Last 4 weeks] [Squat trend] [Suggest a …]   │
  *   └──────────────────────────────────────────────┘
  *
- * ── ALWAYS SHOWN, AND TWO WAYS IN ──────────────────────────────────────────
+ * ── SHOWN UNTIL YOU KNOW, AND TWO WAYS IN ─────────────────────────────────
  *
  * The sparkle in the corner is the quiet way in, for somebody who already knows
  * it is there. This card is how anybody finds out — so it is drawn whether or not
  * a key is connected, and without one its line says what it takes to start. The
  * row opens the chat empty; a chip opens it and asks that question. Either,
  * without a key, lands on the settings screen first and comes back afterwards.
+ *
+ * Once you know, it goes (U2): the ✕ in its corner, or the first chat in that
+ * section, hides it for good, per section — `lib/aiEntry.ts` has the rule and
+ * the settings store keeps the list. It renders nothing after that, so the three
+ * screens that place it needed no change of their own.
  *
  * `flat`, like every repeating pane: the section's blur budget belongs to its
  * hero, and this is the card under it rather than a second hero.
@@ -46,9 +51,13 @@ export { AiOrb };
 import { BubblePressable } from './bubbles';
 import { GlassSurface } from './glass';
 import { Icon } from './Icon';
-import { usePressScale } from './motion';
+import { pressedStyle, usePressScale } from './motion';
+import { Pressable } from './Pressable';
 import { FADE_ON, RunningText } from './RunningText';
 import { useAiPrompts } from '../hooks/useAiPrompts';
+import { aiCardShown } from '../lib/aiEntry';
+import { useAi } from '../state/aiStore';
+import { useSettings } from '../state/settingsStore';
 import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
@@ -61,6 +70,11 @@ const TITLE: Record<AiSection, string> = {
   Tasks: 'Ask about your habits',
   Expenses: 'Ask about your money',
 };
+
+/** The card's inner padding, and the ✕'s square and inset from the card's edge. */
+const CARD_PAD = 16;
+const CLOSE_SIZE = 44;
+const CLOSE_RIGHT = 6;
 
 /** The subline's type: 14 / 19. */
 const LINE_SIZE = 14;
@@ -94,10 +108,25 @@ export function AiEntryCard({
     ? t('Gemini · summaries, trends, suggestions')
     : t('Connect a Google AI key to start');
   const press = usePressScale(0.97);
+  const dismissed = useSettings((s) => s.aiCardsDismissed);
+  const dismiss = useSettings((s) => s.dismissAiCard);
+  const chatted = useAi(
+    (s) => (s.chats[section]?.length ?? 0) > 0 || (s.archive[section]?.length ?? 0) > 0,
+  );
+  const shown = aiCardShown(section, dismissed, chatted);
+
+  /* The first chat is written into the same list as the ✕, so deleting every
+     past chat later does not bring back a card the user has already used. */
+  const alreadyClosed = (dismissed ?? []).includes(section);
+  useEffect(() => {
+    if (chatted && !alreadyClosed) dismiss(section);
+  }, [chatted, alreadyClosed, dismiss, section]);
+
+  if (!shown) return null;
 
   return (
     <GlassSurface tier="card" radius={radius.card} shadow="e1" flat className="mx-lg mt-lg">
-      <View style={{ padding: 16 }}>
+      <View style={{ padding: CARD_PAD }}>
         <BubblePressable
           onPress={() => onOpen()}
           onPressIn={press.onPressIn}
@@ -116,9 +145,32 @@ export function AiEntryCard({
               </Text>
               <GradientLine text={line} />
             </View>
-            <Icon name="chevron-right" size={18} color={palette.inkFaint} />
+            {/* Room for the ✕, which sits over this corner rather than inside the
+                row's press: two targets, one tap each. */}
+            <View style={{ width: CLOSE_SIZE + CLOSE_RIGHT - CARD_PAD }} />
           </Animated.View>
         </BubblePressable>
+        {/* 44 square, level with the orb, in the card's top-right corner. */}
+        <View
+          style={{
+            position: 'absolute',
+            top: CARD_PAD,
+            right: CLOSE_RIGHT,
+            width: CLOSE_SIZE,
+            height: CLOSE_SIZE,
+          }}
+        >
+          <Pressable
+            onPress={() => dismiss(section)}
+            accessibilityRole="button"
+            accessibilityLabel={t('Hide the assistant card')}
+            accessibilityHint={t('The sparkle at the top stays the way in')}
+            style={pressedStyle}
+            className="flex-1 items-center justify-center"
+          >
+            <Icon name="x" size={16} color={palette.inkMuted} />
+          </Pressable>
+        </View>
 
         <View className="mt-[14px] flex-row flex-wrap" style={{ gap: 8 }}>
           {prompts.map((prompt) => (

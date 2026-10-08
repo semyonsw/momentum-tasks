@@ -2,20 +2,21 @@
  * TasksScreen — the day, and nothing but the day.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ DAILY TASKS                              ⟲   │
- *   │             ╭─────────╮                      │
- *   │         ‹   │   13    │   ›                  │   the day dial: the date
- *   │             │ SEP 26  │                      │   inside the day's fraction
- *   │             ╰─────────╯                      │
+ *   │ DAILY TASKS                           ✦  ⟲   │
+ *   │               ╭───────╮                      │
+ *   │           ‹   │ TODAY │   ›                  │   the day dial, 132 dp: the
+ *   │               │  13   │                      │   date inside the day's
+ *   │               ╰───────╯                      │   fraction
  *   │      (6 done) (2 left) ┆1 on purpose┆        │
  *   │ ╭────────────────────────────────────────╮   │
  *   │ │ ✓  Morning Bible reading      (🜂 12) › │   │  lit — this one is done
- *   │ │    Every day                           │   │
  *   │ ╰────────────────────────────────────────╯   │
  *   │ ╭────────────────────────────────────────╮   │
  *   │ │ ○  Evening Bible reading             › │   │
  *   │ ╰────────────────────────────────────────╯   │
- *   │                            ╭ + Add task ╮    │
+ *   │ ( ✦ Ask about your habits             ✕ )    │  until closed or used
+ *   │ Tap a circle to mark it done. Hold a row…    │
+ *   │                                     ( + )    │
  *   └──────────────────────────────────────────────┘
  *
  * ── THE DIAL IS THE DAY ───────────────────────────────────────────────────
@@ -24,20 +25,32 @@
  * progress bar under that, and a count under THAT: three separate objects, in
  * reading order, none of them the thing the app is opened for. They are one
  * object now — `components/DayDial.tsx` — with the date drawn inside the
- * fraction, at 196 dp with a halo that brightens as the day fills. The counts
- * stayed, as three pills under it, because a ring cannot say `6 of 8` and that
- * is what you tell somebody when they ask.
+ * fraction, with a halo that brightens as the day fills. The counts stayed, as
+ * three pills under it, because a ring cannot say `6 of 8` and that is what you
+ * tell somebody when they ask.
+ *
+ * ── THE LIST IS ABOVE THE FOLD (U1) ───────────────────────────────────────
+ *
+ * The dial was 196 dp with the weekday on its own line under it and the
+ * assistant's card under that: about 500 dp before the first row, so a phone at
+ * 360 × 800 showed two or three rows of the list it was opened for. The dial is
+ * 132 now with the weekday inside it, rows are 60 rather than 74, and the
+ * assistant's card moved UNDER the list (and can be closed — U2). Six to seven
+ * rows fit on that phone. Rejected: collapsing the dial into the bubble past four rows —
+ * the dial is the day's one picture, and a screen whose top changes shape with
+ * the length of the list is a screen you have to re-read every morning.
  *
  * ── THE CIRCLE IS THE SCREEN ──────────────────────────────────────────────
  *
- * Everything else here is a label on it. It cycles unanswered → done → missed on
- * purpose → unanswered, and the third state is the one that makes the other two
- * mean anything: without a way to say "I chose not to", the only honest thing a
- * habit list can report is failure, so people stop answering it and it reports
- * nothing at all. `lib/tasks.ts` has the argument in full. `on purpose` leaves
+ * Everything else here is a label on it. A tap toggles done ↔ unanswered (U6);
+ * `missed on purpose` — the state that makes the other two mean anything,
+ * because without a way to say "I chose not to" a habit list can only report
+ * failure (`lib/tasks.ts`) — is a sentence in the row's HOLD MENU, with an Undo
+ * toast. It used to be one tap past done, so a double tap excused a day without
+ * anybody seeing it happen; `lib/taskTap.ts` has the rule. `on purpose` leaves
  * the denominator entirely, so the ring reads `done / (asked − excused)`.
  *
- * The mark's tap target is 62 × 74 inside a 74-high card; tapping the rest of
+ * The mark's tap target is 62 × 60 inside a 60-high card; tapping the rest of
  * the row opens that one task's own screen. Only the left column toggles.
  *
  * ── THE THREE STATES ARE THREE SURFACES ───────────────────────────────────
@@ -58,10 +71,13 @@
  * blur budget is spent on the two bars, which is where the glass does its
  * actual work — see `components/glass.tsx`.
  *
- * ── LONG PRESS LIFTS A ROW, AND THE LIST IS THE DAY'S LIST ────────────────
+ * ── HOLD A ROW FOR ITS MENU; `Move` LIFTS IT ──────────────────────────────
  *
- * The same gesture, the same hook and the same `Drop` escape as the routine
- * editor and the logging screen: `hooks/useDragReorder.ts`. What is different
+ * The hold used to lift the row straight away. It opens a menu now — Skip today,
+ * Move, Open — so the skip has somewhere to live that a stray tap cannot reach,
+ * and the reorder is still there, one word further in. `Move` puts the row in
+ * the air with the same hook and the same `Drop` escape as the routine editor
+ * and the logging screen: `hooks/useDragReorder.ts`. What is different
  * here is what is on screen — the day shows only the tasks that ASKED for
  * something, so a Mon/Wed/Fri row is genuinely absent on a Tuesday, and dragging
  * the third visible row to the top has to mean third VISIBLE row. That is
@@ -125,9 +141,17 @@ import { SectionTopBar } from '../components/SectionTopBar';
 import { AiEntryCard } from '../components/AiEntryCard';
 import { SparkBurst, SPARK_MS } from '../components/SparkBurst';
 import { StreakFlame } from '../components/StreakFlame';
-import { CommitMark, FloatingAction, GlassSurface, Lamps, useBarInsets } from '../components/glass';
+import {
+  CommitMark,
+  FloatingAction,
+  GlassSurface,
+  Lamps,
+  useBarInsets,
+  type ToastAction,
+} from '../components/glass';
 import { pressedStyle, usePressScale } from '../components/motion';
-import { Kicker } from '../components/primitives';
+import { Kicker, Separator, TextButton } from '../components/primitives';
+import { Sheet } from '../components/Sheet';
 import { TaskEditorSheet } from '../components/TaskEditorSheet';
 import { useDragReorder, type CardLayout } from '../hooks/useDragReorder';
 import { useLanguage, useT } from '../hooks/useT';
@@ -154,11 +178,13 @@ import {
   upcomingOnce,
 } from '../lib/tasks';
 import type { Language } from '../lib/i18n';
+import { showTasksHint, taskRowActions, tasksEmptyState, type TaskRowAction } from '../lib/taskTap';
 import { mixSrgb } from '../lib/theme';
 import { useTasks } from '../state/tasksStore';
 import {
   curve,
   focalType,
+  glass,
   gradientFill,
   motion,
   palette,
@@ -179,6 +205,8 @@ interface TasksScreenProps {
   aiReady: boolean;
   /** The habits chat, asking `prompt` if a chip was tapped. */
   onOpenAi: (prompt?: string) => void;
+  /** The shell's toast — the skip says what it did there, with an Undo. */
+  onToast: (text: string, action?: ToastAction) => void;
 }
 
 export function TasksScreen({
@@ -188,20 +216,26 @@ export function TasksScreen({
   onChangeDay,
   aiReady,
   onOpenAi,
+  onToast,
 }: TasksScreenProps) {
   const t = useT();
   const lang = useLanguage();
   const tasks = useTasks((s) => s.tasks);
   const log = useTasks((s) => s.log);
-  const cycleMark = useTasks((s) => s.cycleMark);
+  const toggleMark = useTasks((s) => s.toggleMark);
+  const setMark = useTasks((s) => s.setMark);
   const addTask = useTasks((s) => s.addTask);
   const reorderTasks = useTasks((s) => s.reorderTasks);
 
   const bars = useBarInsets();
   const today = dayKey(new Date());
   const [adding, setAdding] = useState(false);
+  /** The row whose hold menu is up. */
+  const [menuFor, setMenuFor] = useState<ID | null>(null);
 
   const rows = useMemo(() => tasksOn(tasks, day), [tasks, day]);
+  const liveTasks = useMemo(() => tasks.filter((task) => task.archivedAt === null).length, [tasks]);
+  const empty = tasksEmptyState(liveTasks, rows.length);
   const progress = dayProgress(tasks, log, day);
   const isToday = day === today;
 
@@ -297,13 +331,37 @@ export function TasksScreen({
    */
   const openTask = useRef(onOpenTask);
   openTask.current = onOpenTask;
-  const toggleRow = useCallback((taskId: ID) => cycleMark(taskId, day), [cycleMark, day]);
+  const toggleRow = useCallback((taskId: ID) => toggleMark(taskId, day), [toggleMark, day]);
   const openRow = useCallback((taskId: ID) => openTask.current(taskId), []);
+  const holdRow = useCallback((taskId: ID) => setMenuFor(taskId), []);
+
+  /*
+   * The hold menu's answers. The skip is the only one that writes, and it says
+   * so in the toast with the mark it replaced ready to put back — `setMark`
+   * with the old value, so the Undo restores a `done` as a `done` and leaves
+   * the day's note alone either way.
+   */
+  const menuTask = menuFor ? (rows.find((row) => row.id === menuFor) ?? null) : null;
+  const menuMark = menuTask ? entryOf(log, menuTask.id, day).mark : null;
+  const onMenu = (action: TaskRowAction) => {
+    if (!menuTask) return;
+    const taskId = menuTask.id;
+    setMenuFor(null);
+    if (action === 'skip') {
+      const before = menuMark;
+      setMark(taskId, day, 'missed');
+      onToast(
+        isToday
+          ? t('Skipped today, on purpose. The streak keeps.')
+          : t('Skipped on purpose. The streak keeps.'),
+        { label: t('Undo'), onPress: () => setMark(taskId, day, before) },
+      );
+    } else if (action === 'unskip') setMark(taskId, day, null);
+    else if (action === 'move') lift(taskId);
+    else openRow(taskId);
+  };
 
   /* The day bubble, and the dial stepping back while it is up. */
-  // Tasks' own line: 250 is where the dial has fully left the top bar. The
-  // 40 dp below it is the same hysteresis every bubble keeps, so a thumb resting
-  // on the threshold does not flicker the pill.
   const {
     visible: bubbleUp,
     fabHidden,
@@ -378,7 +436,7 @@ export function TasksScreen({
                 a pager, a bar and a sentence stacked in reading order. */}
             <Animated.View
               style={[
-                { marginTop: 12, flexDirection: 'row', alignItems: 'center' },
+                { marginTop: 8, flexDirection: 'row', alignItems: 'center' },
                 { justifyContent: 'center', paddingHorizontal: 16 },
                 heroRecede,
               ]}
@@ -405,8 +463,21 @@ export function TasksScreen({
                       })
                 }`}
               >
-                <DayDial fraction={progress.fraction}>
+                <DayDial fraction={progress.fraction} size={DIAL} stroke={DIAL_STROKE}>
+                  {/* The weekday moved INSIDE (it was a kicker line under the
+                      dial): one object, and 30 dp of the fold back. */}
                   <View className="items-center">
+                    <Text
+                      maxFontSizeMultiplier={1.15}
+                      numberOfLines={1}
+                      style={{ fontSize: 12.5, letterSpacing: 1.1, maxWidth: DIAL - 28 }}
+                      className={[
+                        'font-semibold uppercase',
+                        isToday ? 'text-green-bright' : 'text-ink-faint',
+                      ].join(' ')}
+                    >
+                      {isToday ? t('Today') : weekdayName(day, lang)}
+                    </Text>
                     <Text
                       allowFontScaling={false}
                       style={[focalType.dayDial, textGlow.hero]}
@@ -415,9 +486,9 @@ export function TasksScreen({
                       {dayNumber(day)}
                     </Text>
                     <Text
-                      maxFontSizeMultiplier={1.3}
-                      style={{ fontSize: 12.5, letterSpacing: 1.4 }}
-                      className="mt-[6px] font-semibold uppercase tabular-nums text-ink-faint"
+                      maxFontSizeMultiplier={1.15}
+                      style={{ fontSize: 12.5, letterSpacing: 1.1 }}
+                      className="mt-[2px] font-semibold uppercase tabular-nums text-ink-faint"
                     >
                       {monthLabel(day, lang)}
                     </Text>
@@ -445,32 +516,21 @@ export function TasksScreen({
               </Pressable>
             </Animated.View>
 
-            <View className="mt-md flex-row items-center justify-center px-lg">
-              <Kicker tone={isToday ? 'green' : 'faint'}>
-                {isToday ? t('Today') : weekdayName(day, lang)}
-              </Kicker>
-            </View>
-
             {/* Three pills, and the third is dashed for the same reason the card
                 below it is: an excused day is a slot the user deliberately left
-                empty, not a thing that happened. */}
-            <View className="mt-md flex-row items-center justify-center px-lg">
-              {progress.total === 0 && excused === 0 ? (
-                <Text className="text-label text-ink-muted">{t('Nothing asked for today')}</Text>
-              ) : (
-                <>
-                  <CountPill template={t('{count} done')} count={progress.done} tone="done" />
-                  {open > 0 ? (
-                    <CountPill template={t('{count} left')} count={open} tone="left" />
-                  ) : null}
-                  {excused > 0 ? (
-                    <CountPill template={t('{count} on purpose')} count={excused} tone="excused" />
-                  ) : null}
-                </>
-              )}
-            </View>
-
-            <AiEntryCard section="Tasks" ready={aiReady} onOpen={onOpenAi} />
+                empty, not a thing that happened. A day with no rows has no
+                pills at all — the empty state below says it, once (U13). */}
+            {empty === null ? (
+              <View className="mt-md flex-row items-center justify-center px-lg">
+                <CountPill template={t('{count} done')} count={progress.done} tone="done" />
+                {open > 0 ? (
+                  <CountPill template={t('{count} left')} count={open} tone="left" />
+                ) : null}
+                {excused > 0 ? (
+                  <CountPill template={t('{count} on purpose')} count={excused} tone="excused" />
+                ) : null}
+              </View>
+            ) : null}
           </>
         )}
 
@@ -484,7 +544,7 @@ export function TasksScreen({
             gap is padding INSIDE each row's measured box, so the reorder's
             geometry still adds up. 16 above it — card to card is the rhythm's
             short step; the old 24 read as a new section starting. */}
-        <View {...panHandlers} className="mx-lg mt-lg">
+        <View {...panHandlers} className="mx-lg mt-md">
           {rowViews.map(({ task, mark, streak, detail }) => {
             const isLifted = task.id === lifted;
             return (
@@ -510,9 +570,9 @@ export function TasksScreen({
                     dimmed={lifted != null && !isLifted}
                     onToggle={toggleRow}
                     onOpen={openRow}
-                    // One row cannot be reordered, and the gesture would only
-                    // ever end where it started.
-                    onLongPress={rows.length > 1 ? lift : undefined}
+                    // The hold menu: skip, move, open. Not while a row is in
+                    // the air — the rows take no touches then anyway.
+                    onLongPress={lifted ? undefined : holdRow}
                   />
                 </View>
               </ReorderRow>
@@ -520,8 +580,9 @@ export function TasksScreen({
           })}
         </View>
 
-        {rows.length === 0 ? (
-          <Text className="mx-lg mt-lg text-label text-ink-faint">
+        {empty === 'first' ? <FirstTaskCard onPress={() => setAdding(true)} /> : null}
+        {empty === 'quiet' ? (
+          <Text className="mx-lg mt-lg text-center text-label text-ink-muted">
             {t('Nothing is scheduled for this day.')}
           </Text>
         ) : null}
@@ -550,16 +611,25 @@ export function TasksScreen({
           </View>
         ) : null}
 
-        {lifted ? null : (
-          <Text className="mx-lg mt-[14px] text-label text-ink-faint">
-            {t('Long press a row, then slide. The others open a gap where it will land.')}
-          </Text>
+        {/* The assistant's door, UNDER the list now (U1): the list is what the
+            screen is opened for. Not on an empty screen — the first task is the
+            one thing to do there. */}
+        {lifted || liveTasks === 0 ? null : (
+          <View className="mt-xs">
+            <AiEntryCard section="Tasks" ready={aiReady} onOpen={onOpenAi} />
+          </View>
         )}
+
+        {!lifted && showTasksHint(rows.length) ? (
+          <Text className="mx-lg mt-[14px] text-label text-ink-faint">
+            {t('Tap a circle to mark it done. Hold a row to skip today on purpose or move it.')}
+          </Text>
+        ) : null}
       </ScrollView>
 
       {/* The day closed. Fired from the dial's own band, which is where the eye
           already is when the last mark lands. */}
-      {celebrating ? <SparkBurst y={bars.top + 100} /> : null}
+      {celebrating ? <SparkBurst y={bars.top + 8 + DIAL / 2} /> : null}
 
       {/* THE DAY BUBBLE — the dial, carried along once it has scrolled away. */}
       {lifted ? null : (
@@ -587,6 +657,17 @@ export function TasksScreen({
         />
       )}
 
+      {menuTask ? (
+        <TaskMenu
+          task={menuTask}
+          day={day}
+          isToday={isToday}
+          actions={taskRowActions(menuMark, rows.length)}
+          onAction={onMenu}
+          onDismiss={() => setMenuFor(null)}
+        />
+      ) : null}
+
       {adding ? (
         <TaskEditorSheet
           title={t('New task')}
@@ -602,6 +683,133 @@ export function TasksScreen({
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * The empty screen's one card (U13): a dashed slot — the app's vocabulary for
+ * "a place for a thing rather than a thing" — that opens the editor. It
+ * replaced two lines that both said "nothing" in different words.
+ */
+function FirstTaskCard({ onPress }: { onPress: () => void }) {
+  const t = useT();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${t('Add your first task')}. ${t('Add task')}`}
+      style={pressedStyle}
+      className="mx-lg mt-lg"
+    >
+      <View
+        style={{
+          borderRadius: radius.sheet,
+          borderWidth: 1.5,
+          borderStyle: 'dashed',
+          borderColor: glass.ghostEdge,
+          backgroundColor: glass.ghost,
+          paddingHorizontal: 18,
+          paddingVertical: 20,
+        }}
+      >
+        <Text
+          maxFontSizeMultiplier={1.3}
+          style={{ fontSize: 22, lineHeight: 28, letterSpacing: -0.4 }}
+          className="font-semibold text-ink"
+        >
+          {t('Add your first task')}
+        </Text>
+        <Text className="mt-xs text-body text-ink-muted">
+          {t(
+            "One circle per day. Tap it when it's done; the streak and the month build from there.",
+          )}
+        </Text>
+        <Text className="mt-md text-body font-semibold text-green-bright">+ {t('Add task')}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/**
+ * The row's hold menu (U6): the skip, the move and the month, as a sheet of
+ * two-line rows — the session's ⋮ menu, the same shape. The skip leads, because
+ * it is the one that only lives here.
+ */
+function TaskMenu({
+  task,
+  day,
+  isToday,
+  actions,
+  onAction,
+  onDismiss,
+}: {
+  task: Task;
+  day: string;
+  isToday: boolean;
+  actions: TaskRowAction[];
+  onAction: (action: TaskRowAction) => void;
+  onDismiss: () => void;
+}) {
+  const t = useT();
+  const lang = useLanguage();
+  const copy: Record<TaskRowAction, { label: string; detail: string }> = {
+    skip: isToday
+      ? {
+          label: t('Skip today, on purpose'),
+          detail: t("Keeps the streak and leaves today's count"),
+        }
+      : {
+          label: t('Skip this day, on purpose'),
+          detail: t("Keeps the streak and leaves the day's count"),
+        },
+    unskip: { label: t('Take the skip back'), detail: t('Back to not answered') },
+    move: { label: t('Move'), detail: t('Slide it to a new place, then Drop') },
+    open: { label: t('Open history'), detail: t('The month and the streak') },
+  };
+  return (
+    <Sheet title={task.name} onDismiss={onDismiss}>
+      <Kicker className="mb-sm">
+        {isToday ? `${t('Today')} · ${formatLongDay(day, lang)}` : formatLongDay(day, lang)}
+      </Kicker>
+      <View className="overflow-hidden rounded-surface bg-surface-alt">
+        {actions.map((action, index) => (
+          <View key={action}>
+            {index > 0 ? <Separator inset={16} /> : null}
+            <MenuRow
+              label={copy[action].label}
+              detail={copy[action].detail}
+              onPress={() => onAction(action)}
+            />
+          </View>
+        ))}
+      </View>
+      <TextButton label={t('Cancel')} onPress={onDismiss} />
+    </Sheet>
+  );
+}
+
+function MenuRow({
+  label,
+  detail,
+  onPress,
+}: {
+  label: string;
+  detail: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}. ${detail}`}
+      style={pressedStyle}
+      className="h-row-lg justify-center px-lg"
+    >
+      <Text className="text-body text-ink">{label}</Text>
+      <Text numberOfLines={1} className="mt-[2px] text-label text-ink-faint">
+        {detail}
+      </Text>
+    </Pressable>
+  );
+}
 
 function weekdayName(day: string, lang: Language): string {
   const date = parseDay(day);
@@ -724,11 +932,11 @@ const TaskRow = memo(function TaskRow({
           accessibilityRole="checkbox"
           accessibilityState={{ checked: done }}
           accessibilityLabel={`${task.name}. ${t(answerOf(mark))}. ${t('Tap to change.')}`}
-          accessibilityHint={onLongPress ? t('Long press, then slide to reorder') : undefined}
+          accessibilityHint={onLongPress ? t('Hold for more: skip today, move') : undefined}
           style={pressedStyle}
-          // 62 × 74, the design's own hit area for the one control on this
-          // screen that is pressed without being looked at.
-          className="h-[74px] w-[62px] items-center justify-center"
+          // 62 × 60, the row's full height — the one control on this screen
+          // that is pressed without being looked at.
+          className="h-[60px] w-[62px] items-center justify-center"
         >
           <Animated.View style={{ transform: press.style.transform }}>
             <Mark mark={mark} />
@@ -741,9 +949,9 @@ const TaskRow = memo(function TaskRow({
           delayLongPress={280}
           accessibilityRole="button"
           accessibilityLabel={`${task.name}. ${detail}. ${t('Open the month.')}`}
-          accessibilityHint={onLongPress ? t('Long press, then slide to reorder') : undefined}
+          accessibilityHint={onLongPress ? t('Hold for more: skip today, move') : undefined}
           style={pressedStyle}
-          className="h-[74px] flex-1 flex-row items-center pr-lg"
+          className="h-[60px] flex-1 flex-row items-center pr-lg"
         >
           <View className="flex-1 pr-sm">
             {/* Both lines RUN: `Evening Bible reading and a short journal entry`
@@ -776,8 +984,15 @@ const TaskRow = memo(function TaskRow({
   );
 });
 
-/** Taller by two than the old 72: the name grew to 16.5/22 and kept its air. */
-const ROW_HEIGHT = 74;
+/**
+ * 60, down from 74 (U1): the name's 22 and the detail's 18 with 9 of air each
+ * way. The design's floor is 56; 60 keeps the ✓'s 36 dp mark from touching the
+ * card's edges, and is what puts six or seven rows above the fold.
+ */
+const ROW_HEIGHT = 60;
+/** The day dial (U1): 196 → 132, the design's figure, with a lighter stroke. */
+const DIAL = 132;
+const DIAL_STROKE = 8;
 /** The detail line's grey — was the prototype's #6B766F; the raised `inkFaint` (U3) is that step now. */
 const DETAIL_INK = palette.inkFaint;
 /** The done mark and the two it replaces are one 36 dp footprint. */
@@ -880,9 +1095,13 @@ function answerOf(mark: TaskMark | null): string {
 
 /* ------------------------------------------------------------------ */
 
-/** Tasks' bubble line (spec §8): shown past 250, hidden again under 210. */
-const BUBBLE_SHOW = 250;
-const BUBBLE_HIDE = 210;
+/**
+ * Tasks' bubble line: shown once the 132 dp dial has left under the top bar
+ * (8 + 132 + the pills), hidden again 40 below — the hysteresis every bubble
+ * keeps, so a thumb resting on the line does not flicker the pill.
+ */
+const BUBBLE_SHOW = 170;
+const BUBBLE_HIDE = 130;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const MINI = 52;

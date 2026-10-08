@@ -68,3 +68,55 @@ describe('a money log written by version 1', () => {
     expect(amounts[0].accountId).toBe(accounts[0].id);
   });
 });
+
+describe('settings written by 2.2.0', () => {
+  it('cold-start with every assistant card showing, and nothing else lost', async () => {
+    const { useSettings, DEFAULT_SETTINGS } = await import('./settingsStore');
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({ version: 1, state: { restSecondsBetweenSets: 95, language: 'en' } }),
+    );
+
+    await useSettings.persist.rehydrate();
+
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(95);
+    expect(useSettings.getState().language).toBe('en');
+    expect(useSettings.getState().aiCardsDismissed).toBeUndefined();
+  });
+
+  it('read a closed card back after a restart', async () => {
+    const { useSettings, DEFAULT_SETTINGS } = await import('./settingsStore');
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({ version: 1, state: { aiCardsDismissed: ['Workout'] } }),
+    );
+
+    await useSettings.persist.rehydrate();
+
+    expect(useSettings.getState().aiCardsDismissed).toEqual(['Workout']);
+  });
+});
+
+describe('a task log with missed-on-purpose days, from before the tap toggled', () => {
+  it('cold-starts with every mark where it was', async () => {
+    const log = {
+      t1: {
+        '2026-09-10': { mark: 'missed', note: '' },
+        '2026-09-11': { mark: 'done', note: '' },
+      },
+    };
+    await AsyncStorage.setItem(
+      'tasks',
+      JSON.stringify({
+        version: 2,
+        state: { tasks: [{ id: 't1', name: 'Read', startedOn: '2026-09-01' }], log },
+      }),
+    );
+
+    await useTasks.persist.rehydrate();
+
+    expect(useTasks.getState().log).toEqual(log);
+  });
+});

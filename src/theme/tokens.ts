@@ -194,6 +194,8 @@ export const glass = {
   sunken: 'rgba(236,241,238,0.03)',
   /** A dashed "add one" target — barely there until you look for it. */
   ghost: 'rgba(236,241,238,0.015)',
+  /** Its dashed edge, 1.5 dp: the design's "add your first …" card. */
+  ghostEdge: 'rgba(236,241,238,0.14)',
   /** The lit version: a surface that is currently the answer. */
   get green(): string {
     return tint(0.13);
@@ -466,8 +468,11 @@ export const focalType = {
   balance: { fontSize: 54, lineHeight: 56, letterSpacing: -2 },
   /** The keypad's amount. */
   amount: { fontSize: 62, lineHeight: 66, letterSpacing: -2.4 },
-  /** The day number inside the tasks dial. Was 44. */
-  dayDial: { fontSize: 66, lineHeight: 66, letterSpacing: -2.4 },
+  /**
+   * The day number inside the tasks dial: 44 again, since the dial went from
+   * 196 back to 132 (U1) and the weekday moved in above it.
+   */
+  dayDial: { fontSize: 44, lineHeight: 46, letterSpacing: -2 },
 } as const;
 
 /**

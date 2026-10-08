@@ -1894,6 +1894,7 @@ export function AppShell() {
           onChangeDay={setPinnedTaskDay}
           aiReady={aiReady}
           onOpenAi={(prompt) => openAi('Tasks', prompt)}
+          onToast={setToast}
         />
       );
     }
