@@ -486,6 +486,9 @@ export function RoutineEditorScreen({
                     tap();
                     setAsking(true);
                   },
+                  /* The hold's mark (U11): the same sheet, by a tap. */
+                  onOptions: () => setAsking(true),
+                  optionsLabel: t('Random routine options'),
                 }
           }
           /* `Drop` only: it ends a mode the header is announcing, and is not a

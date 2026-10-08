@@ -3,14 +3,14 @@
  * scroll.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ ‹  LIBRARY                                   │
+ *   │ ‹  LIBRARY                          [ Edit ] │
  *   │ ╭ Search exercises                         ╮ │
  *   │ ┌──────────────────────────────────────────┐ │
  *   │ │ PUSH                            12    ⌄  │ │  ← cluster
  *   │ │   CHEST                          3    ⌄  │ │  ← muscle group
- *   │ │     Inclined dumbbell press          −   │ │  ← exercise, with delete
- *   │ │     Dips                             −   │ │
- *   │ │     Pec flies                        −   │ │
+ *   │ │     Inclined dumbbell press              │ │  ← exercise (a bin in Edit)
+ *   │ │     Dips                                 │ │
+ *   │ │     Pec flies                            │ │
  *   │ │     + Add exercise to chest              │ │
  *   │ │   SHOULDERS                      4    ›  │ │
  *   │ │   TRICEPS                        5    ›  │ │
@@ -38,12 +38,21 @@
  * destination, not dead space. A `chest` that disappears because you own no chest
  * exercises is a `chest` you cannot add one to.
  *
- * DELETE IS A `−` AND IT ASKS. The glyph is `plus` with its vertical stroke
- * removed, at the same weight, sitting where the `+` sits on the row above — the
- * two marks are opposites and nobody has to learn either. It never deletes on the
- * tap: the confirmation is the parent's, because deleting an exercise also edits
- * every routine holding it, and that is a sentence the parent can write and this
- * screen cannot.
+ * DELETE IS A MODE, AND IT ASKS (U15). Every row used to carry a `−`, and in a
+ * list you are PICKING from a minus reads as "deselect" — on the screen titled
+ * `Add exercise`, the one mark beside the thing you came to add was the one that
+ * removes it from everywhere. So rows only pick, and `Edit` in the header turns
+ * the screen into the other thing: each row shows a bin, a tap on the row picks
+ * nothing, and the header says `Done editing`. The rule is `exerciseRowControls`
+ * in `lib/discoverability.ts`. Rejected: hiding the `−` in the picker only and
+ * keeping it in the library (one screen, two habits), and swipe-to-delete (a
+ * gesture with no mark — the thing U11 removes elsewhere).
+ *
+ * It never deletes on the tap: the confirmation is the parent's, because deleting
+ * an exercise also edits every routine holding it, and that is a sentence the
+ * parent can write and this screen cannot. That is also why it is a confirm and
+ * not an Undo toast — the routines it reaches into are not this screen's to put
+ * back.
  *
  * The micro line under each name is the exercise's SHAPE — which inputs it will
  * render when you log it. `KG · REPS · ADDED BODYWEIGHT` tells you you'll get a
@@ -54,7 +63,7 @@
  * muscles are said by the group above it instead of being repeated on every row.
  */
 
-import { memo, useCallback, useMemo, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Pressable } from '../components/Pressable';
 
@@ -64,6 +73,7 @@ import { pressedStyle, Reveal } from '../components/motion';
 import { FADE_ON, RunningText } from '../components/RunningText';
 import { FieldWell, Kicker, ListCard, Separator } from '../components/primitives';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
+import { exerciseRowControls } from '../lib/discoverability';
 import { describeShape } from '../lib/exerciseShape';
 import { buildMuscleTree, clusterLabel, muscleLabel } from '../lib/muscles';
 import { palette } from '../theme/tokens';
@@ -98,6 +108,11 @@ interface ExerciseLibraryScreenProps {
   /** `muscle` pre-files the new exercise under the group it was created from. */
   onCreate: (name: string, muscle?: MuscleGroup) => void;
   onDelete: (exercise: Exercise) => void;
+  /**
+   * Under the header — the `Routines | Exercises` switch when this is the
+   * exercises half of `Routines & exercises` (U23). Absent in the picker.
+   */
+  switcher?: ReactNode;
 }
 
 export function ExerciseLibraryScreen({
@@ -113,8 +128,12 @@ export function ExerciseLibraryScreen({
   onPick,
   onCreate,
   onDelete,
+  switcher,
 }: ExerciseLibraryScreenProps) {
   const t = useT();
+  /* Local: leaving the screen ends the mode, which is what a mode should do. */
+  const [editing, setEditing] = useState(false);
+  const controls = exerciseRowControls(editing);
   /*
    * The rows' two handlers, stable across renders so `ExerciseRow` can be
    * memoized: the query lives in the shell, so every keystroke re-rendered every
@@ -135,10 +154,24 @@ export function ExerciseLibraryScreen({
       {/* No hairline under the header: the search field below is its own surface,
           and two rules 16 apart read as a mistake. */}
       <ScreenHeader
-        kicker={kicker ?? (onBack ? t('Add exercise') : t('Library'))}
+        kicker={
+          editing
+            ? t('Editing the library')
+            : (kicker ?? (onBack ? t('Add exercise') : t('Library')))
+        }
+        kickerTone={editing ? 'green' : 'faint'}
         onBack={onBack}
+        action={
+          exercises.length > 0 || editing
+            ? editing
+              ? { label: t('Done editing'), onPress: () => setEditing(false) }
+              : { label: t('Edit'), tone: 'muted', onPress: () => setEditing(true) }
+            : undefined
+        }
         bordered={false}
-      />
+      >
+        {switcher}
+      </ScreenHeader>
 
       <View className="mx-lg mb-md">
         <FieldWell
@@ -179,8 +212,8 @@ export function ExerciseLibraryScreen({
                     <ExerciseRow
                       exercise={exercise}
                       indent={0}
-                      onPick={pickRow}
-                      onDelete={deleteRow}
+                      onPick={controls.pick ? pickRow : undefined}
+                      onDelete={controls.remove ? deleteRow : undefined}
                     />
                   </View>
                 ))}
@@ -243,8 +276,8 @@ export function ExerciseLibraryScreen({
                                     <ExerciseRow
                                       exercise={exercise}
                                       indent={2}
-                                      onPick={pickRow}
-                                      onDelete={deleteRow}
+                                      onPick={controls.pick ? pickRow : undefined}
+                                      onDelete={controls.remove ? deleteRow : undefined}
                                     />
                                   </View>
                                 ))}
@@ -286,8 +319,8 @@ export function ExerciseLibraryScreen({
                         <ExerciseRow
                           exercise={exercise}
                           indent={1}
-                          onPick={pickRow}
-                          onDelete={deleteRow}
+                          onPick={controls.pick ? pickRow : undefined}
+                          onDelete={controls.remove ? deleteRow : undefined}
                         />
                       </View>
                     ))}
@@ -316,7 +349,9 @@ export function ExerciseLibraryScreen({
           </Pressable>
         )}
 
-        {recentlyUsed.length > 0 ? (
+        {/* Not while editing: it is a list of shortcuts to PICK, and edit mode
+            picks nothing. */}
+        {recentlyUsed.length > 0 && !editing ? (
           <>
             <Kicker className="mx-lg mb-sm mt-xxl">{t('Recently used')}</Kicker>
             <ListCard className="mx-lg">
@@ -429,11 +464,10 @@ function DisclosureRow({
 }
 
 /**
- * One exercise: name, shape, and a `−` that asks before it deletes.
+ * One exercise: name and shape — and, in edit mode only, a bin that asks.
  *
- * The delete target is 44 wide and sits hard against the right edge, clear of the
- * row's own press area — picking an exercise and deleting one are one mis-tap
- * apart otherwise, and only one of them is reversible.
+ * Which of the two it offers is `exerciseRowControls`: a row picks or deletes,
+ * never both. The bin is 44 wide and sits hard against the right edge.
  */
 const ExerciseRow = memo(function ExerciseRow({
   exercise,
@@ -443,8 +477,10 @@ const ExerciseRow = memo(function ExerciseRow({
 }: {
   exercise: Exercise;
   indent: 0 | 1 | 2;
-  onPick: (id: ID) => void;
-  onDelete: (exercise: Exercise) => void;
+  /** Absent in edit mode: the row picks nothing while it is a delete list. */
+  onPick?: (id: ID) => void;
+  /** Present in edit mode only (U15). */
+  onDelete?: (exercise: Exercise) => void;
 }) {
   const t = useT();
   const lang = useLanguage();
@@ -453,8 +489,9 @@ const ExerciseRow = memo(function ExerciseRow({
   return (
     <View className={['h-row-lg flex-row items-center pr-xs', INDENT[indent]].join(' ')}>
       <Pressable
-        onPress={() => onPick(exercise.id)}
-        accessibilityRole="button"
+        onPress={onPick ? () => onPick(exercise.id) : undefined}
+        disabled={!onPick}
+        accessibilityRole={onPick ? 'button' : 'text'}
         accessibilityLabel={`${exercise.name}. ${shape}.`}
         className="flex-1 justify-center"
         style={(state) => [pressedStyle(state), { minWidth: 0 }]}
@@ -472,16 +509,18 @@ const ExerciseRow = memo(function ExerciseRow({
         </Text>
       </Pressable>
 
-      <Pressable
-        onPress={() => onDelete(exercise)}
-        hitSlop={6}
-        accessibilityRole="button"
-        accessibilityLabel={t('Delete {name}', { name: exercise.name })}
-        style={pressedStyle}
-        className="h-hit w-hit items-center justify-center rounded-pill border border-hairline"
-      >
-        <Icon name="minus" size={16} color={palette.inkMuted} />
-      </Pressable>
+      {onDelete ? (
+        <Pressable
+          onPress={() => onDelete(exercise)}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={t('Delete {name}', { name: exercise.name })}
+          style={pressedStyle}
+          className="h-hit w-hit items-center justify-center rounded-pill border border-hairline"
+        >
+          <Icon name="trash" size={17} color={palette.inkMuted} />
+        </Pressable>
+      ) : null}
     </View>
   );
 });

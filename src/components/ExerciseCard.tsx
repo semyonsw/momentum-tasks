@@ -115,7 +115,7 @@ import { formatClock } from '../lib/units';
 import type { ID, UnitSystem } from '../types/models';
 import { curve, danger, glassTier, motion, palette, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
-import { Icon } from './Icon';
+import { DragHandle, Icon } from './Icon';
 import { useLanguage, useT } from '../hooks/useT';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { GrowIn, Pop, Stagger, usePressScale } from './motion';
@@ -436,6 +436,13 @@ function ExerciseCardComponent({
         className="mx-lg mb-sm"
       >
         <View className="flex-row items-center">
+          {/* The grip (U11): a hold lifts this card, and nothing else on it said
+              so. Only where the card can move. */}
+          {onLift ? (
+            <View className="mr-sm">
+              <DragHandle color={isLifted ? palette.greenBright : palette.inkFaint} />
+            </View>
+          ) : null}
           {/* The name RUNS rather than ellipsising: two machines whose names
               differ only at the end are two exercises. See `RunningText`. */}
           <RunningText
@@ -535,52 +542,61 @@ function ExerciseCardComponent({
                 ? t('Tap to close its sets. Long press, then slide to reorder')
                 : t('Tap to close its sets')
             }
-            className="flex-1"
+            className="flex-1 flex-row items-start"
           >
-            {/* The mode, said in words over the name, for as long as it lasts. */}
-            {isEditing ? (
-              <Stagger rise={6} duration={240}>
-                <Text className="mb-xs text-micro font-semibold uppercase text-acc">
-                  {t('Editing plan')}
-                </Text>
-              </Stagger>
+            {/* The grip (U11): this header is the card's grab handle, and now it
+                says so. A mark only — the hold is what lifts. */}
+            {onLift ? (
+              <View className="mr-sm" style={{ marginTop: 4 }}>
+                <DragHandle color={isLifted ? palette.greenBright : palette.inkFaint} />
+              </View>
             ) : null}
-            <Text
-              style={{ fontSize: 19, lineHeight: 24 }}
-              className={['font-semibold', isLifted ? 'text-acc' : 'text-ink'].join(' ')}
-            >
-              {entry.exercise.name}
-            </Text>
-            <Text
-              style={{ fontSize: 14, lineHeight: 19 }}
-              className="mt-xs tabular-nums text-ink-muted"
-            >
-              {formatTarget(entry, lang)}
-              {entry.exercise.isUnilateral ? ` · ${t('each side')}` : ''}
-              {entry.lastSessionShort
-                ? ` · ${t('last: {what}', { what: entry.lastSessionShort })}`
-                : ''}
-            </Text>
+            <View className="flex-1">
+              {/* The mode, said in words over the name, for as long as it lasts. */}
+              {isEditing ? (
+                <Stagger rise={6} duration={240}>
+                  <Text className="mb-xs text-micro font-semibold uppercase text-acc">
+                    {t('Editing plan')}
+                  </Text>
+                </Stagger>
+              ) : null}
+              <Text
+                style={{ fontSize: 19, lineHeight: 24 }}
+                className={['font-semibold', isLifted ? 'text-acc' : 'text-ink'].join(' ')}
+              >
+                {entry.exercise.name}
+              </Text>
+              <Text
+                style={{ fontSize: 14, lineHeight: 19 }}
+                className="mt-xs tabular-nums text-ink-muted"
+              >
+                {formatTarget(entry, lang)}
+                {entry.exercise.isUnilateral ? ` · ${t('each side')}` : ''}
+                {entry.lastSessionShort
+                  ? ` · ${t('last: {what}', { what: entry.lastSessionShort })}`
+                  : ''}
+              </Text>
 
-            {/*
+              {/*
               A BEST, ONCE IT HAS HAPPENED — and only once it has. `acc` is the
               app's one accent doing the job it does everywhere else — this is
               new — but there is no medal, no banner and no sound. `lib/records.ts`
               has the argument.
             */}
-            {bestLine ? (
-              <Text className="mt-xs text-label tabular-nums text-acc">
-                {t('New best')} · {bestLine}
-              </Text>
-            ) : null}
+              {bestLine ? (
+                <Text className="mt-xs text-label tabular-nums text-acc">
+                  {t('New best')} · {bestLine}
+                </Text>
+              ) : null}
 
-            {/* THE CUE. Only on the OPEN card, faint and single-line: reference
+              {/* THE CUE. Only on the OPEN card, faint and single-line: reference
                 that must never compete with the numbers below it. */}
-            {entry.exercise.cue ? (
-              <Text numberOfLines={1} className="mt-xs text-label text-ink-faint">
-                {entry.exercise.cue}
-              </Text>
-            ) : null}
+              {entry.exercise.cue ? (
+                <Text numberOfLines={1} className="mt-xs text-label text-ink-faint">
+                  {entry.exercise.cue}
+                </Text>
+              ) : null}
+            </View>
           </Pressable>
 
           {/* THE WAY OUT OF AN EXERCISE, in one tap and without edit mode — see

@@ -18,7 +18,9 @@
  * is for the other half of the time — "pull and core only, four of them, three
  * sets" — and it is reached by HOLDING the same glyph, which is the gesture the
  * rest of the app already uses for "the other thing about this" (the expenses'
- * category tiles, every reorderable row).
+ * category tiles, every reorderable row). Since U11 a `⋮` beside the die opens
+ * it by a tap as well — the hold had no mark, and a hold nobody can see is a
+ * feature nobody finds (`lib/discoverability.ts`).
  *
  * ── CHIPS, NOT A SEGMENTED CONTROL ────────────────────────────────────────
  *

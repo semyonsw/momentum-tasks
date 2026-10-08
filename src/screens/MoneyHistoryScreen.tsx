@@ -67,6 +67,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { SettingsFootRow } from '../components/SettingsFootRow';
 import { TrendChart } from '../components/TrendChart';
 import { pressedStyle } from '../components/motion';
 import { GlassCard, Kicker, SelectChip, Separator, TextButton } from '../components/primitives';
@@ -113,6 +114,7 @@ export function MoneyHistoryScreen({
   onChangeDay,
   onBack,
   onOpenAmount,
+  onOpenSettings,
 }: {
   /** The subsection the ⟲ was tapped in. Every line here is drawn from it alone. */
   account: MoneyAccount;
@@ -133,6 +135,8 @@ export function MoneyHistoryScreen({
   onBack: () => void;
   /** A row of the day list, opened in the editor it was written in. */
   onOpenAmount: (amountId: ID) => void;
+  /** `Settings ›` at the foot: the finance settings (U24). */
+  onOpenSettings?: () => void;
 }) {
   const t = useT();
   const lang = useLanguage();
@@ -383,6 +387,11 @@ export function MoneyHistoryScreen({
             'Up to three months the line is one point a day; past that it is one a month. A whole-month amount has no day to sit on, so it only appears once the buckets are months.',
           )}
         </Text>
+
+        {/* U24: the section's settings, where you notice one is wrong. */}
+        {onOpenSettings ? (
+          <SettingsFootRow sectionLabel={t('Finance settings')} onPress={onOpenSettings} />
+        ) : null}
       </ScrollView>
     </View>
   );

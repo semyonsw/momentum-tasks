@@ -196,6 +196,12 @@ export const glass = {
   ghost: 'rgba(236,241,238,0.015)',
   /** Its dashed edge, 1.5 dp: the design's "add your first …" card. */
   ghostEdge: 'rgba(236,241,238,0.14)',
+  /**
+   * A small well cut INTO a lit or gradient fill — the `⋯` on the selected
+   * subsection chip (U11). Dark rather than ink-tinted: on the gradient an ink
+   * tint is lighter than the fill and reads as a highlight, not a button.
+   */
+  inset: 'rgba(0,0,0,0.16)',
   /** The lit version: a surface that is currently the answer. */
   get green(): string {
     return tint(0.13);

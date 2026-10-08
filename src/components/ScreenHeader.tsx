@@ -73,6 +73,13 @@ export interface HeaderIconAction {
   onPress: () => void;
   /** Held rather than tapped — the die's "ask me what to put in it". */
   onLongPress?: () => void;
+  /**
+   * The hold's mark (U11): a `⋮` beside the circle that opens what the hold
+   * opens, by a tap. A hold nobody can see is a feature nobody finds — see
+   * `lib/discoverability.ts`. Spoken as `optionsLabel`.
+   */
+  onOptions?: () => void;
+  optionsLabel?: string;
   /** Lit, while it is doing something. */
   active?: boolean;
 }
@@ -164,6 +171,21 @@ export function ScreenHeader({
               color={iconAction.active ? palette.acc : GHOST_GLYPH}
             />
           </GhostCircle>
+        ) : null}
+
+        {/* 28 wide and 46 tall, reaching 44 with slop that stops 4 dp in — the
+            circle's own slop is 6 and the row's gap is 10, so the two never
+            overlap. */}
+        {iconAction?.onOptions ? (
+          <Pressable
+            onPress={iconAction.onOptions}
+            hitSlop={{ left: 4, right: 12, top: 0, bottom: 0 }}
+            accessibilityRole="button"
+            accessibilityLabel={iconAction.optionsLabel ?? iconAction.label}
+            style={{ height: CIRCLE, width: 28, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Icon name="more" size={20} color={GHOST_GLYPH} />
+          </Pressable>
         ) : null}
 
         {action ? (

@@ -77,6 +77,7 @@ import {
 } from '../screens/HomeScreen';
 import { RoutineEditorScreen } from '../screens/RoutineEditorScreen';
 import { RoutineListScreen } from '../screens/RoutineListScreen';
+import { LibrarySwitch } from '../components/LibrarySwitch';
 import { SequenceScreen } from '../screens/SequenceScreen';
 import { SettingsHomeScreen } from '../screens/SettingsHomeScreen';
 import { LandingScreen, type TileRect } from '../screens/LandingScreen';
@@ -131,6 +132,7 @@ import { recentSummaries, useWorkoutHistory } from '../state/workoutHistoryStore
 import { useMoney } from '../state/moneyStore';
 import { useTasks } from '../state/tasksStore';
 import { dayKey } from '../lib/days';
+import { libraryTabRoute, sectionSettingsRoute } from '../lib/discoverability';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { useToday } from '../hooks/useToday';
 import { isTransferCategory, type Direction, type Interval } from '../lib/money';
@@ -1670,6 +1672,12 @@ export function AppShell() {
           onCreate={handleAddRoutine}
           onOpenSequence={() => push({ name: 'sequence' })}
           onBack={pop}
+          switcher={
+            <LibrarySwitch
+              value="routines"
+              onChange={(tab) => replaceTop({ name: libraryTabRoute(tab) })}
+            />
+          }
         />
       );
     }
@@ -1685,6 +1693,13 @@ export function AppShell() {
           onToggleExpanded={toggleExpanded}
           onChangeQuery={setQuery}
           onBack={pop}
+          kicker={t('Routines & exercises')}
+          switcher={
+            <LibrarySwitch
+              value="exercises"
+              onChange={(tab) => replaceTop({ name: libraryTabRoute(tab) })}
+            />
+          }
           onPick={(exerciseId) => push({ name: 'exerciseHistory', exerciseId })}
           onCreate={handleCreate}
           onDelete={setDeleting}
@@ -1806,6 +1821,7 @@ export function AppShell() {
           onAddExercise={(workoutId) => {
             push({ name: 'addExercise', routineId: null, target: 'history', workoutId });
           }}
+          onOpenSettings={() => push({ name: sectionSettingsRoute('Workout') })}
         />
       );
     }
@@ -1821,6 +1837,7 @@ export function AppShell() {
             setPinnedTaskDay(day);
             pop();
           }}
+          onOpenSettings={() => push({ name: sectionSettingsRoute('Tasks') })}
         />
       );
     }
@@ -1843,6 +1860,7 @@ export function AppShell() {
             onOpenAmount={(amountId) =>
               push({ name: 'moneyAmount', amountId, categoryId: null, accountId: null })
             }
+            onOpenSettings={() => push({ name: sectionSettingsRoute('Expenses') })}
           />
           {/* Same: an amount corrected from the day list lands back here. */}
           {toast ? <Toast key={toast.key} label={toast.text} /> : null}
@@ -1907,7 +1925,6 @@ export function AppShell() {
           onOpenSession={openWorkout}
           onOpenHistory={() => push({ name: 'workoutHistory' })}
           onOpenRoutines={() => push({ name: 'routines' })}
-          onOpenLibrary={() => push({ name: 'library' })}
           onNewRoutine={handleAddRoutine}
           aiReady={aiReady}
           onOpenAi={(prompt) => openAi('Workout', prompt)}
@@ -2079,6 +2096,7 @@ function WorkoutHistory({
   onRestoreWorkout,
   onAddExercise,
   onBack,
+  onOpenSettings,
 }: {
   workouts: CompletedWorkout[];
   loadFailed: boolean;
@@ -2098,6 +2116,7 @@ function WorkoutHistory({
   onRestoreWorkout: HistoryScreenProps['onRestoreWorkout'];
   onAddExercise: HistoryScreenProps['onAddExercise'];
   onBack: () => void;
+  onOpenSettings: () => void;
 }) {
   const t = useT();
   const [view, setView] = useState<'log' | 'graphs' | 'calendar'>('log');
@@ -2161,6 +2180,7 @@ function WorkoutHistory({
       onRemoveExercise={onRemoveExercise}
       onRestoreWorkout={onRestoreWorkout}
       onAddExercise={onAddExercise}
+      onOpenSettings={onOpenSettings}
       toolbar={toolbar}
     />
   );

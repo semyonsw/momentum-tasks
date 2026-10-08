@@ -135,6 +135,7 @@ import { Icon } from '../components/Icon';
 import { pressedStyle, Reveal } from '../components/motion';
 import { NumberSheet } from '../components/NumberSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { SettingsFootRow } from '../components/SettingsFootRow';
 import { FieldWell, Kicker, Separator, StepperRow } from '../components/primitives';
 import {
   BALANCE_WINDOWS,
@@ -292,6 +293,8 @@ export interface HistoryScreenProps {
   toolbar?: ReactNode;
   /** `‹` — this screen is pushed by the ⟲ on the workout section now. */
   onBack?: () => void;
+  /** `Settings ›` at the foot: the workout settings (U24). */
+  onOpenSettings?: () => void;
 }
 
 export function HistoryScreen({
@@ -313,6 +316,7 @@ export function HistoryScreen({
   onSetNumber,
   toolbar,
   onBack,
+  onOpenSettings,
 }: HistoryScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -555,7 +559,14 @@ export function HistoryScreen({
         </ScreenHeader>
 
         {workouts.length === 0 ? (
-          <Empty loadFailed={loadFailed} />
+          <>
+            <Empty loadFailed={loadFailed} />
+            {onOpenSettings ? (
+              <View style={{ paddingBottom: 40 }}>
+                <SettingsFootRow sectionLabel={t('Workout settings')} onPress={onOpenSettings} />
+              </View>
+            ) : null}
+          </>
         ) : (
           <ScrollView
             ref={scrollRef}
@@ -677,6 +688,11 @@ export function HistoryScreen({
                 </View>
               </View>
             ))}
+
+            {/* U24: the section's settings, where you notice one is wrong. */}
+            {onOpenSettings ? (
+              <SettingsFootRow sectionLabel={t('Workout settings')} onPress={onOpenSettings} />
+            ) : null}
           </ScrollView>
         )}
       </View>

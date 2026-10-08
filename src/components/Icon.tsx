@@ -90,7 +90,13 @@ export type IconName =
    * from `DOTS`, vertical, the way the platform draws it, so it reads as a menu
    * rather than as the `…` of a truncated title beside it.
    */
-  | 'more';
+  | 'more'
+  /**
+   * ⋯ — the same three pips lying down: "this chip has a menu" (U11). Horizontal
+   * because it sits INSIDE a pill, after a name, where a vertical ⋮ would read
+   * as a screen's overflow rather than as the chip's own.
+   */
+  | 'more-horizontal';
 
 interface IconProps {
   name: IconName;
@@ -122,12 +128,13 @@ const STROKE: Record<IconName, number> = {
   sparkle: 2,
   trash: 2,
   more: 2,
+  'more-horizontal': 2,
 };
 
 /**
  * Dots drawn as real circles rather than as round-capped zero-length strokes.
  *
- * Two glyphs need them — the die's pips and the ⋮ — and a pip is a FILL, not a stroke: at
+ * Three glyphs need them — the die's pips, the ⋮ and the ⋯ — and a pip is a FILL, not a stroke: at
  * 18px a capped stroke renders as a smudge that changes size with the weight,
  * which is exactly the thing that would make five of them look like four.
  */
@@ -143,6 +150,11 @@ const DOTS: Partial<Record<IconName, readonly [number, number][]>> = {
     [12, 5.5],
     [12, 12],
     [12, 18.5],
+  ],
+  'more-horizontal': [
+    [5.5, 12],
+    [12, 12],
+    [18.5, 12],
   ],
 };
 
@@ -219,6 +231,7 @@ const PATHS: Record<IconName, string[]> = {
   ],
   // Nothing stroked: the three pips are all of it (`DOTS`).
   more: [],
+  'more-horizontal': [],
 };
 
 /* Memoised: three primitive props, drawn inside rows and bars that re-render

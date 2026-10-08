@@ -151,8 +151,6 @@ const RU: Record<string, string> = {
   'Training history': 'История тренировок',
   'Task history': 'История задач',
   Routines: 'Программы',
-  'Open the routines': 'Открыть программы',
-  'Open the exercise library': 'Открыть базу упражнений',
   Language: 'Язык',
   'Application language': 'Язык приложения',
 
@@ -1448,8 +1446,8 @@ const RU: Record<string, string> = {
   Finance: 'Финансы',
   'Finance settings': 'Настройки финансов',
   'Finance history': 'История финансов',
-  'Tap to add an amount here. Long press to open the category.':
-    'Нажмите, чтобы добавить сумму. Долгое нажатие — открыть категорию.',
+  'Tap to add an amount here. Long press or tap the arrow to open the category.':
+    'Нажмите, чтобы добавить сумму. Долгое нажатие или стрелка — открыть категорию.',
   Appearance: 'Оформление',
   Presets: 'Готовые темы',
   Custom: 'Свой',
@@ -1514,6 +1512,13 @@ const RU: Record<string, string> = {
   'Next: warm-up': 'Далее: разминка',
   'Next: {name}': 'Далее: {name}',
   'All sets logged': 'Все подходы записаны',
+  'Routines & exercises': 'Программы и упражнения',
+  'Routines or exercises': 'Программы или упражнения',
+  'Options for {name}': 'Действия для «{name}»',
+  'Long press or tap the dots to edit the subsection':
+    'Удерживайте или нажмите на точки, чтобы изменить раздел',
+  'Random routine options': 'Настройки случайной программы',
+  'Editing the library': 'Правка базы',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

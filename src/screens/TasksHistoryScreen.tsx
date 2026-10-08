@@ -34,6 +34,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { SettingsFootRow } from '../components/SettingsFootRow';
 import { TrendChart } from '../components/TrendChart';
 import { pressedStyle } from '../components/motion';
 import { GlassCard, Kicker, Segmented, SelectChip, StatTile } from '../components/primitives';
@@ -70,9 +71,16 @@ interface TasksHistoryScreenProps {
   onBack: () => void;
   /** A square tapped: show that day on the screen underneath, and close. */
   onPickDay: (day: string) => void;
+  /** `Settings ›` at the foot: the daily tasks' settings (U24). */
+  onOpenSettings?: () => void;
 }
 
-export function TasksHistoryScreen({ selected, onBack, onPickDay }: TasksHistoryScreenProps) {
+export function TasksHistoryScreen({
+  selected,
+  onBack,
+  onPickDay,
+  onOpenSettings,
+}: TasksHistoryScreenProps) {
   const t = useT();
   const tasks = useTasks((s) => s.tasks);
   const log = useTasks((s) => s.log);
@@ -103,6 +111,11 @@ export function TasksHistoryScreen({ selected, onBack, onPickDay }: TasksHistory
         ) : (
           <TrendView tasks={tasks} log={log} today={today} />
         )}
+
+        {/* U24: the section's settings, where you notice one is wrong. */}
+        {onOpenSettings ? (
+          <SettingsFootRow sectionLabel={t('Daily tasks settings')} onPress={onOpenSettings} />
+        ) : null}
       </ScrollView>
     </View>
   );

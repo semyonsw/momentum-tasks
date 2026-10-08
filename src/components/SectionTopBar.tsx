@@ -2,7 +2,7 @@
  * SectionTopBar — the strip at the top of a section root.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ WORKOUT                   (✦)  ≡   📖    ⟲   │
+ *   │ WORKOUT                        (✦)  📖   ⟲   │
  *   │ DAILY TASKS                        (✦)   ⟲   │
  *   │ SETTINGS                            РУ  EN   │
  *   └──────────────────────────────────────────────┘
@@ -25,6 +25,10 @@
  * the wrong one against this corner: they are the same kind of thing as the ⟲.
  * All three are "somewhere else in this section", none of them is content, and
  * two of the three were a scroll away while the third was a tap.
+ *
+ * (They were two glyphs, ≡ and 📖, until U23 merged them into one
+ * `Routines & exercises` door — two unlabelled marks that look alike are worse
+ * than one; `lib/discoverability.ts`.)
  *
  * So the corner takes a LIST of actions, laid out left to right in the order
  * they are declared, then the ⟲ — all at the same 46 dp (v3; they were 36). Same size is not a detail — it is

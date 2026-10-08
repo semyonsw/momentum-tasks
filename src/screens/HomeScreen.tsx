@@ -199,15 +199,16 @@ interface HomeScreenProps {
   /** The ⟲ in the corner: the log, the graphs and the calendar. */
   onOpenHistory: () => void;
   /**
-   * The two screens the training log is set up from.
+   * The screens the training log is set up from — the routines and the exercise
+   * library, one destination since U23 (`Routines & exercises`, opening on the
+   * routines; its own switch has the exercises).
    *
    * They had a tab of their own, then a lobby screen called `More`, then two rows
-   * at the FOOT of this screen — and the foot was the right place only while the
-   * corner held one glyph. It holds three now, at the same size, and these two
-   * are the other two: see `components/SectionTopBar.tsx`.
+   * at the FOOT of this screen, then two glyphs in the corner that looked alike.
+   * One glyph now, between the assistant and the ⟲: see
+   * `components/SectionTopBar.tsx`.
    */
   onOpenRoutines: () => void;
-  onOpenLibrary: () => void;
   /**
    * Make an empty routine and open its editor — the empty screen's way forward
    * (U12), the same create the Routines list's `Add routine` does.
@@ -238,7 +239,6 @@ export function HomeScreen({
   onOpenSession,
   onOpenHistory,
   onOpenRoutines,
-  onOpenLibrary,
   onNewRoutine,
   aiReady,
   onOpenAi,
@@ -441,8 +441,8 @@ export function HomeScreen({
       <StatusBar style="light" />
       <Lamps section="Workout" />
 
-      {/* Four destinations, one size, left to right: the assistant, the
-          routines, the library, the past. See `components/SectionTopBar.tsx` on why they are up here
+      {/* Three destinations, one size, left to right: the assistant, routines
+          & exercises, the past. See `components/SectionTopBar.tsx` on why they are up here
           and why a commit action never is. */}
       <SectionTopBar
         title={t('Workout')}
@@ -454,17 +454,15 @@ export function HomeScreen({
             lit: aiReady,
             onPress: () => onOpenAi(),
           },
-          {
-            key: 'routines',
-            icon: 'routines',
-            label: t('Open the routines'),
-            onPress: onOpenRoutines,
-          },
+          /* ONE door for both (U23): the routines and the exercise library
+             were two glyphs that looked alike. It opens on the routines, and
+             the screen's own switch has the exercises — see
+             `lib/discoverability.ts` (`WORKOUT_CORNER`). */
           {
             key: 'library',
             icon: 'library',
-            label: t('Open the exercise library'),
-            onPress: onOpenLibrary,
+            label: t('Routines & exercises'),
+            onPress: onOpenRoutines,
           },
         ]}
         onOpenHistory={onOpenHistory}

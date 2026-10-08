@@ -27,7 +27,10 @@
  * never about both at once.
  *
  * A LONG PRESS on a chip renames or archives it, which is the same
- * long-press-for-the-rare-thing the category tiles use.
+ * long-press-for-the-rare-thing the category tiles use. The SELECTED chip also
+ * wears a `⋯` that opens the same menu by a tap, and every tile a `›` that opens
+ * the category — a hold nobody can see is a feature nobody finds (U11,
+ * `lib/discoverability.ts`).
  *
  * ── AND THE BALANCE IS A BUTTON ───────────────────────────────────────────
  *
@@ -162,6 +165,8 @@ import { Stagger, pressedStyle } from '../components/motion';
 import { DashedAdd, Kicker, Separator, TextButton } from '../components/primitives';
 import { ProgressRing } from '../components/ProgressRing';
 import { dayKey } from '../lib/days';
+import { holdActions } from '../lib/discoverability';
+import { TOUCH_MIN } from '../lib/hitTarget';
 import { quickCategoryId } from '../lib/quickCategory';
 import { tap } from '../lib/feedback';
 import { useLanguage, useT } from '../hooks/useT';
@@ -189,6 +194,7 @@ import { useSettings } from '../state/settingsStore';
 import {
   curve,
   focalType,
+  glass,
   gradientFill,
   motion,
   palette,
@@ -419,6 +425,7 @@ export function MoneyScreen({
                 tap();
                 setHeldAccount(row);
               }}
+              onMore={() => setHeldAccount(row)}
             />
           ))}
           {/* `+` and `⇄` are 38 dp to match the chips they sit among, so they
@@ -602,6 +609,7 @@ export function MoneyScreen({
                   tap();
                   onOpenCategory(category.id, account.id, interval, anchor);
                 }}
+                onOpen={() => onOpenCategory(category.id, account.id, interval, anchor)}
               />
             </Stagger>
           ))}
@@ -719,30 +727,37 @@ export function MoneyScreen({
           onDismiss={() => setHeldAccount(null)}
         >
           <View className="overflow-hidden rounded-surface bg-surface-alt">
-            <SheetRow
-              label={t('Edit subsection')}
-              detail={t('Its name and its glyph')}
-              onPress={() => {
-                const held = heldAccount;
-                setHeldAccount(null);
-                setRenamingAccount(held);
-              }}
-            />
-            {liveAccounts.length > 1 ? (
-              <>
-                <Separator inset={16} />
-                <SheetRow
-                  label={t('Archive this subsection')}
-                  detail={t('It leaves the row. Everything recorded in it stays recorded.')}
-                  onPress={() => {
-                    const held = heldAccount;
-                    setHeldAccount(null);
-                    archiveAccount(held.id);
-                    if (held.id === accountId) setAccountId(null);
-                  }}
-                />
-              </>
-            ) : null}
+            {/* The rows come from `holdActions`, the same list the ⋯ on the
+                chip opens — `lib/discoverability.ts`. */}
+            {holdActions('moneyAccount', { liveAccounts: liveAccounts.length }).map(
+              (action, index) => (
+                <View key={action}>
+                  {index > 0 ? <Separator inset={16} /> : null}
+                  {action === 'editAccount' ? (
+                    <SheetRow
+                      label={t('Edit subsection')}
+                      detail={t('Its name and its glyph')}
+                      onPress={() => {
+                        const held = heldAccount;
+                        setHeldAccount(null);
+                        setRenamingAccount(held);
+                      }}
+                    />
+                  ) : (
+                    <SheetRow
+                      label={t('Archive this subsection')}
+                      detail={t('It leaves the row. Everything recorded in it stays recorded.')}
+                      onPress={() => {
+                        const held = heldAccount;
+                        setHeldAccount(null);
+                        archiveAccount(held.id);
+                        if (held.id === accountId) setAccountId(null);
+                      }}
+                    />
+                  )}
+                </View>
+              ),
+            )}
           </View>
           <TextButton label={t('Cancel')} onPress={() => setHeldAccount(null)} />
         </Sheet>
@@ -979,11 +994,14 @@ function AccountChip({
   selected,
   onPress,
   onLongPress,
+  onMore,
 }: {
   account: MoneyAccount;
   selected: boolean;
   onPress: () => void;
   onLongPress: () => void;
+  /** The `⋯` on the selected chip: the hold's menu, by a tap (U11). */
+  onMore: () => void;
 }) {
   const t = useT();
 
@@ -997,14 +1015,19 @@ function AccountChip({
       accessibilityRole="radio"
       accessibilityState={{ selected }}
       accessibilityLabel={account.name}
-      accessibilityHint={t('Long press to edit the subsection')}
+      accessibilityHint={
+        selected
+          ? t('Long press or tap the dots to edit the subsection')
+          : t('Long press to edit the subsection')
+      }
       style={(state) => [
         pressedStyle(state),
         {
           height: 38,
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 16,
+          paddingLeft: 16,
+          paddingRight: selected ? 5 : 16,
           borderRadius: radius.pill,
           overflow: 'hidden',
           borderWidth: 1,
@@ -1037,6 +1060,32 @@ function AccountChip({
       >
         {account.name}
       </Text>
+      {/* ⋯ on the SELECTED chip only — see `lib/discoverability.ts`. A 28 dp
+          well that reaches 44 with slop, its right edge pulled into the chip's
+          padding so the pill does not grow by more than the mark. */}
+      {selected ? (
+        <Pressable
+          onPress={onMore}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t('Options for {name}', { name: account.name })}
+          style={pressedStyle}
+          className="ml-sm h-[28px] w-[28px] items-center justify-center rounded-pill"
+        >
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: radius.pill,
+              backgroundColor: glass.inset,
+            }}
+          />
+          <Icon name="more-horizontal" size={16} color={palette.onAcc} />
+        </Pressable>
+      ) : null}
     </BubblePressable>
   );
 }
@@ -1060,6 +1109,7 @@ function CategoryTile({
   currency,
   onPress,
   onLongPress,
+  onOpen,
 }: {
   category: MoneyCategory;
   total: number;
@@ -1068,6 +1118,8 @@ function CategoryTile({
   currency: string;
   onPress: () => void;
   onLongPress: () => void;
+  /** The `›` in the corner: the category's own screen, as the hold opens (U11). */
+  onOpen: () => void;
 }) {
   const t = useT();
 
@@ -1079,7 +1131,9 @@ function CategoryTile({
       radius={radius.card}
       accessibilityRole="button"
       accessibilityLabel={`${category.name}, ${formatMoney(total, currency)}`}
-      accessibilityHint={t('Tap to add an amount here. Long press to open the category.')}
+      accessibilityHint={t(
+        'Tap to add an amount here. Long press or tap the arrow to open the category.',
+      )}
       style={(state) => [
         pressedStyle(state),
         {
@@ -1126,6 +1180,28 @@ function CategoryTile({
       >
         {total > 0 ? `${Math.round(share * 100)}%` : '\u2014'}
       </Text>
+      {/* › — the hold's destination, said on the tile and tappable on its own.
+          44 × 44 in the corner, clear of the ring and the figures; the rest of
+          the tile still records an amount. */}
+      <Pressable
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={t('Open {name}', { name: category.name })}
+        style={(state) => [
+          pressedStyle(state),
+          {
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: TOUCH_MIN,
+            height: TOUCH_MIN,
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+        ]}
+      >
+        <Icon name="chevron-right" size={16} color={palette.inkFaint} />
+      </Pressable>
     </BubblePressable>
   );
 }

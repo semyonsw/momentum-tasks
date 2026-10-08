@@ -1,5 +1,9 @@
 /**
- * RoutineListScreen — the `Routines` tab.
+ * RoutineListScreen — the `Routines` half of `Routines & exercises`.
+ *
+ * Since U23 the workout corner has one door for this list and the exercise
+ * library; the `switcher` under the header (`components/LibrarySwitch.tsx`) is
+ * how one reaches the other.
  *
  * Not one of the fourteen designed frames: it is the landing surface the tab bar
  * needs in order to lead somewhere. Deliberately built from nothing but the
@@ -17,6 +21,7 @@
  * off and invisible is a feature nobody finds.
  */
 
+import type { ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Pressable } from '../components/Pressable';
 
@@ -42,6 +47,8 @@ interface RoutineListScreenProps {
   onOpenSequence: () => void;
   /** `‹` — the screen is pushed from the workout section, never a tab root. */
   onBack: () => void;
+  /** The `Routines | Exercises` switch, under the header (U23). */
+  switcher?: ReactNode;
 }
 
 export function RoutineListScreen({
@@ -53,6 +60,7 @@ export function RoutineListScreen({
   onCreate,
   onOpenSequence,
   onBack,
+  switcher,
 }: RoutineListScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -61,10 +69,12 @@ export function RoutineListScreen({
 
   return (
     <View className="flex-1 bg-bg">
-      <ScreenHeader kicker={t('Routines')} onBack={onBack} bordered={false} />
+      <ScreenHeader kicker={t('Routines & exercises')} onBack={onBack} bordered={false}>
+        {switcher}
+      </ScreenHeader>
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingTop: 8, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingTop: switcher ? 16 : 8, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
         <Kicker className="mx-lg mb-sm">{t('Sequence')}</Kicker>
