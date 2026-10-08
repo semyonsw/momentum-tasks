@@ -33,16 +33,23 @@ describe('the tap', () => {
 
 describe('the hold menu', () => {
   it('offers the skip, the move and the month', () => {
-    expect(taskRowActions(null, 5)).toEqual(['skip', 'move', 'open']);
-    expect(taskRowActions('done', 5)).toEqual(['skip', 'move', 'open']);
+    expect(taskRowActions(null, 5)).toEqual(['skip', 'pause', 'move', 'open']);
+    expect(taskRowActions('done', 5)).toEqual(['skip', 'pause', 'move', 'open']);
   });
 
   it('offers to take a skip back on a row that is already excused', () => {
-    expect(taskRowActions('missed', 5)).toEqual(['unskip', 'move', 'open']);
+    expect(taskRowActions('missed', 5)).toEqual(['unskip', 'pause', 'move', 'open']);
+  });
+
+  it('offers a pause on every row, right under the one-day skip (T3)', () => {
+    for (const mark of [null, 'done', 'missed'] as const) {
+      const actions = taskRowActions(mark, 3);
+      expect(actions.indexOf('pause')).toBe(1);
+    }
   });
 
   it('keeps Move out when there is nothing to move past', () => {
-    expect(taskRowActions(null, 1)).toEqual(['skip', 'open']);
+    expect(taskRowActions(null, 1)).toEqual(['skip', 'pause', 'open']);
   });
 });
 

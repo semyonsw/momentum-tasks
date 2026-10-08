@@ -8,6 +8,8 @@
  *   │ ┌─ STREAK ────────┐┌─ THIS MONTH ──────────┐ │
  *   │ │ 12 🜂            ││ 11 of 13              │ │   lit | card
  *   │ └─────────────────┘└───────────────────────┘ │
+ *   │ Paused until 18 October          Resume now  │   only while a pause runs
+ *   │ ┌ ॥ Pause for a vacation…                 › ┐ │   the pause sheet (T3)
  *   │          ‹ September 2026 ›                  │
  *   │  M  T  W  T  F  S  S                         │
  *   │     ▢  ▢  ■  ■  ■  ■                         │   cells pop in, 14 ms apart
@@ -44,6 +46,13 @@
  * is already a shape. The grid is keyed by its month so paging re-runs the
  * staggered pop — a new month arriving is a new shape being drawn.
  *
+ * ── A PAUSE IS READ OFF THE LOG ───────────────────────────────────────────
+ *
+ * Vacation mode writes ordinary excusals (`excuseRange`), so this screen finds a
+ * running pause by walking the marks ahead of today (`pausedUntil`) rather than
+ * reading a stored pause. `Resume now` clears the ones after today and leaves
+ * today itself to the day screen; its Undo excuses those same squares again.
+ *
  * ── ARCHIVE, AND NO DELETE ────────────────────────────────────────────────
  *
  * Archiving keeps the months that were already drawn; deleting would silently
@@ -63,7 +72,8 @@ import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TaskEditorSheet } from '../components/TaskEditorSheet';
 import { pressedStyle } from '../components/motion';
-import { FloatingAction, Lamps } from '../components/glass';
+import { FloatingAction, Lamps, type ToastAction } from '../components/glass';
+import { PauseDoorRow, PauseSheet, raisePauseToast } from '../components/PauseSheet';
 import { DangerFootAction, FieldWell, Kicker } from '../components/primitives';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import {
@@ -80,6 +90,8 @@ import {
   describeReminder,
   describeSchedule,
   entryOf,
+  excusedAhead,
+  pausedUntil,
   streakOf,
   taskMonth,
 } from '../lib/tasks';
@@ -89,9 +101,11 @@ import { palette, radius, tint } from '../theme/tokens';
 interface TaskDetailScreenProps {
   task: Task;
   onBack: () => void;
+  /** The pause's Undo, and `Resume now`'s (T3). */
+  onToast: (text: string, action?: ToastAction) => void;
 }
 
-export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
+export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProps) {
   const t = useT();
   const lang = useLanguage();
   const plural = usePlural();
@@ -99,6 +113,8 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
   const setNote = useTasks((s) => s.setNote);
   const updateTask = useTasks((s) => s.updateTask);
   const archiveTask = useTasks((s) => s.archiveTask);
+  const unpause = useTasks((s) => s.unpause);
+  const excuse = useTasks((s) => s.excuse);
 
   const today = dayKey(new Date());
   const start = parseDay(today) ?? new Date();
@@ -106,6 +122,7 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
   const [noteDay, setNoteDay] = useState(today);
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [pausing, setPausing] = useState(false);
 
   const month = useMemo(
     () => taskMonth(task, log, cursor.year, cursor.month, today, lang),
@@ -113,6 +130,22 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
   );
   const streak = streakOf(task, log, today);
   const note = entryOf(log, task.id, noteDay).note;
+  const pausedTo = pausedUntil(task, log, today);
+
+  /*
+   * `Resume now` clears this task's excusals AFTER today — by construction a
+   * pause — and keeps today on the day screen, where it can still be answered
+   * either way. Undo puts back exactly the squares it cleared.
+   */
+  const resume = () => {
+    const ahead = excusedAhead(task, log, today);
+    if (ahead.length === 0) return;
+    unpause(ahead);
+    onToast(t('Resumed. The days ahead are back on the list.'), {
+      label: t('Undo'),
+      onPress: () => excuse(ahead),
+    });
+  };
 
   const step = (delta: number) => {
     const next = new Date(cursor.year, cursor.month + delta, 1);
@@ -204,7 +237,34 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
                 {t('of {asked}', { asked: month.asked })}
               </Text>
             </View>
+            {month.excused > 0 ? (
+              <Text maxFontSizeMultiplier={1.3} className="mt-[2px] text-label text-ink-faint">
+                {t('{n} excused', { n: month.excused })}
+              </Text>
+            ) : null}
           </View>
+        </View>
+
+        {/* Vacation mode (T3). While a pause runs, the line says until when and
+            offers the way back; the row opens the sheet either way. */}
+        {pausedTo ? (
+          <View className="mx-lg mt-md flex-row items-center">
+            <Text maxFontSizeMultiplier={1.3} className="flex-1 text-label text-ink-muted">
+              {t('Paused until {day}', { day: formatShortDay(pausedTo, lang) })}
+            </Text>
+            <Pressable
+              onPress={resume}
+              accessibilityRole="button"
+              accessibilityLabel={t('Resume now')}
+              style={pressedStyle}
+              className="h-[44px] justify-center pl-md"
+            >
+              <Text className="text-label font-medium text-green-bright">{t('Resume now')}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <View className="mx-lg mt-md">
+          <PauseDoorRow onPress={() => setPausing(true)} />
         </View>
 
         <View className="mx-lg mt-[18px] flex-row items-center justify-center" style={{ gap: 4 }}>
@@ -338,6 +398,16 @@ export function TaskDetailScreen({ task, onBack }: TaskDetailScreenProps) {
             setEditing(false);
           }}
           onDismiss={() => setEditing(false)}
+        />
+      ) : null}
+
+      {pausing ? (
+        <PauseSheet
+          onDismiss={() => setPausing(false)}
+          onPaused={(written, days) => {
+            setPausing(false);
+            raisePauseToast(written, days, t, onToast, unpause);
+          }}
         />
       ) : null}
 

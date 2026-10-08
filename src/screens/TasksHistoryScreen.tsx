@@ -22,6 +22,10 @@
  * the tasks screen. What is left in here is genuinely one question — how has this
  * been going — at two zoom levels, which is what the segmented control is for.
  *
+ * A day on which every task that asked was excused — a pause (T3) — is drawn
+ * HATCHED rather than on the green scale, and is out of the month's count: it is
+ * not a score, and no step of green can say "not counted".
+ *
  * Picking a day in the grid still opens it, which is the one thing the grid is
  * for: walking back three weeks with the `‹` pager is twenty-one taps. It closes
  * this screen on the way, because the day it selected is on the one underneath.
@@ -32,6 +36,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
 
+import { Hatch } from '../components/Hatch';
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SettingsFootRow } from '../components/SettingsFootRow';
@@ -201,6 +206,7 @@ function MonthView({
               days: month.days,
               dayWord: counted(month.days, { one: t('day'), few: 'дня', many: t('days') }),
             })}
+        {month.paused > 0 ? ` · ${t('{n} paused', { n: month.paused })}` : ''}
       </Text>
 
       <View className="mx-lg mt-lg flex-row">
@@ -248,12 +254,25 @@ function MonthView({
           ))}
         </View>
         <Kicker>{t('More')}</Kicker>
+        {/* The hatch is the one cell that is NOT on the scale, so it is keyed
+            beside it rather than inside it (T3). */}
+        <View
+          className="ml-md overflow-hidden"
+          style={{ width: 14, height: 14, borderRadius: 4 }}
+          accessible={false}
+        >
+          <Hatch />
+        </View>
+        <Text className="ml-xs text-label text-ink-faint">{t('paused')}</Text>
       </View>
 
       <Text className="mx-lg mt-md text-label text-ink-faint">
         {t(
           'The fuller the bubble, the more of that day was done. Tap one to open it and answer its tasks.',
-        )}
+        )}{' '}
+        {month.paused > 0
+          ? t('Hatched days were paused: every task excused, and out of the count.')
+          : ''}
       </Text>
     </>
   );
@@ -290,6 +309,8 @@ function MonthCell({
   if (cell.day === null) return <View className="flex-1 p-[3px]" />;
 
   const fill = cell.isBlank ? null : fillFor(cell.fraction);
+  // Every task that asked was excused: not a score, so not on the green scale.
+  const paused = cell.paused;
 
   return (
     <Pressable
@@ -297,9 +318,11 @@ function MonthCell({
       disabled={!onPress}
       accessibilityRole="button"
       accessibilityLabel={
-        cell.isBlank
-          ? t('{day}, nothing asked', { day: cell.day })
-          : t('{day}, {done} of {asked}', { day: cell.day, done: cell.done, asked: cell.asked })
+        paused
+          ? t('{day}, paused · not counted', { day: cell.day })
+          : cell.isBlank
+            ? t('{day}, nothing asked', { day: cell.day })
+            : t('{day}, {done} of {asked}', { day: cell.day, done: cell.done, asked: cell.asked })
       }
       accessibilityState={{ selected }}
       style={pressedStyle}
@@ -307,8 +330,8 @@ function MonthCell({
     >
       <View
         className={[
-          'aspect-square items-center justify-center rounded-pill',
-          fill === null && !cell.isBlank ? 'border border-ink-faint/30' : '',
+          'aspect-square items-center justify-center overflow-hidden rounded-pill',
+          fill === null && !cell.isBlank && !paused ? 'border border-ink-faint/30' : '',
         ].join(' ')}
         style={{
           backgroundColor: fill ?? undefined,
@@ -326,18 +349,21 @@ function MonthCell({
               : {}),
         }}
       >
+        {paused ? <Hatch /> : null}
         <Text
           className={[
             'text-label tabular-nums',
             // The two top steps are 60–82% c2, close enough to a fill that the
             // numeral takes `onAcc` like any other text on c2; ink below that.
-            cell.isBlank
-              ? 'text-ink-faint'
-              : cell.fraction >= 0.75
-                ? 'font-medium text-on-acc'
-                : cell.fraction >= 0.5
-                  ? 'font-medium text-ink'
-                  : 'text-ink-faint',
+            paused
+              ? 'text-ink-muted'
+              : cell.isBlank
+                ? 'text-ink-faint'
+                : cell.fraction >= 0.75
+                  ? 'font-medium text-on-acc'
+                  : cell.fraction >= 0.5
+                    ? 'font-medium text-ink'
+                    : 'text-ink-faint',
           ].join(' ')}
         >
           {cell.day}

@@ -1717,7 +1717,13 @@ export function AppShell() {
     }
 
     if (top?.name === 'taskSettings') {
-      return <TaskSettingsScreen onBack={pop} />;
+      return (
+        <View className="flex-1">
+          <TaskSettingsScreen onBack={pop} onToast={setToast} />
+          {/* The pause's Undo (T3): the tab root's toast is not on screen here. */}
+          {toast ? <Toast key={toast.key} label={toast.text} action={toast.action} /> : null}
+        </View>
+      );
     }
 
     if (top?.name === 'moneySettings') {
@@ -1727,7 +1733,13 @@ export function AppShell() {
     if (top?.name === 'taskDetail') {
       const task = tasks.find((row) => row.id === top.taskId);
       if (!task) return <Fallback onBack={pop} />;
-      return <TaskDetailScreen task={task} onBack={pop} />;
+      return (
+        <View className="flex-1">
+          <TaskDetailScreen task={task} onBack={pop} onToast={setToast} />
+          {/* The pause's Undo (T3), over this pushed screen. */}
+          {toast ? <Toast key={toast.key} label={toast.text} action={toast.action} /> : null}
+        </View>
+      );
     }
 
     if (top?.name === 'moneyCategory') {

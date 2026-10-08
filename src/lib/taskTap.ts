@@ -38,16 +38,18 @@ export function toggledMark(current: TaskMark | null): TaskMark | null {
   return current === 'done' ? null : 'done';
 }
 
-export type TaskRowAction = 'skip' | 'unskip' | 'move' | 'open';
+export type TaskRowAction = 'skip' | 'unskip' | 'pause' | 'move' | 'open';
 
 /**
  * The hold menu for one row, top to bottom.
  *
  * `move` only with something to move past — one row can only be dropped where
- * it already is, the same rule the old long press had.
+ * it already is, the same rule the old long press had. `pause` (T3) sits under
+ * the skip because it is the same answer for a run of days: the one-day version
+ * first, the many-day one next to it.
  */
 export function taskRowActions(mark: TaskMark | null, visibleRows: number): TaskRowAction[] {
-  const actions: TaskRowAction[] = [mark === 'missed' ? 'unskip' : 'skip'];
+  const actions: TaskRowAction[] = [mark === 'missed' ? 'unskip' : 'skip', 'pause'];
   if (visibleRows > 1) actions.push('move');
   actions.push('open');
   return actions;

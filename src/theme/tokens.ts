@@ -213,6 +213,20 @@ export const glass = {
 };
 
 /**
+ * A PAUSED day's fill (T3): a 45° hatch of ink at 16% over ink at 3%, 2 dp
+ * stripes on a 5 dp pitch — the design's values. A hatch rather than a fifth
+ * step of green or a grey, because a paused day is not a score at all: no fill
+ * on the green scale can say "not counted", and a flat grey reads as "nothing
+ * done". Drawn by `components/Hatch`.
+ */
+export const hatch = {
+  line: 'rgba(236,241,238,0.16)',
+  gap: 'rgba(236,241,238,0.03)',
+  stripe: 2,
+  pitch: 5,
+} as const;
+
+/**
  * THE FOUR STEPS OF FILL a month grid is drawn in, lightest first.
  *
  * `green-bright` at four alphas rather than four colours: it is one hue at four

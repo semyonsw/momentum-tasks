@@ -140,6 +140,7 @@ import { ReorderRow } from '../components/ReorderRow';
 import { SectionTopBar } from '../components/SectionTopBar';
 import { AiEntryCard } from '../components/AiEntryCard';
 import { SparkBurst, SPARK_MS } from '../components/SparkBurst';
+import { PauseSheet, raisePauseToast } from '../components/PauseSheet';
 import { StreakFlame } from '../components/StreakFlame';
 import {
   CommitMark,
@@ -232,6 +233,9 @@ export function TasksScreen({
   const [adding, setAdding] = useState(false);
   /** The row whose hold menu is up. */
   const [menuFor, setMenuFor] = useState<ID | null>(null);
+  /** The pause sheet, opened from the hold menu (T3). */
+  const [pausing, setPausing] = useState(false);
+  const unpause = useTasks((s) => s.unpause);
 
   const rows = useMemo(() => tasksOn(tasks, day), [tasks, day]);
   const liveTasks = useMemo(() => tasks.filter((task) => task.archivedAt === null).length, [tasks]);
@@ -357,6 +361,7 @@ export function TasksScreen({
         { label: t('Undo'), onPress: () => setMark(taskId, day, before) },
       );
     } else if (action === 'unskip') setMark(taskId, day, null);
+    else if (action === 'pause') setPausing(true);
     else if (action === 'move') lift(taskId);
     else openRow(taskId);
   };
@@ -622,7 +627,9 @@ export function TasksScreen({
 
         {!lifted && showTasksHint(rows.length) ? (
           <Text className="mx-lg mt-[14px] text-label text-ink-faint">
-            {t('Tap a circle to mark it done. Hold a row to skip today on purpose or move it.')}
+            {t(
+              'Tap a circle to mark it done. Hold a row to skip today on purpose or pause the task.',
+            )}
           </Text>
         ) : null}
       </ScrollView>
@@ -665,6 +672,16 @@ export function TasksScreen({
           actions={taskRowActions(menuMark, rows.length)}
           onAction={onMenu}
           onDismiss={() => setMenuFor(null)}
+        />
+      ) : null}
+
+      {pausing ? (
+        <PauseSheet
+          onDismiss={() => setPausing(false)}
+          onPaused={(written, days) => {
+            setPausing(false);
+            raisePauseToast(written, days, t, onToast, unpause);
+          }}
         />
       ) : null}
 
@@ -761,6 +778,10 @@ function TaskMenu({
           detail: t("Keeps the streak and leaves the day's count"),
         },
     unskip: { label: t('Take the skip back'), detail: t('Back to not answered') },
+    pause: {
+      label: t('Pause for a while…'),
+      detail: t('Excuse a run of days, for every task or a few'),
+    },
     move: { label: t('Move'), detail: t('Slide it to a new place, then Drop') },
     open: { label: t('Open history'), detail: t('The month and the streak') },
   };
@@ -932,7 +953,7 @@ const TaskRow = memo(function TaskRow({
           accessibilityRole="checkbox"
           accessibilityState={{ checked: done }}
           accessibilityLabel={`${task.name}. ${t(answerOf(mark))}. ${t('Tap to change.')}`}
-          accessibilityHint={onLongPress ? t('Hold for more: skip today, move') : undefined}
+          accessibilityHint={onLongPress ? t('Hold for more: skip today, pause, move') : undefined}
           style={pressedStyle}
           // 62 × 60, the row's full height — the one control on this screen
           // that is pressed without being looked at.
@@ -949,7 +970,7 @@ const TaskRow = memo(function TaskRow({
           delayLongPress={280}
           accessibilityRole="button"
           accessibilityLabel={`${task.name}. ${detail}. ${t('Open the month.')}`}
-          accessibilityHint={onLongPress ? t('Hold for more: skip today, move') : undefined}
+          accessibilityHint={onLongPress ? t('Hold for more: skip today, pause, move') : undefined}
           style={pressedStyle}
           className="h-[60px] flex-1 flex-row items-center pr-lg"
         >

@@ -38,6 +38,10 @@ import { toggledMark } from '../lib/taskTap';
 import { useSettings } from './settingsStore';
 import {
   asksOn,
+  clearExcused,
+  excuseCells,
+  excuseRange,
+  type ExcusedCell,
   REMIND_AGAIN_MINUTES,
   reorderWithinVisible,
   type Task,
@@ -247,6 +251,16 @@ interface TasksState extends TasksValue {
   toggleMark: (id: ID, day: string) => TaskMark | null;
   setNote: (id: ID, day: string, note: string) => void;
   /**
+   * Vacation mode (T3): excuse `from`…`to` for `taskIds` in one action. Writes
+   * the ordinary `missed` mark — `excuseRange` in `lib/tasks.ts` has why — and
+   * returns exactly the squares it wrote, for the Undo.
+   */
+  pauseTasks: (taskIds: readonly ID[], from: string, to: string) => ExcusedCell[];
+  /** Undo a pause, or `Resume now`: those squares back to unanswered if still excused. */
+  unpause: (cells: readonly ExcusedCell[]) => void;
+  /** The inverse: excuse exactly these squares where still unanswered (Resume's Undo). */
+  excuse: (cells: readonly ExcusedCell[]) => void;
+  /**
    * Tick every live task fed by `source`, for `day`, if nobody has answered it.
    *
    * A deliberate answer WINS — training on a day you had already marked "missed
@@ -377,6 +391,17 @@ export const useTasks = create<TasksState>()(
 
       setNote: (id, day, note) =>
         set((state) => ({ log: writeEntry(state.log, id, day, { note }) })),
+
+      pauseTasks: (taskIds, from, to) => {
+        const { log, tasks } = get();
+        const result = excuseRange(log, tasks, taskIds, from, to);
+        if (result.written.length > 0) set({ log: result.log });
+        return result.written;
+      },
+
+      unpause: (cells) => set((state) => ({ log: clearExcused(state.log, cells) })),
+
+      excuse: (cells) => set((state) => ({ log: excuseCells(state.log, cells) })),
 
       tickAuto: (source, day = dayKey(new Date())) => {
         /*

@@ -36,6 +36,32 @@
  * are still ordinary tasks — still tappable, still skippable — `auto` only says
  * that something else will get there first. See `lib/autoTick.ts`.
  *
+ * ── A PAUSE IS THE SAME MARK, WRITTEN FOR A RUN OF DAYS ──────────────────
+ *
+ * Vacation mode (`excuseRange`) does not add a new kind of day. It writes the
+ * existing `missed`-on-purpose mark on every day in the range that each chosen
+ * task asks on — so the streak, the denominator, the month grid, the trend line,
+ * the reminders and the backup already know what to do with it, and a backup
+ * made before pauses existed is not a different shape from one made after.
+ *
+ * FUTURE DAYS ARE MARKED AHEAD OF TIME. A trip next week is the case the feature
+ * is for, and a mark written now means that week's follow-up reminders stay
+ * quiet (`lib/reminders.ts` skips an answered day) and the streak walks over it
+ * when it arrives. Every pre-written day stays an ordinary mark: come home early
+ * and tap the row, and it is `done`. Since the day screen never goes forward,
+ * a `missed` mark AFTER TODAY can only have come from a pause, which is what lets
+ * `pausedUntil` find one and `clearExcused` take it back without a second store.
+ *
+ * Rejected: a stored `pauses: [{from, to, taskIds}]` list that the streak, the
+ * month and the denominator would each have to consult. It is a second source of
+ * truth for one fact — and the first time it and the log disagreed (a pause over
+ * a day already ticked, a task added mid-pause) every reader would need a rule
+ * for which one wins. With marks there is one answer per day and nothing to merge.
+ *
+ * A range NEVER overwrites `done`, nor an existing excusal, nor a note; and it
+ * marks only the days a task asks on, so a Mon/Wed/Fri row gets no stray marks
+ * on its Tuesdays and a one-day task is excused only if its day is inside.
+ *
  * Everything here is pure and local-time: a task belongs to the day you were
  * standing in, which is what `calendar.dayKey` computes.
  */
@@ -384,6 +410,8 @@ export interface TaskMonth {
   done: number;
   /** Days it asked for, up to today, less the excused ones. */
   asked: number;
+  /** Days excused on purpose this month, paused days ahead of today included. */
+  excused: number;
 }
 
 /**
@@ -392,7 +420,9 @@ export interface TaskMonth {
  * Padded at the start only, like the training calendar: a trailing pad would
  * draw squares for days that have not happened, which reads as missed rather
  * than as future. FUTURE days inside this month are `blank` for the same
- * reason — a day that has not arrived has not been skipped.
+ * reason — a day that has not arrived has not been skipped. The one exception
+ * is a future day already excused by a pause: that is a fact written down now,
+ * so it is drawn as one (and still counted in neither `done` nor `asked`).
  */
 export function taskMonth(
   task: Task,
@@ -412,16 +442,22 @@ export function taskMonth(
 
   let done = 0;
   let asked = 0;
+  let excused = 0;
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = dayKey(new Date(year, month, day));
     const isToday = date === today;
     let state: TaskCellState = 'blank';
 
-    if (asksOn(task, date) && date <= today) {
+    if (asksOn(task, date)) {
       const { mark } = entryOf(log, task.id, date);
-      state = mark === 'done' ? 'done' : mark === 'missed' ? 'missed' : 'unanswered';
-      if (mark !== 'missed') asked += 1;
-      if (mark === 'done') done += 1;
+      if (mark === 'missed') {
+        state = 'missed';
+        excused += 1;
+      } else if (date <= today) {
+        state = mark === 'done' ? 'done' : 'unanswered';
+        asked += 1;
+        if (mark === 'done') done += 1;
+      }
     }
     cells.push({ day, date, state, isToday });
   }
@@ -429,7 +465,7 @@ export function taskMonth(
   const weeks: TaskCell[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
-  return { year, month, label: formatMonth(year, month, lang), weeks, done, asked };
+  return { year, month, label: formatMonth(year, month, lang), weeks, done, asked, excused };
 }
 
 /** How many days apart two days are, for "since 4 January 2026" style copy. */
@@ -602,6 +638,12 @@ export interface DayCell {
   isToday: boolean;
   /** In the future, or before anything started — nothing to draw and nothing to say. */
   isBlank: boolean;
+  /**
+   * Every task that asked this day was excused on purpose — a paused day. Drawn
+   * hatched, and out of the month's percentage like any excusal. Can be true on a
+   * future day too: a pause is written ahead of time.
+   */
+  paused: boolean;
 }
 
 export interface DayMonth {
@@ -613,6 +655,8 @@ export interface DayMonth {
   days: number;
   done: number;
   asked: number;
+  /** Days in the month (ahead of today included) on which everything was excused. */
+  paused: number;
 }
 
 /**
@@ -649,18 +693,24 @@ export function tasksMonth(
       fraction: 0,
       isToday: false,
       isBlank: true,
+      paused: false,
     });
   }
 
   let days = 0;
   let done = 0;
   let asked = 0;
+  let pausedDays = 0;
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = dayKey(new Date(year, month, day));
     const progress = dayProgress(tasks, log, date);
     // A future day has not been missed, and a day that asked for nothing is not
     // a day with a score — both are blank rather than empty.
     const isBlank = date > today || progress.total === 0;
+    // Asked for something, and every one of those was excused: `total` is what is
+    // left after excusals, so zero here with tasks asking means all of them.
+    const paused = progress.total === 0 && tasks.some((task) => asksOn(task, date));
+    if (paused) pausedDays += 1;
     if (!isBlank) {
       days += 1;
       done += progress.done;
@@ -674,11 +724,162 @@ export function tasksMonth(
       fraction: isBlank ? 0 : progress.fraction,
       isToday: date === today,
       isBlank,
+      paused,
     });
   }
 
   const weeks: DayCell[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
-  return { year, month, label: formatMonth(year, month, lang), weeks, days, done, asked };
+  return {
+    year,
+    month,
+    label: formatMonth(year, month, lang),
+    weeks,
+    days,
+    done,
+    asked,
+    paused: pausedDays,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Pause — a run of days excused in one action (T3)                    */
+/* ------------------------------------------------------------------ */
+
+/** One `(task, day)` square a pause wrote — what an Undo takes back. */
+export interface ExcusedCell {
+  taskId: ID;
+  day: string;
+}
+
+/** The longest pause one action writes: a year. Past that it is an archive. */
+export const PAUSE_MAX_DAYS = 366;
+
+/** Calendar days from `from` to `to`, both counted, whichever order they come in. */
+export function pauseLength(from: string, to: string): number {
+  return Math.abs(daysBetween(from, to)) + 1;
+}
+
+/**
+ * Excuse every day from `from` to `to` (inclusive, either order) for the tasks in
+ * `taskIds`, in one action. Returns the new log and exactly which squares were
+ * written, so an Undo can take back this pause and nothing else.
+ *
+ * Only on days a task asks on (`asksOn` — so not before it started, not after
+ * its archive, not on a weekday task's off days, and a one-day task only on its
+ * day). A `done` is never overwritten, an excusal already there is left as it
+ * was (and not claimed by this pause's Undo), and a note survives untouched.
+ * Archived tasks are skipped even if named. Future days are written too — see
+ * the header.
+ */
+export function excuseRange(
+  log: TaskLog,
+  tasks: readonly Task[],
+  taskIds: readonly ID[],
+  from: string,
+  to: string,
+): { log: TaskLog; written: ExcusedCell[] } {
+  const [first, last] = from <= to ? [from, to] : [to, from];
+  if (!parseDay(first) || !parseDay(last)) return { log, written: [] };
+  const chosen = new Set(taskIds);
+  const written: ExcusedCell[] = [];
+  let next = log;
+
+  for (const task of tasks) {
+    if (!chosen.has(task.id) || task.archivedAt !== null) continue;
+    let days: Record<string, TaskEntry> | null = null;
+    let day = first;
+    for (let i = 0; i < PAUSE_MAX_DAYS && day <= last; i += 1, day = shiftDay(day, 1)) {
+      if (!asksOn(task, day)) continue;
+      const entry = entryOf(next, task.id, day);
+      if (entry.mark !== null) continue;
+      days ??= { ...(next[task.id] ?? {}) };
+      days[day] = { mark: 'missed', note: entry.note };
+      written.push({ taskId: task.id, day });
+    }
+    if (days) next = { ...next, [task.id]: days };
+  }
+  return { log: next, written };
+}
+
+/**
+ * Excuse exactly these squares, where each is still unanswered — the inverse of
+ * `clearExcused`, for the Undo of `Resume now`. A square answered in between is
+ * left alone, by the same rule as the range.
+ */
+export function excuseCells(log: TaskLog, cells: readonly ExcusedCell[]): TaskLog {
+  let next = log;
+  for (const { taskId, day } of cells) {
+    const entry = entryOf(next, taskId, day);
+    if (entry.mark !== null) continue;
+    next = {
+      ...next,
+      [taskId]: { ...(next[taskId] ?? {}), [day]: { mark: 'missed', note: entry.note } },
+    };
+  }
+  return next;
+}
+
+/**
+ * Take excusals back: each square that still says `missed` goes back to
+ * unanswered, keeping its note. A square answered since (ticked on a day you came
+ * home early) is left alone — the Undo is for the pause, not for what happened
+ * after it.
+ */
+export function clearExcused(log: TaskLog, cells: readonly ExcusedCell[]): TaskLog {
+  let next = log;
+  for (const { taskId, day } of cells) {
+    const entry = next[taskId]?.[day];
+    if (!entry || entry.mark !== 'missed') continue;
+    const days = { ...next[taskId] };
+    if (entry.note === '') delete days[day];
+    else days[day] = { mark: null, note: entry.note };
+    next = { ...next };
+    if (Object.keys(days).length === 0) delete next[taskId];
+    else next[taskId] = days;
+  }
+  return next;
+}
+
+/**
+ * The excusals AFTER today for one task — by construction a pause, since the day
+ * screen never goes forward. What `Resume now` clears; today stays on the day
+ * screen, where it can be answered like any other day.
+ */
+export function excusedAhead(task: Task, log: TaskLog, today: string): ExcusedCell[] {
+  const days = log[task.id];
+  if (!days) return [];
+  return Object.keys(days)
+    .filter((day) => day > today && days[day].mark === 'missed' && asksOn(task, day))
+    .sort()
+    .map((day) => ({ taskId: task.id, day }));
+}
+
+/**
+ * The last day of a pause running now or starting tomorrow, or null.
+ *
+ * Walks forward from today (or tomorrow, when today is not excused) over the
+ * days the task asks on while each is excused; the answer is the last one, if it
+ * lies after today. A lone skip of today is not
+ * a pause, and an excusal three weeks out with asked days in between is a pause
+ * that has not started (`excusedAhead` still finds it for `Resume`).
+ */
+export function pausedUntil(task: Task, log: TaskLog, today: string): string | null {
+  let last: string | null = null;
+  let day = today;
+  for (let i = 0; i < PAUSE_MAX_DAYS; i += 1, day = shiftDay(day, 1)) {
+    if (!asksOn(task, day)) {
+      // A one-day task past its day, or an archived one, asks on nothing more.
+      if (task.schedule.kind === 'once' && day > task.schedule.day) break;
+      continue;
+    }
+    if (entryOf(log, task.id, day).mark !== 'missed') {
+      // Today may still be answered either way while a pause starts tomorrow.
+      if (day === today) continue;
+      break;
+    }
+    last = day;
+  }
+  return last !== null && last > today ? last : null;
 }

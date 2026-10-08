@@ -1,12 +1,16 @@
 /**
- * TaskSettingsScreen — the two decisions the daily tasks screen cannot make for
- * itself.
+ * TaskSettingsScreen — the decisions the daily tasks screen cannot make for
+ * itself, and the door to pausing the whole list (T3).
  *
  *   ┌──────────────────────────────────────────────┐
  *   │ ‹ DAILY TASKS SETTINGS                       │
  *   │ ANSWERING                                    │
  *   │ ┌──────────────────────────────────────────┐ │
  *   │ │ Let the app tick what it knows    [ ●━ ] │ │
+ *   │ └──────────────────────────────────────────┘ │
+ *   │ PAUSING                                      │
+ *   │ ┌──────────────────────────────────────────┐ │
+ *   │ │ ॥ Pause for a vacation…                › │ │
  *   │ └──────────────────────────────────────────┘ │
  *   │ HISTORY                                      │
  *   │ (Week)(Month)(3 months)(Year)(All)           │
@@ -35,18 +39,31 @@
  * that.
  */
 
+import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
+import { PauseDoorRow, PauseSheet, raisePauseToast } from '../components/PauseSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
+import type { ToastAction } from '../components/glass';
 import { GlassCard, Kicker, SelectChip, SwitchRow } from '../components/primitives';
 import { useT } from '../hooks/useT';
 import { tap } from '../lib/feedback';
 import { TREND_RANGES, TREND_RANGE_LABELS } from '../lib/trends';
 import { useSettings } from '../state/settingsStore';
+import { useTasks } from '../state/tasksStore';
 
-export function TaskSettingsScreen({ onBack }: { onBack: () => void }) {
+export function TaskSettingsScreen({
+  onBack,
+  onToast,
+}: {
+  onBack: () => void;
+  /** The pause's Undo toast (T3). */
+  onToast: (text: string, action?: ToastAction) => void;
+}) {
   const t = useT();
+  const unpause = useTasks((s) => s.unpause);
+  const [pausing, setPausing] = useState(false);
   const autoTickTasks = useSettings((s) => s.autoTickTasks);
   const setFlag = useSettings((s) => s.setFlag);
   const tasksTrendRange = useSettings((s) => s.tasksTrendRange);
@@ -83,6 +100,18 @@ export function TaskSettingsScreen({ onBack }: { onBack: () => void }) {
               )}
         </Text>
 
+        {/* Vacation mode (T3) — the whole list's door. The same sheet opens from
+            a row's hold menu and from a task's own screen. */}
+        <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Pausing')}</Kicker>
+        <View className="mx-lg">
+          <PauseDoorRow onPress={() => setPausing(true)} />
+        </View>
+        <Text className="mx-lg mt-sm text-label text-ink-faint">
+          {t(
+            'Excuse a run of days for every task, or a few: the streak walks over them and they leave the percentage. Days ahead are marked now and stay yours to tick.',
+          )}
+        </Text>
+
         {/* Every task's own reminder is set where the task is — on its editor,
             beside the days it asks on. A screen listing every reminder in the app
             would be a second place to change one, and the two would disagree the
@@ -107,6 +136,16 @@ export function TaskSettingsScreen({ onBack }: { onBack: () => void }) {
           )}
         </Text>
       </ScrollView>
+
+      {pausing ? (
+        <PauseSheet
+          onDismiss={() => setPausing(false)}
+          onPaused={(written, days) => {
+            setPausing(false);
+            raisePauseToast(written, days, t, onToast, unpause);
+          }}
+        />
+      ) : null}
     </View>
   );
 }

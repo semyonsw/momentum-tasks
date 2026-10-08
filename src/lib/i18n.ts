@@ -281,8 +281,8 @@ const RU: Record<string, string> = {
   'Nothing is scheduled for this day.': 'На этот день ничего не запланировано.',
   'Coming up': 'Впереди',
   '{done} of {total} done': 'сделано {done} из {total}',
-  'Tap a circle to mark it done. Hold a row to skip today on purpose or move it.':
-    'Нажмите на кружок, чтобы отметить. Удерживайте строку, чтобы осознанно пропустить день или переставить её.',
+  'Tap a circle to mark it done. Hold a row to skip today on purpose or pause the task.':
+    'Нажмите на кружок, чтобы отметить. Удерживайте строку, чтобы осознанно пропустить день или поставить задачу на паузу.',
   'Add your first task': 'Добавьте первую задачу',
   "One circle per day. Tap it when it's done; the streak and the month build from there.":
     'Один кружок в день. Нажмите, когда сделано, — серия и месяц сложатся из этого.',
@@ -298,7 +298,8 @@ const RU: Record<string, string> = {
   'The month and the streak': 'Месяц и серия',
   'Skipped today, on purpose. The streak keeps.': 'Сегодня пропущено осознанно. Серия сохранена.',
   'Skipped on purpose. The streak keeps.': 'Пропущено осознанно. Серия сохранена.',
-  'Hold for more: skip today, move': 'Удерживайте для действий: пропустить, переставить',
+  'Hold for more: skip today, pause, move':
+    'Удерживайте для действий: пропустить, пауза, переставить',
   'Hide the assistant card': 'Скрыть карточку ассистента',
   'The sparkle at the top stays the way in': 'Звёздочка вверху остаётся входом',
   'The day before': 'Предыдущий день',
@@ -1549,6 +1550,35 @@ const RU: Record<string, string> = {
   'the set: {set}': 'подход: {set}',
   'A record appears here when a session beats your best so far: the heaviest set, the most reps, or the best e1RM. Your first session sets the bar.':
     'Рекорд появится здесь, когда тренировка превзойдёт ваш лучший результат: самый тяжёлый подход, больше всего повторов или лучший e1RM. Первая тренировка задаёт планку.',
+  // T3 · vacation mode
+  'Pause for a while': 'Пауза на время',
+  "Paused days don't count: no streak lost, no misses.":
+    'Дни паузы не считаются: серия не прерывается, пропусков нет.',
+  'Tap the first and last day.': 'Нажмите на первый и последний день.',
+  'No days picked yet': 'Дни ещё не выбраны',
+  'All tasks': 'Все задачи',
+  'Tick the ones to pause': 'Отметьте, какие поставить на паузу',
+  'Pause 1 day': 'Пауза на 1 день',
+  'Pause {n} days': 'Пауза на {n} дн.',
+  'Nothing to pause: those days are already answered.':
+    'Ставить на паузу нечего: на эти дни уже есть ответ.',
+  "Paused 1 day. It won't count.": 'Пауза на 1 день. Он не считается.',
+  "Paused {n} days. They won't count.": 'Пауза на {n} дн. Эти дни не считаются.',
+  'Pause for a vacation…': 'Пауза на отпуск…',
+  'Pause for a while…': 'Пауза на время…',
+  'Excuse a run of days, for every task or a few':
+    'Освободить несколько дней — для всех задач или некоторых',
+  Pausing: 'Пауза',
+  'Excuse a run of days for every task, or a few: the streak walks over them and they leave the percentage. Days ahead are marked now and stay yours to tick.':
+    'Освободите несколько дней для всех задач или некоторых: серия их перешагнёт, а в процент они не войдут. Будущие дни отмечаются сразу, и их всё равно можно отметить сделанными.',
+  'Resumed. The days ahead are back on the list.': 'Пауза снята. Будущие дни снова в списке.',
+  'Paused until {day}': 'Пауза до {day}',
+  'Resume now': 'Снять паузу',
+  '{n} excused': 'освобождено: {n}',
+  '{n} paused': 'на паузе: {n}',
+  '{day}, paused · not counted': '{day}, пауза · не считается',
+  'Hatched days were paused: every task excused, and out of the count.':
+    'Заштрихованные дни — пауза: все задачи освобождены, и в счёт они не входят.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

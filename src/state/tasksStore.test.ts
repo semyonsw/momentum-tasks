@@ -387,3 +387,37 @@ describe('sanitizing a reminder that asks again', () => {
     expect(reminderOf({ hour: 9, minute: 0 })).toEqual({ hour: 9, minute: 0 });
   });
 });
+
+describe('pausing (T3)', () => {
+  it('excuses a range for the chosen tasks, and the Undo takes back only that', () => {
+    useTasks.getState().importTasks({
+      tasks: [
+        { id: 'a', name: 'Read', schedule: { kind: 'daily' }, startedOn: '2026-09-01', order: 0 },
+        { id: 'b', name: 'Run', schedule: { kind: 'daily' }, startedOn: '2026-09-01', order: 1 },
+      ],
+      log: { a: { '2026-09-11': { mark: 'done', note: '' } } },
+    });
+    const written = useTasks.getState().pauseTasks(['a'], '2026-09-10', '2026-09-12');
+    const { log } = useTasks.getState();
+    expect(entryOf(log, 'a', '2026-09-10').mark).toBe('missed');
+    expect(entryOf(log, 'a', '2026-09-11').mark).toBe('done');
+    expect(entryOf(log, 'b', '2026-09-10').mark).toBeNull();
+    expect(written).toHaveLength(2);
+
+    useTasks.getState().unpause(written);
+    expect(useTasks.getState().log).toEqual({ a: { '2026-09-11': { mark: 'done', note: '' } } });
+  });
+
+  it('a paused log, future days included, survives the validator a backup goes through', () => {
+    const tomorrow = shiftDay(dayKey(new Date()), 1);
+    useTasks.getState().importTasks({
+      tasks: [{ id: 'a', name: 'Read', schedule: { kind: 'daily' }, startedOn: '2026-09-01' }],
+      log: {},
+    });
+    useTasks.getState().pauseTasks(['a'], tomorrow, shiftDay(tomorrow, 2));
+    const before = useTasks.getState().log;
+    const round = sanitizeTasks(JSON.parse(JSON.stringify(useTasks.getState())));
+    expect(round.log).toEqual(before);
+    expect(Object.keys(round.log.a)).toHaveLength(3);
+  });
+});
