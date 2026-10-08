@@ -84,7 +84,13 @@ export type IconName =
   | 'sparkle'
   /* Remove a whole exercise from the open session — the one delete that sits
      outside edit mode, so it gets a glyph nobody has to read. */
-  | 'trash';
+  | 'trash'
+  /**
+   * ⋮ — "more for this screen", the session header's overflow (U16). Three pips
+   * from `DOTS`, vertical, the way the platform draws it, so it reads as a menu
+   * rather than as the `…` of a truncated title beside it.
+   */
+  | 'more';
 
 interface IconProps {
   name: IconName;
@@ -115,12 +121,13 @@ const STROKE: Record<IconName, number> = {
   backspace: 2,
   sparkle: 2,
   trash: 2,
+  more: 2,
 };
 
 /**
  * Dots drawn as real circles rather than as round-capped zero-length strokes.
  *
- * One glyph needs them — the die's pips — and a pip is a FILL, not a stroke: at
+ * Two glyphs need them — the die's pips and the ⋮ — and a pip is a FILL, not a stroke: at
  * 18px a capped stroke renders as a smudge that changes size with the weight,
  * which is exactly the thing that would make five of them look like four.
  */
@@ -131,6 +138,11 @@ const DOTS: Partial<Record<IconName, readonly [number, number][]>> = {
     [12, 12],
     [8.4, 15.6],
     [15.6, 15.6],
+  ],
+  more: [
+    [12, 5.5],
+    [12, 12],
+    [12, 18.5],
   ],
 };
 
@@ -205,6 +217,8 @@ const PATHS: Record<IconName, string[]> = {
     'M6.5 7l.9 11.6A1.6 1.6 0 009 20h6a1.6 1.6 0 001.6-1.4L17.5 7',
     'M10.3 10.8v5.4M13.7 10.8v5.4',
   ],
+  // Nothing stroked: the three pips are all of it (`DOTS`).
+  more: [],
 };
 
 /* Memoised: three primitive props, drawn inside rows and bars that re-render

@@ -29,6 +29,8 @@
  *   │ │  │ Started    17:00         ( − )( + ) │ │ │
  *   │ │  ╰ Took       74 min        ( − )( + ) ╯ │ │
  *   │ │  Workout number: 92                      │ │
+ *   │ │                                          │ │  ← 24 dp
+ *   │ │  ────────────────────────────────────    │ │
  *   │ │  Delete this workout                     │ │
  *   │ └──────────────────────────────────────────┘ │
  *   │ ┌──────────────────────────────────────────┐ │
@@ -1281,7 +1283,13 @@ function WorkoutRow({
               </Text>
             </Pressable>
 
-            {/* No red, and not a swipe: see the file header. */}
+            {/* No red, and not a swipe: see the file header. 24 dp and a
+              hairline away from the number above it (U20): the two were
+              stacked 44 dp rows, and a thumb reaching for the renumber
+              landed on delete. The gap says "a different kind of thing". */}
+            <View className="mt-xl">
+              <Separator inset={16} />
+            </View>
             <Pressable
               onPress={onDelete}
               accessibilityRole="button"

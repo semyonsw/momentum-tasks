@@ -2,9 +2,8 @@
  * ActiveWorkoutScreen — the screen the app exists for.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ (‹) PULL + SWIMMING                      #92 │   ← header, always visible
- *   │     11 of 18 sets · 42:10                    │
- *   │    ( Stop and exit )( Restart clock )        │   ← session controls
+ *   │ (‹) PULL + SWIMMING                  #92   ⋮ │   ← header, always visible
+ *   │     11 of 18 sets · 42:10                    │   ← ⋮: Restart clock, Stop and exit…
  *   ├──────────────────────────────────────────────┤
  *   │ ╭──────────────────────────────────────────╮ │
  *   │ │ BETWEEN SETS               Next: set 3   │ │   ← the lit rest card, up top
@@ -50,9 +49,9 @@
  * running (the store persists it, so the session is still there when you come
  * back) and throws away one that was only being looked at.
  *
- * `Restart the clock` is the same action as `Start`, offered again while a workout
- * runs: a session left open in a locker reads five hours, and one tap re-anchors it
- * without touching a single logged set.
+ * `Restart the clock` is the same action as `Start`, offered again (in the
+ * header's ⋮) while a workout runs: a session left open in a locker reads five
+ * hours, and one tap re-anchors it without touching a single logged set.
  *
  * ── THE SESSION IS EDITABLE WHILE IT RUNS ───────────────────────────────────
  *
@@ -154,8 +153,7 @@ import { ConfirmSheet } from '../components/ConfirmSheet';
 import { ExerciseCard } from '../components/ExerciseCard';
 import { FinishSheet } from '../components/FinishSheet';
 import { FocusMode } from '../components/FocusMode';
-import { Icon } from '../components/Icon';
-import { GrowIn } from '../components/motion';
+import { GrowIn, pressedStyle } from '../components/motion';
 import { ReorderRow } from '../components/ReorderRow';
 import { RestTimerPill } from '../components/RestTimerPill';
 import { SessionHeader } from '../components/SessionHeader';
@@ -176,10 +174,10 @@ import { beatSomething, recordsBeatenBy } from '../lib/records';
 import { formatCount, formatWeight, unitLabel } from '../lib/units';
 import { useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStore';
 import { platesInForce, useSettings } from '../state/settingsStore';
-import { PrimaryButton } from '../components/primitives';
+import { PrimaryButton, Separator, TextButton } from '../components/primitives';
+import { Sheet } from '../components/Sheet';
 import { FloatingPair, Lamps, Toast, type ToastAction } from '../components/glass';
 import { sessionVolume } from '../lib/draft';
-import { palette } from '../theme/tokens';
 import type { ID, RoutineItem, UnitSystem } from '../types/models';
 
 /**
@@ -302,7 +300,9 @@ export function ActiveWorkoutScreen({
   const cardLayouts = useRef<Record<ID, CardLayout>>({});
   /** Where the list wrapper starts inside the scroll content. */
   const listTop = useRef(0);
-  const [confirming, setConfirming] = useState<'finish' | 'clock' | 'discard' | null>(null);
+  const [confirming, setConfirming] = useState<'finish' | 'clock' | 'discard' | 'menu' | null>(
+    null,
+  );
   /**
    * The exercise on its way out: still drawn, closing, with the snapshot and the
    * index its Undo will need. It leaves the store when its card has finished
@@ -942,6 +942,11 @@ export function ActiveWorkoutScreen({
           startedAt={session.startedAt}
           workoutNumber={workoutNumber ?? null}
           onBack={lifted ? undefined : onExit}
+          // `Stop and exit` and `Restart clock` live behind the ⋮ (U16).
+          onMenu={() => {
+            tap();
+            setConfirming('menu');
+          }}
           /*
            * NO COMMIT ACTION IN THIS BAR — placement rule 1. `Finish` and `Start`
            * are the floating pair at the foot of the screen, where the thumb that
@@ -963,25 +968,7 @@ export function ActiveWorkoutScreen({
                 }
               : undefined
           }
-        >
-          {/* The session's own controls. Hidden mid-move — none of them is about
-              a card in the air. */}
-          {lifted ? null : (
-            <View className="flex-row items-center">
-              <SessionChip label={t('Stop and exit')} icon="x" onPress={handleStopAndExit} />
-              {isStarted ? (
-                <SessionChip
-                  label={t('Restart clock')}
-                  icon="play"
-                  onPress={() => {
-                    tap();
-                    setConfirming('clock');
-                  }}
-                />
-              ) : null}
-            </View>
-          )}
-        </SessionHeader>
+        />
 
         {/*
           One pill, two instruments, directly under the header: a rest countdown
@@ -1204,6 +1191,40 @@ export function ActiveWorkoutScreen({
         />
       ) : null}
 
+      {/* THE ⋮ (U16). Restart only once there is a clock to restart. Neither
+          row acts on its own: Restart goes on to its confirm as the chip did,
+          and Stop goes through `handleStopAndExit`, which asks first in the
+          danger sheet when sets would be thrown away. */}
+      {confirming === 'menu' ? (
+        <Sheet title={t('Session options')} onDismiss={() => setConfirming(null)}>
+          <View className="overflow-hidden rounded-surface bg-surface-alt">
+            {isStarted ? (
+              <>
+                <MenuRow
+                  label={t('Restart clock')}
+                  detail={t('Counts from now. Logged sets stay.')}
+                  onPress={() => {
+                    tap();
+                    setConfirming('clock');
+                  }}
+                />
+                <Separator inset={16} />
+              </>
+            ) : null}
+            <MenuRow
+              label={t('Stop and exit…')}
+              detail={t('Leaves without saving.')}
+              quiet
+              onPress={() => {
+                setConfirming(null);
+                handleStopAndExit();
+              }}
+            />
+          </View>
+          <TextButton label={t('Cancel')} onPress={() => setConfirming(null)} />
+        </Sheet>
+      ) : null}
+
       {confirming === 'clock' ? (
         <ConfirmSheet
           title={t('Restart the clock?')}
@@ -1259,44 +1280,33 @@ export function ActiveWorkoutScreen({
 /* ------------------------------------------------------------------ */
 
 /**
- * One session control: `Start the workout`, `Stop and exit`, `Restart the clock`.
- *
- * Chips rather than full-width buttons because they sit in the header, above the
- * work: they have to be reachable without being the second thing on the screen.
- * `green` marks the one that is the obvious next move.
+ * One row of the session's ⋮ menu: a label and what it will do, 64 tall —
+ * past the 48 a mid-workout target needs. `quiet` is the leave-without-saving
+ * row, muted rather than coral: the colour belongs to the confirm that follows,
+ * not to the door to it (U19's one rule for destructive actions).
  */
-function SessionChip({
+function MenuRow({
   label,
-  icon,
-  tone = 'quiet',
+  detail,
+  quiet = false,
   onPress,
 }: {
   label: string;
-  icon: 'play' | 'x';
-  tone?: 'green' | 'quiet';
+  detail: string;
+  quiet?: boolean;
   onPress: () => void;
 }) {
-  const green = tone === 'green';
   return (
     <Pressable
       onPress={onPress}
-      hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel={label}
-      className={[
-        'mr-sm h-[34px] flex-row items-center rounded-pill px-md',
-        green ? 'bg-green' : 'border border-hairline bg-surface-alt',
-      ].join(' ')}
+      accessibilityLabel={`${label} ${detail}`}
+      style={pressedStyle}
+      className="h-row-lg justify-center px-lg"
     >
-      <Icon name={icon} size={11} color={green ? palette.onAcc : palette.inkMuted} />
-      <Text
-        numberOfLines={1}
-        className={[
-          'ml-sm text-micro font-semibold uppercase',
-          green ? 'text-on-acc' : 'text-ink-muted',
-        ].join(' ')}
-      >
-        {label}
+      <Text className={`text-body ${quiet ? 'text-ink-muted' : 'text-ink'}`}>{label}</Text>
+      <Text numberOfLines={1} className="mt-[2px] text-label text-ink-faint">
+        {detail}
       </Text>
     </Pressable>
   );

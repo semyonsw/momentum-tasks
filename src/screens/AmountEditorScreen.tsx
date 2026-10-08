@@ -139,6 +139,7 @@ import { quickCategoryId } from '../lib/quickCategory';
 import { useMoney } from '../state/moneyStore';
 import { useLanguage, useT } from '../hooks/useT';
 import { useSettings } from '../state/settingsStore';
+import { TOUCH_MIN, slopInsets } from '../lib/hitTarget';
 import {
   curve,
   focalType,
@@ -1180,8 +1181,13 @@ function TransferFields({
  *
  * The date is the one answered field whose correction is almost always "one
  * step back" — you are writing down yesterday's taxi — so a sheet listing days
- * would be three taps for the common case. The chevrons are 38 tall inside the
- * chip and have their own hit slop, which keeps all three targets legal.
+ * would be three taps for the common case.
+ *
+ * The chevrons are 44 × 44 and DRAWN that size (U17), which makes the chip 44
+ * tall where the chips around it are 38. They were 28 × 30 with a slop of 8,
+ * legal on paper, but the slop reached outside the chip into the row's gaps,
+ * and a hit test does not reliably follow a child past its parent's edge on
+ * Android. A target that lies inside what it belongs to is one that works.
  */
 function StepperChip({
   label,
@@ -1196,10 +1202,9 @@ function StepperChip({
   return (
     <View
       style={{
-        height: 38,
+        height: 44,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 4,
         borderRadius: radius.pill,
         borderWidth: 1,
         backgroundColor: 'rgba(236,241,238,0.03)',
@@ -1208,11 +1213,10 @@ function StepperChip({
     >
       <Pressable
         onPress={onEarlier}
-        hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={t('Earlier')}
         style={pressedStyle}
-        className="h-[30px] w-[28px] items-center justify-center"
+        className="h-[44px] w-[44px] items-center justify-center"
       >
         <Icon name="chevron-left" size={14} color={palette.inkMuted} />
       </Pressable>
@@ -1226,11 +1230,10 @@ function StepperChip({
       </Text>
       <Pressable
         onPress={onLater}
-        hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={t('Later')}
         style={pressedStyle}
-        className="h-[30px] w-[28px] items-center justify-center"
+        className="h-[44px] w-[44px] items-center justify-center"
       >
         <Icon name="chevron-right" size={14} color={palette.inkMuted} />
       </Pressable>
@@ -1243,7 +1246,16 @@ function StepperChip({
  * between them (360 ms, a slight overshoot). Fixed widths so the thumb is a
  * translate on the native driver and never has to measure a word; the words'
  * colours follow it, `onAcc` on the gradient and muted off it.
+ *
+ * Each half is 38 tall — the height of every chip in the row it sits in — and
+ * takes the track's 3 dp above and below as slop, so a press answers over 44
+ * (U17). It was 30, the smallest target on the screen that writes money down.
+ * Not 44 drawn: a 50 dp switch in a row of 38 dp chips would be the one thing
+ * in the row that looks like it matters more. No slop sideways: the halves
+ * touch, and the one between them is the one you meant.
  */
+const SEGMENT_SLOP = slopInsets(38, TOUCH_MIN, { left: 0, right: 0 });
+
 function DirectionSwitch({
   value,
   onChange,
@@ -1300,8 +1312,9 @@ function DirectionSwitch({
             accessibilityRole="radio"
             accessibilityState={{ selected }}
             accessibilityLabel={option.label}
+            hitSlop={SEGMENT_SLOP}
             style={pressedStyle}
-            className="h-[30px] items-center justify-center"
+            className="h-[38px] items-center justify-center"
           >
             <Text
               numberOfLines={1}

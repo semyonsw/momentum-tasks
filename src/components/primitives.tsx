@@ -41,6 +41,7 @@ import { Pressable } from './Pressable';
 import { useT } from '../hooks/useT';
 import { tap } from '../lib/feedback';
 import { segmentFontSize } from '../lib/stepperFont';
+import { TOUCH_MIN_WORKOUT, slopInsets } from '../lib/hitTarget';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { curve, danger, glass, gradientFill, motion, palette, tint } from '../theme/tokens';
 import { BubblePressable } from './bubbles';
@@ -360,7 +361,15 @@ export function StepperRow({
  * Not exported: a 36 dp circle with a glyph in it is a shape three other
  * controls could plausibly want, and every one of them would want it at a
  * different size. It stays the stepper's own part until a second caller exists.
+ *
+ * Its slop reaches 48 (U28; History's steppers edit a workout's day and time
+ * with the session still in your hands), except on the side facing the other
+ * button: they are `w-xs` apart, so each gives the other half of that gap and
+ * a press aimed at `+` can never land on `−`. See `lib/hitTarget`.
  */
+const MINUS_SLOP = slopInsets(36, TOUCH_MIN_WORKOUT, { right: 2 });
+const PLUS_SLOP = slopInsets(36, TOUCH_MIN_WORKOUT, { left: 2 });
+
 function StepButton({
   icon,
   label,
@@ -373,7 +382,7 @@ function StepButton({
   return (
     <BubblePressable
       onPress={onPress}
-      hitSlop={4}
+      hitSlop={icon === 'minus' ? MINUS_SLOP : PLUS_SLOP}
       radius="pill"
       accessibilityRole="button"
       accessibilityLabel={label}

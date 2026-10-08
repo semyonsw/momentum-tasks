@@ -2,9 +2,8 @@
  * SessionHeader — the bar across the top of a workout.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ ‹  Pull + swimming (tension on b░      #92   │  ← title runs, never wraps
+ *   │ ‹  Pull + swimming (tension on b░   #92  ⋮  │  ← title runs, never wraps
  *   │    3 of 17 sets · 12:04                      │  ← the count rolls, the clock ticks
- *   │    ( Stop and exit )( Restart clock )        │
  *   │▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  ← 2 dp: the share of sets done
  *   └──────────────────────────────────────────────┘
  *
@@ -33,6 +32,14 @@
  * body-semibold to a kicker because the subline is the line that changes — the
  * count rolls and the clock ticks — and the one you glance at should be the
  * brighter of the two.
+ *
+ * THE ⋮ (U16). `Stop and exit` and `Restart clock` used to be two 34 dp chips
+ * on a third line of this bar — 48 dp of header spent on the two actions you
+ * least want to hit by accident, side by side, a thumb-slip apart. They live
+ * behind `onMenu` now and the screen owns the menu; the bar only offers the
+ * door. Rejected: keeping `Restart clock` in the bar and moving only Stop — the
+ * line would stay for one chip, and the clock you might restart is already
+ * up here to be read.
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -44,8 +51,10 @@ import { useT } from '../hooks/useT';
 import { curve, motion, palette, radius, tint } from '../theme/tokens';
 import { GlassBar, SpecularEdge } from './glass';
 import { Icon } from './Icon';
+import { pressedStyle } from './motion';
 import { RollingPhrase } from './RollingNumber';
 import { FADE_ON, RunningText } from './RunningText';
+import { TOUCH_MIN_WORKOUT, hitSlopFor } from '../lib/hitTarget';
 import { formatElapsed } from '../lib/units';
 
 /** The pushed-screen kicker: 13 / 16, letter-spacing 1.4. */
@@ -62,6 +71,7 @@ export function SessionHeader({
   startedAt,
   workoutNumber,
   onBack,
+  onMenu,
   moving,
   children,
 }: {
@@ -73,6 +83,8 @@ export function SessionHeader({
   /** What this workout will be saved as. Null hides the pill. */
   workoutNumber: number | null;
   onBack?: () => void;
+  /** The session's ⋮ — what it opens is the screen's. Hidden mid-move. */
+  onMenu?: () => void;
   /** A card is in the air: what to say instead, and the way to put it down. */
   moving?: { kicker: string; subtitle: string; onDrop: () => void; dropLabel: string };
   /** The session's own chips, under the two lines. */
@@ -84,7 +96,7 @@ export function SessionHeader({
 
   return (
     <GlassBar style={{ paddingTop: insets.top }}>
-      <View className="h-[60px] flex-row items-center pl-[10px] pr-md">
+      <View className={`h-[60px] flex-row items-center pl-[10px] ${onMenu ? 'pr-xs' : 'pr-md'}`}>
         {/* The pushed screens' 46 dp back circle. Kept as an empty slot of the
             same size mid-move, so the two lines beside it do not jump. */}
         <Pressable
@@ -196,6 +208,31 @@ export function SessionHeader({
               {`#${workoutNumber}`}
             </Text>
           </View>
+        ) : null}
+
+        {/* 46, the back circle's size, so the bar is symmetric; plain rather
+            than glass, because it is a door to two rare actions and not a
+            place the eye should land. */}
+        {onMenu && !moving ? (
+          <Pressable
+            onPress={onMenu}
+            hitSlop={hitSlopFor(46, TOUCH_MIN_WORKOUT)}
+            accessibilityRole="button"
+            accessibilityLabel={t('Session options')}
+            style={(state) => [
+              pressedStyle(state),
+              {
+                width: 46,
+                height: 46,
+                marginLeft: 4,
+                borderRadius: radius.pill,
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+            ]}
+          >
+            <Icon name="more" size={22} color={palette.ink} />
+          </Pressable>
         ) : null}
       </View>
 

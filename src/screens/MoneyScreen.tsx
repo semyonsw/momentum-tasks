@@ -415,8 +415,13 @@ export function MoneyScreen({
               }}
             />
           ))}
+          {/* `+` and `⇄` are 38 dp to match the chips they sit among, so they
+              reach 50 with slop (U18, `lib/hitTarget`). 6 into an 8 dp gap
+              overlaps a neighbour's slop by 4 at most — and the chips beside
+              them carry none. */}
           <Pressable
             onPress={() => setAddingAccount(true)}
+            hitSlop={6}
             accessibilityRole="button"
             accessibilityLabel={t('Add subsection')}
             style={pressedStyle}
@@ -430,6 +435,7 @@ export function MoneyScreen({
                 tap();
                 onTransfer(account.id, onDay);
               }}
+              hitSlop={6}
               accessibilityRole="button"
               accessibilityLabel={t('Move money between subsections')}
               style={pressedStyle}
