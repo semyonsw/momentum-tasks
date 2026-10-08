@@ -52,10 +52,12 @@ export function segmentFontSize(label: string, cellWidth: number): number {
 
 /**
  * The big number on a Home tile — the balance, anything from `0` to
- * `-1,234,567` — sized to the tile's inner `width`: 26 when it fits, down to 16.
- * Tabular digits at −1 letter-spacing are ~0.6 em less 1 dp each.
+ * `-1,234,567` — sized to the tile's inner `width`: `largest` (26) when it fits,
+ * down to 16. Tabular digits at −1 letter-spacing are ~0.6 em less 1 dp each.
+ * The landing's wide Finance row passes 30, the design's size for a full-width
+ * figure.
  */
-export function figureFontSize(value: string, width: number): number {
+export function figureFontSize(value: string, width: number, largest = 26): number {
   const fits = (width / Math.max(1, value.length) + 1) / 0.6;
-  return Math.max(16, Math.min(26, Math.floor(fits)));
+  return Math.max(16, Math.min(largest, Math.floor(fits)));
 }

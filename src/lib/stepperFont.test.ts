@@ -49,4 +49,10 @@ describe('figureFontSize', () => {
     expect(figureFontSize('-1,234,567', 134)).toBeLessThan(26);
     expect(figureFontSize('-1,234,567,890.50', 100)).toBe(16);
   });
+
+  it('reaches the larger ceiling it is given, and only when it fits', () => {
+    expect(figureFontSize('284,600', 200, 30)).toBe(30);
+    expect(figureFontSize('12,486,300', 160, 30)).toBeLessThan(30);
+    expect(figureFontSize('284,600', 200)).toBe(26);
+  });
 });

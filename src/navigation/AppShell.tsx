@@ -634,6 +634,23 @@ export function AppShell() {
   );
   const clearFocusWorkout = useCallback(() => setFocusWorkoutId(null), []);
 
+  /**
+   * A quick action on the landing: into `section` with `route` already on top.
+   *
+   * `setTab` and not `navigate` — the pushed screen covers the stage, so there
+   * is no grow to play — but with `navigate`'s leave rules, so the tasks' pinned
+   * day and the money window end up exactly where a tile tap would leave them.
+   */
+  const jumpFromLanding = useCallback(
+    (section: SectionTab, top: Route) => {
+      if (tab === 'Tasks' && section !== 'Tasks') setPinnedTaskDay(null);
+      if (section === 'Expenses' && tab !== 'Expenses') setMoneyWindow(seedMoneyWindow);
+      setTab(section);
+      setStack([top]);
+    },
+    [setTab, tab],
+  );
+
   /** Filled in below, once the editor's exit rule exists. See `leaveTop`. */
   const leaveRoutineEditor = useRef<(route: { routineId: ID; isNew?: boolean }) => void>(pop);
 
@@ -1851,8 +1868,25 @@ export function AppShell() {
         <LandingScreen
           nextWorkoutNumber={nextWorkoutNumber}
           nextWorkout={landingNext}
-          workoutInProgress={inProgress != null}
+          runningSince={inProgress?.startedAt ?? null}
+          moneyAccountId={moneyWindow.accountId}
           onOpen={(section, from) => navigate(section, { from })}
+          /* The quick-action row lands IN the section, under the screen it opens,
+             as the prototype does: the keypad saves into Finance, where the
+             amount is then on screen, and a session finishes onto the workout
+             section, where its celebration and debrief play. */
+          onAddExpense={(accountId, categoryId) =>
+            jumpFromLanding('Expenses', {
+              name: 'moneyAmount',
+              amountId: null,
+              categoryId,
+              accountId,
+              direction: 'expense',
+              day: today,
+            })
+          }
+          onResume={() => jumpFromLanding('Workout', { name: 'session' })}
+          onToast={setToast}
         />
       );
     }

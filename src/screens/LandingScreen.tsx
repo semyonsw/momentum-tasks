@@ -1,18 +1,20 @@
 /**
  * Home — the landing above the four sections.
  *
- *   MONDAY · 28 SEP
+ *   MONDAY · 5 OCT
  *   Good afternoon                       [mark]
- *   6 of 8 tasks done · Pull is up next
+ *   4 of 9 tasks done · Pull is up next
+ *   (+ Expense) (○ 10 000 steps) (▶ Resume workout · 42:10)
  *
  *   ╭──────────╮ ╭──────────╮
- *   │ 🏋    #92 │ │ ✓    ◔75%│
+ *   │ 🏋   #100 │ │ ✓    ◔44%│      150 dp
  *   │ Workout  │ │ Tasks    │
  *   ╰──────────╯ ╰──────────╯
- *   ╭──────────╮ ╭──────────╮
- *   │ ▣     AMD│ │ ⚙    ●●● │
- *   │ Finance  │ │ Settings │
- *   ╰──────────╯ ╰──────────╯
+ *   ╭───────────────────────╮
+ *   │ ▣  284,600 AMD      › │      Finance, wide, with the balance
+ *   ╰───────────────────────╯
+ *     (the weekly review and the Wrapped entry go here — T-08, T-10)
+ *   ⚙ Settings     Lime · backup today ●●● ›     a 56 dp row
  *
  * The app opens here now. It used to open on the workout section, which made
  * the tasks and the money — the two logs you touch EVERY day — a swipe away
@@ -20,16 +22,32 @@
  * of the three stands, one tap from each, is the rename's reason for existing:
  * Momentum is the three logs, not a workout tracker with two extras.
  *
- * Each tile is a door, and the transition treats it as one: the tapped tile's
+ * ── IT ALSO DOES THINGS (U10) ─────────────────────────────────────────────
+ *
+ * It used to only point: the greeting was the largest thing on it, Settings
+ * was a full 262 dp tile, and an expense took tile → FAB → digits → Save. The
+ * row of 48 dp chips under the greeting is the landing's own verbs — `+ Expense`
+ * opens the keypad the money FAB opens, on the same account and category; the
+ * next unanswered task ticks with its ✓ (an Undo toast, because the chip moves
+ * on to the next task and the tick would otherwise be out of reach); `Resume
+ * workout` exists only while a session runs. Which task and which chips is
+ * `lib/landing.ts`. The tiles came down to 150 dp to pay for the row, Finance
+ * became a wide row because a balance is the one figure that wants width, and
+ * Settings — not a log — became a slim row at the foot. Rejected: a FAB here
+ * (one verb, and the landing has three) and a horizontally scrolling chip strip
+ * (the task's name is the chip, and a strip clips it at the screen's edge).
+ *
+ * Each tile is a door, and the transition treats it as one: the tapped door's
  * window is measured and handed up, and the section GROWS out of that rect
- * (`navigation/AppShell.tsx`). There is no nav bar here — the tiles are the nav.
+ * (`navigation/AppShell.tsx`) — the wide Finance row and the Settings row
+ * included. There is no nav bar here — the tiles are the nav.
  *
  * Composition only. The words are `lib/home.ts`; the numbers come from the
  * stores through the same pure functions each section already uses, so a tile
  * can never disagree with the screen it opens.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
@@ -37,7 +55,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppMark } from '../components/AppMark';
 import { BubblePressable } from '../components/bubbles';
-import { Lamps } from '../components/glass';
+import { Lamps, type ToastAction } from '../components/glass';
+import { Icon } from '../components/Icon';
 import { MaterialSymbol, type SymbolName } from '../components/MaterialSymbol';
 import { usePressScale } from '../components/motion';
 import { FADE_ON, RunningText } from '../components/RunningText';
@@ -46,15 +65,18 @@ import { useToday } from '../hooks/useToday';
 import { describeBackupAge } from '../lib/autoBackup';
 import { monthNames, parseDay, weekdayIndex, weekdayNames } from '../lib/days';
 import { focusFamily, greetingFor, homeSubline } from '../lib/home';
-import { balanceOfAccount, formatValue, inAccount, totalsIn } from '../lib/money';
+import { landingAccount, nextUnansweredTask, quickActions } from '../lib/landing';
+import { balanceOfAccount, categoriesFor, formatValue, inAccount, totalsIn } from '../lib/money';
+import { quickCategoryId } from '../lib/quickCategory';
 import { type SectionTab } from '../lib/sectionNav';
 import { dayProgress } from '../lib/tasks';
 import { figureFontSize } from '../lib/stepperFont';
 import { themeName } from '../lib/theme';
+import { formatElapsed } from '../lib/units';
 import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
 import { useTasks } from '../state/tasksStore';
-import { curve, gradientBar, gradientFill, palette, stopTint, tint } from '../theme/tokens';
+import { curve, glass, gradientFill, palette, radius, stopTint, tint } from '../theme/tokens';
 
 /** A tile's window, for the clip transition to grow out of. */
 export interface TileRect {
@@ -69,32 +91,64 @@ interface LandingScreenProps {
   nextWorkoutNumber: number;
   /** The routine whose turn it is (or the workout running), and its focus line. */
   nextWorkout: { name: string; focus: string | null } | null;
-  workoutInProgress: boolean;
+  /** When the running session was STARTED, or null: the Resume chip's clock. */
+  runningSince: string | null;
+  /** The account the money section last read, if one was chosen this session. */
+  moneyAccountId: string | null;
   onOpen: (section: SectionTab, from: TileRect | null) => void;
+  /** `+ Expense`: the keypad, as the money FAB opens it. */
+  onAddExpense: (accountId: string, categoryId: string | null) => void;
+  onResume: () => void;
+  onToast: (text: string, action?: ToastAction) => void;
 }
 
-const TILE_HEIGHT = 262;
+/** The two half tiles (the design's 150, down from 262). */
+const TILE_HEIGHT = 150;
+/** Finance, full width: the balance and one line. */
+const WIDE_HEIGHT = 104;
+/** Settings, at the foot: a row, not a tile. */
+const ROW_HEIGHT = 56;
+/** Every chip in the quick-action row — the mid-workout size, because Resume is one. */
+const CHIP_HEIGHT = 48;
+const GLYPH = 44;
 const TILE_IN = curve([0.2, 0.8, 0.2, 1]);
 
 export function LandingScreen({
   nextWorkoutNumber,
   nextWorkout,
-  workoutInProgress,
+  runningSince,
+  moneyAccountId,
   onOpen,
+  onAddExpense,
+  onResume,
+  onToast,
 }: LandingScreenProps) {
   const t = useT();
   const lang = useLanguage();
   const insets = useSafeAreaInsets();
   const today = useToday();
+  const { width } = useWindowDimensions();
 
   const tasks = useTasks((s) => s.tasks);
   const log = useTasks((s) => s.log);
+  const toggleMark = useTasks((s) => s.toggleMark);
+  const setMark = useTasks((s) => s.setMark);
+  const autoTick = useSettings((s) => s.autoTickTasks);
   const progress = useMemo(() => dayProgress(tasks, log, today), [log, tasks, today]);
+  const nextTask = useMemo(
+    () => nextUnansweredTask(tasks, log, today, { autoTick }),
+    [autoTick, log, tasks, today],
+  );
 
   const accounts = useMoney((s) => s.accounts);
   const amounts = useMoney((s) => s.amounts);
+  const categories = useMoney((s) => s.categories);
   const currency = useSettings((s) => s.currencyCode);
-  const account = accounts[0] ?? null;
+  // U9: never an archived account — the one the money section would open on.
+  const account = useMemo(
+    () => landingAccount(accounts, moneyAccountId),
+    [accounts, moneyAccountId],
+  );
   const money = useMemo(() => {
     if (!account) return null;
     const own = inAccount(amounts, account.id);
@@ -107,6 +161,7 @@ export function LandingScreen({
   const themeId = useSettings((s) => s.themeId);
   const lastBackupAt = useSettings((s) => s.lastBackupAt);
 
+  const workoutInProgress = runningSince != null;
   const date = parseDay(today) ?? new Date();
   const kicker = `${weekdayNames(lang)[weekdayIndex(date)]} · ${date.getDate()} ${monthNames(lang)[
     date.getMonth()
@@ -123,6 +178,33 @@ export function LandingScreen({
   const family = focusFamily(nextWorkout?.focus ?? null);
   const percent = Math.round(progress.fraction * 100);
   const monthName = monthNames(lang)[date.getMonth()];
+  const chips = quickActions({
+    hasAccount: account != null,
+    hasNextTask: nextTask != null,
+    sessionLive: workoutInProgress,
+  });
+
+  const addExpense = () => {
+    if (!account) return;
+    onAddExpense(
+      account.id,
+      quickCategoryId(categoriesFor(categories, 'expense', { pickable: true })),
+    );
+  };
+  /* The chip moves on to the next task as soon as this one is answered, so the
+     tick has to be undoable from somewhere else: the toast. */
+  const tickNext = () => {
+    if (!nextTask) return;
+    const { id, name } = nextTask;
+    const before = toggleMark(id, today);
+    onToast(t('Done: {name}', { name }), {
+      label: t('Undo'),
+      onPress: () => setMark(id, today, before),
+    });
+  };
+
+  const half = (width - 32 - 12) / 2;
+  const wide = width - 32;
 
   return (
     <View className="flex-1 bg-bg">
@@ -175,94 +257,583 @@ export function LandingScreen({
               {subline}
             </Text>
           </View>
+
+          {chips.length > 0 ? (
+            <View style={{ marginTop: 18, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {chips.map((chip) =>
+                chip === 'expense' ? (
+                  <QuickChip
+                    key={chip}
+                    lit
+                    onPress={addExpense}
+                    accessibilityLabel={t('Add expense')}
+                    lead={<Icon name="plus" size={18} color={palette.acc} />}
+                    label={t('Expense')}
+                    labelColor={palette.acc}
+                  />
+                ) : chip === 'task' && nextTask ? (
+                  <QuickChip
+                    key={chip}
+                    onPress={tickNext}
+                    accessibilityLabel={t('Mark {name} done', { name: nextTask.name })}
+                    lead={
+                      <View
+                        style={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: radius.pill,
+                          borderWidth: 2,
+                          borderColor: palette.inkFaint,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Icon name="check" size={15} color={palette.inkMuted} />
+                      </View>
+                    }
+                    label={nextTask.name}
+                    labelColor={palette.ink}
+                    regular
+                  />
+                ) : chip === 'resume' && runningSince ? (
+                  <ResumeChip key={chip} startedAt={runningSince} onPress={onResume} />
+                ) : null,
+              )}
+            </View>
+          ) : null}
         </Rise>
 
-        <View style={{ marginTop: 26, flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-          <Tile
+        <View style={{ marginTop: 14, flexDirection: 'row', gap: 12 }}>
+          <Door
             index={0}
-            glyph="fitness_center"
-            lamp={{ stop: 1, alpha: 0.45, corner: 'topLeft' }}
-            extra={<Badge label={`#${nextWorkoutNumber}`} />}
-            kicker={
-              workoutInProgress
-                ? t('In progress')
-                : family
-                  ? `${t('Today')} · ${family}`
-                  : t('Today')
-            }
-            name={t('Workout')}
-            detail={nextWorkout?.name ?? t('No routine yet')}
+            width={half}
+            height={TILE_HEIGHT}
+            label={`${t('Workout')}. ${nextWorkout?.name ?? t('No routine yet')}`}
             onPress={(rect) => onOpen('Workout', rect)}
-          />
-          <Tile
+          >
+            <Lamp index={0} stop={1} alpha={0.45} at={{ top: -60, left: -60 }} />
+            <TileBody
+              glyph="fitness_center"
+              extra={<Badge label={`#${nextWorkoutNumber}`} />}
+              kicker={
+                workoutInProgress
+                  ? t('In progress')
+                  : family
+                    ? `${t('Today')} · ${family}`
+                    : t('Today')
+              }
+              name={t('Workout')}
+              detail={nextWorkout?.name ?? t('No routine yet')}
+            />
+          </Door>
+          <Door
             index={1}
-            glyph="task_alt"
-            lamp={{ stop: 2, alpha: 0.38, corner: 'topRight' }}
-            extra={
-              <MiniRing
-                fraction={progress.total === 0 ? 0 : progress.fraction}
-                label={`${percent}%`}
-              />
-            }
-            kicker={t('Today')}
-            name={t('Tasks')}
-            detail={
+            width={half}
+            height={TILE_HEIGHT}
+            label={`${t('Tasks')}. ${
               progress.total === 0
                 ? t('Nothing asked for today')
                 : t('{done} of {total} done', { done: progress.done, total: progress.total })
-            }
+            }`}
             onPress={(rect) => onOpen('Tasks', rect)}
-          />
-          <Tile
-            index={2}
-            glyph="account_balance_wallet"
-            lamp={{ stop: 3, alpha: 0.34, corner: 'bottomLeft' }}
-            extra={
-              <Text
-                maxFontSizeMultiplier={1.3}
-                style={{ paddingTop: 6, fontSize: 12.5, letterSpacing: 1.1, color: palette.acc }}
-                className="font-semibold"
-              >
-                {currency}
-              </Text>
-            }
-            figure={money ? formatValue(money.balance) : undefined}
-            name={t('Finance')}
-            detail={
-              account && money
-                ? t('{account} · all time · {spent} spent in {month}', {
-                    account: account.name,
-                    spent: `${formatValue(money.spent)} ${currency}`,
-                    month: monthName,
-                  })
-                : t('No accounts yet')
-            }
-            onPress={(rect) => onOpen('Expenses', rect)}
-          />
-          <Tile
-            index={3}
-            glyph="settings"
-            plainBadge
-            lamp={{ stop: 1, alpha: 0.34, corner: 'bottomRight' }}
-            extra={
-              <View style={{ flexDirection: 'row', gap: 4, paddingTop: 8 }}>
-                {[palette.c1, palette.c2, palette.c3].map((color, i) => (
-                  <View
-                    key={i}
-                    style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: color }}
-                  />
-                ))}
-              </View>
-            }
-            bar
-            name={t('Settings')}
-            detail={`${t('Theme')} · ${t(themeName(themeId))} · ${t('last backup {age}', {
-              age: describeBackupAge(lastBackupAt, undefined, lang).toLowerCase(),
-            })}`}
-            onPress={(rect) => onOpen('Settings', rect)}
-          />
+          >
+            <Lamp index={1} stop={2} alpha={0.38} at={{ top: -60, right: -60 }} />
+            <TileBody
+              glyph="task_alt"
+              extra={
+                <MiniRing
+                  fraction={progress.total === 0 ? 0 : progress.fraction}
+                  label={`${percent}%`}
+                />
+              }
+              kicker={t('Today')}
+              name={t('Tasks')}
+              detail={
+                progress.total === 0
+                  ? t('Nothing asked for today')
+                  : t('{done} of {total} done', { done: progress.done, total: progress.total })
+              }
+            />
+          </Door>
         </View>
+
+        <FinanceRow
+          width={wide}
+          figure={money ? formatValue(money.balance) : null}
+          currency={currency}
+          detail={
+            account && money
+              ? t('Finance · {account} · {spent} spent in {month}', {
+                  account: account.name,
+                  spent: `${formatValue(money.spent)} ${currency}`,
+                  month: monthName,
+                })
+              : `${t('Finance')} · ${t('No accounts yet')}`
+          }
+          label={t('Finance')}
+          onPress={(rect) => onOpen('Expenses', rect)}
+        />
+
+        {/* The weekly review (T-08) and the Wrapped entry (T-10) take their place
+            HERE, between the logs and Settings: above the fold at 360 × 800 once
+            the tiles are 150 dp, which is what the shorter tiles were for. */}
+
+        <SettingsRow
+          width={wide}
+          name={t('Settings')}
+          detail={`${t(themeName(themeId))} · ${t('last backup {age}', {
+            age: describeBackupAge(lastBackupAt, undefined, lang).toLowerCase(),
+          })}`}
+          onPress={(rect) => onOpen('Settings', rect)}
+        />
       </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * A chip in the quick-action row: 48 dp, a pill, a glyph and a word. `lit` for
+ * the two that start something (the keypad, the session), glass for the task,
+ * which is a row's worth of answer rather than a destination. The label is one
+ * line and clamps — a task's name is the user's, and it can be a sentence.
+ */
+function QuickChip({
+  lit = false,
+  regular = false,
+  lead,
+  label,
+  labelColor,
+  accessibilityLabel,
+  onPress,
+}: {
+  lit?: boolean;
+  /** The task's name is read, not pressed: regular weight, as on its row. */
+  regular?: boolean;
+  lead: React.ReactNode;
+  label: string;
+  labelColor: string;
+  accessibilityLabel: string;
+  onPress: () => void;
+}) {
+  const press = usePressScale(0.96);
+  return (
+    <Animated.View style={{ maxWidth: '100%', transform: press.style.transform }}>
+      <BubblePressable
+        onPress={onPress}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        radius={CHIP_HEIGHT / 2}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={{
+          height: CHIP_HEIGHT,
+          maxWidth: '100%',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          paddingLeft: lit ? 14 : 9,
+          paddingRight: 16,
+          borderRadius: radius.pill,
+          overflow: 'hidden',
+          borderWidth: 1,
+          backgroundColor: lit ? glass.green : glass.raised,
+          borderColor: lit ? glass.greenEdge : glass.raisedEdge,
+        }}
+      >
+        {lead}
+        <Text
+          maxFontSizeMultiplier={1.3}
+          numberOfLines={1}
+          style={{ flexShrink: 1, fontSize: 15, color: labelColor }}
+          className={regular ? undefined : 'font-semibold'}
+        >
+          {label}
+        </Text>
+      </BubblePressable>
+    </Animated.View>
+  );
+}
+
+/** `▶ Resume workout · 42:10` — its own component, so only it ticks each second. */
+function ResumeChip({ startedAt, onPress }: { startedAt: string; onPress: () => void }) {
+  const t = useT();
+  const startMs = useMemo(() => new Date(startedAt).getTime(), [startedAt]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+  const time = formatElapsed(Number.isFinite(startMs) ? now - startMs : 0);
+  return (
+    <QuickChip
+      lit
+      onPress={onPress}
+      accessibilityLabel={t('Resume workout · {time}', { time })}
+      lead={<Icon name="play" size={16} color={palette.acc} />}
+      label={t('Resume workout · {time}', { time })}
+      labelColor={palette.ink}
+    />
+  );
+}
+
+/**
+ * A door into a section: the entrance, the press, and the MEASURE — the
+ * section grows out of this rect, so every door, whatever its shape, hands up
+ * its own window rather than a guess.
+ */
+function Door({
+  index,
+  width,
+  height,
+  rounded = radius.hero,
+  surface = glass.raised,
+  label,
+  onPress,
+  children,
+}: {
+  index: number;
+  width: number;
+  height: number;
+  rounded?: number;
+  surface?: string;
+  label: string;
+  onPress: (rect: TileRect | null) => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<View>(null);
+  const press = usePressScale(0.96);
+  const enter = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: 620,
+      delay: 60 + index * 70,
+      easing: TILE_IN,
+      useNativeDriver: true,
+    }).start();
+  }, [enter, index]);
+
+  const open = () => {
+    const node = ref.current;
+    if (!node) {
+      onPress(null);
+      return;
+    }
+    node.measureInWindow((x, y, w, h) => onPress(w > 0 ? { x, y, width: w, height: h } : null));
+  };
+
+  const enterY = useMemo(
+    () => enter.interpolate({ inputRange: [0, 1], outputRange: [26, 0] }),
+    [enter],
+  );
+  const enterScale = useMemo(
+    () => enter.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
+    [enter],
+  );
+  return (
+    <Animated.View
+      style={{
+        width,
+        opacity: enter,
+        transform: [{ translateY: enterY }, { scale: enterScale }, ...press.style.transform],
+      }}
+    >
+      <View ref={ref} collapsable={false} style={{ borderRadius: rounded }}>
+        <BubblePressable
+          onPress={open}
+          onPressIn={press.onPressIn}
+          onPressOut={press.onPressOut}
+          radius={rounded}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          style={{
+            minHeight: height,
+            borderRadius: rounded,
+            overflow: 'hidden',
+            backgroundColor: surface,
+            borderWidth: 1,
+            borderColor: glass.raisedEdge,
+          }}
+        >
+          {children}
+        </BubblePressable>
+      </View>
+    </Animated.View>
+  );
+}
+
+/** A corner lamp: one stop of the theme, fading out from a 220 dp disc. */
+function Lamp({
+  index,
+  stop,
+  alpha,
+  at,
+}: {
+  index: number;
+  stop: 1 | 2 | 3;
+  alpha: number;
+  at: object;
+}) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', width: 220, height: 220, ...at }}>
+      <Svg width={220} height={220}>
+        <Defs>
+          <RadialGradient id={`tileLamp${index}`} cx="50%" cy="50%" r="50%">
+            <Stop offset="0%" stopColor={stopTint(stop, 1)} stopOpacity={alpha} />
+            <Stop offset="65%" stopColor={stopTint(stop, 1)} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Circle cx={110} cy={110} r={110} fill={`url(#tileLamp${index})`} />
+      </Svg>
+    </View>
+  );
+}
+
+/** The specular line along a pane's top edge. */
+function Specular() {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 20,
+        right: 20,
+        height: 1,
+        backgroundColor: 'rgba(236,241,238,0.12)',
+      }}
+    />
+  );
+}
+
+/** The section's glyph on the commit gradient. */
+function GlyphBadge({ glyph }: { glyph: SymbolName }) {
+  return (
+    <View
+      style={{
+        width: GLYPH,
+        height: GLYPH,
+        borderRadius: 15,
+        overflow: 'hidden',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <LinearGradient
+        {...gradientFill()}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      <MaterialSymbol name={glyph} size={26} color={palette.onAcc} filled />
+    </View>
+  );
+}
+
+/** A half tile's contents: glyph and extra on top, kicker, name and detail at the foot. */
+function TileBody({
+  glyph,
+  extra,
+  kicker,
+  name,
+  detail,
+}: {
+  glyph: SymbolName;
+  extra: React.ReactNode;
+  kicker: string;
+  name: string;
+  detail: string;
+}) {
+  return (
+    <View style={{ flex: 1, minHeight: TILE_HEIGHT - 2, padding: 16 }}>
+      <Specular />
+      <View
+        style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
+        <GlyphBadge glyph={glyph} />
+        {extra}
+      </View>
+      <View style={{ marginTop: 'auto', paddingTop: 8, minWidth: 0 }}>
+        <RunningText
+          text={kicker}
+          maxFontSizeMultiplier={1.3}
+          style={{ fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1, color: palette.acc }}
+          className="font-semibold uppercase"
+          fadeColor={FADE_ON.card}
+        />
+        <Text
+          maxFontSizeMultiplier={1.3}
+          numberOfLines={1}
+          style={{ marginTop: 2, fontSize: 21, lineHeight: 26, letterSpacing: -0.5 }}
+          className="font-semibold text-ink"
+        >
+          {name}
+        </Text>
+        <RunningText
+          text={detail}
+          maxFontSizeMultiplier={1.3}
+          containerStyle={{ marginTop: 2 }}
+          style={{ fontSize: 14, lineHeight: 19 }}
+          className="text-ink-muted"
+          fadeColor={FADE_ON.card}
+        />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Finance, full width: the balance is the one figure on the landing that wants
+ * room, and a half tile sized it down to 16 dp past seven digits.
+ */
+function FinanceRow({
+  width,
+  figure,
+  currency,
+  detail,
+  label,
+  onPress,
+}: {
+  width: number;
+  figure: string | null;
+  currency: string;
+  detail: string;
+  label: string;
+  onPress: (rect: TileRect | null) => void;
+}) {
+  /* The figure's room: the row less its padding, glyph, gaps, chevron and code. */
+  const room = width - 32 - GLYPH - 14 - 14 - 22 - (currency.length * 9 + 6);
+  return (
+    <View style={{ marginTop: 12 }}>
+      <Door
+        index={2}
+        width={width}
+        height={WIDE_HEIGHT}
+        label={figure ? `${label}. ${figure} ${currency}. ${detail}` : `${label}. ${detail}`}
+        onPress={onPress}
+      >
+        <Lamp index={2} stop={3} alpha={0.34} at={{ bottom: -90, left: -50 }} />
+        <Specular />
+        <View
+          style={{
+            flex: 1,
+            minHeight: WIDE_HEIGHT - 2,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 14,
+            paddingLeft: 16,
+            paddingRight: 14,
+            paddingVertical: 16,
+          }}
+        >
+          <GlyphBadge glyph="account_balance_wallet" />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            {figure != null ? (
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                <Text
+                  allowFontScaling={false}
+                  numberOfLines={1}
+                  /* Sized from the figure, not `adjustsFontSizeToFit`: on Android
+                     the first fit runs before the row has a width, and the number
+                     opened the size of a full stop. */
+                  style={{
+                    flexShrink: 1,
+                    fontSize: figureFontSize(figure, room, 30),
+                    lineHeight: 34,
+                    letterSpacing: -1,
+                    fontVariant: ['tabular-nums'],
+                  }}
+                  className="font-semibold text-ink"
+                >
+                  {figure}
+                </Text>
+                <Text
+                  maxFontSizeMultiplier={1.3}
+                  style={{ fontSize: 12.5, letterSpacing: 1.1, color: palette.acc }}
+                  className="font-semibold"
+                >
+                  {currency}
+                </Text>
+              </View>
+            ) : null}
+            <RunningText
+              text={detail}
+              maxFontSizeMultiplier={1.3}
+              containerStyle={{ marginTop: figure != null ? 2 : 0 }}
+              style={{ fontSize: 14, lineHeight: 19 }}
+              className="text-ink-muted"
+              fadeColor={FADE_ON.card}
+            />
+          </View>
+          <Icon name="chevron-right" size={18} color={palette.inkFaint} />
+        </View>
+      </Door>
+    </View>
+  );
+}
+
+/** Settings at the foot: 56 dp, the theme's three colours, and where the backup stands. */
+function SettingsRow({
+  width,
+  name,
+  detail,
+  onPress,
+}: {
+  width: number;
+  name: string;
+  detail: string;
+  onPress: (rect: TileRect | null) => void;
+}) {
+  return (
+    <View style={{ marginTop: 12 }}>
+      <Door
+        index={3}
+        width={width}
+        height={ROW_HEIGHT}
+        rounded={radius.row}
+        surface={glass.sunken}
+        label={`${name}. ${detail}`}
+        onPress={onPress}
+      >
+        <View
+          style={{
+            flex: 1,
+            minHeight: ROW_HEIGHT,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            paddingLeft: 16,
+            paddingRight: 12,
+          }}
+        >
+          <MaterialSymbol name="settings" size={22} color={palette.inkMuted} />
+          <Text
+            maxFontSizeMultiplier={1.3}
+            numberOfLines={1}
+            style={{ fontSize: 16.5 }}
+            className="text-ink"
+          >
+            {name}
+          </Text>
+          <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
+            <Text
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={1}
+              style={{ fontSize: 13 }}
+              className="text-ink-muted"
+            >
+              {detail}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 3 }}>
+            {[palette.c1, palette.c2, palette.c3].map((color, i) => (
+              <View
+                key={i}
+                style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }}
+              />
+            ))}
+          </View>
+          <Icon name="chevron-right" size={18} color={palette.inkFaint} />
+        </View>
+      </Door>
     </View>
   );
 }
@@ -287,226 +858,6 @@ function Rise({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
-    </Animated.View>
-  );
-}
-
-type Corner = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
-
-function Tile({
-  index,
-  glyph,
-  plainBadge = false,
-  lamp,
-  extra,
-  kicker,
-  figure,
-  bar = false,
-  name,
-  detail,
-  onPress,
-}: {
-  index: number;
-  glyph: SymbolName;
-  /** Settings' badge is glass rather than gradient: it is not a log. */
-  plainBadge?: boolean;
-  lamp: { stop: 1 | 2 | 3; alpha: number; corner: Corner };
-  extra: React.ReactNode;
-  kicker?: string;
-  /** Finance's balance, where the other tiles have a kicker. */
-  figure?: string;
-  /** Settings' theme bar, in the same place. */
-  bar?: boolean;
-  name: string;
-  detail: string;
-  onPress: (rect: TileRect | null) => void;
-}) {
-  const { width } = useWindowDimensions();
-  const tileWidth = (width - 32 - 12) / 2;
-  const ref = useRef<View>(null);
-  const press = usePressScale(0.94);
-  const enter = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(enter, {
-      toValue: 1,
-      duration: 620,
-      delay: 60 + index * 70,
-      easing: TILE_IN,
-      useNativeDriver: true,
-    }).start();
-  }, [enter, index]);
-
-  const open = () => {
-    const node = ref.current;
-    if (!node) {
-      onPress(null);
-      return;
-    }
-    node.measureInWindow((x, y, w, h) => onPress(w > 0 ? { x, y, width: w, height: h } : null));
-  };
-
-  const lampAt: Record<Corner, object> = {
-    topLeft: { top: -60, left: -60 },
-    topRight: { top: -60, right: -60 },
-    bottomLeft: { bottom: -70, left: -50 },
-    bottomRight: { bottom: -70, right: -50 },
-  };
-
-  const enterY = useMemo(
-    () => enter.interpolate({ inputRange: [0, 1], outputRange: [26, 0] }),
-    [enter],
-  );
-  const enterScale = useMemo(
-    () => enter.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
-    [enter],
-  );
-  return (
-    <Animated.View
-      style={{
-        width: tileWidth,
-        opacity: enter,
-        transform: [{ translateY: enterY }, { scale: enterScale }, ...press.style.transform],
-      }}
-    >
-      <View
-        ref={ref}
-        collapsable={false}
-        style={{
-          borderRadius: 28,
-        }}
-      >
-        <BubblePressable
-          onPress={open}
-          onPressIn={press.onPressIn}
-          onPressOut={press.onPressOut}
-          radius={28}
-          accessibilityRole="button"
-          accessibilityLabel={`${name}. ${detail}`}
-          style={{
-            height: TILE_HEIGHT,
-            borderRadius: 28,
-            overflow: 'hidden',
-            padding: 18,
-            backgroundColor: 'rgba(236,241,238,0.055)',
-            borderWidth: 1,
-            borderColor: 'rgba(236,241,238,0.07)',
-          }}
-        >
-          <View
-            pointerEvents="none"
-            style={{ position: 'absolute', width: 220, height: 220, ...lampAt[lamp.corner] }}
-          >
-            <Svg width={220} height={220}>
-              <Defs>
-                <RadialGradient id={`tileLamp${index}`} cx="50%" cy="50%" r="50%">
-                  <Stop offset="0%" stopColor={stopTint(lamp.stop, 1)} stopOpacity={lamp.alpha} />
-                  <Stop offset="65%" stopColor={stopTint(lamp.stop, 1)} stopOpacity={0} />
-                </RadialGradient>
-              </Defs>
-              <Circle cx={110} cy={110} r={110} fill={`url(#tileLamp${index})`} />
-            </Svg>
-          </View>
-          {/* The specular line along the top edge. */}
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 20,
-              right: 20,
-              height: 1,
-              backgroundColor: 'rgba(236,241,238,0.12)',
-            }}
-          />
-
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-            }}
-          >
-            <View
-              style={{
-                width: 54,
-                height: 54,
-                borderRadius: 18,
-                overflow: 'hidden',
-                alignItems: 'center',
-                justifyContent: 'center',
-                ...(plainBadge
-                  ? {
-                      backgroundColor: 'rgba(236,241,238,0.08)',
-                      borderWidth: 1,
-                      borderColor: 'rgba(236,241,238,0.12)',
-                    }
-                  : {}),
-              }}
-            >
-              {plainBadge ? null : (
-                <LinearGradient
-                  {...gradientFill()}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )}
-              <MaterialSymbol
-                name={glyph}
-                size={30}
-                color={plainBadge ? palette.ink : palette.onAcc}
-                filled
-              />
-            </View>
-            {extra}
-          </View>
-
-          <View style={{ marginTop: 'auto', minWidth: 0 }}>
-            {figure != null ? (
-              <Text
-                allowFontScaling={false}
-                numberOfLines={1}
-                /* Sized from the figure, not `adjustsFontSizeToFit`: on Android
-                   the first fit runs before the row has a width, and the number
-                   opened the size of a full stop. */
-                style={{
-                  fontSize: figureFontSize(figure, tileWidth - 36),
-                  lineHeight: 30,
-                  letterSpacing: -1,
-                  fontVariant: ['tabular-nums'],
-                }}
-                className="font-semibold text-ink"
-              >
-                {figure}
-              </Text>
-            ) : bar ? (
-              <LinearGradient {...gradientBar()} style={{ height: 8, borderRadius: 9999 }} />
-            ) : kicker ? (
-              <RunningText
-                text={kicker}
-                maxFontSizeMultiplier={1.3}
-                style={{ fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1, color: palette.acc }}
-                className="font-semibold uppercase"
-                fadeColor={FADE_ON.card}
-              />
-            ) : null}
-            <Text
-              maxFontSizeMultiplier={1.3}
-              numberOfLines={1}
-              style={{ marginTop: bar ? 12 : 6, fontSize: 23, lineHeight: 28, letterSpacing: -0.5 }}
-              className="font-semibold text-ink"
-            >
-              {name}
-            </Text>
-            <RunningText
-              text={detail}
-              maxFontSizeMultiplier={1.3}
-              containerStyle={{ marginTop: 4 }}
-              style={{ fontSize: 14.5, lineHeight: 20 }}
-              className="text-ink-muted"
-              fadeColor={FADE_ON.card}
-            />
-          </View>
-        </BubblePressable>
-      </View>
     </Animated.View>
   );
 }

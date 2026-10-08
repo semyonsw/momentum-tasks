@@ -1496,8 +1496,11 @@ const RU: Record<string, string> = {
   'Put some exercises in one of your routines and it shows up here, ready to open.':
     'Добавьте упражнения в одну из программ, и она появится здесь, готовая к запуску.',
   'Open routines': 'Открыть программы',
-  '{account} · all time · {spent} spent in {month}':
-    '{account} · за всё время · потрачено {spent} за {month}',
+  'Finance · {account} · {spent} spent in {month}':
+    'Финансы · {account} · потрачено {spent} за {month}',
+  'Done: {name}': 'Выполнено: {name}',
+  'Mark {name} done': 'Отметить «{name}» как выполненную',
+  'Resume workout · {time}': 'Продолжить тренировку · {time}',
   'No accounts yet': 'Счетов пока нет',
   Theme: 'Тема',
   'last backup {age}': 'копия: {age}',
