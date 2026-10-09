@@ -191,9 +191,13 @@ function sanitizeTask(raw: unknown, index: number, today: string): Task | null {
   const startedOn =
     typeof value.startedOn === 'string' && value.startedOn !== '' ? value.startedOn : today;
   const target = sanitizeTarget(value.target);
+  // A habit to avoid (T7): only a literal `true`, and never beside a target —
+  // the target is the one carrying data, so it is the one kept.
+  const avoid = value.avoid === true && !target;
   return {
     // Spread only when present, so an old task comes back key for key.
     ...(target ? { target } : {}),
+    ...(avoid ? { avoid: true as const } : {}),
     id: value.id,
     name,
     schedule: sanitizeSchedule(value.schedule, startedOn),
@@ -266,6 +270,8 @@ export interface TaskSpec {
   reminder?: TaskReminder | null;
   /** A target counted in parts (T1). Absent or null: an ordinary task. */
   target?: TaskTarget | null;
+  /** A habit to avoid (T7). Ignored beside a target. */
+  avoid?: boolean;
 }
 
 interface TasksState extends TasksValue {
@@ -283,6 +289,8 @@ interface TasksState extends TasksValue {
        * their marks and their numbers — see "A COUNTED TASK…" in `lib/tasks.ts`.
        */
       target?: TaskTarget | null;
+      /** A habit to avoid (T7); false makes it an ordinary task again. */
+      avoid?: boolean;
     },
   ) => void;
   archiveTask: (id: ID) => void;
@@ -397,6 +405,7 @@ export const useTasks = create<TasksState>()(
               archivedAt: null,
               order: state.tasks.length,
               ...(spec.target ? { target: spec.target } : {}),
+              ...(spec.avoid && !spec.target ? { avoid: true as const } : {}),
             },
           ],
         }));
@@ -412,6 +421,10 @@ export const useTasks = create<TasksState>()(
             const next: Task = { ...task };
             if (patch.target === null) delete next.target;
             else if (patch.target !== undefined) next.target = patch.target;
+            if (patch.avoid === false) delete next.avoid;
+            else if (patch.avoid === true) next.avoid = true;
+            // Never both (see `Task.avoid`): a target wins, as in the sanitizer.
+            if (next.target) delete next.avoid;
             return {
               ...next,
               name: name !== undefined && name !== '' ? name : task.name,

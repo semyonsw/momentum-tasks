@@ -992,12 +992,15 @@ export function CommitMark({
   size,
   glyph,
   children,
+  icon = 'check',
 }: {
   size: number;
   /** The ✓'s own size. Roughly half the circle. */
   glyph: number;
   /** A label under the ✓, for the 176 dp one. */
   children?: ReactNode;
+  /** The mark's glyph: the ✓, or ⊘ for a habit to avoid (T7). */
+  icon?: 'check' | 'ban';
 }) {
   return (
     <View
@@ -1017,7 +1020,7 @@ export function CommitMark({
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
       />
       <SpecularEdge color={specularHeavy} radius={RADIUS.pill} height={size > 60 ? 2 : 1} />
-      <Icon name="check" size={glyph} color={palette.onAcc} />
+      <Icon name={icon} size={glyph} color={palette.onAcc} />
       {children}
     </View>
   );

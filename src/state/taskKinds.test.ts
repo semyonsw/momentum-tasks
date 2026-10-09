@@ -9,7 +9,8 @@ import { shiftDay } from '../lib/days';
 import { entryOf, type Task } from '../lib/tasks';
 
 /**
- * The task kinds of Wave 2, on disk: counted tasks (T1).
+ * The task kinds of Wave 2, on disk: counted tasks (T1), N times a week (T2)
+ * and habits to avoid (T7).
  *
  * Every new field is OPTIONAL, and the tests here are the proof the brief asks
  * for each one: the sanitizer keeps a good value and drops a bad one without
@@ -303,5 +304,56 @@ describe('N times a week (T2)', () => {
     );
     await useTasks.persist.rehydrate();
     expect(useTasks.getState().tasks[0].schedule).toEqual({ kind: 'weekly', times: 2 });
+  });
+});
+
+describe('habits to avoid (T7)', () => {
+  it('sanitizes avoid to a literal true, and never beside a target', () => {
+    const read = (over: Record<string, unknown>) =>
+      sanitizeTasks({ tasks: [{ ...stored(), ...over }] as never }).tasks[0];
+    expect(read({ avoid: true }).avoid).toBe(true);
+    expect('avoid' in read({ avoid: 'yes' })).toBe(false);
+    expect('avoid' in read({ avoid: false })).toBe(false);
+    const both = read({ avoid: true, target: { count: 3, unit: '' } });
+    expect(both.target).toEqual({ count: 3, unit: '' });
+    expect('avoid' in both).toBe(false);
+  });
+
+  it('is switched on and off through the editor path, and a target switches it off', () => {
+    const { addTask, updateTask } = useTasks.getState();
+    const id = addTask({ name: 'No sugar', schedule: { kind: 'daily' }, avoid: true })!;
+    const find = () => useTasks.getState().tasks.find((task) => task.id === id)!;
+    expect(find().avoid).toBe(true);
+    updateTask(id, { avoid: false });
+    expect('avoid' in find()).toBe(false);
+    updateTask(id, { avoid: true });
+    updateTask(id, { target: { count: 2, unit: '' } });
+    expect('avoid' in find()).toBe(false);
+  });
+
+  it('a tap answers it done, the same mark as any task', () => {
+    useTasks.getState().importTasks({ tasks: [stored({ avoid: true })] });
+    useTasks.getState().toggleMark('water', DAY);
+    expect(entryOf(useTasks.getState().log, 'water', DAY).mark).toBe('done');
+  });
+
+  it('travels in a backup and comes back', () => {
+    useTasks.getState().importTasks({ tasks: [stored({ avoid: true })] });
+    const text = exportBackupText();
+    useTasks.getState().importTasks({ tasks: [stored()], log: {} });
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useTasks.getState().tasks[0].avoid).toBe(true);
+  });
+
+  it('cold-starts with it', async () => {
+    useTasks.getState().importTasks({ tasks: [stored()] });
+    await AsyncStorage.setItem(
+      'tasks',
+      JSON.stringify({ version: 2, state: { tasks: [stored({ avoid: true })], log: {} } }),
+    );
+    await useTasks.persist.rehydrate();
+    expect(useTasks.getState().tasks[0].avoid).toBe(true);
   });
 });

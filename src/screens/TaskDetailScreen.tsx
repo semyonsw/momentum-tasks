@@ -101,6 +101,7 @@ import {
   describeReminder,
   describeSchedule,
   describeTarget,
+  doneWord,
   isWeekly,
   streakUnit,
   entryOf,
@@ -347,6 +348,7 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
                 <Cell
                   key={cell.date ?? `pad${position}`}
                   cell={cell}
+                  avoid={task.avoid === true}
                   future={cell.date !== null && cell.date > today}
                   selected={cell.date !== null && cell.date === noteDay}
                   onPress={cell.date ? () => setNoteDay(cell.date as string) : undefined}
@@ -364,7 +366,7 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
         </View>
 
         <View className="mx-lg mt-[14px] flex-row flex-wrap" style={{ gap: 14 }}>
-          <LegendItem label={t('Done')} swatch={{ backgroundColor: tint(0.75) }} />
+          <LegendItem label={t(doneWord(task))} swatch={{ backgroundColor: tint(0.75) }} />
           <LegendItem
             label={t('On purpose')}
             swatch={{ borderWidth: 1, borderStyle: 'dashed', borderColor: DASHED }}
@@ -416,6 +418,7 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
           startedOn={task.startedOn}
           reminder={task.reminder}
           target={task.target ?? null}
+          avoid={task.avoid === true}
           onSave={(draft) => {
             updateTask(task.id, draft);
             setEditing(false);
@@ -566,11 +569,14 @@ function LegendItem({ label, swatch }: { label: string; swatch: object }) {
 
 function Cell({
   cell,
+  avoid,
   future,
   selected,
   onPress,
 }: {
   cell: TaskCell;
+  /** A habit to avoid (T7): a done square is spoken as "avoided". */
+  avoid: boolean;
   /** After today — faint, and never a state. */
   future: boolean;
   selected: boolean;
@@ -637,7 +643,7 @@ function Cell({
       disabled={!onPress}
       accessibilityRole="button"
       // The state is spoken, so it is a WORD rather than the stored key.
-      accessibilityLabel={`${cell.day}, ${t(cell.state)}`}
+      accessibilityLabel={`${cell.day}, ${t(avoid && cell.state === 'done' ? 'avoided' : cell.state)}`}
       accessibilityState={{ selected }}
       style={pressedStyle}
       className="flex-1"

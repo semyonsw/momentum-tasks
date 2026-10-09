@@ -175,6 +175,7 @@ import {
   type TaskMark,
   asksOn,
   dayProgress,
+  answerWord,
   describeProgress,
   describeTaskRow,
   entryOf,
@@ -1055,7 +1056,7 @@ const TaskRow = memo(function TaskRow({
                   count: task.target.count,
                   unit: unitOf(task, lang),
                 })}. ${done ? t('Tap to start again.') : t('Tap to add one.')}`
-              : `${task.name}. ${t(answerOf(mark))}. ${t('Tap to change.')}`
+              : `${task.name}. ${t(answerWord(task, mark))}. ${t('Tap to change.')}`
           }
           accessibilityHint={onLongPress ? t('Hold for more: skip today, pause, move') : undefined}
           style={pressedStyle}
@@ -1067,7 +1068,7 @@ const TaskRow = memo(function TaskRow({
             {progress !== null && task.target && mark === null ? (
               <CountMark count={progress} target={task.target.count} />
             ) : (
-              <Mark mark={mark} />
+              <Mark mark={mark} avoid={task.avoid === true} />
             )}
           </Animated.View>
         </Pressable>
@@ -1160,14 +1161,15 @@ const MARK = 36;
  * mode's DONE, so "I did that" is one object at three sizes. Its ✓ is `onAcc`,
  * because on a light theme's gradient an ink tick disappears.
  */
-function Mark({ mark }: { mark: TaskMark | null }) {
+function Mark({ mark, avoid = false }: { mark: TaskMark | null; avoid?: boolean }) {
   if (mark === 'done') {
     // `glow` off: `halo`'s rule is a count, and a column of nine done tasks is
     // exactly the case a per-mark halo turns into a green wall. The ROW carries
     // the repeating halo instead, once.
     return (
       <CheckPop>
-        <CommitMark size={MARK} glyph={17} />
+        {/* ⊘ on a habit to avoid (T7): a ✓ on "No sugar" reads as the sugar. */}
+        <CommitMark size={MARK} glyph={avoid ? 19 : 17} icon={avoid ? 'ban' : 'check'} />
       </CheckPop>
     );
   }
@@ -1329,12 +1331,6 @@ function CheckPop({ children }: { children: React.ReactNode }) {
 }
 
 const POP_MS = 340;
-
-function answerOf(mark: TaskMark | null): string {
-  if (mark === 'done') return 'Done';
-  if (mark === 'missed') return 'Missed on purpose';
-  return 'Not answered';
-}
 
 /* ------------------------------------------------------------------ */
 

@@ -96,7 +96,13 @@ export type IconName =
    * because it sits INSIDE a pill, after a name, where a vertical ⋮ would read
    * as a screen's overflow rather than as the chip's own.
    */
-  | 'more-horizontal';
+  | 'more-horizontal'
+  /**
+   * ⊘ — "held off". The done mark of a habit to AVOID (T7): a ✓ on "no sugar"
+   * reads as "had sugar, ticked", so the avoided day gets its own glyph, at the
+   * ✓'s weight because it is the same act of saying "I did it".
+   */
+  | 'ban';
 
 interface IconProps {
   name: IconName;
@@ -129,6 +135,7 @@ const STROKE: Record<IconName, number> = {
   trash: 2,
   more: 2,
   'more-horizontal': 2,
+  ban: 2.5,
 };
 
 /**
@@ -232,6 +239,7 @@ const PATHS: Record<IconName, string[]> = {
   // Nothing stroked: the three pips are all of it (`DOTS`).
   more: [],
   'more-horizontal': [],
+  ban: ['M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0', 'M5.6 5.6l12.8 12.8'],
 };
 
 /* Memoised: three primitive props, drawn inside rows and bars that re-render

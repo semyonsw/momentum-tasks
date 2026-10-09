@@ -87,6 +87,10 @@
  * it on folds `Repeats` away rather than leaving two answers to one question;
  * turning it off brings back whatever the segments last said. 1–7 on ±.
  *
+ * `Avoid this` (T7) only rewords the task — done becomes "avoided" — so it is
+ * a plain switch. It and the target exclude each other (switching one on
+ * switches the other off): a count of things avoided is not a thing.
+ *
  * ── A DRAFT IS NOT THROWN AWAY BY A STRAY TAP ─────────────────────────────
  *
  * Scrim, handle, back and `Cancel` used to drop whatever was typed. Now, when
@@ -155,6 +159,8 @@ export interface TaskDraft {
   reminder: TaskReminder | null;
   /** A target counted in parts (T1), or null for a one-tap task. */
   target: TaskTarget | null;
+  /** A habit to avoid (T7): done means held off. Never with a target. */
+  avoid: boolean;
 }
 
 /** What `A target, counted in parts` starts at when switched on. */
@@ -173,6 +179,7 @@ interface TaskEditorSheetProps {
   startedOn?: string;
   reminder?: TaskReminder | null;
   target?: TaskTarget | null;
+  avoid?: boolean;
   onSave: (draft: TaskDraft) => void;
   onDismiss: () => void;
 }
@@ -184,6 +191,7 @@ export function TaskEditorSheet({
   startedOn: initialStartedOn,
   reminder: initialReminder = null,
   target: initialTarget = null,
+  avoid: initialAvoid = false,
   onSave,
   onDismiss,
 }: TaskEditorSheetProps) {
@@ -233,6 +241,7 @@ export function TaskEditorSheet({
   /** The permission was asked for when the switch went on, and refused. */
   const [blocked, setBlocked] = useState(false);
   const [target, setTarget] = useState<TaskTarget | null>(initialTarget);
+  const [avoid, setAvoid] = useState(initialAvoid);
   /** `+ unit` was tapped, or the saved unit is none of the presets. */
   const presetUnits = UNIT_PRESETS.map((unit) => t(unit));
   const [customUnit, setCustomUnit] = useState(
@@ -274,6 +283,7 @@ export function TaskEditorSheet({
     startedOn: kind === 'once' ? onceDay : startedOn,
     reminder,
     target: target ? { count: target.count, unit: target.unit.trim() } : null,
+    avoid: avoid && target === null,
   };
   // What the sheet opened with, frozen: the props are the saved task.
   const opened = useRef<TaskDraft>({
@@ -282,6 +292,7 @@ export function TaskEditorSheet({
     startedOn: initialSchedule.kind === 'once' ? initialSchedule.day : (initialStartedOn ?? today),
     reminder: initialReminder,
     target: initialTarget,
+    avoid: initialAvoid,
   }).current;
   const dirty = taskDraftChanged(opened, draft);
 
@@ -328,7 +339,11 @@ export function TaskEditorSheet({
             label={t('A target, counted in parts')}
             hint={t('The circle fills by parts · +1 per tap')}
             value={target !== null}
-            onChange={(on) => setTarget(on ? { count: DEFAULT_TARGET, unit: '' } : null)}
+            onChange={(on) => {
+              setTarget(on ? { count: DEFAULT_TARGET, unit: '' } : null);
+              // A count is something done, not something avoided: one or the other.
+              if (on) setAvoid(false);
+            }}
           />
           {target ? (
             <>
@@ -401,6 +416,16 @@ export function TaskEditorSheet({
               onIncrease={() => setPerWeek(Math.min(WEEKLY_MAX, perWeek + 1))}
             />
           ) : null}
+          <Separator inset={16} />
+          <SwitchRow
+            label={t('Avoid this')}
+            hint={t('A habit to not do · tap when you held off')}
+            value={avoid}
+            onChange={(on) => {
+              setAvoid(on);
+              if (on) setTarget(null);
+            }}
+          />
         </View>
 
         {/* `Repeats` answers which days; a weekly task answers "any of them", so

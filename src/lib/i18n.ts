@@ -1760,6 +1760,15 @@ const RU: Record<string, string> = {
   weeks: 'недель',
   wk: 'нед',
   'of {asked} weeks met': 'из {asked} недель',
+  // T7 · habits to avoid (design copy editor.avoid)
+  'Avoid this': 'Избегать',
+  'A habit to not do · tap when you held off':
+    'Привычка, которой не следовать · отметьте, если удержались',
+  Avoided: 'Удалось избежать',
+  avoided: 'удалось избежать',
+  'avoid this': 'избегать',
+  'Avoided: {name}': 'Удалось избежать: {name}',
+  'Mark {name} avoided': 'Отметить: удалось избежать — {name}',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

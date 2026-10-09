@@ -779,6 +779,8 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       if (task.reminder.every) row.remindAgainEveryMin = task.reminder.every;
     }
     if (task.auto) row.ticksItself = task.auto;
+    // A habit to avoid (T7): its done days are days the user held off.
+    if (task.avoid) row.avoid = true;
     if (isWeekly(task)) {
       // Judged by the week (T2): weeks met and short in the window, and the
       // streak and best run in weeks rather than days.
@@ -855,6 +857,12 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
     language: LANGUAGE_NAME[lang],
     window: `${first}..${today}`,
     note: 'excused = the user chose not to on purpose, never a miss; missed = asked and left unanswered; notes are what the user wrote on a day, newest first',
+    ...(tasks.some((task) => task.avoid)
+      ? {
+          avoidNote:
+            'a task with avoid: true is a habit to NOT do (e.g. no sugar): done means the user avoided it that day; an unanswered day is unknown, not a lapse and not a success',
+        }
+      : {}),
     ...(tasks.some(isWeekly)
       ? {
           weeklyNote:

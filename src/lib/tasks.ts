@@ -101,6 +101,16 @@
  * quota is met (a 3-a-week task would grade every Monday as a miss), and a
  * hidden per-day "required" flag (a second schedule the user never wrote).
  *
+ * ── A HABIT TO AVOID IS THE SAME TASK, WORDED THE OTHER WAY (T7) ─────────
+ *
+ * "No sugar" is done on a day it was AVOIDED. The mark, the streak, the
+ * denominator and every reader are exactly a normal task's — an avoided day is a
+ * done day — and only the words change: `Avoided` for `Done`, and a ⊘ rather
+ * than a ✓ on the row (`answerWord`, `doneWord`). An unanswered past day stays
+ * unanswered: the app does not assume you held off because you did not say
+ * otherwise. That would make the number flattering instead of honest, and it
+ * would be the one task in the list that ticks itself for doing nothing.
+ *
  * Everything here is pure and local-time: a task belongs to the day you were
  * standing in, which is what `calendar.dayKey` computes.
  */
@@ -234,6 +244,12 @@ export interface Task {
    * as exactly what it was.
    */
   target?: TaskTarget;
+  /**
+   * A habit to AVOID (T7): done means "held off today". Never alongside a
+   * target — a count is something done, not something avoided. Absent on every
+   * ordinary task, and on every task saved before it existed.
+   */
+  avoid?: true;
   /** The first day it asked for anything, `YYYY-MM-DD`. Days before it are blank. */
   startedOn: string;
   /**
@@ -338,6 +354,25 @@ export function entryOf(log: TaskLog, taskId: ID, day: string): TaskEntry {
 /** An entry that says nothing — the log deletes these rather than storing them. */
 export function isEmptyEntry(entry: TaskEntry): boolean {
   return entry.mark === null && entry.note === '' && !entry.count;
+}
+
+/* ------------------------------------------------------------------ */
+/* Words for an answer (T7)                                            */
+/* ------------------------------------------------------------------ */
+
+/** The done answer's word for this task — `Done`, or `Avoided` for a habit to avoid. English key. */
+export function doneWord(task: Task): 'Done' | 'Avoided' {
+  return task.avoid ? 'Avoided' : 'Done';
+}
+
+/** A day's answer as a word, for labels and screen readers. English key; pass it to `t`. */
+export function answerWord(
+  task: Task,
+  mark: TaskMark | null,
+): 'Done' | 'Avoided' | 'Missed on purpose' | 'Not answered' {
+  if (mark === 'done') return doneWord(task);
+  if (mark === 'missed') return 'Missed on purpose';
+  return 'Not answered';
 }
 
 /* ------------------------------------------------------------------ */
@@ -685,6 +720,8 @@ export function describeTaskRow(
     parts.push(describeWeek(week, task.schedule.times, lang));
   }
   parts.push(describeSchedule(task.schedule, lang));
+  // A habit to avoid (T7) says which way round it is, and that a tick means held off.
+  if (task.avoid) parts.push(entry.mark === 'done' ? t('avoided', lang) : t('avoid this', lang));
   // Behind the flag, not filtered after the fact: `streakOf` walks back a day at
   // a time to the start of the run, so on a task answered every day for a year
   // it is the most expensive thing this function could do — and the day list,

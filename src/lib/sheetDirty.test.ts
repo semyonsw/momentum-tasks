@@ -112,6 +112,11 @@ describe('an existing task', () => {
     expect(taskDraftChanged(weekly, { ...weekly })).toBe(false);
   });
 
+  it('is dirty when Avoid this is switched, and absent equals off (T7)', () => {
+    expect(taskDraftChanged(existing, { ...existing, avoid: true })).toBe(true);
+    expect(taskDraftChanged(existing, { ...existing, avoid: false })).toBe(false);
+  });
+
   it('treats an absent target and a null one as the same ordinary task', () => {
     expect(taskDraftChanged(existing, { ...existing, target: null })).toBe(false);
     const counted = { ...existing, target: { count: 8, unit: 'glasses' } };

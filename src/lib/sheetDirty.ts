@@ -29,6 +29,8 @@ export interface TaskDraftShape {
   reminder: TaskReminder | null;
   /** A target counted in parts (T1); absent and null are the same answer. */
   target?: TaskTarget | null;
+  /** A habit to avoid (T7); absent and false are the same answer. */
+  avoid?: boolean;
 }
 
 /** The draft as the store would receive it: trimmed, days in order, no empty `every`. */
@@ -51,6 +53,7 @@ function canonical(draft: TaskDraftShape): string {
     startedOn: draft.schedule.kind === 'once' ? draft.schedule.day : draft.startedOn,
     reminder,
     target: draft.target ? { count: draft.target.count, unit: draft.target.unit.trim() } : null,
+    avoid: draft.avoid === true,
   });
 }
 

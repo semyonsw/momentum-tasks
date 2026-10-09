@@ -230,7 +230,8 @@ export function LandingScreen({
     if (!nextTask) return;
     const { id, name } = nextTask;
     const before = toggleMark(id, today);
-    onToast(t('Done: {name}', { name }), {
+    // A habit to avoid (T7) is "avoided", not "done", here as on its row.
+    onToast(t(nextTask.avoid ? 'Avoided: {name}' : 'Done: {name}', { name }), {
       label: t('Undo'),
       onPress: () => setMark(id, today, before),
     });
@@ -308,7 +309,10 @@ export function LandingScreen({
                   <QuickChip
                     key={chip}
                     onPress={tickNext}
-                    accessibilityLabel={t('Mark {name} done', { name: nextTask.name })}
+                    accessibilityLabel={t(
+                      nextTask.avoid ? 'Mark {name} avoided' : 'Mark {name} done',
+                      { name: nextTask.name },
+                    )}
                     lead={
                       <View
                         style={{
@@ -321,7 +325,11 @@ export function LandingScreen({
                           justifyContent: 'center',
                         }}
                       >
-                        <Icon name="check" size={15} color={palette.inkMuted} />
+                        <Icon
+                          name={nextTask.avoid ? 'ban' : 'check'}
+                          size={15}
+                          color={palette.inkMuted}
+                        />
                       </View>
                     }
                     label={nextTask.name}
