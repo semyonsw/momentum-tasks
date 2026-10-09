@@ -135,6 +135,12 @@
  * share. The arc reads the month the window's day is in, so it leaves on a year
  * or all-time window, where no single month is being read.
  *
+ * Recurring payments (M2) are the second door, and the one plan that comes to
+ * THIS screen on its own: on a payment's day a "Due today" card under the
+ * balance asks `Confirm` / `Skip this month`, oldest occurrence first, for every
+ * subsection at once (the card names its own). Nothing is recorded until it is
+ * answered, and both answers raise the shell's toast with an Undo.
+ *
  * ── MOMENTUM V3 ───────────────────────────────────────────────────────────
  *
  * The section is called Finance to the user now (the route key and the AI's
@@ -165,6 +171,7 @@ import { Icon } from '../components/Icon';
 import {
   FloatingAction,
   GlassSurface,
+  type ToastAction,
   Lamps,
   SpecularEdge,
   useBarInsets,
@@ -173,9 +180,19 @@ import { SectionTopBar } from '../components/SectionTopBar';
 import { AiEntryCard } from '../components/AiEntryCard';
 import { Sheet } from '../components/Sheet';
 import { Stagger, pressedStyle } from '../components/motion';
-import { DashedAdd, Kicker, Separator, TextButton } from '../components/primitives';
+import { DashedAdd, Kicker, PrimaryButton, Separator, TextButton } from '../components/primitives';
 import { ProgressRing } from '../components/ProgressRing';
-import { dayKey, parseDay } from '../lib/days';
+import { dayKey, formatShortDay, parseDay } from '../lib/days';
+import {
+  countsFor,
+  describeSchedule,
+  dueList,
+  dueWord,
+  skipLabel,
+  type DueOccurrence,
+  type RecurringPayment,
+} from '../lib/recurring';
+import { useToday } from '../hooks/useToday';
 import { budgetStatus, tileBudgetLine, visibleBudgets, type BudgetStatus } from '../lib/budgets';
 import { holdActions } from '../lib/discoverability';
 import { TOUCH_MIN } from '../lib/hitTarget';
@@ -271,6 +288,10 @@ interface MoneyScreenProps {
   onOpenAi: (prompt?: string) => void;
   /** M1 — the budgets overview, from the row of plans at the foot. */
   onOpenBudgets: () => void;
+  /** M2 — the recurring payments, from the same row and from the due card. */
+  onOpenRecurring: () => void;
+  /** The shell's toast — a confirmed or skipped payment, with its Undo. */
+  onToast: (text: string, action?: ToastAction) => void;
 }
 
 /** What the money section is currently reading. See `MoneyScreenProps.window`. */
@@ -292,6 +313,8 @@ export function MoneyScreen({
   aiReady,
   onOpenAi,
   onOpenBudgets,
+  onOpenRecurring,
+  onToast,
 }: MoneyScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -305,6 +328,11 @@ export function MoneyScreen({
   const setAccountBalance = useMoney((s) => s.setAccountBalance);
   const pinScale = useMoney((s) => s.pinScale);
   const budgets = useMoney((s) => s.budgets);
+  const recurring = useMoney((s) => s.recurring);
+  const confirmRecurring = useMoney((s) => s.confirmRecurring);
+  const skipRecurring = useMoney((s) => s.skipRecurring);
+  const undoRecurring = useMoney((s) => s.undoRecurring);
+  const today = useToday();
 
   /*
    * The window, the direction and the subsection are the SHELL's — see the
@@ -409,6 +437,36 @@ export function MoneyScreen({
     ).length;
   }, [amounts, budgets, categories]);
   const budgetCount = visibleBudgets(budgets ?? [], categories).length;
+
+  /*
+   * M2 — what is due, across EVERY subsection: a payment is a question about
+   * the log, not about the pocket on screen, and its card names its own
+   * subsection. Oldest first; the card asks about one at a time.
+   */
+  const due = useMemo(() => dueList(recurring ?? [], today), [recurring, today]);
+  const nameOfPayment = (item: RecurringPayment) =>
+    item.name || categories.find((category) => category.id === item.categoryId)?.name || '';
+  const confirmDue = (occurrence: DueOccurrence) => {
+    // An amount is about to be written: pin the scale it is in (U25).
+    pinScale(units);
+    const written = confirmRecurring(occurrence.item.id, occurrence.date);
+    if (!written) return;
+    const { item, date } = occurrence;
+    const amount = formatMoney(item.value, currency, units);
+    const when = countsFor(item, date, lang) ?? formatShortDay(date, lang);
+    onToast(t('{name} · {amount} recorded · {when}', { name: nameOfPayment(item), amount, when }), {
+      label: t('Undo'),
+      onPress: () => undoRecurring(item.id, date),
+    });
+  };
+  const skipDue = (occurrence: DueOccurrence) => {
+    const { item, date } = occurrence;
+    skipRecurring(item.id, date);
+    onToast(t('{name} skipped. Nothing was recorded.', { name: nameOfPayment(item) }), {
+      label: t('Undo'),
+      onPress: () => undoRecurring(item.id, date),
+    });
+  };
 
   /* The bubble, and the balance card stepping back while it is up. */
   // Finance's own line: 240 is where the balance card has left the top bar, and
@@ -583,6 +641,21 @@ export function MoneyScreen({
           </GlassSurface>
         </Animated.View>
 
+        {due.length > 0 ? (
+          <DueCard
+            occurrence={due[0]}
+            name={nameOfPayment(due[0].item)}
+            glyph={categories.find((row) => row.id === due[0].item.categoryId)?.glyph ?? '•'}
+            accountName={accounts.find((row) => row.id === due[0].item.accountId)?.name ?? ''}
+            more={due.length - 1}
+            today={today}
+            currency={currency}
+            onConfirm={() => confirmDue(due[0])}
+            onSkip={() => skipDue(due[0])}
+            onMore={onOpenRecurring}
+          />
+        ) : null}
+
         <AiEntryCard section="Expenses" ready={aiReady} onOpen={onOpenAi} />
 
         <View className="mx-lg mt-lg flex-row items-center justify-center">
@@ -693,6 +766,18 @@ export function MoneyScreen({
             }
             alert={overCount > 0}
             onPress={onOpenBudgets}
+          />
+          <PlanDoor
+            glyph="↻"
+            label={t('Recurring payments')}
+            detail={
+              due.length > 0
+                ? t('{n} due', { n: due.length })
+                : (recurring ?? []).length > 0
+                  ? String((recurring ?? []).length)
+                  : t('Rent, subscriptions')
+            }
+            onPress={onOpenRecurring}
           />
         </View>
 
@@ -1336,6 +1421,92 @@ function CategoryTile({
         <Icon name="chevron-right" size={16} color={palette.inkFaint} />
       </Pressable>
     </BubblePressable>
+  );
+}
+
+/**
+ * The "Due today" card (M2, design 13b): one occurrence, oldest first, and the
+ * two answers. `Confirm` is the filled one — it is what usually happened — and
+ * `Skip` the quiet one. Neither is destructive and both have an Undo, so neither
+ * asks first. A catch-up of several shows `+N more` under the answers, which
+ * opens the list.
+ */
+function DueCard({
+  occurrence,
+  name,
+  glyph,
+  accountName,
+  more,
+  today,
+  currency,
+  onConfirm,
+  onSkip,
+  onMore,
+}: {
+  occurrence: DueOccurrence;
+  name: string;
+  glyph: string;
+  accountName: string;
+  more: number;
+  today: string;
+  currency: string;
+  onConfirm: () => void;
+  onSkip: () => void;
+  onMore: () => void;
+}) {
+  const t = useT();
+  const lang = useLanguage();
+  const units = useMoneyScale();
+  const { item, date } = occurrence;
+  const detail = [
+    accountName,
+    describeSchedule(item.schedule, lang).toLowerCase(),
+    countsFor(item, date, lang),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <View style={{ marginHorizontal: 16, marginTop: 12 }}>
+      <GlassSurface tier="lit" radius={radius.card}>
+        <View className="p-lg">
+          <Kicker tone="green">{dueWord(date, today, lang)}</Kicker>
+          <Text
+            numberOfLines={2}
+            maxFontSizeMultiplier={1.3}
+            className="mt-xs text-body font-semibold text-ink"
+          >
+            {`${glyph} ${name} · ${formatMoney(item.value, currency, units)}`}
+          </Text>
+          <Text maxFontSizeMultiplier={1.3} className="mt-[2px] text-label text-ink-muted">
+            {detail}
+          </Text>
+          <View className="mt-md flex-row" style={{ gap: 8 }}>
+            <View className="flex-1">
+              <PrimaryButton label={t('Confirm')} onPress={onConfirm} />
+            </View>
+            <View className="flex-1">
+              <PrimaryButton
+                label={skipLabel(item.schedule, lang)}
+                variant="ghost"
+                onPress={onSkip}
+              />
+            </View>
+          </View>
+          {more > 0 ? (
+            <Pressable
+              onPress={onMore}
+              accessibilityRole="button"
+              style={pressedStyle}
+              className="mt-sm h-hit justify-center"
+            >
+              <Text maxFontSizeMultiplier={1.3} className="text-label font-medium text-ink-muted">
+                {t('+{n} more due', { n: more })}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </GlassSurface>
+    </View>
   );
 }
 

@@ -5,6 +5,7 @@
  *   stack: session · routineEditor · addExercise · createExercise · editExercise
  *          · exerciseHistory · sequence · workoutHistory · tasksHistory
  *          · moneyHistory · workoutSettings · taskSettings · moneySettings · budgets
+ *          · recurring
  *          · aiSettings · aiChat · aiReview
  *
  * ── A SECTION IS A LOG, AND ITS PAST IS NOT A SECTION ──────────────────────
@@ -91,6 +92,7 @@ import { WorkoutSettingsScreen } from '../screens/WorkoutSettingsScreen';
 import { TaskSettingsScreen } from '../screens/TaskSettingsScreen';
 import { MoneySettingsScreen } from '../screens/MoneySettingsScreen';
 import { BudgetsScreen } from '../screens/BudgetsScreen';
+import { RecurringScreen } from '../screens/RecurringScreen';
 import { AmountEditorScreen } from '../screens/AmountEditorScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { MoneyScreen, type MoneyWindow } from '../screens/MoneyScreen';
@@ -199,6 +201,7 @@ type Route =
   | { name: 'moneySettings' }
   /* Wave 2's money plans, pushed from the row at the foot of Finance. */
   | { name: 'budgets' }
+  | { name: 'recurring' }
   | { name: 'taskDetail'; taskId: ID }
   /* The window travels with the tap, so the category opens on the one the tile
      was read through rather than resetting to this month. */
@@ -1752,6 +1755,10 @@ export function AppShell() {
       return <BudgetsScreen onBack={pop} />;
     }
 
+    if (top?.name === 'recurring') {
+      return <RecurringScreen onBack={pop} />;
+    }
+
     if (top?.name === 'taskDetail') {
       const task = tasks.find((row) => row.id === top.taskId);
       if (!task) return <Fallback onBack={pop} />;
@@ -2012,6 +2019,8 @@ export function AppShell() {
             push({ name: 'moneyHistory', accountId, day: anchor })
           }
           onOpenBudgets={() => push({ name: 'budgets' })}
+          onOpenRecurring={() => push({ name: 'recurring' })}
+          onToast={setToast}
           onTransfer={(accountId, day) =>
             push({
               name: 'moneyAmount',

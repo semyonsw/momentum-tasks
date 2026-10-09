@@ -529,3 +529,130 @@ describe('budgets (M1)', () => {
     expect(useMoney.getState().budgetAlertsFired).toBeUndefined();
   });
 });
+
+describe('recurring payments (M2)', () => {
+  const rentDraft = {
+    name: 'Rent',
+    categoryId: 'family',
+    accountId: 'cash',
+    value: 150000,
+    schedule: { kind: 'monthly' as const, day: 5 },
+    wholeMonth: false,
+  };
+
+  it('are absent on a 2.2.0 log, and added with today as their start', () => {
+    expect(useMoney.getState().recurring).toBeUndefined();
+    const id = useMoney.getState().addRecurring(rentDraft, '2026-10-01');
+    expect(id).not.toBeNull();
+    expect(useMoney.getState().recurring?.[0]).toMatchObject({
+      name: 'Rent',
+      direction: 'expense',
+      startsOn: '2026-10-01',
+      handled: {},
+    });
+    expect(useMoney.getState().amounts).toEqual([]);
+  });
+
+  it('refuse a payment of nothing, or into a category that does not exist', () => {
+    expect(useMoney.getState().addRecurring({ ...rentDraft, value: 0 }, '2026-10-01')).toBeNull();
+    expect(
+      useMoney.getState().addRecurring({ ...rentDraft, categoryId: 'gone' }, '2026-10-01'),
+    ).toBeNull();
+  });
+
+  it('confirm writes the amount on the due date, once — a double tap writes one', () => {
+    const id = useMoney.getState().addRecurring(rentDraft, '2026-09-01') ?? '';
+    const first = useMoney.getState().confirmRecurring(id, '2026-10-05');
+    const second = useMoney.getState().confirmRecurring(id, '2026-10-05');
+    expect(first).not.toBeNull();
+    expect(second).toBeNull();
+    const { amounts, recurring } = useMoney.getState();
+    expect(amounts).toHaveLength(1);
+    expect(amounts[0]).toMatchObject({
+      id: first,
+      categoryId: 'family',
+      accountId: 'cash',
+      direction: 'expense',
+      value: 150000,
+      when: { kind: 'day', date: '2026-10-05' },
+    });
+    expect(recurring?.[0].handled['M:2026-10']).toEqual({
+      status: 'paid',
+      date: '2026-10-05',
+      amountId: first,
+    });
+  });
+
+  it('refuses a date that is not one of the schedule’s', () => {
+    const id = useMoney.getState().addRecurring(rentDraft, '2026-09-01') ?? '';
+    expect(useMoney.getState().confirmRecurring(id, '2026-10-06')).toBeNull();
+    expect(useMoney.getState().amounts).toEqual([]);
+  });
+
+  it('no duplicates on a double launch: the store read back answers the same', () => {
+    const id = useMoney.getState().addRecurring(rentDraft, '2026-09-01') ?? '';
+    useMoney.getState().confirmRecurring(id, '2026-10-05');
+    // A relaunch: the value goes through the validator and comes back.
+    useMoney.getState().importMoney(sanitizeMoney(useMoney.getState()));
+    expect(useMoney.getState().confirmRecurring(id, '2026-10-05')).toBeNull();
+    expect(useMoney.getState().amounts).toHaveLength(1);
+  });
+
+  it('a whole-month payment writes an amount for the month', () => {
+    const id =
+      useMoney.getState().addRecurring({ ...rentDraft, wholeMonth: true }, '2026-09-01') ?? '';
+    useMoney.getState().confirmRecurring(id, '2026-10-05');
+    expect(useMoney.getState().amounts[0].when).toEqual({ kind: 'month', year: 2026, month: 9 });
+  });
+
+  it('skip records the skip and writes nothing', () => {
+    const id = useMoney.getState().addRecurring(rentDraft, '2026-09-01') ?? '';
+    useMoney.getState().skipRecurring(id, '2026-10-05');
+    expect(useMoney.getState().amounts).toEqual([]);
+    expect(useMoney.getState().recurring?.[0].handled['M:2026-10']).toEqual({
+      status: 'skipped',
+      date: '2026-10-05',
+    });
+    // Skipped is answered: a confirm after it writes nothing.
+    expect(useMoney.getState().confirmRecurring(id, '2026-10-05')).toBeNull();
+  });
+
+  it('undo takes the answer back, and the amount a confirm wrote', () => {
+    const id = useMoney.getState().addRecurring(rentDraft, '2026-09-01') ?? '';
+    useMoney.getState().confirmRecurring(id, '2026-10-05');
+    useMoney.getState().undoRecurring(id, '2026-10-05');
+    expect(useMoney.getState().amounts).toEqual([]);
+    expect(useMoney.getState().recurring?.[0].handled).toEqual({});
+  });
+
+  it('editing the schedule leaves past confirmations alone and asks nothing twice', () => {
+    const id = useMoney.getState().addRecurring(rentDraft, '2026-09-01') ?? '';
+    useMoney.getState().confirmRecurring(id, '2026-10-05');
+    useMoney.getState().updateRecurring(id, {
+      ...rentDraft,
+      value: 160000,
+      schedule: { kind: 'monthly', day: 20 },
+    });
+    const [item] = useMoney.getState().recurring ?? [];
+    expect(item.value).toBe(160000);
+    expect(item.handled['M:2026-10']?.status).toBe('paid');
+    // October's answer stands on the new day too.
+    expect(useMoney.getState().confirmRecurring(id, '2026-10-20')).toBeNull();
+    // The amount it recorded is untouched by the new figure.
+    expect(useMoney.getState().amounts.map((a) => a.value)).toEqual([150000]);
+  });
+
+  it('deleting the plan keeps what it recorded', () => {
+    const id = useMoney.getState().addRecurring(rentDraft, '2026-09-01') ?? '';
+    useMoney.getState().confirmRecurring(id, '2026-10-05');
+    useMoney.getState().deleteRecurring(id);
+    expect(useMoney.getState().recurring).toBeUndefined();
+    expect(useMoney.getState().amounts).toHaveLength(1);
+  });
+
+  it('are replaced by an import', () => {
+    useMoney.getState().addRecurring(rentDraft, '2026-09-01');
+    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
+    expect(useMoney.getState().recurring).toBeUndefined();
+  });
+});

@@ -1801,6 +1801,48 @@ const RU: Record<string, string> = {
   '{name}: the budget is spent': '{name}: бюджет исчерпан',
   '{name}: 80% of the budget': '{name}: 80% бюджета',
   '{spent} of {limit} this month.': '{spent} из {limit} в этом месяце.',
+  // M2 · recurring payments (design copy money.due*)
+  'Monthly on the {day}': 'Ежемесячно, {day}',
+  'Weekly on {weekday}': 'Еженедельно: {weekday}',
+  'Yearly on {date}': 'Ежегодно, {date}',
+  'Skip this month': 'Пропустить в этом месяце',
+  'Skip this week': 'Пропустить на этой неделе',
+  'Skip this year': 'Пропустить в этом году',
+  'counts for {month}': 'за {month}',
+  'Due today': 'Сегодня к оплате',
+  'Due {date}': 'К оплате {date}',
+  '{amount} a month': '{amount} в месяц',
+  '{amount} a week': '{amount} в неделю',
+  '{amount} a year': '{amount} в год',
+  Weekly: 'Еженедельно',
+  Monthly: 'Ежемесячно',
+  Yearly: 'Ежегодно',
+  Repeat: 'Повтор',
+  Confirm: 'Подтвердить',
+  'e.g. Rent': 'например, Аренда',
+  'On day': 'В день',
+  'In a shorter month, on its last day.': 'В коротком месяце — в его последний день.',
+  'Counts for the whole month': 'За весь месяц',
+  'Recorded as a whole-month amount, on no single day — the way rent is.':
+    'Записывается суммой за весь месяц, без привязки к дню, — как аренда.',
+  'On that day a “Due today” card asks you to confirm. Nothing is recorded on its own.':
+    'В этот день карточка «Сегодня к оплате» попросит подтвердить. Само ничего не записывается.',
+  'Delete this payment': 'Удалить этот платёж',
+  'What it already recorded stays recorded.': 'То, что уже записано, останется записанным.',
+  'Recurring payments': 'Регулярные платежи',
+  'Rent, a phone plan, a gym membership: add one, and on its day a card on Finance asks whether it was paid.':
+    'Аренда, связь, абонемент в зал: добавьте платёж, и в его день карточка в Финансах спросит, оплачен ли он.',
+  'Opens the payment': 'Открывает платёж',
+  'Add a payment': 'Добавить платёж',
+  'Recurring payment': 'Регулярный платёж',
+  'Delete “{name}”?': 'Удалить «{name}»?',
+  'It stops being asked about. Everything it already recorded stays recorded.':
+    'О нём больше не будут спрашивать. Всё, что он уже записал, останется записанным.',
+  '{name} · {amount} recorded · {when}': '{name} · {amount} записано · {when}',
+  '{name} skipped. Nothing was recorded.': '{name}: пропущено. Ничего не записано.',
+  '{n} due': 'к оплате: {n}',
+  'Rent, subscriptions': 'Аренда, подписки',
+  '+{n} more due': 'Ещё к оплате: {n}',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

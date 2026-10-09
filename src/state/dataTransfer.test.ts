@@ -631,3 +631,51 @@ describe('budgets (M1)', () => {
     expect(money.accounts[0].opening).toBe(1000);
   });
 });
+
+describe('recurring payments (M2)', () => {
+  it('travel in a backup with every answer, and come back', () => {
+    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
+    const id =
+      useMoney.getState().addRecurring(
+        {
+          name: 'Rent',
+          categoryId: 'family',
+          accountId: 'cash',
+          value: 150000,
+          schedule: { kind: 'monthly', day: 5 },
+          wholeMonth: true,
+        },
+        '2026-09-01',
+      ) ?? '';
+    useMoney.getState().confirmRecurring(id, '2026-09-05');
+    useMoney.getState().skipRecurring(id, '2026-10-05');
+    const before = useMoney.getState().recurring;
+    const text = exportBackupText();
+    useMoney.getState().importMoney({});
+    expect(useMoney.getState().recurring).toBeUndefined();
+
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useMoney.getState().recurring).toEqual(before);
+    expect(useMoney.getState().amounts).toHaveLength(1);
+  });
+
+  it('a 2.2.0 backup imports unchanged, with none', () => {
+    const v220 = JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 2,
+      exercises: [],
+      routines: [],
+      workouts: [],
+      money: { categories: seedCategories, amounts: [] },
+    });
+    const parsed = parseBackup(v220);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useMoney.getState().recurring).toBeUndefined();
+    expect(useMoney.getState().categories.map((c) => c.id)).toEqual(
+      seedCategories.map((c) => c.id),
+    );
+  });
+});

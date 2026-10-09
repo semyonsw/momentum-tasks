@@ -22,6 +22,7 @@ beforeEach(async () => {
     amounts: [],
     budgets: undefined,
     budgetAlertsFired: undefined,
+    recurring: undefined,
   });
   useTasks.setState({ tasks: seedTasks('2026-01-01'), log: {} });
   // AFTER the resets: a `setState` on a persisted store writes it straight back
@@ -145,6 +146,32 @@ describe('the money plans (Wave 2) on a cold start', () => {
     const money = useMoney.getState();
     expect(money.amounts.map((amount) => amount.value)).toEqual([4200]);
     expect(money.budgets).toBeUndefined();
+    expect(money.recurring).toBeUndefined();
+  });
+
+  it('reads a recurring payment and its answers back after a restart', async () => {
+    const rent = {
+      id: 'rec_1',
+      name: 'Rent',
+      categoryId: 'family',
+      accountId: 'cash',
+      direction: 'expense',
+      value: 150000,
+      schedule: { kind: 'monthly', day: 5 },
+      startsOn: '2026-09-01',
+      note: '',
+      handled: { 'M:2026-10': { status: 'paid', date: '2026-10-05', amountId: 'amt_rec_x' } },
+      createdAt: '2026-09-01T00:00:00.000Z',
+    };
+    await AsyncStorage.setItem(
+      'money',
+      JSON.stringify({
+        version: 3,
+        state: { categories: seedCategories, amounts: [], recurring: [rent] },
+      }),
+    );
+    await useMoney.persist.rehydrate();
+    expect(useMoney.getState().recurring).toEqual([rent]);
   });
 
   it('reads stored budgets back after a restart', async () => {

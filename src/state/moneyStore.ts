@@ -66,6 +66,16 @@ import {
 } from '../lib/money';
 import { sanitizeScale } from '../lib/moneyUnits';
 import { pruneFired, sanitizeBudgets, sanitizeFired, type Budget } from '../lib/budgets';
+import {
+  amountWhenFor,
+  isOccurrence,
+  occurrenceAmountId,
+  periodOf,
+  rescheduledStart,
+  sanitizeRecurring,
+  type RecurringDraft,
+  type RecurringPayment,
+} from '../lib/recurring';
 import type { ID } from '../types/models';
 import { tickTaskSource } from './tasksStore';
 
@@ -87,6 +97,11 @@ export interface MoneyValue {
   budgets?: Budget[];
   /** The budget alerts already said this month (`food:2026-10:80`). See `lib/budgets.ts`. */
   budgetAlertsFired?: string[];
+  /**
+   * M2 — rent, subscriptions: what is due when, and every occurrence already
+   * answered (`lib/recurring.ts`). Absent until the first one is added.
+   */
+  recurring?: RecurringPayment[];
 }
 
 /**
@@ -247,6 +262,12 @@ export function sanitizeMoney(input: Partial<MoneyValue> | undefined | null): Mo
   const categoryIds = new Set(reconciled.categories.map((category) => category.id));
   const budgets = sanitizeBudgets(input?.budgets, categoryIds);
   const fired = sanitizeFired(input?.budgetAlertsFired);
+  const recurring = sanitizeRecurring(
+    input?.recurring,
+    new Map(reconciled.categories.map((category) => [category.id, category.direction])),
+    accountIds,
+    fallback,
+  );
   return {
     accounts,
     categories: reconciled.categories,
@@ -256,6 +277,7 @@ export function sanitizeMoney(input: Partial<MoneyValue> | undefined | null): Mo
     // The plans (Wave 2) likewise: a log without them stays the shape it was.
     ...(budgets.length > 0 ? { budgets } : {}),
     ...(fired.length > 0 ? { budgetAlertsFired: fired } : {}),
+    ...(recurring.length > 0 ? { recurring } : {}),
   };
 }
 
@@ -325,6 +347,42 @@ interface MoneyState extends MoneyValue {
   setBudget: (categoryId: ID, monthly: number, alerts?: boolean) => void;
   /** Remember alerts just said, dropping every key from an earlier month. */
   recordBudgetAlerts: (keys: readonly string[], year: number, month: number) => void;
+  /** M2 — a new recurring payment, starting `today`. Null when refused. */
+  addRecurring: (draft: RecurringDraft, today?: string) => ID | null;
+  /** Edits the plan only: nothing it already recorded moves (`rescheduledStart`). */
+  updateRecurring: (id: ID, draft: RecurringDraft) => void;
+  /** The plan goes; what it recorded stays recorded. */
+  deleteRecurring: (id: ID) => void;
+  /**
+   * `Confirm` on the due card: the amount, on the due date, once. Returns the
+   * amount's id, or null when that occurrence was already answered (a double
+   * tap) or is not one of the schedule's dates.
+   */
+  confirmRecurring: (id: ID, date: string) => ID | null;
+  /** `Skip this month`: remembered, nothing recorded. */
+  skipRecurring: (id: ID, date: string) => void;
+  /** The toast's Undo: the answer forgotten, and the amount a confirm wrote removed. */
+  undoRecurring: (id: ID, date: string) => void;
+}
+
+/**
+ * The day an amount answers the `Track expenses` task on: its own day, clamped
+ * to today; a whole-month amount, the day it was recorded. See `addAmount`.
+ */
+function taskDayFor(when: AmountWhen): string {
+  const today = dayKey(new Date());
+  return when.kind === 'day' && when.date <= today ? when.date : today;
+}
+
+function cleanDraft(
+  draft: RecurringDraft,
+  categories: readonly MoneyCategory[],
+): { value: number; direction: Direction } | null {
+  const value = Math.round(Math.abs(draft.value));
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const category = categories.find((row) => row.id === draft.categoryId);
+  if (!category) return null;
+  return { value, direction: category.direction };
 }
 
 export const useMoney = create<MoneyState>()(
@@ -354,9 +412,7 @@ export const useMoney = create<MoneyState>()(
          * before it has been asked, and a whole-month amount has no day at all
          * (see `lib/money.ts`) so it ticks the day you recorded it.
          */
-        const today = dayKey(new Date());
-        const on = draft.when.kind === 'day' && draft.when.date <= today ? draft.when.date : today;
-        tickTaskSource('money', on);
+        tickTaskSource('money', taskDayFor(draft.when));
         return id;
       },
 
@@ -543,6 +599,7 @@ export const useMoney = create<MoneyState>()(
           scale: undefined,
           budgets: undefined,
           budgetAlertsFired: undefined,
+          recurring: undefined,
           ...sanitizeMoney(raw as Partial<MoneyValue> | undefined | null),
         }),
 
@@ -569,6 +626,141 @@ export const useMoney = create<MoneyState>()(
           if (keys.length === 0) return {};
           const kept = pruneFired(state.budgetAlertsFired ?? [], year, month);
           return { budgetAlertsFired: [...new Set([...kept, ...keys])] };
+        }),
+
+      addRecurring: (draft, today = dayKey(new Date())) => {
+        const clean = cleanDraft(draft, useMoney.getState().categories);
+        if (!clean) return null;
+        const id = `rec_${Date.now().toString(36)}`;
+        const item: RecurringPayment = {
+          id,
+          name: draft.name.trim(),
+          categoryId: draft.categoryId,
+          accountId: draft.accountId,
+          direction: clean.direction,
+          value: clean.value,
+          schedule: draft.schedule,
+          ...(draft.wholeMonth && draft.schedule.kind === 'monthly' ? { wholeMonth: true } : {}),
+          startsOn: today,
+          note: '',
+          handled: {},
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({ recurring: [...(state.recurring ?? []), item] }));
+        return id;
+      },
+
+      updateRecurring: (id, draft) =>
+        set((state) => {
+          const clean = cleanDraft(draft, state.categories);
+          if (!clean || !state.recurring) return {};
+          return {
+            recurring: state.recurring.map((item) => {
+              if (item.id !== id) return item;
+              const { wholeMonth: _was, ...rest } = item;
+              return {
+                ...rest,
+                name: draft.name.trim(),
+                categoryId: draft.categoryId,
+                accountId: draft.accountId,
+                direction: clean.direction,
+                value: clean.value,
+                schedule: draft.schedule,
+                ...(draft.wholeMonth && draft.schedule.kind === 'monthly'
+                  ? { wholeMonth: true as const }
+                  : {}),
+                startsOn: rescheduledStart(item, draft.schedule),
+              };
+            }),
+          };
+        }),
+
+      deleteRecurring: (id) =>
+        set((state) => {
+          const rest = (state.recurring ?? []).filter((item) => item.id !== id);
+          return { recurring: rest.length > 0 ? rest : undefined };
+        }),
+
+      /*
+       * Idempotent by construction (`lib/recurring.ts`): the period's answer and
+       * the amount's id are both derived from the occurrence, and both are
+       * checked before anything is written — inside one `set`, so two taps in
+       * the same frame cannot both pass.
+       */
+      confirmRecurring: (id, date) => {
+        let written: ID | null = null;
+        let tickOn: string | null = null;
+        set((state) => {
+          const item = state.recurring?.find((row) => row.id === id);
+          if (!item || !isOccurrence(item.schedule, date)) return {};
+          const period = periodOf(item.schedule, date);
+          const amountId = occurrenceAmountId(item.id, period);
+          if (period in item.handled) return {};
+          if (state.amounts.some((amount) => amount.id === amountId)) return {};
+          if (!state.categories.some((category) => category.id === item.categoryId)) return {};
+          const when = amountWhenFor(item, date);
+          written = amountId;
+          tickOn = taskDayFor(when);
+          return {
+            amounts: [
+              ...state.amounts,
+              {
+                id: amountId,
+                categoryId: item.categoryId,
+                accountId: item.accountId,
+                direction: item.direction,
+                value: item.value,
+                when,
+                note: item.name,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+            recurring: (state.recurring ?? []).map((row) =>
+              row.id === id
+                ? {
+                    ...row,
+                    handled: { ...row.handled, [period]: { status: 'paid', date, amountId } },
+                  }
+                : row,
+            ),
+          };
+        });
+        // The same answer `addAmount` gives the `Track expenses` task.
+        if (tickOn) tickTaskSource('money', tickOn);
+        return written;
+      },
+
+      skipRecurring: (id, date) =>
+        set((state) => {
+          const item = state.recurring?.find((row) => row.id === id);
+          if (!item || !isOccurrence(item.schedule, date)) return {};
+          const period = periodOf(item.schedule, date);
+          if (period in item.handled) return {};
+          return {
+            recurring: (state.recurring ?? []).map((row) =>
+              row.id === id
+                ? { ...row, handled: { ...row.handled, [period]: { status: 'skipped', date } } }
+                : row,
+            ),
+          };
+        }),
+
+      undoRecurring: (id, date) =>
+        set((state) => {
+          const item = state.recurring?.find((row) => row.id === id);
+          if (!item) return {};
+          const period = periodOf(item.schedule, date);
+          const answer = item.handled[period];
+          if (!answer) return {};
+          const { [period]: _gone, ...handled } = item.handled;
+          return {
+            amounts: answer.amountId
+              ? state.amounts.filter((amount) => amount.id !== answer.amountId)
+              : state.amounts,
+            recurring: (state.recurring ?? []).map((row) =>
+              row.id === id ? { ...row, handled } : row,
+            ),
+          };
         }),
 
       pinScale: (scale) =>
@@ -605,6 +797,7 @@ export const useMoney = create<MoneyState>()(
         ...(state.budgetAlertsFired === undefined
           ? {}
           : { budgetAlertsFired: state.budgetAlertsFired }),
+        ...(state.recurring === undefined ? {} : { recurring: state.recurring }),
       }),
       /*
        * NOTHING STORED IS NOT AN EMPTY LOG. zustand calls `merge` on a first
