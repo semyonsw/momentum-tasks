@@ -284,6 +284,29 @@ describe('settings written by 2.2.0', () => {
       waist: [{ day: '2026-10-05', cm: 82.5 }],
     });
   });
+  it('cold-start with no weekly goal, and read one back when there is one (W8)', async () => {
+    const { useSettings, DEFAULT_SETTINGS } = await import('./settingsStore');
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({ version: 1, state: { restSecondsBetweenSets: 95 } }),
+    );
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().weeklyWorkoutGoal).toBeUndefined();
+    expect(useSettings.getState().excusedWeeks).toBeUndefined();
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(95);
+
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({
+        version: 1,
+        state: { weeklyWorkoutGoal: 5, excusedWeeks: ['2026-12-28'] },
+      }),
+    );
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().weeklyWorkoutGoal).toBe(5);
+    expect(useSettings.getState().excusedWeeks).toEqual(['2026-12-28']);
+  });
 });
 
 describe('the engagement switch on a cold start (Wave 3)', () => {

@@ -826,3 +826,41 @@ describe('savings goals (M5)', () => {
     expect(useMoney.getState().goals).toBeUndefined();
   });
 });
+
+describe('the weekly training goal (W8)', () => {
+  it('the goal and the excused weeks travel in a backup and come back', () => {
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    useSettings.getState().stepWeeklyWorkoutGoal(1);
+    useSettings.getState().setWeekExcused('2026-10-08', true, '2026-10-08');
+    const text = exportBackupText();
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    expect(useSettings.getState().weeklyWorkoutGoal).toBeUndefined();
+    expect(useSettings.getState().excusedWeeks).toBeUndefined();
+
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useSettings.getState().weeklyWorkoutGoal).toBe(4);
+    expect(useSettings.getState().excusedWeeks).toEqual(['2026-10-05']);
+  });
+
+  it('a 2.2.0 backup, written before the keys existed, imports unchanged with none', () => {
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    const v220 = JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 1,
+      settings: { restSecondsBetweenSets: 90, bodyweightKg: 80 },
+      exercises: [],
+      routines: [],
+      workouts: [],
+    });
+    const parsed = parseBackup(v220);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
+    expect(useSettings.getState().bodyweightKg).toBe(80);
+    expect(useSettings.getState().weeklyWorkoutGoal).toBeUndefined();
+    expect(useSettings.getState().excusedWeeks).toBeUndefined();
+  });
+});

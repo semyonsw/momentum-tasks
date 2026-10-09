@@ -83,6 +83,7 @@ import { DebriefCard } from '../components/DebriefSheet';
 import { Icon } from '../components/Icon';
 import { SectionTopBar } from '../components/SectionTopBar';
 import { SparkBurst, SPARK_MS } from '../components/SparkBurst';
+import { WeeklyGoalCard, WeeklyGoalSheet } from '../components/WeeklyGoal';
 import { BubblePressable } from '../components/bubbles';
 import { FloatingBubble, useHeroRecede } from '../components/FloatingBubble';
 import {
@@ -301,6 +302,9 @@ export function HomeScreen({
   } = useBubbleOnScroll(300, 250);
   const heroRecede = useHeroRecede(bubbleUp);
 
+  /* The weekly goal's sheet (W8), opened from its ring. */
+  const [goalOpen, setGoalOpen] = useState(false);
+
   /*
    * THE CELEBRATION, once, on the mount a save came back to. The id is held for
    * the Recent row that grows in; the sparks run for as long as they take.
@@ -354,6 +358,9 @@ export function HomeScreen({
               <Hero plan={next} number={nextNumber} plural={plural} />
             </Animated.View>
           ) : null}
+
+          {/* W8: off unless the Wave 3 switch is on — see `lib/weeklyGoal.ts`. */}
+          <WeeklyGoalCard onPress={() => setGoalOpen(true)} />
 
           <DebriefCard />
 
@@ -524,6 +531,8 @@ export function HomeScreen({
           onPress={onNewRoutine}
         />
       ) : null}
+
+      {goalOpen ? <WeeklyGoalSheet onDismiss={() => setGoalOpen(false)} /> : null}
     </View>
   );
 }

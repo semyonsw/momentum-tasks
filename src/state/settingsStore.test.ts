@@ -784,3 +784,49 @@ describe('the milestone stamp (E4)', () => {
     expect(currentSettings().milestoneShown).toBe(100);
   });
 });
+
+describe('the weekly training goal (W8)', () => {
+  it('is absent by default and on a blob from 2.2.0, which had neither key', () => {
+    expect(DEFAULT_SETTINGS.weeklyWorkoutGoal).toBeUndefined();
+    expect(DEFAULT_SETTINGS.excusedWeeks).toBeUndefined();
+    expect(sanitizeSettings({}).weeklyWorkoutGoal).toBeUndefined();
+    expect(sanitizeSettings(undefined).excusedWeeks).toBeUndefined();
+  });
+
+  it('goes through the sanitizer on the way in', () => {
+    const raw = {
+      weeklyWorkoutGoal: 12,
+      excusedWeeks: ['2026-10-05', '2026-10-06', '2026-10-05'],
+    } as unknown as Partial<Settings>;
+    expect(sanitizeSettings(raw).weeklyWorkoutGoal).toBe(7);
+    expect(sanitizeSettings(raw).excusedWeeks).toEqual(['2026-10-05']);
+    expect(
+      sanitizeSettings({ weeklyWorkoutGoal: 'three' } as unknown as Partial<Settings>)
+        .weeklyWorkoutGoal,
+    ).toBeUndefined();
+  });
+
+  it('steps the goal from three, inside 1–7', () => {
+    useSettings.getState().stepWeeklyWorkoutGoal(1);
+    expect(currentSettings().weeklyWorkoutGoal).toBe(4);
+    for (let i = 0; i < 10; i += 1) useSettings.getState().stepWeeklyWorkoutGoal(-1);
+    expect(currentSettings().weeklyWorkoutGoal).toBe(1);
+  });
+
+  it('excuses this week and un-excuses it; a week ahead is refused', () => {
+    useSettings.getState().setWeekExcused('2026-10-08', true, '2026-10-08');
+    expect(currentSettings().excusedWeeks).toEqual(['2026-10-05']);
+    useSettings.getState().setWeekExcused('2026-10-15', true, '2026-10-08');
+    expect(currentSettings().excusedWeeks).toEqual(['2026-10-05']);
+    useSettings.getState().setWeekExcused('2026-10-05', false, '2026-10-08');
+    expect(currentSettings().excusedWeeks).toBeUndefined();
+  });
+
+  it('Reset puts the goal back to three and keeps the excused weeks', () => {
+    useSettings.getState().stepWeeklyWorkoutGoal(2);
+    useSettings.getState().setWeekExcused('2026-10-08', true, '2026-10-08');
+    useSettings.getState().resetToDefaults();
+    expect(currentSettings().weeklyWorkoutGoal).toBeUndefined();
+    expect(currentSettings().excusedWeeks).toEqual(['2026-10-05']);
+  });
+});

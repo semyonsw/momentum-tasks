@@ -68,6 +68,12 @@ import type { Weekday } from '../lib/tasks';
 import { TREND_RANGES, type TrendRange } from '../lib/trends';
 import { usableEngagement } from '../lib/engagement';
 import { milestoneAfterSave, usableMilestone } from '../lib/milestones';
+import {
+  setWeekExcused,
+  stepWeeklyGoal,
+  usableExcusedWeeks,
+  usableWeeklyGoal,
+} from '../lib/weeklyGoal';
 import type { MuscleCluster, UnitSystem } from '../types/models';
 
 export interface Settings {
@@ -347,6 +353,17 @@ export interface Settings {
    * can say. See `lib/milestones.ts`. OPTIONAL, absent = none yet.
    */
   milestoneShown?: number;
+  /* --- the weekly training goal (W8): see `lib/weeklyGoal.ts` --------- */
+  /**
+   * Workouts a week the ring counts towards, 1–7. OPTIONAL, absent = three: a
+   * 2.2.0 phone and its backups have no such key and read the default.
+   */
+  weeklyWorkoutGoal?: number;
+  /**
+   * The Mondays of weeks the user excused (illness, travel) — they read
+   * "excused", not short of the goal. OPTIONAL, absent = none excused.
+   */
+  excusedWeeks?: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -410,6 +427,8 @@ export const DEFAULT_SETTINGS: Settings = {
   // Off by default (IMPLEMENTATION_DECISIONS row 6): nothing keeps score unasked.
   engagement: undefined,
   milestoneShown: undefined,
+  weeklyWorkoutGoal: undefined,
+  excusedWeeks: undefined,
 };
 
 /**
@@ -549,6 +568,8 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     // Only a literal `true` is on, so junk and a 2.2.0 blob both read as off.
     engagement: usableEngagement(raw.engagement),
     milestoneShown: usableMilestone(raw.milestoneShown),
+    weeklyWorkoutGoal: usableWeeklyGoal(raw.weeklyWorkoutGoal),
+    excusedWeeks: usableExcusedWeeks(raw.excusedWeeks),
   };
 }
 
@@ -758,6 +779,10 @@ interface SettingsState extends Settings {
   recordMeasurement: (key: MeasurementKey, day: string, cm: number) => void;
   /** W9: remove one site's reading on one day. Asked first by the screen (U19). */
   removeMeasurement: (key: MeasurementKey, day: string) => void;
+  /** One ± step of the weekly goal, clamped to 1–7. */
+  stepWeeklyWorkoutGoal: (delta: number) => void;
+  /** Excuse, or stop excusing, the week `day` is in. Weeks ahead are refused. */
+  setWeekExcused: (day: string, excused: boolean, today: string) => void;
 
   /** Wave 3's one switch. Off writes nothing (the key goes absent). */
   setEngagement: (on: boolean) => void;
@@ -933,6 +958,11 @@ export const useSettings = create<SettingsState>()(
             milestoneAfterSave(usableMilestone(n) ?? null, get().milestoneShown),
           ),
         }),
+      stepWeeklyWorkoutGoal: (delta) =>
+        set({ weeklyWorkoutGoal: stepWeeklyGoal(get().weeklyWorkoutGoal, delta) }),
+
+      setWeekExcused: (day, excused, today) =>
+        set({ excusedWeeks: setWeekExcused(get().excusedWeeks, day, excused, today) }),
 
       resetToDefaults: () =>
         /*
@@ -975,6 +1005,9 @@ export const useSettings = create<SettingsState>()(
           // A celebration that happened is a record, not a switch: resetting
           // the timers must not let "Workout 100" be celebrated a second time.
           milestoneShown: get().milestoneShown,
+          // An excused week is a record of a week that happened, not a switch.
+          // The goal itself IS a target, and goes back to three with the rest.
+          excusedWeeks: get().excusedWeeks,
         }),
 
       importSettings: (raw) =>

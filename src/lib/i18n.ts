@@ -2113,6 +2113,19 @@ const RU: Record<string, string> = {
   // E4 · milestones (design 2)
   Milestone: 'Веха',
   'Since {date}. {n} sets.': 'С {date}. Подходов: {n}.',
+  // W8 · weekly training goal
+  '{done} of {goal} workout this week': '{done} из {goal} тренировки на этой неделе',
+  '{done} of {goal} workouts this week': '{done} из {goal} тренировок на этой неделе',
+  '{line} · excused': '{line} · не в счёт',
+  'Weekly goal': 'Цель на неделю',
+  'Workouts a week': 'Тренировок в неделю',
+  'Excuse this week': 'Не считать эту неделю',
+  'Excuse last week': 'Не считать прошлую неделю',
+  'Illness, travel: an excused week is not a miss.': 'Болезнь, поездка: такая неделя — не пропуск.',
+  'Last week: {done} of {goal}': 'Прошлая неделя: {done} из {goal}',
+  'A week runs Monday to Sunday and starts empty. No streaks.':
+    'Неделя идёт с понедельника по воскресенье и начинается с нуля. Без серий.',
+  'Weekly goal: {line}. Opens the goal.': 'Цель на неделю: {line}. Открывает настройку.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */
