@@ -1909,6 +1909,26 @@ const RU: Record<string, string> = {
   'Delete this reading': 'Удалить это измерение',
   '{n} measured': 'измерено: {n}',
   'Waist, chest, arm…': 'Талия, грудь, рука…',
+  // W3 · muscle map (design 17, copy muscles.tap)
+  'Muscle map': 'Карта мышц',
+  'Muscle map · this week': 'Карта мышц · эта неделя',
+  'Previous week': 'Предыдущая неделя',
+  'Next week': 'Следующая неделя',
+  'This week': 'Эта неделя',
+  'working sets': 'рабочие подходы',
+  Front: 'Спереди',
+  'Back view': 'Сзади',
+  'Tap a muscle for its weekly sets.': 'Нажмите на мышцу, чтобы увидеть подходы за неделю.',
+  'Not on the map: {list}': 'Не на карте: {list}',
+  'Working sets, Monday to Sunday; warm-ups are left out. Secondary muscles count half: a set of bench press is 1 for chest and ½ for triceps and shoulders.':
+    'Рабочие подходы с понедельника по воскресенье, без разминки. Вспомогательные мышцы считаются за половину: подход жима лёжа — это 1 для груди и ½ для трицепса и плеч.',
+  '{muscle} · {n} / {target} sets this week': '{muscle} · {n} / {target} подходов за неделю',
+  '{muscle} · {n} sets this week': '{muscle} · подходов за неделю: {n}',
+  'Clear selection': 'Снять выбор',
+  'No weekly target set for {cluster}': 'Для группы «{cluster}» цель на неделю не задана',
+  '{n} sets to your target': 'До цели подходов: {n}',
+  'Target met · {n} over': 'Цель достигнута · сверх: {n}',
+  'Target met': 'Цель достигнута',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

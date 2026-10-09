@@ -95,6 +95,7 @@ import { BudgetsScreen } from '../screens/BudgetsScreen';
 import { RecurringScreen } from '../screens/RecurringScreen';
 import { GoalsScreen } from '../screens/GoalsScreen';
 import { BodyScreen } from '../screens/BodyScreen';
+import { MuscleMapScreen } from '../screens/MuscleMapScreen';
 import { AmountEditorScreen } from '../screens/AmountEditorScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { MoneyScreen, type MoneyWindow } from '../screens/MoneyScreen';
@@ -208,6 +209,8 @@ type Route =
   /* W9: the tape-measure log, pushed from the Graphs view and from Workout
      settings → Body — the two places bodyweight already lives. */
   | { name: 'body' }
+  /* W3: this week's sets on a body, from the sets-per-cluster card. */
+  | { name: 'muscles' }
   | { name: 'taskDetail'; taskId: ID }
   /* The window travels with the tap, so the category opens on the one the tile
      was read through rather than resetting to this month. */
@@ -1769,6 +1772,10 @@ export function AppShell() {
       return <BodyScreen onBack={pop} />;
     }
 
+    if (top?.name === 'muscles') {
+      return <MuscleMapScreen workouts={workouts} exercisesById={exercisesById} onBack={pop} />;
+    }
+
     if (top?.name === 'goals') {
       return <GoalsScreen onBack={pop} />;
     }
@@ -1880,6 +1887,7 @@ export function AppShell() {
           onOpenSettings={() => push({ name: sectionSettingsRoute('Workout') })}
           onOpenWrapped={openWrapped}
           onOpenBody={() => push({ name: 'body' })}
+          onOpenMuscles={() => push({ name: 'muscles' })}
         />
       );
     }
@@ -2164,6 +2172,7 @@ function WorkoutHistory({
   onOpenSettings,
   onOpenWrapped,
   onOpenBody,
+  onOpenMuscles,
 }: {
   workouts: CompletedWorkout[];
   loadFailed: boolean;
@@ -2186,6 +2195,7 @@ function WorkoutHistory({
   onOpenSettings: () => void;
   onOpenWrapped: (period: WrappedPeriod) => void;
   onOpenBody: () => void;
+  onOpenMuscles: () => void;
 }) {
   const t = useT();
   const [view, setView] = useState<'log' | 'graphs' | 'calendar'>('log');
@@ -2252,6 +2262,7 @@ function WorkoutHistory({
       onAddExercise={onAddExercise}
       onOpenSettings={onOpenSettings}
       onOpenWrapped={onOpenWrapped}
+      onOpenMuscles={onOpenMuscles}
       toolbar={toolbar}
     />
   );

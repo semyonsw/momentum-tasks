@@ -305,6 +305,8 @@ export interface HistoryScreenProps {
   onOpenSettings?: () => void;
   /** X1: open a Wrapped. Absent = no Wrapped row at the foot. */
   onOpenWrapped?: (period: WrappedPeriod) => void;
+  /** W3: the muscle map, from the foot of the sets-per-cluster card. */
+  onOpenMuscles?: () => void;
 }
 
 export function HistoryScreen({
@@ -328,6 +330,7 @@ export function HistoryScreen({
   onBack,
   onOpenSettings,
   onOpenWrapped,
+  onOpenMuscles,
 }: HistoryScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -661,6 +664,26 @@ export function HistoryScreen({
                       </View>
                     ) : null}
                   </View>
+                  {/* W3: the same count one level down, this week, on a body.
+                      Inside the card because it is this card's question asked
+                      per muscle. */}
+                  {onOpenMuscles ? (
+                    <Pressable
+                      onPress={onOpenMuscles}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('Muscle map · this week')}
+                      style={pressedStyle}
+                      className="-mb-sm mt-md h-[44px] flex-row items-center"
+                    >
+                      <Text
+                        maxFontSizeMultiplier={1.3}
+                        className="flex-1 text-label font-medium text-acc"
+                      >
+                        {t('Muscle map · this week')}
+                      </Text>
+                      <Icon name="chevron-right" size={16} color={palette.acc} />
+                    </Pressable>
+                  ) : null}
                 </View>
               </GlassSurface>
             ) : null}
