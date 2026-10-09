@@ -205,8 +205,8 @@ function csvWeight(kg: number, unitSystem: UnitSystem): string {
 }
 
 /**
- * Every set in the log, oldest workout first, each workout's sets in the order
- * they were done.
+ * Every set in the log, oldest workout first, each workout's sets grouped by
+ * exercise in the workout's exercise order, and in set order within one.
  *
  * ── THE EXERCISE NAME COMES FROM THE WORKOUT, NOT THE LIBRARY ──────────────
  *
@@ -217,8 +217,9 @@ function csvWeight(kg: number, unitSystem: UnitSystem): string {
  * `workout` is the number the history list prints (`workoutNumbers`, with the
  * user's pin), blank where that number would be below 1 — the list leaves those
  * unnumbered too. `routine` is the workout's title, which is the routine it was
- * started from or the name it was given. `set` is `setIndex + 1`, warm-ups
- * included, so the column matches the rows; `warmup` says which ones count.
+ * started from or the name it was given. `set` is `setIndex + 1`, counted
+ * within the exercise as the workout screen counts it (Bench 1–3, then Squat
+ * 1–2), warm-ups included; `warmup` says which ones count.
  * `rir` is the reps in reserve when the set was graded, blank when it was not
  * (RPE is `10 − rir`, a formula a spreadsheet can do). `set_type` is what the set
  * was — `working`, `warmup`, `drop`, `failure` or `amrap` — so a filter on it does
@@ -241,7 +242,15 @@ export function workoutsToCsv(
     const nameById = new Map(workout.exercises.map((e) => [e.exerciseId, e.name]));
     const date = dayKey(workout.startedAt);
     const number = numbers[workout.id];
-    const sets = [...workout.sets].sort((a, b) => a.setIndex - b.setIndex);
+    // `setIndex` counts within ONE exercise (`draftToSetHistory`), so sorting on
+    // it alone interleaves them — Bench 1, Squat 1, Bench 2. The workout's own
+    // exercise order first, then the set; an exercise the snapshot does not
+    // list goes last rather than being dropped.
+    const position = new Map(workout.exercises.map((e, i) => [e.exerciseId, i]));
+    const rank = (exerciseId: string) => position.get(exerciseId) ?? workout.exercises.length;
+    const sets = [...workout.sets].sort(
+      (a, b) => rank(a.exerciseId) - rank(b.exerciseId) || a.setIndex - b.setIndex,
+    );
 
     for (const set of sets) {
       rows.push([

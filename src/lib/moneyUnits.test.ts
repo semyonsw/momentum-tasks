@@ -219,6 +219,45 @@ describe('typedToMinor — a plan figure typed on the phone keyboard', () => {
     expect(typedToMinor('1234.50', 0)).toBe(1234);
   });
 
+  it('refuses more than one decimal separator, or a separator in the wrong place', () => {
+    for (const scale of [0, 2]) {
+      for (const malformed of [
+        '1.2.3',
+        '1,2,3',
+        '1..2',
+        '1.,2',
+        '12.5.',
+        '.',
+        ',',
+        '..',
+        '.12.5',
+        '1.23.45',
+        '1.2e3',
+        '12,5a',
+      ]) {
+        expect([malformed, typedToMinor(malformed, scale)]).toEqual([malformed, null]);
+      }
+    }
+  });
+
+  it('still reads every well-formed shape it read before', () => {
+    expect(typedToMinor('12', 2)).toBe(1200);
+    expect(typedToMinor('12.5', 2)).toBe(1250);
+    expect(typedToMinor('12.50', 2)).toBe(1250);
+    expect(typedToMinor('.5', 2)).toBe(50);
+    expect(typedToMinor(',75', 2)).toBe(75);
+    // A trailing point is somebody halfway through typing `12.5`.
+    expect(typedToMinor('12.', 2)).toBe(1200);
+    expect(typedToMinor('12,', 0)).toBe(12);
+    // Thousands grouping, with either mark, with or without a fraction after it.
+    expect(typedToMinor('1,234,567', 0)).toBe(1234567);
+    expect(typedToMinor('1.234.567', 0)).toBe(1234567);
+    expect(typedToMinor('1.234,50', 2)).toBe(123450);
+    expect(typedToMinor('1,234.5', 2)).toBe(123450);
+    expect(typedToMinor('1 234,5', 2)).toBe(123450);
+    expect(typedToMinor('1,234', 2)).toBe(123400);
+  });
+
   it('is null for nothing, or for something that is not a number', () => {
     expect(typedToMinor('', 0)).toBeNull();
     expect(typedToMinor('  ', 2)).toBeNull();

@@ -217,14 +217,21 @@ export function centsNote(scale: number, currency: string): 'cents' | 'wholeLog'
  * balance field's: spaces and thousands commas are formatting, and only a
  * separator followed by one or two digits — at the END, in a log with a scale —
  * is a fraction (`12.50`, `12,5`). In a whole-unit log a trailing fraction is
- * dropped, never folded in: `1234.50` is 1,234 and not 123,450.
+ * dropped, never folded in: `1234.50` is 1,234 and not 123,450. Any other
+ * separator has to sit between groups of three, so `1.2.3`, `1..2` and a lone
+ * `.` are null rather than a guess.
  */
 export function typedToMinor(text: string, scale: number): number | null {
   const trimmed = text.replace(/\s/g, '');
   if (trimmed === '') return null;
   if (!/^[\d.,]+$/.test(trimmed)) return null;
   const fraction = /[.,](\d{1,2})$/.exec(trimmed);
-  const wholePart = fraction ? trimmed.slice(0, fraction.index) : trimmed;
+  // A lone trailing separator is somebody halfway through typing `12.5`.
+  const wholePart = fraction ? trimmed.slice(0, fraction.index) : trimmed.replace(/[.,]$/, '');
+  // Any other separator must be grouping thousands: `1,234,567`, `1.234,50`.
+  // Without this, `1.2.3` read as 12.30 — two decimal points are a typo, not
+  // a number, and a typo must not save as a figure nobody typed.
+  if (!/^(\d+([.,]\d{3})*)?$/.test(wholePart)) return null;
   const digits = wholePart.replace(/[.,]/g, '').slice(0, MAX_DIGITS);
   if (digits === '' && !fraction) return null;
   const whole = Number(digits || '0');

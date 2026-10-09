@@ -7,6 +7,7 @@ import {
   buildWorkoutContext,
   lastTopWeights,
   nextStartWeights,
+  tasksBrief,
   withBriefs,
   workoutBrief,
   workoutFacts,
@@ -378,6 +379,15 @@ describe('effort per set (T-11)', () => {
   });
 });
 
+/** A three-times-a-week task met in the weeks of Mon 09-14 and Mon 09-21. */
+const twoWeeksMet: TaskLog = {
+  gym: Object.fromEntries(
+    ['2026-09-14', '2026-09-15', '2026-09-16', '2026-09-21', '2026-09-22', '2026-09-23'].map(
+      (day) => [day, { mark: 'done' as const, note: '' }],
+    ),
+  ),
+};
+
 describe('the tasks context', () => {
   const log: TaskLog = {
     read: {
@@ -486,6 +496,35 @@ describe('the tasks context', () => {
     expect(counted.targetNote).toContain('partialOn');
     expect(json.targetNote).toBeUndefined();
     expect(json.tasks[0].target).toBeUndefined();
+  });
+
+  it('says a weekly task’s streak is in weeks; a daily task’s row is unchanged', () => {
+    const tasks = [
+      task('gym', { startedOn: '2026-09-14', schedule: { kind: 'weekly', times: 3 } }),
+      task('read', { startedOn: '2026-09-24' }),
+    ];
+    const both = JSON.parse(
+      buildTasksContext({ tasks, log: { ...log, ...twoWeeksMet }, today: '2026-09-27', lang: 'en' })
+        .json,
+    );
+    expect(both.tasks[0]).toMatchObject({ id: 'gym', streak: 2, streakUnit: 'weeks' });
+    // The daily row says what it always said: a streak in days, and its best run.
+    expect(both.tasks[1]).toEqual(json.tasks[0]);
+    expect(both.tasks[1].streakUnit).toBeUndefined();
+  });
+
+  it('the brief the other sections get names the streak’s unit too', () => {
+    const brief = tasksBrief({
+      tasks: [
+        task('gym', { startedOn: '2026-09-14', schedule: { kind: 'weekly', times: 3 } }),
+        task('read', { startedOn: '2026-09-24' }),
+      ],
+      log: { ...log, ...twoWeeksMet },
+      today: '2026-09-27',
+    });
+    const lines = brief.last30Days as string[];
+    expect(lines[0]).toMatch(/^gym: .*, streak 2 weeks$/);
+    expect(lines[1]).toMatch(/^read: .*, streak 2 days$/);
   });
 
   it('stays under the cap with a year of daily tasks', () => {

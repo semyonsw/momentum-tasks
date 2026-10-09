@@ -1166,7 +1166,10 @@ export function tasksBrief(input: {
     last30Days: built.tasks.map((task) => {
       const asked = (task.asked as number) - (task.excused as number);
       const pct = asked > 0 ? Math.round(((task.done as number) / asked) * 100) : null;
-      return `${task.name}: ${pct == null ? 'n/a' : `${pct}% done`}, streak ${task.streak}`;
+      // The unit travels with the number: a weekly task's 4 is four WEEKS, and a
+      // bare "streak 4" reads as days.
+      const unit = task.streakUnit === 'weeks' ? 'weeks' : 'days';
+      return `${task.name}: ${pct == null ? 'n/a' : `${pct}% done`}, streak ${task.streak} ${unit}`;
     }),
     recentNotes: (built.notes ?? []).slice(0, 10),
   };

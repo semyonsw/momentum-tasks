@@ -361,6 +361,37 @@ describe('workoutsToCsv', () => {
     expect(rows[4].endsWith(',false,,,drop')).toBe(true);
   });
 
+  it('keeps each exercise’s sets together, in the workout’s exercise order', () => {
+    // As `draftToSetHistory` writes them: setIndex counts within one exercise.
+    const bench = (i: number) => set({ id: `b${i}`, exerciseId: 'ex_a' }, i);
+    const squat = (i: number) => set({ id: `q${i}`, exerciseId: 'ex_b', weightKg: 100 }, i);
+    const gone = set({ id: 'g0', exerciseId: 'ex_gone' }, 0);
+    const exercises = [
+      { exerciseId: 'ex_a', name: 'Bench press' },
+      { exerciseId: 'ex_b', name: 'Squat' },
+    ];
+    // The set column counts within each exercise, as the workout screen does.
+    const expected = [
+      'Bench press,1',
+      'Bench press,2',
+      'Bench press,3',
+      'Squat,1',
+      'Squat,2',
+      'ex_gone,1',
+    ];
+    const lift = (row: string) => row.split(',').slice(3, 5).join(',');
+    for (const sets of [
+      [bench(0), bench(1), bench(2), squat(0), squat(1), gone],
+      // Stored in any order, the export reads the same; an unknown exercise goes last.
+      [gone, squat(1), bench(2), squat(0), bench(0), bench(1)],
+    ]) {
+      const rows = records(
+        workoutsToCsv([workout('w1', at(2026, 10, 3), 'Legs', sets, exercises)]),
+      );
+      expect(rows.slice(1).map(lift)).toEqual(expected);
+    }
+  });
+
   it('a deleted exercise exports under its id rather than vanishing', () => {
     const rows = records(
       workoutsToCsv([workout('w1', at(2026, 10, 3), 'Push', [set({ exerciseId: 'ex_gone' })])]),
