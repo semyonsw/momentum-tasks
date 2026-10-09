@@ -16,7 +16,8 @@
  *   ╭───────────────────────╮
  *   │ LAST WEEK · 28 SEP  ✕ │      the weekly review (X3): Monday until ✕,
  *   │ 3      84%     52,300 │      one sentence a log (lib/weeklyReview.ts)
- *   ╰───────────────────────╯
+ *   │ (✦ Ask the coach…)    │      X4: only with the engagement switch and a
+ *   ╰───────────────────────╯      tested key, and only on a tap (state/weeklySummary.ts)
  *   ╭───────────────────────╮
  *   │ 📖 September, wrapped › │      Wrapped (X1): the first 7 days of a month,
  *   ╰───────────────────────╯      and the year's through Dec–Jan (lib/wrapped.ts)
@@ -78,6 +79,7 @@ import { useLanguage, useT } from '../hooks/useT';
 import { useToday } from '../hooks/useToday';
 import { describeBackupAge } from '../lib/autoBackup';
 import { monthNames, parseDay, weekdayIndex, weekdayNames } from '../lib/days';
+import { engagementOn } from '../lib/engagement';
 import { focusFamily, greetingFor, homeSubline } from '../lib/home';
 import { landingAccount, nextUnansweredTask, quickActions } from '../lib/landing';
 import { balanceOfAccount, categoriesFor, formatValue, inAccount, totalsIn } from '../lib/money';
@@ -93,7 +95,11 @@ import {
   weeklyReview,
   weeklyReviewShown,
   type ReviewColumn,
+  type WeeklyReview,
 } from '../lib/weeklyReview';
+import { weeklySummaryOffered } from '../lib/ai/weeklySummaryPrompt';
+import { useAi } from '../state/aiStore';
+import { askWeeklySummary } from '../state/weeklySummary';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
 import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
@@ -204,6 +210,29 @@ export function LandingScreen({
   const view = useEngagementView();
   const level = useLevel();
   const [levelOpen, setLevelOpen] = useState(false);
+  /* X4: the coach's few sentences about that week — on a tap, never on its own
+     (state/weeklySummary). Held here, not persisted, and tied to the week it was
+     asked about, so next Monday's card starts with the button again. */
+  const engagement = useSettings(engagementOn);
+  const aiStatus = useAi((s) => s.status);
+  const coachOffered = weeklySummaryOffered({ engagement, aiStatus });
+  const [coach, setCoach] = useState<CoachState | null>(null);
+  const coachRun = useRef(0);
+  const askCoach = (shown: WeeklyReview) => {
+    coachRun.current += 1;
+    const run = coachRun.current;
+    const week = shown.week.from;
+    setCoach({ week, phase: 'asking', text: '' });
+    void askWeeklySummary({ review: shown, money: { currency, scale }, engagement }).then(
+      (result) => {
+        if (run !== coachRun.current) return;
+        setCoach(
+          result.kind === 'refused' ? null : { week, phase: result.kind, text: result.text },
+        );
+      },
+    );
+  };
+  const coachNow = coach && review && coach.week === review.week.from ? coach : null;
 
   const themeId = useSettings((s) => s.themeId);
   const lastBackupAt = useSettings((s) => s.lastBackupAt);
@@ -443,6 +472,18 @@ export function LandingScreen({
             columns={describeWeeklyReview(review, { currency, scale }, lang)}
             dismissLabel={t('Dismiss weekly review')}
             onDismiss={() => dismissReview(today)}
+            coach={
+              coachOffered
+                ? {
+                    state: coachNow,
+                    onAsk: () => askCoach(review),
+                    askLabel: t('Ask the coach for a summary'),
+                    askingLabel: t('Asking the coach…'),
+                    retryLabel: t('Try again'),
+                    caption: t('Coach · from these figures only'),
+                  }
+                : undefined
+            }
           />
         ) : null}
         {/* X1: last month's Wrapped in the first week of a month, the year's in
@@ -473,23 +514,45 @@ export function LandingScreen({
   );
 }
 
+/** The coach's summary (X4) as the card holds it: asked, answered, or failed. */
+interface CoachState {
+  /** The Monday of the reviewed week it was asked about. */
+  week: string;
+  phase: 'asking' | 'answer' | 'error';
+  text: string;
+}
+
+interface CoachProps {
+  /** Null until asked: the button. */
+  state: CoachState | null;
+  onAsk: () => void;
+  askLabel: string;
+  askingLabel: string;
+  retryLabel: string;
+  caption: string;
+}
+
 /**
  * The weekly review: a kicker with its ✕, then one column per log that had
  * something last week — a label, the figure, and the sentence under it. Not a
- * door: it is read here and has nowhere better to go, so the only target on it
- * is the ✕ (44 dp). Columns share the width equally, so two columns read wider
- * rather than leaving a hole where the empty log would have been.
+ * door: it is read here and has nowhere better to go, so the only targets on it
+ * are the ✕ (44 dp) and, when X4 is offered, the coach's pill. Columns share the
+ * width equally, so two columns read wider rather than leaving a hole where the
+ * empty log would have been.
  */
 function WeeklyReviewCard({
   kicker,
   columns,
   dismissLabel,
   onDismiss,
+  coach,
 }: {
   kicker: string;
   columns: ReviewColumn[];
   dismissLabel: string;
   onDismiss: () => void;
+  /** X4, only with the engagement switch on and a tested key; absent, the card is X3. */
+  coach?: CoachProps;
 }) {
   return (
     <View
@@ -565,6 +628,113 @@ function WeeklyReviewCard({
           </View>
         ))}
       </View>
+      {coach ? <CoachSummary {...coach} /> : null}
+    </View>
+  );
+}
+
+/**
+ * Under the columns: a lit 44 dp pill until tapped, then a quiet line while
+ * Gemini reads, then the paragraph with a micro caption saying where it came
+ * from — or the failure's sentence with Try again. No spinner and no sweep: the
+ * summary is a paragraph, and it arrives like one.
+ */
+function CoachSummary({ state, onAsk, askLabel, askingLabel, retryLabel, caption }: CoachProps) {
+  if (state === null) {
+    return (
+      <Pressable
+        onPress={onAsk}
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          {
+            marginTop: 14,
+            marginRight: 8,
+            minHeight: 44,
+            paddingHorizontal: 14,
+            borderRadius: 9999,
+            flexDirection: 'row',
+            alignItems: 'center',
+            alignSelf: 'flex-start',
+            gap: 8,
+            backgroundColor: tint(0.13),
+            borderWidth: 1,
+            borderColor: tint(0.3),
+          },
+          pressedStyle({ pressed }),
+        ]}
+      >
+        <Icon name="sparkle" size={16} color={palette.acc} />
+        <Text
+          maxFontSizeMultiplier={1.3}
+          style={{ fontSize: 14 }}
+          className="font-semibold text-ink"
+        >
+          {askLabel}
+        </Text>
+      </Pressable>
+    );
+  }
+  if (state.phase === 'asking') {
+    return (
+      <View style={{ marginTop: 14, minHeight: 44, justifyContent: 'center' }}>
+        <Text
+          maxFontSizeMultiplier={1.3}
+          accessibilityLiveRegion="polite"
+          style={{ fontSize: 13 }}
+          className="text-ink-muted"
+        >
+          {askingLabel}
+        </Text>
+      </View>
+    );
+  }
+  if (state.phase === 'error') {
+    return (
+      <View style={{ marginTop: 14, marginRight: 8, gap: 2 }}>
+        <Text
+          maxFontSizeMultiplier={1.3}
+          accessibilityLiveRegion="polite"
+          style={{ fontSize: 13, lineHeight: 17 }}
+          className="text-ink-muted"
+        >
+          {state.text}
+        </Text>
+        <Pressable
+          onPress={onAsk}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+            pressedStyle({ pressed }),
+          ]}
+        >
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 14, color: palette.acc }}
+            className="font-semibold"
+          >
+            {retryLabel}
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
+  return (
+    <View style={{ marginTop: 14, marginRight: 8, gap: 4 }}>
+      <Text
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 12.5, letterSpacing: 0.8, textTransform: 'uppercase' }}
+        className="font-semibold text-ink-faint"
+      >
+        {caption}
+      </Text>
+      <Text
+        maxFontSizeMultiplier={1.3}
+        accessibilityLiveRegion="polite"
+        style={{ fontSize: 14, lineHeight: 20 }}
+        className="text-ink"
+      >
+        {state.text}
+      </Text>
     </View>
   );
 }

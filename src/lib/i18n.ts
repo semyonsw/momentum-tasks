@@ -2126,6 +2126,12 @@ const RU: Record<string, string> = {
   'A week runs Monday to Sunday and starts empty. No streaks.':
     'Неделя идёт с понедельника по воскресенье и начинается с нуля. Без серий.',
   'Weekly goal: {line}. Opens the goal.': 'Цель на неделю: {line}. Открывает настройку.',
+  // X4 · AI weekly summary
+  'Summarize my last week in a few sentences.':
+    'Подведи итоги моей прошлой недели в нескольких предложениях.',
+  'Ask the coach for a summary': 'Попросить ИИ-тренера подвести итоги',
+  'Asking the coach…': 'Спрашиваю ИИ-тренера…',
+  'Coach · from these figures only': 'ИИ-тренер · только по этим цифрам',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */
