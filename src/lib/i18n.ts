@@ -2110,6 +2110,9 @@ const RU: Record<string, string> = {
     'Одна за каждые {n} дней подряд. Можно держать до {max}. Осознанному пропуску она не нужна.',
   'Used on {days}.': 'Дни под заморозкой: {days}.',
   '{n} streak freezes held. Open': 'Заморозок серии: {n}. Открыть',
+  // E4 · milestones (design 2)
+  Milestone: 'Веха',
+  'Since {date}. {n} sets.': 'С {date}. Подходов: {n}.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

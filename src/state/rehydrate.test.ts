@@ -305,6 +305,20 @@ describe('the engagement switch on a cold start (Wave 3)', () => {
     await useSettings.persist.rehydrate();
     expect(useSettings.getState().engagement).toBe(true);
   });
+
+  it('the milestone stamp: absent on a 2.2.0 blob, read back when there is one', async () => {
+    const { useSettings, DEFAULT_SETTINGS } = await import('./settingsStore');
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    await AsyncStorage.setItem('settings', JSON.stringify({ version: 1, state: {} }));
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().milestoneShown).toBeUndefined();
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({ version: 1, state: { milestoneShown: 100 } }),
+    );
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().milestoneShown).toBe(100);
+  });
 });
 
 describe('a task log with missed-on-purpose days, from before the tap toggled', () => {

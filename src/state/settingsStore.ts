@@ -67,6 +67,7 @@ import { INTERVALS, type Direction, type Interval } from '../lib/money';
 import type { Weekday } from '../lib/tasks';
 import { TREND_RANGES, type TrendRange } from '../lib/trends';
 import { usableEngagement } from '../lib/engagement';
+import { milestoneAfterSave, usableMilestone } from '../lib/milestones';
 import type { MuscleCluster, UnitSystem } from '../types/models';
 
 export interface Settings {
@@ -340,6 +341,12 @@ export interface Settings {
    * key and come up exactly as they were. Never a stored `false`.
    */
   engagement?: true;
+  /**
+   * E4: the highest workout milestone (50, 100, 250, 500…) already celebrated
+   * on a Finish sheet — stored because "celebrated" is not something the log
+   * can say. See `lib/milestones.ts`. OPTIONAL, absent = none yet.
+   */
+  milestoneShown?: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -402,6 +409,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bodyMeasurements: undefined,
   // Off by default (IMPLEMENTATION_DECISIONS row 6): nothing keeps score unasked.
   engagement: undefined,
+  milestoneShown: undefined,
 };
 
 /**
@@ -540,6 +548,7 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     bodyMeasurements: sanitizeMeasurements(raw.bodyMeasurements),
     // Only a literal `true` is on, so junk and a 2.2.0 blob both read as off.
     engagement: usableEngagement(raw.engagement),
+    milestoneShown: usableMilestone(raw.milestoneShown),
   };
 }
 
@@ -752,6 +761,8 @@ interface SettingsState extends Settings {
 
   /** Wave 3's one switch. Off writes nothing (the key goes absent). */
   setEngagement: (on: boolean) => void;
+  /** E4: a Finish sheet that showed milestone `n` was saved. Never lowers it. */
+  recordMilestone: (n: number) => void;
 
   resetToDefaults: () => void;
   /**
@@ -916,6 +927,13 @@ export const useSettings = create<SettingsState>()(
 
       setEngagement: (on) => set({ engagement: usableEngagement(on) }),
 
+      recordMilestone: (n) =>
+        set({
+          milestoneShown: usableMilestone(
+            milestoneAfterSave(usableMilestone(n) ?? null, get().milestoneShown),
+          ),
+        }),
+
       resetToDefaults: () =>
         /*
          * The gyms, the bodyweight log and the granted folder are NOT settings in
@@ -954,6 +972,9 @@ export const useSettings = create<SettingsState>()(
           weeklyReviewDismissed: get().weeklyReviewDismissed,
           // A record, like the bodyweight log: the reset is about durations.
           bodyMeasurements: get().bodyMeasurements,
+          // A celebration that happened is a record, not a switch: resetting
+          // the timers must not let "Workout 100" be celebrated a second time.
+          milestoneShown: get().milestoneShown,
         }),
 
       importSettings: (raw) =>

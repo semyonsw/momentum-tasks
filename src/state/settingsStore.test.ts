@@ -751,3 +751,36 @@ describe('the engagement switch (Wave 3)', () => {
     expect(currentSettings().engagement).toBeUndefined();
   });
 });
+
+describe('the milestone stamp (E4)', () => {
+  it('is absent by default and on a 2.2.0 blob', () => {
+    expect(DEFAULT_SETTINGS.milestoneShown).toBeUndefined();
+    expect(sanitizeSettings({}).milestoneShown).toBeUndefined();
+  });
+
+  it('keeps only a real milestone', () => {
+    expect(sanitizeSettings({ milestoneShown: 100 }).milestoneShown).toBe(100);
+    for (const junk of [99, '100', -1, null]) {
+      expect(
+        sanitizeSettings({ milestoneShown: junk } as unknown as Partial<Settings>).milestoneShown,
+      ).toBeUndefined();
+    }
+  });
+
+  it('records upward only', () => {
+    useSettings.getState().recordMilestone(100);
+    expect(currentSettings().milestoneShown).toBe(100);
+    useSettings.getState().recordMilestone(50);
+    expect(currentSettings().milestoneShown).toBe(100);
+    useSettings.getState().recordMilestone(99);
+    expect(currentSettings().milestoneShown).toBe(100);
+    useSettings.getState().recordMilestone(250);
+    expect(currentSettings().milestoneShown).toBe(250);
+  });
+
+  it('survives Reset every setting — a celebration is not a switch', () => {
+    useSettings.getState().recordMilestone(100);
+    useSettings.getState().resetToDefaults();
+    expect(currentSettings().milestoneShown).toBe(100);
+  });
+});

@@ -50,8 +50,10 @@ export interface EngagementView {
   level: boolean;
   /** Streak freezes: the overlay on the streak, the ❄ on the flame, its sheet (E3). */
   freezes: boolean;
+  /** The one-time milestone card on the Finish sheet (E4). */
+  milestones: boolean;
 }
 
 export function engagementView(on: boolean): EngagementView {
-  return { badges: on, level: on, freezes: on };
+  return { badges: on, level: on, freezes: on, milestones: on };
 }

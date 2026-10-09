@@ -181,6 +181,8 @@ import { useWorkoutHistory } from '../state/workoutHistoryStore';
 import { formatCount, formatWeight, unitLabel } from '../lib/units';
 import { useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStore';
 import { platesInForce, useSettings } from '../state/settingsStore';
+import { useEngagementView } from '../hooks/useEngagement';
+import { describeMilestone, milestoneCard, milestoneDue } from '../lib/milestones';
 import { PrimaryButton, Separator, TextButton } from '../components/primitives';
 import { Sheet } from '../components/Sheet';
 import { SetMarksSheet } from '../components/SetMarksSheet';
@@ -710,6 +712,43 @@ export function ActiveWorkoutScreen({
     },
     [bodyweightLog, historyWorkouts],
   );
+  /*
+   * E4: the milestone card — only with Wave 3's switch on, only for a number
+   * above the one already celebrated (`lib/milestones.ts`). Stamped in
+   * `commitFinish` once the save lands, so `Keep going` does not spend it.
+   */
+  const milestonesOn = useEngagementView().milestones;
+  const milestoneShown = useSettings((s) => s.milestoneShown);
+  const recordMilestone = useSettings((s) => s.recordMilestone);
+  const milestone = useMemo(() => {
+    if (confirming !== 'finish' || !session) return null;
+    const due = milestoneDue({
+      on: milestonesOn,
+      workoutNumber: workoutNumber ?? null,
+      shown: milestoneShown,
+    });
+    if (due == null) return null;
+    return {
+      n: due,
+      ...describeMilestone(
+        milestoneCard(due, historyWorkouts, {
+          startedAt: session.startedAt ?? null,
+          loggedSets: progress.done,
+        }),
+        lang,
+      ),
+    };
+  }, [
+    confirming,
+    historyWorkouts,
+    lang,
+    milestoneShown,
+    milestonesOn,
+    progress.done,
+    session,
+    workoutNumber,
+  ]);
+
   const finishRecords = useMemo((): FinishRecord[] => {
     if (confirming !== 'finish' || !session) return [];
     return findRecords(session).map((record) => {
@@ -735,6 +774,7 @@ export function ActiveWorkoutScreen({
       setConfirming(null);
       const draft = useActiveWorkout.getState().session;
       if (!draft) return;
+      const celebrated = milestone?.n ?? null;
       try {
         await onFinish(draft, updatePlan);
       } catch (error) {
@@ -745,10 +785,12 @@ export function ActiveWorkoutScreen({
         });
         return;
       }
+      // Saved: the card this sheet showed has now been seen, once.
+      if (celebrated != null) recordMilestone(celebrated);
       finishSession();
       onExit();
     },
-    [finishSession, onExit, onFinish, t],
+    [finishSession, milestone, onExit, onFinish, recordMilestone, t],
   );
 
   /**
@@ -1249,6 +1291,7 @@ export function ActiveWorkoutScreen({
           planChange={describePlannedSetDiff(planChanges, lang)}
           ladderChange={ladderChange}
           records={finishRecords}
+          milestone={milestone}
           effort={session.effort}
           onSetEffort={(effort) => {
             tap();

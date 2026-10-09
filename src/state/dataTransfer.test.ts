@@ -602,6 +602,33 @@ describe('the engagement switch (Wave 3)', () => {
   });
 });
 
+describe('the milestone stamp (E4)', () => {
+  it('travels in a backup, and a 2.2.0 backup has none', () => {
+    useSettings.getState().recordMilestone(250);
+    const text = exportBackupText();
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    expect(useSettings.getState().milestoneShown).toBeUndefined();
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useSettings.getState().milestoneShown).toBe(250);
+
+    const v220 = JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 1,
+      settings: { restSecondsBetweenSets: 90 },
+      exercises: [],
+      routines: [],
+      workouts: [],
+    });
+    const old = parseBackup(v220);
+    if (!old.ok) throw new Error(old.error);
+    applyBackup(old.envelope);
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
+    expect(useSettings.getState().milestoneShown).toBeUndefined();
+  });
+});
+
 describe('the money scale (U25)', () => {
   it('a 2.2.0 backup with amounts imports them unchanged, in whole units', async () => {
     const { useMoney } = await import('./moneyStore');
