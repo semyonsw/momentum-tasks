@@ -1843,6 +1843,8 @@ const RU: Record<string, string> = {
   '{n} due': 'к оплате: {n}',
   'Rent, subscriptions': 'Аренда, подписки',
   '+{n} more due': 'Ещё к оплате: {n}',
+  // M3 · forecast (design copy money.forecast)
+  '≈ {amount} on {date} · estimate': '≈ {amount} к {date} · оценка',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

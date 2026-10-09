@@ -135,6 +135,14 @@
  * share. The arc reads the month the window's day is in, so it leaves on a year
  * or all-time window, where no single month is being read.
  *
+ * Under the balance, a month-end FORECAST (M3) when there are two weeks of
+ * history to base it on: `≈ 212,400 AMD on 31 October · estimate` — this
+ * subsection's balance less its planned payments and its average day
+ * (`lib/forecast.ts`). The word `estimate` is in the line, never a tooltip. The
+ * design's dotted projection is not drawn: this panel has no chart, and the
+ * history's balance chart spans ranges up to all time, where a month's tail
+ * would be a dot.
+ *
  * Recurring payments (M2) are the second door, and the one plan that comes to
  * THIS screen on its own: on a payment's day a "Due today" card under the
  * balance asks `Confirm` / `Skip this month`, oldest occurrence first, for every
@@ -193,6 +201,7 @@ import {
   type RecurringPayment,
 } from '../lib/recurring';
 import { useToday } from '../hooks/useToday';
+import { describeForecast, monthEndForecast } from '../lib/forecast';
 import { budgetStatus, tileBudgetLine, visibleBudgets, type BudgetStatus } from '../lib/budgets';
 import { holdActions } from '../lib/discoverability';
 import { TOUCH_MIN } from '../lib/hitTarget';
@@ -444,6 +453,19 @@ export function MoneyScreen({
    * subsection. Oldest first; the card asks about one at a time.
    */
   const due = useMemo(() => dueList(recurring ?? [], today), [recurring, today]);
+
+  /* M3 — this subsection's month end, or nothing (too little history). */
+  const forecast = useMemo(
+    () =>
+      monthEndForecast({
+        accounts,
+        amounts,
+        recurring: recurring ?? [],
+        accountId: account.id,
+        today,
+      }),
+    [account.id, accounts, amounts, recurring, today],
+  );
   const nameOfPayment = (item: RecurringPayment) =>
     item.name || categories.find((category) => category.id === item.categoryId)?.name || '';
   const confirmDue = (occurrence: DueOccurrence) => {
@@ -634,6 +656,15 @@ export function MoneyScreen({
                   {currency}
                 </Text>
               </Pressable>
+              {/* M3 — labelled an estimate IN the line: the word is part of the figure. */}
+              {forecast ? (
+                <Text
+                  maxFontSizeMultiplier={1.3}
+                  className="mt-xs text-label font-medium tabular-nums text-ink-muted"
+                >
+                  {describeForecast(forecast, currency, units, lang)}
+                </Text>
+              ) : null}
               <Text className="mt-xs text-label text-ink-faint">
                 {t('Tap to set what you actually have here')}
               </Text>

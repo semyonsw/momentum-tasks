@@ -59,7 +59,6 @@
  */
 
 import {
-  daysBetween,
   formatMonth,
   formatShortDay,
   parseDay,
@@ -463,9 +462,4 @@ export function describeTotals(
   if (sums.yearly > 0)
     parts.push(t('{amount} a year', lang, { amount: formatMoney(sums.yearly, currency, scale) }));
   return parts.join(' · ');
-}
-
-/** Days from today to a date — the forecast and the row both lean on it. */
-export function daysUntil(today: string, date: string): number {
-  return daysBetween(today, date);
 }
