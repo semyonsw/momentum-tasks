@@ -5,6 +5,10 @@
  *   ≥7      ( 🜂 12 )   green at 12%, edged — a week is the first threshold
  *   ≥21     ( 🜂 34 )   green at 20%, a brighter edge
  *
+ * Those are days. A run of weeks (a weekly task, drawn with `unit`) is warm
+ * from 1 week and hot from 3 — the same spans of time; the decision and why
+ * are in `lib/streakTemperature.ts`.
+ *
  * ── WHY THREE STEPS AND NOT A GRADIENT ────────────────────────────────────
  *
  * A continuous ramp from day 1 to day 100 is a colour nobody can read a value
@@ -37,11 +41,8 @@ import { Pressable, Text, View } from 'react-native';
 
 import { Icon } from './Icon';
 import { RollingNumber } from './RollingNumber';
+import { streakTemperature } from '../lib/streakTemperature';
 import { palette, radius, tint } from '../theme/tokens';
-
-/** A week, and three weeks. The two numbers this badge is a function of. */
-const WARM = 7;
-const HOT = 21;
 
 export function StreakFlame({
   streak,
@@ -60,8 +61,11 @@ export function StreakFlame({
   /** E3: the chip's spoken label while it is a button. */
   freezesLabel?: string;
 }) {
-  const hot = streak >= HOT;
-  const warm = streak >= WARM;
+  // A unit is only ever passed for a run of weeks, so its presence is the
+  // run's kind; the thresholds per kind are `lib/streakTemperature.ts`.
+  const temperature = streakTemperature(streak, unit ? 'week' : 'day');
+  const hot = temperature === 'hot';
+  const warm = temperature !== 'cold';
   // Above the early return, for the rules of hooks: a fresh style object would
   // defeat RollingNumber's memo.
   const numberStyle = useMemo(
