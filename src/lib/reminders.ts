@@ -60,6 +60,35 @@
  *
  * A one-day task is all dated, so for it the log decides everything: ticked
  * off before its time, it never buzzes at all.
+ *
+ * ── A PAUSE TURNS THE REPEAT INTO DATED ALERTS, FOR AS LONG AS IT MATTERS ──
+ *
+ * A pause (T-03) is the missed-on-purpose mark written on each day ahead, and
+ * a repeat cannot read the log — so a daily 07:00 went on buzzing through the
+ * holiday the user had just told the app about. While a task has an excused
+ * day within `PAUSE_LOOKAHEAD_DAYS`, its own alert is therefore planned DAY BY
+ * DAY instead (`plainAlarmDays`): every asking day from today to
+ * `AFTER_PAUSE_DAYS` past the last excused one, skipping the excused days and
+ * whatever the follow-up rule already treats as finished (an answered day, a
+ * weekly task's met week). With nothing excused ahead, the repeat stays, and
+ * with it everything the section above argues for.
+ *
+ * Rejected: dating EVERY task's alert for the next fortnight. It would make
+ * the pause case uniform, and bring back the failure the repeat exists to
+ * avoid, for every user, every fortnight they do not open the app. Rejected
+ * too: cancelling the repeat for the pause and re-arming it after — Android's
+ * repeat has no "not before", so the re-arm needs a sync on the right day,
+ * which is the dated scheme with extra steps. What this costs instead: a pause
+ * starting more than four weeks out keeps the repeat until a sync falls
+ * inside those four weeks (any launch does), and somebody who opens the app
+ * neither during the pause nor for two weeks after it gets silence after
+ * that, not a buzz on a day they excused. Silence is the right half to lose.
+ *
+ * The budget: Android holds ~500 alarms per app, shared with the rest timer.
+ * Dated plain alerts are capped at `MAX_PAUSED_ALERTS_PER_TASK` each and
+ * `MAX_PAUSED_ALERTS` in all (soonest kept), follow-ups at `MAX_FOLLOW_UPS`,
+ * and the repeats are one per task-weekday — so the queue stays well under it.
+ * Excused days cost nothing, which is why a long pause is cheap.
  */
 
 import { parseClockTime, parseDay, shiftDay } from './days';
@@ -68,6 +97,7 @@ import {
   asksOn,
   describeSchedule,
   entryOf,
+  PAUSE_MAX_DAYS,
   weekProgress,
   type Task,
   type TaskLog,
@@ -139,6 +169,63 @@ export const MAX_FOLLOW_UPS_PER_DAY = 12;
  */
 export const MAX_FOLLOW_UPS = 120;
 
+/** An excused day closer than this switches a task's repeat to dated alerts. */
+export const PAUSE_LOOKAHEAD_DAYS = 28;
+
+/** How far past the last excused day the dated alerts reach. */
+export const AFTER_PAUSE_DAYS = 14;
+
+/** The most dated plain alerts one paused task holds at once. */
+export const MAX_PAUSED_ALERTS_PER_TASK = PAUSE_LOOKAHEAD_DAYS + AFTER_PAUSE_DAYS;
+
+/**
+ * The most dated plain alerts across every paused task. With `MAX_FOLLOW_UPS`
+ * and the repeats it leaves room under Android's ~500 for the timer's two.
+ */
+export const MAX_PAUSED_ALERTS = 200;
+
+/** Far enough to find the end of the longest pause `excuseRange` writes. */
+const PAUSE_SCAN_DAYS = PAUSE_LOOKAHEAD_DAYS + PAUSE_MAX_DAYS;
+
+/**
+ * Which days a task's own (first) alert must be dated on, or null when the
+ * ordinary repeat is right — see "A PAUSE TURNS THE REPEAT…" in the header.
+ *
+ * Null unless an asking day within `PAUSE_LOOKAHEAD_DAYS` of today (today
+ * included: a skip of today counts) carries the missed-on-purpose mark. Then:
+ * every day from today to `AFTER_PAUSE_DAYS` past the last excused day ahead
+ * that the task asks on, is not answered, and is not in a weekly task's met
+ * week — the same rule follow-ups use — at most `MAX_PAUSED_ALERTS_PER_TASK`.
+ * Not-begun and one-day tasks never reach here (`planReminders` handles them).
+ */
+export function plainAlarmDays(task: Task, log: TaskLog, today: string): string[] | null {
+  const excused = (day: string) =>
+    asksOn(task, day) && entryOf(log, task.id, day).mark === 'missed';
+  let first: string | null = null;
+  for (let i = 0; i < PAUSE_LOOKAHEAD_DAYS && first === null; i += 1) {
+    const day = shiftDay(today, i);
+    if (excused(day)) first = day;
+  }
+  if (first === null) return null;
+
+  const horizon = shiftDay(today, PAUSE_SCAN_DAYS);
+  let last = first;
+  for (const day of Object.keys(log[task.id] ?? {})) {
+    if (day > last && day <= horizon && excused(day)) last = day;
+  }
+
+  const end = shiftDay(last, AFTER_PAUSE_DAYS);
+  const days: string[] = [];
+  for (let day = today; day <= end; day = shiftDay(day, 1)) {
+    if (!asksOn(task, day)) continue;
+    if (entryOf(log, task.id, day).mark !== null) continue;
+    if (weekProgress(task, log, day)?.met === true) continue;
+    days.push(day);
+    if (days.length >= MAX_PAUSED_ALERTS_PER_TASK) break;
+  }
+  return days;
+}
+
 /**
  * The whole plan: every alert this app wants Android to be holding.
  *
@@ -149,6 +236,7 @@ export const MAX_FOLLOW_UPS = 120;
 export function planReminders(input: ReminderInputs): PlannedReminder[] {
   const plan: PlannedReminder[] = [];
   const followUps: (PlannedReminder & { at: number })[] = [];
+  const pausedAlerts: (PlannedReminder & { at: number })[] = [];
   const todayKey = dayKeyOf(input.now);
   const log = input.log ?? {};
   const answered = (task: Task, day: string) => entryOf(log, task.id, day).mark !== null;
@@ -199,6 +287,23 @@ export function planReminders(input: ReminderInputs): PlannedReminder[] {
     // weekly alert that would start early.
     if (task.startedOn > todayKey) continue;
 
+    // A pause ahead: the repeat would ring through it, so the days are dated.
+    const dated = plainAlarmDays(task, log, todayKey);
+    if (dated) {
+      for (const day of dated) {
+        const fireAt = instantOn(day, at.hour, at.minute);
+        if (fireAt == null || fireAt - input.now.getTime() < MIN_LEAD_MS) continue;
+        pausedAlerts.push({
+          id: `task:${task.id}:${day}`,
+          title,
+          body,
+          trigger: { kind: 'date', at: fireAt },
+          at: fireAt,
+        });
+      }
+      continue;
+    }
+
     // A weekly task is offered every day, so its alert is a daily one.
     if (task.schedule.kind === 'daily' || task.schedule.kind === 'weekly') {
       plan.push({
@@ -232,6 +337,11 @@ export function planReminders(input: ReminderInputs): PlannedReminder[] {
         });
       }
     }
+  }
+
+  pausedAlerts.sort((a, b) => a.at - b.at);
+  for (const { id, title, body, trigger } of pausedAlerts.slice(0, MAX_PAUSED_ALERTS)) {
+    plan.push({ id, title, body, trigger });
   }
 
   // Soonest first, so the cap drops the far end of the window, which a later

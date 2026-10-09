@@ -10,7 +10,8 @@
  *
  * The plan is a function of the tasks, their log, the workout schedule and the
  * language (`lib/reminders.ts`), so all four are subscribed — the log because
- * an answered day is what stops a task's follow-ups. Renaming a task has to
+ * an answered day is what stops a task's follow-ups, and an excused day ahead
+ * (a pause) is what turns its repeat into dated alerts that skip it. Renaming a task has to
  * rewrite the alert that carries its name; turning a reminder off has to cancel
  * it; switching to English has to change what the phone says tomorrow morning.
  * Any of those being missed leaves the user looking at a setting that says one
