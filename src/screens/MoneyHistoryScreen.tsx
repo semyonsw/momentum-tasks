@@ -58,6 +58,16 @@
  * The direction chips come WITH it: which of expenses or incomes a line is drawn
  * from is a property of the line, and reaching back to the tiles on the previous
  * screen to change it would be the one control that stayed behind.
+ *
+ * ── DAY | CALENDAR (M4) ────────────────────────────────────────────────────
+ *
+ * The header switch is the task history's (Month | Year | Trend): the same
+ * place, the same control. `Calendar` is a month of spending as squares
+ * (`components/MoneyCalendar`), for the same subsection, and its `Open this
+ * day` lands back on `Day` at the day tapped — the day list is the one place a
+ * day's amounts are read in full, so the calendar points at it rather than
+ * growing a second one. Local state, like the task history's view: it opens on
+ * `Day`, which is what the ⟲ has always opened.
  */
 
 import { useMemo, useState } from 'react';
@@ -70,7 +80,15 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { SettingsFootRow } from '../components/SettingsFootRow';
 import { TrendChart } from '../components/TrendChart';
 import { pressedStyle } from '../components/motion';
-import { GlassCard, Kicker, SelectChip, Separator, TextButton } from '../components/primitives';
+import { MoneyCalendar } from '../components/MoneyCalendar';
+import {
+  GlassCard,
+  Kicker,
+  Segmented,
+  SelectChip,
+  Separator,
+  TextButton,
+} from '../components/primitives';
 import { dayKey, formatLongDay, shiftDay } from '../lib/days';
 import { tap } from '../lib/feedback';
 import {
@@ -106,6 +124,13 @@ function directions(t: Translate) {
   return [
     { value: 'expense' as const, label: t('Expenses') },
     { value: 'income' as const, label: t('Incomes') },
+  ];
+}
+
+function views(t: Translate) {
+  return [
+    { value: 'day' as const, label: t('Day') },
+    { value: 'calendar' as const, label: t('Calendar') },
   ];
 }
 
@@ -157,6 +182,7 @@ export function MoneyHistoryScreen({
   const [direction, setDirection] = useState<Direction>(
     () => useSettings.getState().moneyDefaultDirection,
   );
+  const [view, setView] = useState<'day' | 'calendar'>('day');
 
   const today = dayKey(new Date());
   /*
@@ -204,191 +230,222 @@ export function MoneyHistoryScreen({
         kicker={`${t('Finance history')} · ${account.name}`}
         onBack={onBack}
         bordered={false}
-      />
+      >
+        <View className="mt-md">
+          <Segmented
+            options={views(t)}
+            value={view}
+            onChange={setView}
+            accessibilityLabel={t('The day or the calendar')}
+          />
+        </View>
+      </ScreenHeader>
 
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        <Kicker className="mx-lg mb-sm">{t('One day at a time')}</Kicker>
+        {view === 'calendar' ? (
+          <MoneyCalendar
+            amounts={all}
+            accountId={account.id}
+            categories={categories}
+            currency={currency}
+            scale={scale}
+            today={today}
+            day={day}
+            onOpenDay={(picked) => {
+              tap();
+              onChangeDay(picked);
+              setView('day');
+            }}
+          />
+        ) : (
+          <>
+            <Kicker className="mx-lg mb-sm">{t('One day at a time')}</Kicker>
 
-        {/* THE DAY. Both directions, every category, and the note on its own line —
+            {/* THE DAY. Both directions, every category, and the note on its own line —
             see the file header. The chevrons step ONE day, like the window picker
             on the money screen, so where a tap lands is never a surprise; `Today`
             is the way back from a walk into last month. */}
-        <View className="mx-lg flex-row items-center">
-          <Pressable
-            onPress={() => {
-              tap();
-              onChangeDay(shiftDay(day, -1));
-            }}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel={t('The day before')}
-            style={pressedStyle}
-            className="h-hit w-[32px] items-center justify-center"
-          >
-            <Icon name="chevron-left" size={20} color={palette.inkMuted} />
-          </Pressable>
-          <Text className="flex-1 text-center text-body font-medium tabular-nums text-ink">
-            {formatLongDay(day, lang)}
-          </Text>
-          <Pressable
-            onPress={() => {
-              tap();
-              onChangeDay(shiftDay(day, 1));
-            }}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel={t('The day after')}
-            style={pressedStyle}
-            className="h-hit w-[32px] items-center justify-center"
-          >
-            <Icon name="chevron-right" size={20} color={palette.inkMuted} />
-          </Pressable>
-        </View>
-
-        {dayRows.length > 0 ? (
-          <>
-            <GlassCard className="mx-lg mt-sm">
-              {dayRows.map((row, index) => (
-                <View key={row.id}>
-                  {index > 0 ? <Separator /> : null}
-                  <DayRow
-                    amount={row}
-                    category={namesById[row.categoryId] ?? null}
-                    currency={currency}
-                    onPress={() => onOpenAmount(row.id)}
-                  />
-                </View>
-              ))}
-            </GlassCard>
-            <Text className="mx-lg mt-sm text-label tabular-nums text-ink-faint">
-              {t('Spent {spent} · received {received}', {
-                spent: money(dayTotals.spent),
-                received: money(dayTotals.received),
-              })}
-            </Text>
-          </>
-        ) : (
-          <Text className="mx-lg mt-sm text-label text-ink-faint">
-            {t(
-              'Nothing recorded on this day. A whole-month amount is on no day at all, so it is not here either.',
-            )}
-          </Text>
-        )}
-
-        {day !== today ? (
-          <View className="mx-lg">
-            <TextButton
-              label={t('Today')}
-              onPress={() => {
-                tap();
-                onChangeDay(today);
-              }}
-            />
-          </View>
-        ) : null}
-
-        <Kicker className="mx-lg mb-sm mt-xxl">
-          {direction === 'expense' ? t('Expenses over time') : t('Incomes over time')}
-        </Kicker>
-        <View className="mx-lg flex-row flex-wrap">
-          {directions(t).map((option) => (
-            <SelectChip
-              key={option.value}
-              label={option.label}
-              selected={option.value === direction}
-              onPress={() => {
-                tap();
-                setDirection(option.value);
-              }}
-            />
-          ))}
-        </View>
-        <View className="mx-lg flex-row flex-wrap">
-          {TREND_RANGES.map((option) => (
-            <SelectChip
-              key={option}
-              label={t(TREND_RANGE_LABELS[option])}
-              selected={option === range}
-              onPress={() => {
-                tap();
-                setRange(option);
-              }}
-            />
-          ))}
-        </View>
-
-        {/* A range with nothing in it is not a flat line at zero — it is a range
-            with nothing in it, and the card says so. Every bucket is present by
-            then (`lib/moneyTrends.ts` plots quiet days rather than skipping them),
-            so the length alone would always be enough to draw. */}
-        {series.length >= 2 && trend.total > 0 ? (
-          <>
-            <View className="mx-lg mt-md">
-              <TrendChart points={series} formatValue={(value) => formatValue(value, scale)} />
+            <View className="mx-lg flex-row items-center">
+              <Pressable
+                onPress={() => {
+                  tap();
+                  onChangeDay(shiftDay(day, -1));
+                }}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={t('The day before')}
+                style={pressedStyle}
+                className="h-hit w-[32px] items-center justify-center"
+              >
+                <Icon name="chevron-left" size={20} color={palette.inkMuted} />
+              </Pressable>
+              <Text className="flex-1 text-center text-body font-medium tabular-nums text-ink">
+                {formatLongDay(day, lang)}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  tap();
+                  onChangeDay(shiftDay(day, 1));
+                }}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={t('The day after')}
+                style={pressedStyle}
+                className="h-hit w-[32px] items-center justify-center"
+              >
+                <Icon name="chevron-right" size={20} color={palette.inkMuted} />
+              </Pressable>
             </View>
-            <Text className="mx-lg mt-sm text-label tabular-nums text-ink-faint">
-              {t('{total} over {count} {buckets} · about {average} each', {
-                total: money(trend.total),
-                count: trend.buckets,
-                buckets: bucketNoun(range, trend.buckets, lang),
-                average: money(trend.average),
-              })}
-              {trend.peak
-                ? ` · ${t('most on {label}, {value}', {
-                    label: trend.peak.label,
-                    value: money(trend.peak.value),
-                  })}`
-                : ''}
-            </Text>
 
-            <Kicker className="mx-lg mb-sm mt-xl">{t('Balance over the same range')}</Kicker>
-            <View className="mx-lg">
-              <TrendChart points={balanceLine} formatValue={(value) => formatValue(value, scale)} />
-            </View>
-            <Text className="mx-lg mt-sm text-label text-ink-faint">
-              {t(
-                'Incomes less expenses, running. It starts from what you already had, so the left edge is where the range opened rather than zero.',
-              )}
-            </Text>
-
-            {shares.length > 0 ? (
+            {dayRows.length > 0 ? (
               <>
-                <Kicker className="mx-lg mb-sm mt-xl">{t('Where it went')}</Kicker>
-                <GlassCard className="mx-lg">
-                  {shares.slice(0, 5).map((share, index) => (
-                    <View key={share.categoryId}>
+                <GlassCard className="mx-lg mt-sm">
+                  {dayRows.map((row, index) => (
+                    <View key={row.id}>
                       {index > 0 ? <Separator /> : null}
-                      <ShareRow
-                        glyph={namesById[share.categoryId]?.glyph ?? '•'}
-                        name={namesById[share.categoryId]?.name ?? t('Archived')}
-                        value={share.value}
-                        percent={share.percent}
+                      <DayRow
+                        amount={row}
+                        category={namesById[row.categoryId] ?? null}
                         currency={currency}
+                        onPress={() => onOpenAmount(row.id)}
                       />
                     </View>
                   ))}
                 </GlassCard>
+                <Text className="mx-lg mt-sm text-label tabular-nums text-ink-faint">
+                  {t('Spent {spent} · received {received}', {
+                    spent: money(dayTotals.spent),
+                    received: money(dayTotals.received),
+                  })}
+                </Text>
               </>
-            ) : null}
-          </>
-        ) : (
-          <GlassCard className="mx-lg mt-md p-lg">
-            <Kicker>{t('Not enough yet')}</Kicker>
-            <Text className="mt-sm text-body text-ink-muted">
-              {t('Nothing recorded in this range. Put something in and the line draws itself.')}
-            </Text>
-          </GlassCard>
-        )}
+            ) : (
+              <Text className="mx-lg mt-sm text-label text-ink-faint">
+                {t(
+                  'Nothing recorded on this day. A whole-month amount is on no day at all, so it is not here either.',
+                )}
+              </Text>
+            )}
 
-        <Text className="mx-lg mt-md text-label text-ink-faint">
-          {t(
-            'Up to three months the line is one point a day; past that it is one a month. A whole-month amount has no day to sit on, so it only appears once the buckets are months.',
-          )}
-        </Text>
+            {day !== today ? (
+              <View className="mx-lg">
+                <TextButton
+                  label={t('Today')}
+                  onPress={() => {
+                    tap();
+                    onChangeDay(today);
+                  }}
+                />
+              </View>
+            ) : null}
+
+            <Kicker className="mx-lg mb-sm mt-xxl">
+              {direction === 'expense' ? t('Expenses over time') : t('Incomes over time')}
+            </Kicker>
+            <View className="mx-lg flex-row flex-wrap">
+              {directions(t).map((option) => (
+                <SelectChip
+                  key={option.value}
+                  label={option.label}
+                  selected={option.value === direction}
+                  onPress={() => {
+                    tap();
+                    setDirection(option.value);
+                  }}
+                />
+              ))}
+            </View>
+            <View className="mx-lg flex-row flex-wrap">
+              {TREND_RANGES.map((option) => (
+                <SelectChip
+                  key={option}
+                  label={t(TREND_RANGE_LABELS[option])}
+                  selected={option === range}
+                  onPress={() => {
+                    tap();
+                    setRange(option);
+                  }}
+                />
+              ))}
+            </View>
+
+            {/* A range with nothing in it is not a flat line at zero — it is a range
+            with nothing in it, and the card says so. Every bucket is present by
+            then (`lib/moneyTrends.ts` plots quiet days rather than skipping them),
+            so the length alone would always be enough to draw. */}
+            {series.length >= 2 && trend.total > 0 ? (
+              <>
+                <View className="mx-lg mt-md">
+                  <TrendChart points={series} formatValue={(value) => formatValue(value, scale)} />
+                </View>
+                <Text className="mx-lg mt-sm text-label tabular-nums text-ink-faint">
+                  {t('{total} over {count} {buckets} · about {average} each', {
+                    total: money(trend.total),
+                    count: trend.buckets,
+                    buckets: bucketNoun(range, trend.buckets, lang),
+                    average: money(trend.average),
+                  })}
+                  {trend.peak
+                    ? ` · ${t('most on {label}, {value}', {
+                        label: trend.peak.label,
+                        value: money(trend.peak.value),
+                      })}`
+                    : ''}
+                </Text>
+
+                <Kicker className="mx-lg mb-sm mt-xl">{t('Balance over the same range')}</Kicker>
+                <View className="mx-lg">
+                  <TrendChart
+                    points={balanceLine}
+                    formatValue={(value) => formatValue(value, scale)}
+                  />
+                </View>
+                <Text className="mx-lg mt-sm text-label text-ink-faint">
+                  {t(
+                    'Incomes less expenses, running. It starts from what you already had, so the left edge is where the range opened rather than zero.',
+                  )}
+                </Text>
+
+                {shares.length > 0 ? (
+                  <>
+                    <Kicker className="mx-lg mb-sm mt-xl">{t('Where it went')}</Kicker>
+                    <GlassCard className="mx-lg">
+                      {shares.slice(0, 5).map((share, index) => (
+                        <View key={share.categoryId}>
+                          {index > 0 ? <Separator /> : null}
+                          <ShareRow
+                            glyph={namesById[share.categoryId]?.glyph ?? '•'}
+                            name={namesById[share.categoryId]?.name ?? t('Archived')}
+                            value={share.value}
+                            percent={share.percent}
+                            currency={currency}
+                          />
+                        </View>
+                      ))}
+                    </GlassCard>
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <GlassCard className="mx-lg mt-md p-lg">
+                <Kicker>{t('Not enough yet')}</Kicker>
+                <Text className="mt-sm text-body text-ink-muted">
+                  {t('Nothing recorded in this range. Put something in and the line draws itself.')}
+                </Text>
+              </GlassCard>
+            )}
+
+            <Text className="mx-lg mt-md text-label text-ink-faint">
+              {t(
+                'Up to three months the line is one point a day; past that it is one a month. A whole-month amount has no day to sit on, so it only appears once the buckets are months.',
+              )}
+            </Text>
+          </>
+        )}
 
         {/* U24: the section's settings, where you notice one is wrong. */}
         {onOpenSettings ? (

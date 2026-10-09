@@ -1610,6 +1610,20 @@ const RU: Record<string, string> = {
     '{year}: {done} из {asked} сделано. Нажмите на квадрат, чтобы увидеть день.',
   'One row a month, one square a day. Hatched days were excused and are out of the count; empty squares asked for nothing.':
     'Строка — месяц, квадрат — день. Заштрихованные дни освобождены и в счёт не входят; пустые квадраты — дни без задач.',
+  // M4 · money calendar
+  Calendar: 'Календарь',
+  'The day or the calendar': 'День или календарь',
+  '{total} spent': 'Потрачено {total}',
+  'Whole month · not on any day': 'За весь месяц · без привязки к дню',
+  'Record an amount and its day fills in here, darker the more it cost.':
+    'Запишите сумму — день закрасится, тем темнее, чем дороже.',
+  'Tap a day for its amounts.': 'Нажмите на день, чтобы увидеть его суммы.',
+  '{day} · nothing spent': '{day} · ничего не потрачено',
+  'mostly {name}': 'в основном {name}',
+  '{day}, {amount} spent': '{day}, потрачено {amount}',
+  '{day}, nothing spent': '{day}, ничего не потрачено',
+  'Expenses only: incomes, and transfers between your accounts, are not spending. The dearest day of the month is the darkest; every other day is shaded against it.':
+    'Только расходы: доходы и переводы между счетами — это не траты. Самый дорогой день месяца — самый тёмный, остальные закрашены относительно него.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */
