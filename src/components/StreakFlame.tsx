@@ -23,10 +23,17 @@
  * a habit list which can only report failure is one people stop answering.
  * Excused days are the same: the streak is KEPT, so the badge is simply not the
  * thing that day's row is about.
+ *
+ * ── THE SNOWFLAKE (E3, Wave 3) ────────────────────────────────────────────
+ *
+ * With the engagement switch on and a freeze held, `❄ n` follows the number,
+ * and the chip becomes a button that opens the freeze sheet. Without
+ * `freezes` (the switch off, a weekly task, none held) the chip is exactly the
+ * chip it always was — not pressable, not a pixel wider.
  */
 
 import { useMemo } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { Icon } from './Icon';
 import { RollingNumber } from './RollingNumber';
@@ -39,10 +46,19 @@ const HOT = 21;
 export function StreakFlame({
   streak,
   unit,
+  freezes = 0,
+  onFreezes,
+  freezesLabel,
 }: {
   streak: number;
   /** A short unit after the number — `wk` for a run of weeks (T2). Absent: days. */
   unit?: string;
+  /** E3: freezes held. 0 (the default) draws no snowflake. */
+  freezes?: number;
+  /** E3: open the freeze sheet. Only used while `freezes` > 0. */
+  onFreezes?: () => void;
+  /** E3: the chip's spoken label while it is a button. */
+  freezesLabel?: string;
 }) {
   const hot = streak >= HOT;
   const warm = streak >= WARM;
@@ -55,7 +71,8 @@ export function StreakFlame({
 
   if (streak < 1) return null;
 
-  return (
+  const frozen = freezes > 0;
+  const chip = (
     <View
       style={{
         height: 26,
@@ -86,6 +103,27 @@ export function StreakFlame({
           {unit}
         </Text>
       ) : null}
+      {frozen ? (
+        <View style={{ marginLeft: 6, flexDirection: 'row', alignItems: 'center' }}>
+          <Icon name="snowflake" size={12} color={palette.acc} />
+          <Text maxFontSizeMultiplier={1.3} style={[numberStyle, { marginLeft: 2 }]}>
+            {freezes}
+          </Text>
+        </View>
+      ) : null}
     </View>
+  );
+
+  if (!frozen || !onFreezes) return chip;
+  return (
+    <Pressable
+      onPress={onFreezes}
+      accessibilityRole="button"
+      accessibilityLabel={freezesLabel}
+      // 26 drawn, 44 to the thumb.
+      hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
+    >
+      {chip}
+    </Pressable>
   );
 }

@@ -48,8 +48,10 @@ export interface EngagementView {
   badges: boolean;
   /** The level chip beside the Landing greeting and its sheet (E2). */
   level: boolean;
+  /** Streak freezes: the overlay on the streak, the ❄ on the flame, its sheet (E3). */
+  freezes: boolean;
 }
 
 export function engagementView(on: boolean): EngagementView {
-  return { badges: on, level: on };
+  return { badges: on, level: on, freezes: on };
 }

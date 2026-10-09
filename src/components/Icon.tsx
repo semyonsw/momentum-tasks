@@ -102,7 +102,13 @@ export type IconName =
    * reads as "had sugar, ticked", so the avoided day gets its own glyph, at the
    * ✓'s weight because it is the same act of saying "I did it".
    */
-  | 'ban';
+  | 'ban'
+  /**
+   * ❄ — a streak freeze (E3, Wave 3). Three strokes through the centre and a
+   * notch at each end of the upright, so it reads as frost and not as an
+   * asterisk at 13 px beside the flame.
+   */
+  | 'snowflake';
 
 interface IconProps {
   name: IconName;
@@ -136,6 +142,7 @@ const STROKE: Record<IconName, number> = {
   more: 2,
   'more-horizontal': 2,
   ban: 2.5,
+  snowflake: 2,
 };
 
 /**
@@ -240,6 +247,13 @@ const PATHS: Record<IconName, string[]> = {
   more: [],
   'more-horizontal': [],
   ban: ['M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0', 'M5.6 5.6l12.8 12.8'],
+  snowflake: [
+    'M12 3v18',
+    'M4.2 7.5l15.6 9',
+    'M4.2 16.5l15.6-9',
+    'M9.5 4.6L12 6.6l2.5-2',
+    'M9.5 19.4L12 17.4l2.5 2',
+  ],
 };
 
 /* Memoised: three primitive props, drawn inside rows and bars that re-render

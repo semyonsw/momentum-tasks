@@ -2100,6 +2100,16 @@ const RU: Record<string, string> = {
     'Опыт только растёт. Пропущенный день ничего не даёт и ничего не отнимает.',
   'Level {n}, {xp} XP. Open the level': 'Уровень {n}, опыт {xp}. Открыть уровень',
   XP: 'опыт',
+  // E3 · streak freezes (design 21)
+  '{n} streak freeze': '{n} заморозка серии',
+  '{n} streak freezes': '{n} заморозок серии',
+  "A freeze covers one day you didn't answer, so the streak carries on.":
+    'Заморозка закрывает один неотмеченный день — серия продолжается.',
+  'It’s used for you, the morning after.': 'Она срабатывает сама, на следующее утро.',
+  'Earn one for every {n} days in a row. Hold up to {max}. Skipping on purpose never needs one.':
+    'Одна за каждые {n} дней подряд. Можно держать до {max}. Осознанному пропуску она не нужна.',
+  'Used on {days}.': 'Дни под заморозкой: {days}.',
+  '{n} streak freezes held. Open': 'Заморозок серии: {n}. Открыть',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

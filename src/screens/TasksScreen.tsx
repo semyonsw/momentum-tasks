@@ -143,6 +143,9 @@ import { SparkBurst, SPARK_MS } from '../components/SparkBurst';
 import { PauseSheet, raisePauseToast } from '../components/PauseSheet';
 import { ProgressRing } from '../components/ProgressRing';
 import { StreakFlame } from '../components/StreakFlame';
+import { FreezeSheet } from '../components/FreezeSheet';
+import { useEngagementView } from '../hooks/useEngagement';
+import { displayedStreak } from '../lib/streakFreeze';
 import { habitStrength, strengthPercent } from '../lib/habitStrength';
 import {
   CommitMark,
@@ -181,7 +184,6 @@ import {
   entryOf,
   isCounted,
   progressOf,
-  streakOf,
   tasksOn,
   unitOf,
   upcomingOnce,
@@ -254,6 +256,9 @@ export function TasksScreen({
   const [pausing, setPausing] = useState(false);
   /** The counted row whose "Set a number…" sheet is up (T1). */
   const [countingFor, setCountingFor] = useState<ID | null>(null);
+  /** E3: the row whose freeze sheet is up (Wave 3 switch on only). */
+  const [freezeFor, setFreezeFor] = useState<ID | null>(null);
+  const freezesOn = useEngagementView().freezes;
   const unpause = useTasks((s) => s.unpause);
 
   const rows = useMemo(() => tasksOn(tasks, day), [tasks, day]);
@@ -332,7 +337,9 @@ export function TasksScreen({
         progress: progressOf(task, entryOf(log, task.id, day)),
         // T2: a weekly row's week — its pips, and the flame's unit.
         week: weekProgress(task, log, day),
-        streak: streakOf(task, log, day),
+        // E3: with Wave 3's switch on, freezes bridge unanswered days — an
+        // overlay on this number only (`lib/streakFreeze.ts`). Off: `streakOf`.
+        frozen: displayedStreak(task, log, day, freezesOn),
         // T4: the 22 dp ring beside the flame — as of the day on screen, like
         // the streak. Null for a one-day task, which then draws no ring.
         strength: habitStrength(task, log, day),
@@ -340,8 +347,10 @@ export function TasksScreen({
         // it twice in one 72 dp card makes both copies read as decoration.
         detail: describeTaskRow(task, log, day, lang, false),
       })),
-    [rows, log, day, lang],
+    [rows, log, day, lang, freezesOn],
   );
+  const openFreezes = useCallback((taskId: ID) => setFreezeFor(taskId), []);
+  const freezeRow = freezeFor ? (rowViews.find((row) => row.task.id === freezeFor) ?? null) : null;
 
   /* The drag: the same hook and the same geometry as every other reorder here. */
   const rowLayouts = useRef<Record<ID, CardLayout>>({});
@@ -605,7 +614,7 @@ export function TasksScreen({
             geometry still adds up. 16 above it — card to card is the rhythm's
             short step; the old 24 read as a new section starting. */}
         <View {...panHandlers} className="mx-lg mt-md">
-          {rowViews.map(({ task, mark, progress, week, streak, strength, detail }) => {
+          {rowViews.map(({ task, mark, progress, week, frozen, strength, detail }) => {
             const isLifted = task.id === lifted;
             return (
               <ReorderRow
@@ -627,7 +636,9 @@ export function TasksScreen({
                     mark={mark}
                     progress={progress}
                     week={week}
-                    streak={streak}
+                    streak={frozen.streak}
+                    freezes={frozen.held}
+                    onFreezes={freezesOn ? openFreezes : undefined}
                     strength={strength}
                     detail={detail}
                     dimmed={lifted != null && !isLifted}
@@ -765,6 +776,15 @@ export function TasksScreen({
             setPausing(false);
             raisePauseToast(written, days, t, onToast, unpause);
           }}
+        />
+      ) : null}
+
+      {freezeRow ? (
+        <FreezeSheet
+          taskName={freezeRow.task.name}
+          held={freezeRow.frozen.held}
+          covered={freezeRow.frozen.covered}
+          onDismiss={() => setFreezeFor(null)}
         />
       ) : null}
 
@@ -991,6 +1011,8 @@ const TaskRow = memo(function TaskRow({
   progress,
   week,
   streak,
+  freezes,
+  onFreezes,
   strength,
   detail,
   dimmed,
@@ -1005,6 +1027,10 @@ const TaskRow = memo(function TaskRow({
   /** A weekly row's week (T2), or null. */
   week: WeekProgress | null;
   streak: number;
+  /** E3: freezes held — 0 with the Wave 3 switch off. */
+  freezes: number;
+  /** E3: open the freeze sheet; absent with the switch off. */
+  onFreezes?: (taskId: ID) => void;
   /** Habit strength 0–100 (T4), or null for a one-day task. */
   strength: number | null;
   detail: string;
@@ -1128,7 +1154,15 @@ const TaskRow = memo(function TaskRow({
               />
             </View>
           )}
-          {missed ? null : <StreakFlame streak={streak} unit={week ? t('wk') : undefined} />}
+          {missed ? null : (
+            <StreakFlame
+              streak={streak}
+              unit={week ? t('wk') : undefined}
+              freezes={freezes}
+              onFreezes={onFreezes ? () => onFreezes(task.id) : undefined}
+              freezesLabel={t('{n} streak freezes held. Open', { n: freezes })}
+            />
+          )}
           <View className="ml-sm">
             <Icon name="chevron-right" size={16} color={palette.inkFaint} />
           </View>

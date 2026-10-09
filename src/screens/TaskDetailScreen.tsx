@@ -77,6 +77,9 @@ import { pressedStyle } from '../components/motion';
 import { FloatingAction, Lamps, type ToastAction } from '../components/glass';
 import { PauseDoorRow, PauseSheet, raisePauseToast } from '../components/PauseSheet';
 import { ProgressRing } from '../components/ProgressRing';
+import { FreezeSheet } from '../components/FreezeSheet';
+import { useEngagementView } from '../hooks/useEngagement';
+import { displayedStreak } from '../lib/streakFreeze';
 import { Sparkline } from '../components/Sparkline';
 import {
   habitStrength,
@@ -107,7 +110,6 @@ import {
   entryOf,
   excusedAhead,
   pausedUntil,
-  streakOf,
   taskMonth,
 } from '../lib/tasks';
 import { useTasks } from '../state/tasksStore';
@@ -142,7 +144,12 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
     () => taskMonth(task, log, cursor.year, cursor.month, today, lang),
     [task, log, cursor, today, lang],
   );
-  const streak = streakOf(task, log, today);
+  /* E3: freezes bridge unanswered days while Wave 3's switch is on — the
+     same overlay the row's flame shows (`lib/streakFreeze.ts`). Off: `streakOf`. */
+  const freezesOn = useEngagementView().freezes;
+  const frozen = displayedStreak(task, log, today, freezesOn);
+  const streak = frozen.streak;
+  const [freezeOpen, setFreezeOpen] = useState(false);
   const note = entryOf(log, task.id, noteDay).note;
   const pausedTo = pausedUntil(task, log, today);
   /* Habit strength (T4): the score and its last 90 days. Null for a one-day
@@ -236,6 +243,21 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
                 {streak}
               </Text>
               <Icon name="flame" size={20} color={palette.acc} />
+              {frozen.held > 0 ? (
+                <Pressable
+                  onPress={() => setFreezeOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('{n} streak freezes held. Open', { n: frozen.held })}
+                  hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                  style={pressedStyle}
+                  className="flex-row items-center"
+                >
+                  <Icon name="snowflake" size={16} color={palette.acc} />
+                  <Text className="ml-[2px] text-label font-semibold tabular-nums text-acc">
+                    {frozen.held}
+                  </Text>
+                </Pressable>
+              ) : null}
               {/* A weekly task's run is weeks (T2), and says so. */}
               {isWeekly(task) ? (
                 <Text className="text-label text-ink-muted">{streakUnit(task, streak, lang)}</Text>
@@ -424,6 +446,15 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
             setEditing(false);
           }}
           onDismiss={() => setEditing(false)}
+        />
+      ) : null}
+
+      {freezeOpen && frozen.held > 0 ? (
+        <FreezeSheet
+          taskName={task.name}
+          held={frozen.held}
+          covered={frozen.covered}
+          onDismiss={() => setFreezeOpen(false)}
         />
       ) : null}
 
