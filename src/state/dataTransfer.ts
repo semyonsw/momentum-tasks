@@ -38,6 +38,8 @@
  */
 
 import { serializeBackup, type BackupCounts, type BackupPayload } from '../lib/backup';
+import { amountsToCsv, workoutsToCsv } from '../lib/csv';
+import { logIsEmpty, moneyScale } from '../lib/moneyUnits';
 import { t } from '../lib/i18n';
 import { chatsForBackup, useAi } from './aiStore';
 import { useDebriefs } from './debriefStore';
@@ -115,6 +117,38 @@ export class UnreadableLogError extends Error {
 export function exportBackupText(now?: Date): string {
   if (useWorkoutHistory.getState().loadFailed) throw new UnreadableLogError();
   return serializeBackup(currentSnapshot(), now);
+}
+
+/**
+ * One log as a spreadsheet (`lib/csv.ts`), straight out of the stores.
+ *
+ * The workouts refuse on an unreadable log for the reason the backup does: an
+ * export taken while the app looks wrong would be a header and nothing else, and
+ * "I exported it, it was empty" is a belief worth not creating. The money scale is
+ * the same rule `useMoneyScale` applies, read once rather than subscribed to.
+ */
+export function exportCsvText(kind: 'amounts' | 'workouts'): string {
+  const settings = useSettings.getState();
+  if (kind === 'workouts') {
+    const history = useWorkoutHistory.getState();
+    if (history.loadFailed) throw new UnreadableLogError();
+    return workoutsToCsv(history.workouts, {
+      numbering: history.numbering,
+      unitSystem: settings.unitSystem,
+    });
+  }
+  const money = useMoney.getState();
+  return amountsToCsv({
+    amounts: money.amounts,
+    accounts: money.accounts,
+    categories: money.categories,
+    scale: moneyScale({
+      pinned: money.scale,
+      empty: logIsEmpty(money.amounts, money.accounts),
+      currency: settings.currencyCode,
+    }),
+    currency: settings.currencyCode,
+  });
 }
 
 /** What a restore actually put on the phone — validated rows, not claimed ones. */

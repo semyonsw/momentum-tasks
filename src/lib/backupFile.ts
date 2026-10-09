@@ -34,15 +34,18 @@ import * as DocumentPicker from 'expo-document-picker';
 import { t, type Language } from './i18n';
 
 /**
- * The one type this app writes.
+ * The backup's type.
  *
- * `saveTextFile` still takes it as a parameter rather than closing over it, because
+ * `saveTextFile` takes the type as a parameter rather than closing over it, because
  * the MIME type is what SAF derives the EXTENSION from — a file written under the
  * wrong one arrives with the wrong suffix holding the right bytes, and every tool
- * that opens it is then wrong about what it is. That is worth a parameter even with
- * one caller.
+ * that opens it is then wrong about what it is. The CSV exports are the second
+ * caller.
  */
 const JSON_MIME = 'application/json';
+
+/** The spreadsheet exports (`lib/csv.ts`). SAF appends `.csv` from this. */
+const CSV_MIME = 'text/csv';
 
 /** Can this platform show a folder picker at all? SAF is Android-only. */
 export function canPickFolder(): boolean {
@@ -200,6 +203,21 @@ export async function saveJsonFile(
   lang: Language = 'en',
 ): Promise<SaveOutcome> {
   return saveTextFile(baseName, contents, JSON_MIME, 'json', lang);
+}
+
+/**
+ * The same flow for a spreadsheet: the folder picker, else the app folder.
+ *
+ * No rotation afterwards, unlike the JSON export: a CSV is a snapshot somebody
+ * takes to a spreadsheet, not the phone's one restorable copy, so two of them in
+ * a folder is two files the user asked for.
+ */
+export async function saveCsvFile(
+  baseName: string,
+  contents: string,
+  lang: Language = 'en',
+): Promise<SaveOutcome> {
+  return saveTextFile(baseName, contents, CSV_MIME, 'csv', lang);
 }
 
 async function saveTextFile(

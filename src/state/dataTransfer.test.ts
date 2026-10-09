@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { UnreadableLogError, applyBackup, currentSnapshot, exportBackupText } from './dataTransfer';
+import {
+  UnreadableLogError,
+  applyBackup,
+  currentSnapshot,
+  exportBackupText,
+  exportCsvText,
+} from './dataTransfer';
+import { useMoney } from './moneyStore';
 import { useLibrary } from './libraryStore';
 import { DEFAULT_SETTINGS, useSettings } from './settingsStore';
 import { useWorkoutHistory } from './workoutHistoryStore';
@@ -324,6 +331,50 @@ describe('a backup is refused when the log could not be read', () => {
     useWorkoutHistory.setState({ loadFailed: false });
 
     expect(() => exportBackupText()).not.toThrow();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe('the CSV exports read the stores', () => {
+  it('workouts: one row per logged set, refused on an unreadable log', () => {
+    useWorkoutHistory.getState().saveSession(loggedDraft('2026-08-17T17:00:00.000Z'));
+    useWorkoutHistory.setState({ loadFailed: false });
+    const sets = useWorkoutHistory.getState().workouts[0].sets.length;
+    const lines = exportCsvText('workouts')
+      .split('\r\n')
+      .filter((l) => l !== '');
+    expect(lines).toHaveLength(1 + sets);
+
+    useWorkoutHistory.setState({ workouts: [], loadFailed: true });
+    expect(() => exportCsvText('workouts')).toThrow(UnreadableLogError);
+    useWorkoutHistory.setState({ loadFailed: false });
+  });
+
+  it('amounts: in the pinned scale and the label the user counts in', () => {
+    useSettings.setState({ currencyCode: 'USD' });
+    useMoney.getState().importMoney({
+      scale: 2,
+      accounts: [{ id: 'cash', name: 'Cash', glyph: '💵', order: 0, opening: 0, archivedAt: null }],
+      categories: [
+        { id: 'food', name: 'Food', glyph: '🍜', direction: 'expense', order: 0, archivedAt: null },
+      ],
+      amounts: [
+        {
+          id: 'a1',
+          categoryId: 'food',
+          accountId: 'cash',
+          direction: 'expense',
+          value: 1250,
+          when: { kind: 'day', date: '2026-10-03' },
+          note: '',
+          createdAt: '2026-10-03T10:00:00.000Z',
+        },
+      ],
+    });
+    expect(exportCsvText('amounts')).toContain(
+      '\r\n2026-10-03,Cash,expense,Food,-12.50,USD,,false\r\n',
+    );
   });
 });
 

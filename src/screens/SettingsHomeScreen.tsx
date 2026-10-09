@@ -52,6 +52,12 @@
  * section: it resets all three sections' settings at once, which is a sentence
  * only this screen can honestly say.
  *
+ * ONE QUIET ROW MORE, for spreadsheets (M7): `Export a spreadsheet (CSV)` opens
+ * a sheet offering the amounts or the workouts. One row and a sheet rather than
+ * two rows, so the data card still reads as one export, one import; muted rather
+ * than green, because it is a way to READ the logs in a spreadsheet, not a way to
+ * keep them — a CSV restores nothing, and there is no CSV import (`lib/csv.ts`).
+ *
  * The automatic backup stays, above them, because it is not an export — it is the
  * thing that makes remembering to export optional, and `lib/backup.ts` is right
  * that protection depending on the user's memory of a menu is not protection.
@@ -67,7 +73,7 @@
  */
 
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -76,6 +82,7 @@ import { ConfirmSheet } from '../components/ConfirmSheet';
 import { Icon } from '../components/Icon';
 import { MaterialSymbol, type SymbolName } from '../components/MaterialSymbol';
 import { FADE_ON, RunningText } from '../components/RunningText';
+import { Sheet } from '../components/Sheet';
 import { LanguageToggle, SectionTopBar } from '../components/SectionTopBar';
 import { BubblePressable } from '../components/bubbles';
 import {
@@ -115,12 +122,19 @@ import {
   pickFolder,
   pickJsonFile,
   readTextFile,
+  saveCsvFile,
   saveJsonFile,
 } from '../lib/backupFile';
+import { csvBaseName } from '../lib/csv';
 import { useLanguage, useT } from '../hooks/useT';
 import { commit, tap } from '../lib/feedback';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_NAMES, type Language } from '../lib/i18n';
-import { applyBackup, currentSnapshot, exportBackupText } from '../state/dataTransfer';
+import {
+  applyBackup,
+  currentSnapshot,
+  exportBackupText,
+  exportCsvText,
+} from '../state/dataTransfer';
 import { SuccessPopup } from '../components/SuccessPopup';
 import { SETTING_LIMITS, useSettings } from '../state/settingsStore';
 import { THEME_PRESETS, themeColors, themeName, type ThemePreset } from '../lib/theme';
@@ -185,6 +199,8 @@ export function SettingsHomeScreen({
   const [confirmingReset, setConfirmingReset] = useState(false);
   /** Which of Custom's three dots has its picker open. */
   const [picking, setPicking] = useState<0 | 1 | 2 | null>(null);
+  /** The two spreadsheet exports' sheet. */
+  const [choosingCsv, setChoosingCsv] = useState(false);
   /** A picker is open or a file is being read. Stops a second tap racing it. */
   const [busy, setBusy] = useState(false);
 
@@ -236,6 +252,38 @@ export function SettingsHomeScreen({
           where: outcome.where,
           counts: describeCounts(onThisPhone(), language),
         })}${adopted ? ` ${t('Automatic backups will go to that folder from now on.')}` : ''}`,
+      );
+    } catch (error) {
+      setStatus({ tone: 'quiet', text: describeError(error, language) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * A SPREADSHEET — one log as CSV (`lib/csv.ts`), through the same folder picker.
+   *
+   * Not a backup, so none of the backup's bookkeeping: no rotation of earlier
+   * files, no `lastBackupAt`, no adopting the folder for automatic copies. Saying
+   * "backed up" over a file that cannot be restored would be the one lie this
+   * screen must not tell.
+   */
+  const exportCsv = async (kind: 'amounts' | 'workouts') => {
+    setChoosingCsv(false);
+    if (busy) return;
+    tap();
+    setBusy(true);
+    setStatus(null);
+    try {
+      const outcome = await saveCsvFile(csvBaseName(kind), exportCsvText(kind), language);
+      if (!outcome.saved) {
+        setStatus({ tone: 'quiet', text: t('No folder picked, so nothing was saved.') });
+        return;
+      }
+      commit();
+      succeed(
+        t('Export successful'),
+        t('Saved {name} to {where}.', { name: outcome.name, where: outcome.where }),
       );
     } catch (error) {
       setStatus({ tone: 'quiet', text: describeError(error, language) });
@@ -364,7 +412,7 @@ export function SettingsHomeScreen({
     }
   };
 
-  const asking = pending != null || confirmingReset || picking != null;
+  const asking = pending != null || confirmingReset || picking != null || choosingCsv;
 
   return (
     <View className="flex-1 bg-bg">
@@ -604,6 +652,15 @@ export function SettingsHomeScreen({
               onPress={() => void importEverything()}
             />
             <Separator inset={0} />
+            {/* Muted: a way to READ the logs elsewhere, not a way to keep them. */}
+            <TextButton
+              label={t('Export a spreadsheet (CSV)')}
+              onPress={() => {
+                tap();
+                setChoosingCsv(true);
+              }}
+            />
+            <Separator inset={0} />
           </GlassSurface>
 
           {status ? (
@@ -701,6 +758,30 @@ export function SettingsHomeScreen({
         />
       ) : null}
 
+      {choosingCsv ? (
+        <Sheet title={t('Export as a spreadsheet')} onDismiss={() => setChoosingCsv(false)}>
+          <View className="overflow-hidden rounded-surface bg-surface-alt">
+            <ExportRow
+              label={t('Export amounts (CSV)')}
+              detail={t('One row per amount, transfers included.')}
+              onPress={() => void exportCsv('amounts')}
+            />
+            <Separator inset={16} />
+            <ExportRow
+              label={t('Export workouts (CSV)')}
+              detail={t('One row per set, warm-ups marked.')}
+              onPress={() => void exportCsv('workouts')}
+            />
+          </View>
+          <Text className="mx-xs mt-md text-label text-ink-faint">
+            {t(
+              'A spreadsheet export is for reading a log in Excel or Google Sheets. It is not a backup and cannot be read back in — only the JSON file restores.',
+            )}
+          </Text>
+          <TextButton label={t('Cancel')} onPress={() => setChoosingCsv(false)} />
+        </Sheet>
+      ) : null}
+
       {picking != null ? (
         <ColorPickerSheet
           index={picking}
@@ -725,6 +806,32 @@ export function SettingsHomeScreen({
 /* ------------------------------------------------------------------ */
 /* Appearance                                                          */
 /* ------------------------------------------------------------------ */
+
+/** One choice in the spreadsheet sheet: what it writes, and what a row of it is. */
+function ExportRow({
+  label,
+  detail,
+  onPress,
+}: {
+  label: string;
+  detail: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}. ${detail}`}
+      style={pressedStyle}
+      className="h-row-lg justify-center px-lg"
+    >
+      <Text className="text-body text-ink">{label}</Text>
+      <Text numberOfLines={1} className="mt-[2px] text-label text-ink-faint">
+        {detail}
+      </Text>
+    </Pressable>
+  );
+}
 
 /** A list in twos, for the two-column preset grid. */
 function pairs<T>(list: readonly T[]): T[][] {
