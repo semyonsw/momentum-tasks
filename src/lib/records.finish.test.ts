@@ -212,6 +212,8 @@ describe('describeSessionRecord', () => {
   const base = {
     exerciseId: 'bench',
     previous: 93.33,
+    at: '2026-10-09T10:00:00.000Z',
+    sessionId: 'live',
     countUnit: 'reps' as const,
     loadMode: 'external' as const,
   };

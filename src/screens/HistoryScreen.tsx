@@ -136,6 +136,8 @@ import { pressedStyle, Reveal } from '../components/motion';
 import { NumberSheet } from '../components/NumberSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SettingsFootRow } from '../components/SettingsFootRow';
+import { WrappedHistoryFoot } from '../components/WrappedEntry';
+import type { WrappedPeriod } from '../lib/wrapped';
 import {
   DangerFootAction,
   FieldWell,
@@ -301,6 +303,8 @@ export interface HistoryScreenProps {
   onBack?: () => void;
   /** `Settings ›` at the foot: the workout settings (U24). */
   onOpenSettings?: () => void;
+  /** X1: open a Wrapped. Absent = no Wrapped row at the foot. */
+  onOpenWrapped?: (period: WrappedPeriod) => void;
 }
 
 export function HistoryScreen({
@@ -323,6 +327,7 @@ export function HistoryScreen({
   toolbar,
   onBack,
   onOpenSettings,
+  onOpenWrapped,
 }: HistoryScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -567,6 +572,7 @@ export function HistoryScreen({
         {workouts.length === 0 ? (
           <>
             <Empty loadFailed={loadFailed} />
+            {onOpenWrapped ? <WrappedHistoryFoot onOpen={onOpenWrapped} /> : null}
             {onOpenSettings ? (
               <View style={{ paddingBottom: 40 }}>
                 <SettingsFootRow sectionLabel={t('Workout settings')} onPress={onOpenSettings} />
@@ -695,6 +701,8 @@ export function HistoryScreen({
               </View>
             ))}
 
+            {/* X1: last month's Wrapped, at any time (and the year's, in its window). */}
+            {onOpenWrapped ? <WrappedHistoryFoot onOpen={onOpenWrapped} /> : null}
             {/* U24: the section's settings, where you notice one is wrong. */}
             {onOpenSettings ? (
               <SettingsFootRow sectionLabel={t('Workout settings')} onPress={onOpenSettings} />

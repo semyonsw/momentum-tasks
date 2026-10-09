@@ -47,6 +47,8 @@ import { Hatch } from '../components/Hatch';
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SettingsFootRow } from '../components/SettingsFootRow';
+import { WrappedHistoryFoot } from '../components/WrappedEntry';
+import type { WrappedPeriod } from '../lib/wrapped';
 import { TrendChart } from '../components/TrendChart';
 import { pressedStyle } from '../components/motion';
 import {
@@ -105,6 +107,8 @@ interface TasksHistoryScreenProps {
   onPickDay: (day: string) => void;
   /** `Settings ›` at the foot: the daily tasks' settings (U24). */
   onOpenSettings?: () => void;
+  /** X1: open a Wrapped. Absent = no Wrapped row at the foot. */
+  onOpenWrapped?: (period: WrappedPeriod) => void;
 }
 
 export function TasksHistoryScreen({
@@ -112,6 +116,7 @@ export function TasksHistoryScreen({
   onBack,
   onPickDay,
   onOpenSettings,
+  onOpenWrapped,
 }: TasksHistoryScreenProps) {
   const t = useT();
   const tasks = useTasks((s) => s.tasks);
@@ -147,6 +152,8 @@ export function TasksHistoryScreen({
         )}
 
         {/* U24: the section's settings, where you notice one is wrong. */}
+        {/* X1: last month's Wrapped, at any time (and the year's, in its window). */}
+        {onOpenWrapped ? <WrappedHistoryFoot onOpen={onOpenWrapped} /> : null}
         {onOpenSettings ? (
           <SettingsFootRow sectionLabel={t('Daily tasks settings')} onPress={onOpenSettings} />
         ) : null}

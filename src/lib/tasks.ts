@@ -315,6 +315,50 @@ export function streakOf(task: Task, log: TaskLog, today: string): number {
   return streak;
 }
 
+/** A run of done days inside a window: how long, and the first and last day of it. */
+export interface TaskRun {
+  days: number;
+  from: string;
+  to: string;
+}
+
+/**
+ * The longest run of a task inside `[from, to]` — the streak a Wrapped card
+ * names (X1), counted by the same rules as `streakOf`: asked days only, a day
+ * excused on purpose stepped over without counting, the first unanswered day
+ * ending the run, and `today` never ending one (it is still being lived).
+ *
+ * Only days INSIDE the window count, so a month's run is that month's, not the
+ * tail of one that began in spring. Null when it was never done there.
+ */
+export function longestRunIn(
+  task: Task,
+  log: TaskLog,
+  from: string,
+  to: string,
+  today: string,
+): TaskRun | null {
+  let best: TaskRun | null = null;
+  let run = null as TaskRun | null;
+  const last = to < today ? to : today;
+  let guard = ageInDays(from, last) + 1;
+  for (let day = from; day <= last && guard > 0; day = shiftDay(day, 1), guard -= 1) {
+    if (!asksOn(task, day)) continue;
+    const { mark } = entryOf(log, task.id, day);
+    if (mark === 'done') {
+      const next: TaskRun =
+        run === null
+          ? { days: 1, from: day, to: day }
+          : { days: run.days + 1, from: run.from, to: day };
+      run = next;
+      if (best === null || next.days > best.days) best = next;
+    } else if (mark === null && day !== today) {
+      run = null;
+    }
+  }
+  return best;
+}
+
 export interface DayProgress {
   done: number;
   /** Scheduled today, less the ones excused on purpose. */

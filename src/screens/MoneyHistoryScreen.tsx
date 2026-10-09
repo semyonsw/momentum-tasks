@@ -78,6 +78,8 @@ import { StatusBar } from 'expo-status-bar';
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SettingsFootRow } from '../components/SettingsFootRow';
+import { WrappedHistoryFoot } from '../components/WrappedEntry';
+import type { WrappedPeriod } from '../lib/wrapped';
 import { TrendChart } from '../components/TrendChart';
 import { pressedStyle } from '../components/motion';
 import { MoneyCalendar } from '../components/MoneyCalendar';
@@ -141,6 +143,7 @@ export function MoneyHistoryScreen({
   onBack,
   onOpenAmount,
   onOpenSettings,
+  onOpenWrapped,
 }: {
   /** The subsection the ⟲ was tapped in. Every line here is drawn from it alone. */
   account: MoneyAccount;
@@ -163,6 +166,8 @@ export function MoneyHistoryScreen({
   onOpenAmount: (amountId: ID) => void;
   /** `Settings ›` at the foot: the finance settings (U24). */
   onOpenSettings?: () => void;
+  /** X1: open a Wrapped. Absent = no Wrapped row at the foot. */
+  onOpenWrapped?: (period: WrappedPeriod) => void;
 }) {
   const t = useT();
   const lang = useLanguage();
@@ -448,6 +453,8 @@ export function MoneyHistoryScreen({
         )}
 
         {/* U24: the section's settings, where you notice one is wrong. */}
+        {/* X1: last month's Wrapped, at any time (and the year's, in its window). */}
+        {onOpenWrapped ? <WrappedHistoryFoot onOpen={onOpenWrapped} /> : null}
         {onOpenSettings ? (
           <SettingsFootRow sectionLabel={t('Finance settings')} onPress={onOpenSettings} />
         ) : null}

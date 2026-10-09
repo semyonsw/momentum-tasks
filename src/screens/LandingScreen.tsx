@@ -17,7 +17,9 @@
  *   │ LAST WEEK · 28 SEP  ✕ │      the weekly review (X3): Monday until ✕,
  *   │ 3      84%     52,300 │      one sentence a log (lib/weeklyReview.ts)
  *   ╰───────────────────────╯
- *     (the Wrapped entry goes here — T-10)
+ *   ╭───────────────────────╮
+ *   │ 📖 September, wrapped › │      Wrapped (X1): the first 7 days of a month,
+ *   ╰───────────────────────╯      and the year's through Dec–Jan (lib/wrapped.ts)
  *   ⚙ Settings     Lime · backup today ●●● ›     a 56 dp row
  *
  * The app opens here now. It used to open on the workout section, which made
@@ -58,6 +60,8 @@ import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppMark } from '../components/AppMark';
+import { WrappedOffers } from '../components/WrappedEntry';
+import type { WrappedPeriod } from '../lib/wrapped';
 import { BubblePressable } from '../components/bubbles';
 import { Lamps, type ToastAction } from '../components/glass';
 import { Icon } from '../components/Icon';
@@ -112,6 +116,8 @@ interface LandingScreenProps {
   /** `+ Expense`: the keypad, as the money FAB opens it. */
   onAddExpense: (accountId: string, categoryId: string | null) => void;
   onResume: () => void;
+  /** X1: open a Wrapped from its offer card. */
+  onOpenWrapped: (period: WrappedPeriod) => void;
   onToast: (text: string, action?: ToastAction) => void;
 }
 
@@ -134,6 +140,7 @@ export function LandingScreen({
   onOpen,
   onAddExpense,
   onResume,
+  onOpenWrapped,
   onToast,
 }: LandingScreenProps) {
   const t = useT();
@@ -400,7 +407,7 @@ export function LandingScreen({
           onPress={(rect) => onOpen('Expenses', rect)}
         />
 
-        {/* The weekly review and the Wrapped entry (T-10) take their place HERE,
+        {/* The weekly review and the Wrapped entry (X1) take their place HERE,
             between the logs and Settings: above the fold at 360 × 800 once the
             tiles are 150 dp, which is what the shorter tiles were for. */}
         {review ? (
@@ -411,6 +418,9 @@ export function LandingScreen({
             onDismiss={() => dismissReview(today)}
           />
         ) : null}
+        {/* X1: last month's Wrapped in the first week of a month, the year's in
+            December and January — see `lib/wrapped.ts` for the windows. */}
+        <WrappedOffers onOpen={onOpenWrapped} />
 
         <SettingsRow
           width={wide}

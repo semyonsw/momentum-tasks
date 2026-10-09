@@ -461,6 +461,9 @@ export interface SessionRecord {
   value: number;
   /** The standing best it beat, same units. Always there: no bar, no record. */
   previous: number;
+  /** When the set that did it happened, and in which session. */
+  at: string;
+  sessionId: ID;
   weightKg: number | null;
   count: number;
   countUnit: CountUnit;
@@ -517,10 +520,13 @@ export function recordsBrokenIn(
     const standing: Standing = {};
     for (const rows of earlier) raise(standing, sessionTops(rows, bodyweightAtDate));
 
-    // Every live row of this exercise is one session, however it was split.
+    // Every live row of this exercise is read as ONE session — which is what lets
+    // a Wrapped month ask the same question of all of its sessions at once.
     const rows = session
       .filter((row) => row.exerciseId === exerciseId && counts(row))
-      .sort((a, b) => a.setIndex - b.setIndex);
+      .sort(
+        (a, b) => Date.parse(a.performedAt) - Date.parse(b.performedAt) || a.setIndex - b.setIndex,
+      );
     if (rows.length === 0) return;
     const tops = sessionTops(rows, bodyweightAtDate);
 
@@ -530,7 +536,14 @@ export function recordsBrokenIn(
       if (!top || bar == null || !(top.value > bar)) continue;
       if (kind === 'e1rm' && top.row.loadMode === 'none') continue;
       found.push({
-        record: { exerciseId, kind, value: top.value, previous: bar, ...setOf(top.row) },
+        record: {
+          exerciseId,
+          kind,
+          value: top.value,
+          previous: bar,
+          at: top.row.performedAt,
+          ...setOf(top.row),
+        },
         gain: bar > 0 ? (top.value - bar) / bar : Infinity,
         order,
       });

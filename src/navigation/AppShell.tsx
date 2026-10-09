@@ -81,6 +81,8 @@ import { LibrarySwitch } from '../components/LibrarySwitch';
 import { SequenceScreen } from '../screens/SequenceScreen';
 import { SettingsHomeScreen } from '../screens/SettingsHomeScreen';
 import { LandingScreen, type TileRect } from '../screens/LandingScreen';
+import { WrappedScreen } from '../screens/WrappedScreen';
+import type { WrappedPeriod } from '../lib/wrapped';
 import { Hold } from './Hold';
 import { ShellStage, TRANSITION_MS, type ShellTransition } from './ShellStage';
 import { PushHost } from './PushHost';
@@ -187,6 +189,9 @@ type Route =
   | { name: 'workoutHistory' }
   | { name: 'tasksHistory' }
   | { name: 'moneyHistory'; accountId: ID; day: string }
+  /* X1: a month or a year across the three logs, pushed from the Landing card
+     or from the foot of any of the three histories above. */
+  | { name: 'wrapped'; period: WrappedPeriod }
   /* One settings screen per section, pushed from the section list. */
   | { name: 'workoutSettings' }
   | { name: 'taskSettings' }
@@ -635,6 +640,12 @@ export function AppShell() {
     [setTab],
   );
   const clearFocusWorkout = useCallback(() => setFocusWorkoutId(null), []);
+
+  /** X1: Wrapped goes on top of wherever it was opened, and ✕ / Back come back there. */
+  const openWrapped = useCallback(
+    (period: WrappedPeriod) => push({ name: 'wrapped', period }),
+    [push],
+  );
 
   /**
    * A quick action on the landing: into `section` with `route` already on top.
@@ -1192,6 +1203,10 @@ export function AppShell() {
    * top one is rendered too while it peeks out of a push or an edge drag.
    */
   const renderPushed = (top: Route | null): ReactNode => {
+    if (top?.name === 'wrapped') {
+      return <WrappedScreen period={top.period} onClose={pop} />;
+    }
+
     if (top?.name === 'aiSettings') {
       const route = top;
       return (
@@ -1835,6 +1850,7 @@ export function AppShell() {
             push({ name: 'addExercise', routineId: null, target: 'history', workoutId });
           }}
           onOpenSettings={() => push({ name: sectionSettingsRoute('Workout') })}
+          onOpenWrapped={openWrapped}
         />
       );
     }
@@ -1851,6 +1867,7 @@ export function AppShell() {
             pop();
           }}
           onOpenSettings={() => push({ name: sectionSettingsRoute('Tasks') })}
+          onOpenWrapped={openWrapped}
         />
       );
     }
@@ -1874,6 +1891,7 @@ export function AppShell() {
               push({ name: 'moneyAmount', amountId, categoryId: null, accountId: null })
             }
             onOpenSettings={() => push({ name: sectionSettingsRoute('Expenses') })}
+            onOpenWrapped={openWrapped}
           />
           {/* Same: an amount corrected from the day list lands back here. */}
           {toast ? <Toast key={toast.key} label={toast.text} /> : null}
@@ -1917,6 +1935,7 @@ export function AppShell() {
             })
           }
           onResume={() => jumpFromLanding('Workout', { name: 'session' })}
+          onOpenWrapped={openWrapped}
           onToast={setToast}
         />
       );
@@ -2110,6 +2129,7 @@ function WorkoutHistory({
   onAddExercise,
   onBack,
   onOpenSettings,
+  onOpenWrapped,
 }: {
   workouts: CompletedWorkout[];
   loadFailed: boolean;
@@ -2130,6 +2150,7 @@ function WorkoutHistory({
   onAddExercise: HistoryScreenProps['onAddExercise'];
   onBack: () => void;
   onOpenSettings: () => void;
+  onOpenWrapped: (period: WrappedPeriod) => void;
 }) {
   const t = useT();
   const [view, setView] = useState<'log' | 'graphs' | 'calendar'>('log');
@@ -2194,6 +2215,7 @@ function WorkoutHistory({
       onRestoreWorkout={onRestoreWorkout}
       onAddExercise={onAddExercise}
       onOpenSettings={onOpenSettings}
+      onOpenWrapped={onOpenWrapped}
       toolbar={toolbar}
     />
   );

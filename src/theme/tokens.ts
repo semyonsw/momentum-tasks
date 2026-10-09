@@ -202,6 +202,10 @@ export const glass = {
    * tint is lighter than the fill and reads as a highlight, not a button.
    */
   inset: 'rgba(0,0,0,0.16)',
+  /** A step not yet reached in a story's dash bar (Wrapped). */
+  dash: 'rgba(236,241,238,0.22)',
+  /** The page, fully transparent — where a lit wash fades out to. */
+  clear: 'rgba(6,8,7,0)',
   /** The lit version: a surface that is currently the answer. */
   get green(): string {
     return tint(0.13);
