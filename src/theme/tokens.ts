@@ -240,6 +240,19 @@ export function greenSteps(): readonly [string, string, string, string] {
 }
 
 /**
+ * The two fills BELOW the heat steps, for grids too small to carry a border
+ * (Year in Pixels, the money calendar): `empty` is a day with an answer and
+ * nothing on the scale — asked and not done, or nothing spent — and `quiet` is a
+ * day with nothing to say at all (not asked, not yet). The design's values. Two
+ * values rather than one, because "asked and not done" and "never asked" must
+ * not look alike, and a 9 dp square has no room for the month grid's outline.
+ */
+export const heat = {
+  empty: 'rgba(236,241,238,0.045)',
+  quiet: 'rgba(236,241,238,0.02)',
+} as const;
+
+/**
  * The one GLOW, and the only thing in the app that is not a hairline or a surface
  * step doing the job of elevation.
  *

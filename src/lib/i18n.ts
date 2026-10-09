@@ -821,7 +821,6 @@ const RU: Record<string, string> = {
   'The ladder is shaped to this many sets': 'Лесенка строится под это число подходов',
   'The ladder’s max is the only number this exercise needs — it derives every set.':
     'Максимум лесенки — единственное нужное число: из него выводится каждый подход.',
-  'The month or the trend': 'Месяц или тренд',
   'The only set — delete the workout': 'Единственный подход — удалить тренировку',
   'The order': 'Порядок',
   'The screen below this one crashed.': 'Экран под этим аварийно завершился.',
@@ -1590,6 +1589,27 @@ const RU: Record<string, string> = {
   Building: 'Растёт',
   Forming: 'Формируется',
   'Habit strength {n}%': 'Сила привычки {n}%',
+  // T5 · year in pixels
+  'Month, year or trend': 'Месяц, год или тренд',
+  'Year in pixels': 'Год в пикселях',
+  'The year before': 'Предыдущий год',
+  'The year after': 'Следующий год',
+  'Which tasks the year shows': 'Какие задачи показывает год',
+  '{day} · not yet': '{day} · ещё не наступил',
+  '{day} · excused · not counted': '{day} · освобождён · не считается',
+  '{day} · paused · not counted': '{day} · пауза · не считается',
+  '{day} · before this task started': '{day} · до начала задачи',
+  '{day} · nothing asked': '{day} · ничего не было',
+  '{day} · done': '{day} · сделано',
+  '{day} · not answered yet': '{day} · ещё без ответа',
+  '{day} · not done': '{day} · не сделано',
+  '{day} · {done} of {asked} done': '{day} · {done} из {asked} сделано',
+  'Tap any square to see that day.': 'Нажмите на квадрат, чтобы увидеть этот день.',
+  'Open this day': 'Открыть день',
+  '{year}: {done} of {asked} done. Tap a square to see that day.':
+    '{year}: {done} из {asked} сделано. Нажмите на квадрат, чтобы увидеть день.',
+  'One row a month, one square a day. Hatched days were excused and are out of the count; empty squares asked for nothing.':
+    'Строка — месяц, квадрат — день. Заштрихованные дни освобождены и в счёт не входят; пустые квадраты — дни без задач.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

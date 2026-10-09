@@ -2,7 +2,7 @@
  * TasksHistoryScreen — the month and the line, behind the ⟲.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ ‹ TASK HISTORY            ╭ Month ╮╭ Trend ╮ │
+ *   │ ‹ TASK HISTORY      ╭ Month ╮╭ Year ╮╭ Trend ╮ │
  *   │        ‹   September 2026   ›                │
  *   │  M  T  W  T  F  S  S                         │
  *   │  ▢  ▣  ▤  ▥  ▦  ▢  ▢                         │
@@ -26,13 +26,20 @@
  * HATCHED rather than on the green scale, and is out of the month's count: it is
  * not a score, and no step of green can say "not counted".
  *
+ * YEAR (T5) is the same question at the widest zoom: twelve rows of thirty-one
+ * squares, for the whole list or one task, drawn by `lib/yearPixels.ts` on the
+ * month's own rules. It sits between the two because it is a grid like Month
+ * and a span like Trend. A tap there does NOT open the day — a 10 dp square is
+ * too easy to hit by accident to navigate on — it names the day in a line under
+ * the grid, with `Open this day` beside it for when that is what you wanted.
+ *
  * Picking a day in the grid still opens it, which is the one thing the grid is
  * for: walking back three weeks with the `‹` pager is twenty-one taps. It closes
  * this screen on the way, because the day it selected is on the one underneath.
  */
 
 import { useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View, type GestureResponderEvent } from 'react-native';
 import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
 
@@ -42,9 +49,16 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { SettingsFootRow } from '../components/SettingsFootRow';
 import { TrendChart } from '../components/TrendChart';
 import { pressedStyle } from '../components/motion';
-import { GlassCard, Kicker, Segmented, SelectChip, StatTile } from '../components/primitives';
+import {
+  GlassCard,
+  Kicker,
+  Segmented,
+  SelectChip,
+  StatTile,
+  TextButton,
+} from '../components/primitives';
 import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
-import { WEEKDAY_INITIALS, dayKey, formatShortDay, parseDay } from '../lib/days';
+import { WEEKDAY_INITIALS, dayKey, formatShortDay, monthNames, parseDay } from '../lib/days';
 import { tap } from '../lib/feedback';
 import {
   type DayCell,
@@ -55,9 +69,21 @@ import {
   tasksMonth,
 } from '../lib/tasks';
 import { TREND_RANGES, TREND_RANGE_LABELS, type TrendRange } from '../lib/trends';
+import {
+  type HeatLevel,
+  type Pixel,
+  type PixelScope,
+  describePixel,
+  heatLevel,
+  pixelAtPoint,
+  pixelTaskChoices,
+  pixelYears,
+  yearPercent,
+  yearPixels,
+} from '../lib/yearPixels';
 import { useSettings } from '../state/settingsStore';
 import { useTasks } from '../state/tasksStore';
-import { greenSteps, palette } from '../theme/tokens';
+import { greenSteps, heat, palette } from '../theme/tokens';
 
 /*
  * A function rather than a constant, because the labels are translated: a
@@ -66,6 +92,7 @@ import { greenSteps, palette } from '../theme/tokens';
 function views(t: Translate) {
   return [
     { value: 'month' as const, label: t('Month') },
+    { value: 'year' as const, label: t('Year') },
     { value: 'trend' as const, label: t('Trend') },
   ];
 }
@@ -90,7 +117,7 @@ export function TasksHistoryScreen({
   const tasks = useTasks((s) => s.tasks);
   const log = useTasks((s) => s.log);
   const today = dayKey(new Date());
-  const [view, setView] = useState<'month' | 'trend'>('month');
+  const [view, setView] = useState<'month' | 'year' | 'trend'>('month');
 
   return (
     <View className="flex-1 bg-bg">
@@ -101,7 +128,7 @@ export function TasksHistoryScreen({
             options={views(t)}
             value={view}
             onChange={setView}
-            accessibilityLabel={t('The month or the trend')}
+            accessibilityLabel={t('Month, year or trend')}
           />
         </View>
       </ScreenHeader>
@@ -113,6 +140,8 @@ export function TasksHistoryScreen({
       >
         {view === 'month' ? (
           <MonthView tasks={tasks} log={log} today={today} selected={selected} onPick={onPickDay} />
+        ) : view === 'year' ? (
+          <YearView tasks={tasks} log={log} today={today} selected={selected} onPick={onPickDay} />
         ) : (
           <TrendView tasks={tasks} log={log} today={today} />
         )}
@@ -242,6 +271,29 @@ function MonthView({
         ))}
       </View>
 
+      <HeatLegend />
+
+      <Text className="mx-lg mt-md text-label text-ink-faint">
+        {t(
+          'The fuller the bubble, the more of that day was done. Tap one to open it and answer its tasks.',
+        )}{' '}
+        {month.paused > 0
+          ? t('Hatched days were paused: every task excused, and out of the count.')
+          : ''}
+      </Text>
+    </>
+  );
+}
+
+/**
+ * LESS → MORE, and the hatch beside it. Shared by Month and Year: they are the
+ * same four fills, and a key that differed between the two zoom levels would be
+ * two scales.
+ */
+function HeatLegend() {
+  const t = useT();
+  return (
+    <>
       {/* LESS → MORE. The grid is one colour at four distances, which is only
           readable if the scale itself is on screen once — drawn as the four fills
           it is actually made of rather than as a gradient, which is both honest
@@ -265,15 +317,6 @@ function MonthView({
         </View>
         <Text className="ml-xs text-label text-ink-faint">{t('paused')}</Text>
       </View>
-
-      <Text className="mx-lg mt-md text-label text-ink-faint">
-        {t(
-          'The fuller the bubble, the more of that day was done. Tap one to open it and answer its tasks.',
-        )}{' '}
-        {month.paused > 0
-          ? t('Hatched days were paused: every task excused, and out of the count.')
-          : ''}
-      </Text>
     </>
   );
 }
@@ -289,11 +332,12 @@ function MonthView({
  * light behind it.
  */
 function fillFor(fraction: number): string | null {
-  if (fraction >= 1) return greenSteps()[3];
-  if (fraction >= 0.75) return greenSteps()[2];
-  if (fraction >= 0.5) return greenSteps()[1];
-  if (fraction > 0) return greenSteps()[0];
-  return null;
+  return stepFill(heatLevel(fraction));
+}
+
+/** A heat level's fill: one of the four steps, or null for the empty one. */
+function stepFill(level: HeatLevel): string | null {
+  return level === 0 ? null : greenSteps()[level - 1];
 }
 
 function MonthCell({
@@ -370,6 +414,250 @@ function MonthCell({
         </Text>
       </View>
     </Pressable>
+  );
+}
+
+/** The month initials' gutter, and the gap between rows that makes room for them. */
+const PIXEL_LABEL = 16;
+const PIXEL_ROW_GAP = 2;
+
+/**
+ * THE YEAR, one square a day (T5) — for every task, or one.
+ *
+ * Twelve rows of thirty-one: the whole year inside 328 dp with no sideways
+ * scroll (see `lib/yearPixels.ts` for why not 53 week-columns). One press
+ * target for the grid, not one per square — `pixelAtPoint` turns the touch into
+ * a day — and the tap NAMES the day rather than leaving: the line under the grid
+ * says what it holds, and `Open this day` is there for when you meant to go.
+ */
+function YearView({
+  tasks,
+  log,
+  today,
+  selected,
+  onPick,
+}: {
+  tasks: readonly Task[];
+  log: TaskLog;
+  today: string;
+  selected: string;
+  onPick: (day: string) => void;
+}) {
+  const t = useT();
+  const lang = useLanguage();
+  const choices = useMemo(() => pixelTaskChoices(tasks), [tasks]);
+  const span = useMemo(() => pixelYears(tasks, today), [tasks, today]);
+  const [year, setYear] = useState(() => Number((selected || today).slice(0, 4)) || span.last);
+  const [scope, setScope] = useState<PixelScope>('all');
+  const [picked, setPicked] = useState<string | null>(null);
+  const [width, setWidth] = useState(0);
+
+  // A task archived while it was chosen falls back to the whole list.
+  const one = scope === 'all' ? null : (choices.find((task) => task.id === scope) ?? null);
+  const shown: PixelScope = one ? one.id : 'all';
+  const pixels = useMemo(
+    () => yearPixels(tasks, log, year, today, shown),
+    [tasks, log, year, today, shown],
+  );
+  const pickedPixel: Pixel | null = useMemo(() => {
+    if (!picked || Number(picked.slice(0, 4)) !== year) return null;
+    const month = pixels.months[Number(picked.slice(5, 7)) - 1];
+    return month?.cells[Number(picked.slice(8, 10)) - 1] ?? null;
+  }, [picked, pixels, year]);
+  const percent = yearPercent(pixels);
+
+  const stepYear = (delta: number) => {
+    tap();
+    setYear((current) => Math.min(span.last, Math.max(span.first, current + delta)));
+    setPicked(null);
+  };
+
+  const onGridPress = (event: GestureResponderEvent) => {
+    const { locationX, locationY } = event.nativeEvent;
+    const hit = pixelAtPoint(locationX, locationY, width, PIXEL_LABEL, year, PIXEL_ROW_GAP);
+    if (!hit) return;
+    tap();
+    setPicked(hit.date);
+  };
+
+  return (
+    <>
+      {/* Which tasks: a set too long for a segmented control, so chips that
+          scroll — the GRID never does. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 16 }}
+        accessibilityLabel={t('Which tasks the year shows')}
+      >
+        <SelectChip
+          label={t('All tasks')}
+          selected={shown === 'all'}
+          onPress={() => {
+            tap();
+            setScope('all');
+          }}
+        />
+        {choices.map((task) => (
+          <SelectChip
+            key={task.id}
+            label={task.name}
+            selected={shown === task.id}
+            onPress={() => {
+              tap();
+              setScope(task.id);
+            }}
+          />
+        ))}
+      </ScrollView>
+
+      <View className="mx-lg mt-md flex-row items-center">
+        <Pressable
+          onPress={() => stepYear(-1)}
+          disabled={year <= span.first}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={t('The year before')}
+          style={pressedStyle}
+          className="h-hit w-[32px] items-center justify-center"
+        >
+          {year <= span.first ? null : (
+            <Icon name="chevron-left" size={18} color={palette.inkMuted} />
+          )}
+        </Pressable>
+        <Kicker className="flex-1 text-center">
+          {`${year} · ${t('Year in pixels')}`}
+          {percent === null ? '' : ` · ${percent}%`}
+        </Kicker>
+        <Pressable
+          onPress={() => stepYear(1)}
+          disabled={year >= span.last}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={t('The year after')}
+          style={pressedStyle}
+          className="h-hit w-[32px] items-center justify-center"
+        >
+          {year >= span.last ? null : (
+            <Icon name="chevron-right" size={18} color={palette.inkMuted} />
+          )}
+        </Pressable>
+      </View>
+
+      <Pressable
+        onPress={onGridPress}
+        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+        accessibilityRole="button"
+        accessibilityLabel={t('{year}: {done} of {asked} done. Tap a square to see that day.', {
+          year,
+          done: pixels.done,
+          asked: pixels.asked,
+        })}
+        className="mx-lg mt-sm"
+      >
+        {/* Children take no touches, so the press's location is always
+            relative to the grid itself and not to whichever square was hit. */}
+        <View pointerEvents="none">
+          {pixels.months.map((month, index) => (
+            <View
+              key={month.month}
+              className="flex-row"
+              style={{ marginBottom: index < 11 ? PIXEL_ROW_GAP : 0 }}
+            >
+              <View style={{ width: PIXEL_LABEL }} className="justify-center">
+                <Text
+                  className="text-micro font-semibold text-ink-faint"
+                  style={{ position: 'absolute', left: 0, top: '50%', marginTop: -8 }}
+                >
+                  {monthNames(lang)[month.month].slice(0, 1)}
+                </Text>
+              </View>
+              {month.cells.map((pixel) => (
+                <PixelSquare
+                  key={pixel.day}
+                  pixel={pixel}
+                  selected={pixel.date !== null && pixel.date === picked}
+                />
+              ))}
+            </View>
+          ))}
+        </View>
+      </Pressable>
+
+      {/* The day axis: where 1, 10, 20 and 31 fall, so a square can be counted to.
+          Each label is centred on its column inside a box that starts where the
+          squares do, so the percentages are of the grid and not of the gutter. */}
+      <View className="mx-lg mt-xs flex-row">
+        <View style={{ width: PIXEL_LABEL }} />
+        <View className="h-[16px] flex-1">
+          {[1, 10, 20, 31].map((day) => (
+            <Text
+              key={day}
+              className="absolute text-center text-micro tabular-nums text-ink-faint"
+              style={{ left: `${((day - 0.5) / 31) * 100}%`, width: 24, marginLeft: -12 }}
+            >
+              {day}
+            </Text>
+          ))}
+        </View>
+      </View>
+
+      <GlassCard className="mx-lg mt-md flex-row items-center px-lg py-md">
+        <Text className="flex-1 text-label tabular-nums text-ink">
+          {pickedPixel
+            ? describePixel(pickedPixel, one, lang)
+            : t('Tap any square to see that day.')}
+        </Text>
+        {pickedPixel?.date && pickedPixel.date <= today ? (
+          <TextButton
+            label={t('Open this day')}
+            onPress={() => onPick(pickedPixel.date as string)}
+          />
+        ) : null}
+      </GlassCard>
+
+      <HeatLegend />
+
+      <Text className="mx-lg mt-md text-label text-ink-faint">
+        {t(
+          'One row a month, one square a day. Hatched days were excused and are out of the count; empty squares asked for nothing.',
+        )}
+      </Text>
+    </>
+  );
+}
+
+/**
+ * One day of the year: a heat step, the empty step, the quiet fill of a day
+ * with nothing to say, or the hatch. A hole (30 February) keeps its slot and
+ * draws nothing, so every column stays a day of the month.
+ */
+function PixelSquare({ pixel, selected }: { pixel: Pixel; selected: boolean }) {
+  const fill =
+    pixel.kind === 'score'
+      ? (stepFill(pixel.level) ?? heat.empty)
+      : pixel.kind === 'blank' || pixel.kind === 'future'
+        ? heat.quiet
+        : null;
+  return (
+    <View className="flex-1" style={{ aspectRatio: 1, padding: 1 }}>
+      {pixel.kind === 'none' ? null : (
+        <View
+          className="flex-1 overflow-hidden"
+          style={{
+            borderRadius: 2,
+            backgroundColor: fill ?? undefined,
+            ...(selected
+              ? { borderWidth: 1, borderColor: palette.ink }
+              : pixel.isToday
+                ? { borderWidth: 1, borderColor: palette.greenBright }
+                : {}),
+          }}
+        >
+          {pixel.kind === 'paused' ? <Hatch /> : null}
+        </View>
+      )}
+    </View>
   );
 }
 
