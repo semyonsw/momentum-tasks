@@ -45,6 +45,7 @@ import {
 import { t } from '../lib/i18n';
 import type { WeeklyReview } from '../lib/weeklyReview';
 import { useAi } from './aiStore';
+import { engagementOn } from '../lib/engagement';
 import { useSettings } from './settingsStore';
 
 export type WeeklySummaryResult =
@@ -62,8 +63,12 @@ export async function askWeeklySummary(params: {
   engagement: boolean;
 }): Promise<WeeklySummaryResult> {
   const { review, money, engagement } = params;
-  const language = useSettings.getState().language;
-  if (!weeklySummaryOffered({ engagement, aiStatus: useAi.getState().status })) {
+  const settings = useSettings.getState();
+  const language = settings.language;
+  // The caller's flag AND the store's: "no network without the switch" must not
+  // rest on one screen having re-rendered.
+  const on = engagement && engagementOn(settings);
+  if (!weeklySummaryOffered({ engagement: on, aiStatus: useAi.getState().status })) {
     return { kind: 'refused' };
   }
   try {

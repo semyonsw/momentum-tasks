@@ -47,6 +47,7 @@ beforeEach(() => {
   useAi.setState({ ...sanitizeAi({}), status: 'ready' });
   useSettings.getState().resetToDefaults();
   useSettings.getState().setLanguage('en');
+  useSettings.getState().setEngagement(true);
   vi.stubGlobal('fetch', async (url: string, init: { body?: string }) => {
     calls.push({ url, body: init.body });
     const next = answers.shift();
@@ -77,6 +78,15 @@ describe('asking for the weekly summary', () => {
   it('makes no call with the engagement switch off', async () => {
     answers = [reply('x')];
     expect(await askWeeklySummary({ review, money, engagement: false })).toEqual({
+      kind: 'refused',
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('re-reads the switch itself: a stale caller flag cannot send', async () => {
+    answers = [reply('x')];
+    useSettings.getState().setEngagement(false);
+    expect(await askWeeklySummary({ review, money, engagement: true })).toEqual({
       kind: 'refused',
     });
     expect(calls).toHaveLength(0);

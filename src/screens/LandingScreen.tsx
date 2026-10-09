@@ -218,19 +218,25 @@ export function LandingScreen({
   const coachOffered = weeklySummaryOffered({ engagement, aiStatus });
   const [coach, setCoach] = useState<CoachState | null>(null);
   const coachRun = useRef(0);
+  const coachInFlight = useRef(false);
   const askCoach = (shown: WeeklyReview) => {
+    // One request in flight per week: a quick double tap must not send two.
+    if (coachInFlight.current) return;
+    coachInFlight.current = true;
     coachRun.current += 1;
     const run = coachRun.current;
     const week = shown.week.from;
     setCoach({ week, phase: 'asking', text: '' });
-    void askWeeklySummary({ review: shown, money: { currency, scale }, engagement }).then(
-      (result) => {
+    void askWeeklySummary({ review: shown, money: { currency, scale }, engagement })
+      .then((result) => {
         if (run !== coachRun.current) return;
         setCoach(
           result.kind === 'refused' ? null : { week, phase: result.kind, text: result.text },
         );
-      },
-    );
+      })
+      .finally(() => {
+        coachInFlight.current = false;
+      });
   };
   const coachNow = coach && review && coach.week === review.week.from ? coach : null;
 

@@ -182,6 +182,7 @@ import { formatCount, formatWeight, unitLabel } from '../lib/units';
 import { useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStore';
 import { platesInForce, useSettings } from '../state/settingsStore';
 import { useEngagementView } from '../hooks/useEngagement';
+import { finishOpensSheet } from '../lib/finishSheet';
 import { describeMilestone, milestoneCard, milestoneDue } from '../lib/milestones';
 import { PrimaryButton, Separator, TextButton } from '../components/primitives';
 import { Sheet } from '../components/Sheet';
@@ -944,15 +945,40 @@ export function ActiveWorkoutScreen({
      *  3. A RECORD FELL (W6). The same argument as the ladder: the number is the
      *     news, and it is only news today. Still one tap to save.
      *
-     * Neither is a nag: with nothing unlogged, no ladder and no record in the
-     * session, Finish still finishes in one tap, exactly as it always did.
+     *  4. A MILESTONE IS DUE (E4, switch on only). It is stamped when the save
+     *     lands, so a one-tap finish that skipped the sheet would neither show
+     *     the card nor stamp it — and workout 101 is not a milestone, so the
+     *     celebration would be lost for good.
+     *
+     * None is a nag: with nothing unlogged, no ladder, no record and no
+     * milestone, Finish still finishes in one tap, exactly as it always did.
      */
-    if (progress.total - progress.done > 0 || ladderChange || findRecords(session).length > 0) {
+    const opens = finishOpensSheet({
+      unlogged: progress.total - progress.done,
+      ladderMoved: Boolean(ladderChange),
+      records: findRecords(session).length,
+      milestone: milestoneDue({
+        on: milestonesOn,
+        workoutNumber: workoutNumber ?? null,
+        shown: milestoneShown,
+      }),
+    });
+    if (opens) {
       setConfirming('finish');
       return;
     }
     void commitFinish();
-  }, [commitFinish, findRecords, ladderChange, progress.done, progress.total, session]);
+  }, [
+    commitFinish,
+    findRecords,
+    ladderChange,
+    milestoneShown,
+    milestonesOn,
+    progress.done,
+    progress.total,
+    session,
+    workoutNumber,
+  ]);
 
   /* --- empty states --------------------------------------------------- */
   /*
