@@ -679,3 +679,48 @@ describe('recurring payments (M2)', () => {
     );
   });
 });
+
+describe('savings goals (M5)', () => {
+  it('travel in a backup and come back', () => {
+    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
+    useMoney.getState().addGoal({
+      name: 'Trip',
+      glyph: '🚆',
+      target: 200000,
+      by: '2026-12-15',
+      accountId: 'online',
+    });
+    const before = useMoney.getState().goals;
+    const text = exportBackupText();
+    useMoney.getState().importMoney({});
+    expect(useMoney.getState().goals).toBeUndefined();
+
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useMoney.getState().goals).toEqual(before);
+  });
+
+  it('a 2.2.0 backup imports unchanged, with none', () => {
+    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
+    useMoney.getState().addGoal({
+      name: 'Trip',
+      glyph: '🚆',
+      target: 200000,
+      by: null,
+      accountId: 'online',
+    });
+    const v220 = JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 2,
+      exercises: [],
+      routines: [],
+      workouts: [],
+      money: { categories: seedCategories, amounts: [] },
+    });
+    const parsed = parseBackup(v220);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useMoney.getState().goals).toBeUndefined();
+  });
+});

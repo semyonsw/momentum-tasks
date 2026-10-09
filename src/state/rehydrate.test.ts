@@ -23,6 +23,7 @@ beforeEach(async () => {
     budgets: undefined,
     budgetAlertsFired: undefined,
     recurring: undefined,
+    goals: undefined,
   });
   useTasks.setState({ tasks: seedTasks('2026-01-01'), log: {} });
   // AFTER the resets: a `setState` on a persisted store writes it straight back
@@ -147,6 +148,28 @@ describe('the money plans (Wave 2) on a cold start', () => {
     expect(money.amounts.map((amount) => amount.value)).toEqual([4200]);
     expect(money.budgets).toBeUndefined();
     expect(money.recurring).toBeUndefined();
+    expect(money.goals).toBeUndefined();
+  });
+
+  it('reads a savings goal back after a restart', async () => {
+    const goal = {
+      id: 'goal_1',
+      name: 'Laptop',
+      glyph: '💻',
+      target: 650000,
+      by: '2027-03-31',
+      accountId: 'online',
+      createdAt: '2026-10-01T00:00:00.000Z',
+    };
+    await AsyncStorage.setItem(
+      'money',
+      JSON.stringify({
+        version: 3,
+        state: { categories: seedCategories, amounts: [], goals: [goal] },
+      }),
+    );
+    await useMoney.persist.rehydrate();
+    expect(useMoney.getState().goals).toEqual([goal]);
   });
 
   it('reads a recurring payment and its answers back after a restart', async () => {

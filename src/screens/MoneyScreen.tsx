@@ -143,6 +143,10 @@
  * history's balance chart spans ranges up to all time, where a month's tail
  * would be a dot.
  *
+ * Savings goals (M5) are the third door; a goal reads one subsection's
+ * balance, so nothing on this screen changes for it — a transfer in is how it
+ * fills.
+ *
  * Recurring payments (M2) are the second door, and the one plan that comes to
  * THIS screen on its own: on a payment's day a "Due today" card under the
  * balance asks `Confirm` / `Skip this month`, oldest occurrence first, for every
@@ -299,6 +303,8 @@ interface MoneyScreenProps {
   onOpenBudgets: () => void;
   /** M2 — the recurring payments, from the same row and from the due card. */
   onOpenRecurring: () => void;
+  /** M5 — the savings goals, the third door in the row. */
+  onOpenGoals: () => void;
   /** The shell's toast — a confirmed or skipped payment, with its Undo. */
   onToast: (text: string, action?: ToastAction) => void;
 }
@@ -323,6 +329,7 @@ export function MoneyScreen({
   onOpenAi,
   onOpenBudgets,
   onOpenRecurring,
+  onOpenGoals,
   onToast,
 }: MoneyScreenProps) {
   const t = useT();
@@ -338,6 +345,7 @@ export function MoneyScreen({
   const pinScale = useMoney((s) => s.pinScale);
   const budgets = useMoney((s) => s.budgets);
   const recurring = useMoney((s) => s.recurring);
+  const goalCount = useMoney((s) => s.goals?.length ?? 0);
   const confirmRecurring = useMoney((s) => s.confirmRecurring);
   const skipRecurring = useMoney((s) => s.skipRecurring);
   const undoRecurring = useMoney((s) => s.undoRecurring);
@@ -450,9 +458,18 @@ export function MoneyScreen({
   /*
    * M2 — what is due, across EVERY subsection: a payment is a question about
    * the log, not about the pocket on screen, and its card names its own
-   * subsection. Oldest first; the card asks about one at a time.
+   * subsection. Oldest first; the card asks about one at a time. A payment
+   * whose subsection was archived is not asked about — there is nowhere live to
+   * record it — until its editor moves it to one that is.
    */
-  const due = useMemo(() => dueList(recurring ?? [], today), [recurring, today]);
+  const due = useMemo(
+    () =>
+      dueList(
+        (recurring ?? []).filter((item) => liveAccounts.some((row) => row.id === item.accountId)),
+        today,
+      ),
+    [liveAccounts, recurring, today],
+  );
 
   /* M3 — this subsection's month end, or nothing (too little history). */
   const forecast = useMemo(
@@ -809,6 +826,12 @@ export function MoneyScreen({
                   : t('Rent, subscriptions')
             }
             onPress={onOpenRecurring}
+          />
+          <PlanDoor
+            glyph="◎"
+            label={t('Savings goals')}
+            detail={goalCount > 0 ? String(goalCount) : t('A target for a subsection')}
+            onPress={onOpenGoals}
           />
         </View>
 

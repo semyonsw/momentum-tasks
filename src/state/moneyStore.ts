@@ -66,6 +66,7 @@ import {
 } from '../lib/money';
 import { sanitizeScale } from '../lib/moneyUnits';
 import { pruneFired, sanitizeBudgets, sanitizeFired, type Budget } from '../lib/budgets';
+import { sanitizeGoals, type GoalDraft, type SavingsGoal } from '../lib/goals';
 import {
   amountWhenFor,
   isOccurrence,
@@ -102,6 +103,8 @@ export interface MoneyValue {
    * answered (`lib/recurring.ts`). Absent until the first one is added.
    */
   recurring?: RecurringPayment[];
+  /** M5 — savings goals, each reading one subsection's balance (`lib/goals.ts`). */
+  goals?: SavingsGoal[];
 }
 
 /**
@@ -262,6 +265,7 @@ export function sanitizeMoney(input: Partial<MoneyValue> | undefined | null): Mo
   const categoryIds = new Set(reconciled.categories.map((category) => category.id));
   const budgets = sanitizeBudgets(input?.budgets, categoryIds);
   const fired = sanitizeFired(input?.budgetAlertsFired);
+  const goals = sanitizeGoals(input?.goals, accountIds);
   const recurring = sanitizeRecurring(
     input?.recurring,
     new Map(reconciled.categories.map((category) => [category.id, category.direction])),
@@ -278,6 +282,7 @@ export function sanitizeMoney(input: Partial<MoneyValue> | undefined | null): Mo
     ...(budgets.length > 0 ? { budgets } : {}),
     ...(fired.length > 0 ? { budgetAlertsFired: fired } : {}),
     ...(recurring.length > 0 ? { recurring } : {}),
+    ...(goals.length > 0 ? { goals } : {}),
   };
 }
 
@@ -363,6 +368,29 @@ interface MoneyState extends MoneyValue {
   skipRecurring: (id: ID, date: string) => void;
   /** The toast's Undo: the answer forgotten, and the amount a confirm wrote removed. */
   undoRecurring: (id: ID, date: string) => void;
+  /** M5 — a savings goal. Null when refused (no name, no target, unknown subsection). */
+  addGoal: (draft: GoalDraft) => ID | null;
+  updateGoal: (id: ID, draft: GoalDraft) => void;
+  /** The goal only: the money stays where it is. */
+  deleteGoal: (id: ID) => void;
+}
+
+/** A goal draft as stored, or null when it cannot be one. */
+function cleanGoal(
+  draft: GoalDraft,
+  accounts: readonly MoneyAccount[],
+): Omit<SavingsGoal, 'id' | 'createdAt'> | null {
+  const name = draft.name.trim();
+  const target = Math.round(Math.abs(draft.target));
+  if (name === '' || !Number.isFinite(target) || target <= 0) return null;
+  if (!accounts.some((account) => account.id === draft.accountId)) return null;
+  return {
+    name,
+    glyph: draft.glyph.trim() || '🎯',
+    target,
+    ...(draft.by ? { by: draft.by } : {}),
+    accountId: draft.accountId,
+  };
 }
 
 /**
@@ -600,6 +628,7 @@ export const useMoney = create<MoneyState>()(
           budgets: undefined,
           budgetAlertsFired: undefined,
           recurring: undefined,
+          goals: undefined,
           ...sanitizeMoney(raw as Partial<MoneyValue> | undefined | null),
         }),
 
@@ -763,6 +792,33 @@ export const useMoney = create<MoneyState>()(
           };
         }),
 
+      addGoal: (draft) => {
+        const clean = cleanGoal(draft, useMoney.getState().accounts);
+        if (!clean) return null;
+        const id = `goal_${Date.now().toString(36)}`;
+        set((state) => ({
+          goals: [...(state.goals ?? []), { id, ...clean, createdAt: new Date().toISOString() }],
+        }));
+        return id;
+      },
+
+      updateGoal: (id, draft) =>
+        set((state) => {
+          const clean = cleanGoal(draft, state.accounts);
+          if (!clean || !state.goals) return {};
+          return {
+            goals: state.goals.map((goal) =>
+              goal.id === id ? { id, ...clean, createdAt: goal.createdAt } : goal,
+            ),
+          };
+        }),
+
+      deleteGoal: (id) =>
+        set((state) => {
+          const rest = (state.goals ?? []).filter((goal) => goal.id !== id);
+          return { goals: rest.length > 0 ? rest : undefined };
+        }),
+
       pinScale: (scale) =>
         set((state) => {
           const pinned = sanitizeScale(scale);
@@ -798,6 +854,7 @@ export const useMoney = create<MoneyState>()(
           ? {}
           : { budgetAlertsFired: state.budgetAlertsFired }),
         ...(state.recurring === undefined ? {} : { recurring: state.recurring }),
+        ...(state.goals === undefined ? {} : { goals: state.goals }),
       }),
       /*
        * NOTHING STORED IS NOT AN EMPTY LOG. zustand calls `merge` on a first

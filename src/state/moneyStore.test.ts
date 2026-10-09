@@ -656,3 +656,50 @@ describe('recurring payments (M2)', () => {
     expect(useMoney.getState().recurring).toBeUndefined();
   });
 });
+
+describe('savings goals (M5)', () => {
+  const laptop = {
+    name: ' New laptop ',
+    glyph: '💻',
+    target: 650000,
+    by: '2027-03-31',
+    accountId: 'online',
+  };
+
+  it('are absent on a 2.2.0 log, and added, edited and deleted', () => {
+    expect(useMoney.getState().goals).toBeUndefined();
+    const id = useMoney.getState().addGoal(laptop) ?? '';
+    expect(useMoney.getState().goals?.[0]).toMatchObject({
+      id,
+      name: 'New laptop',
+      target: 650000,
+      by: '2027-03-31',
+      accountId: 'online',
+    });
+    useMoney.getState().updateGoal(id, { ...laptop, target: 700000, by: null });
+    const [edited] = useMoney.getState().goals ?? [];
+    expect(edited.target).toBe(700000);
+    expect('by' in edited).toBe(false);
+    useMoney.getState().deleteGoal(id);
+    expect(useMoney.getState().goals).toBeUndefined();
+  });
+
+  it('refuse no name, no target, or a subsection that does not exist', () => {
+    expect(useMoney.getState().addGoal({ ...laptop, name: ' ' })).toBeNull();
+    expect(useMoney.getState().addGoal({ ...laptop, target: 0 })).toBeNull();
+    expect(useMoney.getState().addGoal({ ...laptop, accountId: 'gone' })).toBeNull();
+  });
+
+  it('stay when their subsection is archived, and record or move no money', () => {
+    useMoney.getState().addGoal(laptop);
+    useMoney.getState().archiveAccount('online');
+    expect(sanitizeMoney(useMoney.getState()).goals).toHaveLength(1);
+    expect(useMoney.getState().amounts).toEqual([]);
+  });
+
+  it('are replaced by an import', () => {
+    useMoney.getState().addGoal(laptop);
+    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
+    expect(useMoney.getState().goals).toBeUndefined();
+  });
+});

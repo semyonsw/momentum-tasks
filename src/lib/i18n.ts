@@ -1845,6 +1845,32 @@ const RU: Record<string, string> = {
   '+{n} more due': 'Ещё к оплате: {n}',
   // M3 · forecast (design copy money.forecast)
   '≈ {amount} on {date} · estimate': '≈ {amount} к {date} · оценка',
+  // M5 · savings goals (design copy goals.per)
+  'Savings goals': 'Накопления',
+  'Savings goal': 'Цель накоплений',
+  'A target for a subsection': 'Цель для подраздела',
+  Reached: 'Достигнуто',
+  'by {date}': 'к {date}',
+  '{saved} of {target}': '{saved} из {target}',
+  'The date has passed · {amount} to go': 'Срок прошёл · осталось {amount}',
+  'Paused · {name} is archived': 'На паузе · «{name}» в архиве',
+  '{amount} a month to get there': '{amount} в месяц, чтобы успеть',
+  'e.g. New laptop': 'например, Новый ноутбук',
+  'Target in {currency}': 'Цель в {currency}',
+  'Its balance is the progress: move money in with a transfer and the goal fills.':
+    'Его баланс — это прогресс: переведите туда деньги, и цель заполнится.',
+  'A date to reach it by': 'Срок',
+  'Then it says what a month needs.': 'Тогда будет видно, сколько нужно в месяц.',
+  By: 'К',
+  'Delete this goal': 'Удалить эту цель',
+  'The money stays where it is.': 'Деньги останутся на месте.',
+  'A goal reads one subsection’s balance. Move money into it with a transfer on Finance, and the goal fills.':
+    'Цель смотрит на баланс одного подраздела. Переведите туда деньги в Финансах — и цель заполнится.',
+  'Opens the goal': 'Открывает цель',
+  'Shares {name} with another goal.': '«{name}» общий с другой целью.',
+  'Add a goal': 'Добавить цель',
+  'Only the goal goes. The money stays in its subsection.':
+    'Удалится только цель. Деньги останутся в своём подразделе.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */
