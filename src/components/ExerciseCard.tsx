@@ -178,6 +178,11 @@ interface ExerciseCardProps {
   onLift?: () => void;
   onToggleSet: (setId: ID) => void;
   onPatchSet: (setId: ID, patch: Partial<DraftSet>) => void;
+  /**
+   * Open the set's annotations sheet (RIR). The screen hosts the sheet — a sheet
+   * is drawn over the whole screen, not inside a card. Absent = no chip taps.
+   */
+  onOpenSetMarks?: (setId: ID) => void;
   onAddSet: () => void;
   /**
    * Take one row out of the STORE. Called after the row's exit animation, never
@@ -273,6 +278,7 @@ function ExerciseCardComponent({
   onLift,
   onToggleSet,
   onPatchSet,
+  onOpenSetMarks,
   onAddSet,
   onRemoveSet,
   isEditing = false,
@@ -357,8 +363,8 @@ function ExerciseCardComponent({
    * per row per render meant every row of the open card repainted on every ✓
    * and every ± chip, plate line and all.
    */
-  const live = useRef({ removeRow, onPressTimer, onToggleSet });
-  live.current = { removeRow, onPressTimer, onToggleSet };
+  const live = useRef({ removeRow, onPressTimer, onToggleSet, onOpenSetMarks });
+  live.current = { removeRow, onPressTimer, onToggleSet, onOpenSetMarks };
   const rowHandlers = useRef(new Map<ID, RowHandlers>()).current;
   const handlersFor = (setId: ID): RowHandlers => {
     const known = rowHandlers.get(setId);
@@ -378,6 +384,7 @@ function ExerciseCardComponent({
         setFocus(null); // committing a set always closes the editor
         live.current.onToggleSet(setId);
       },
+      onOpenMarks: () => live.current.onOpenSetMarks?.(setId),
     };
     rowHandlers.set(setId, handlers);
     return handlers;
@@ -689,6 +696,7 @@ function ExerciseCardComponent({
                   onPressTimer={handlersFor(set.localId).onPressTimer}
                   onFocusField={handlersFor(set.localId).onFocusField}
                   onToggleComplete={handlersFor(set.localId).onToggleComplete}
+                  onOpenMarks={onOpenSetMarks ? handlersFor(set.localId).onOpenMarks : undefined}
                 />
               </View>
 
@@ -704,6 +712,7 @@ function ExerciseCardComponent({
                     onChange={(patch) => onPatchSet(set.localId, patch)}
                     onClose={() => setFocus(null)}
                     onRemoveSet={() => removeRow(set.localId)}
+                    onOpenMarks={onOpenSetMarks ? handlersFor(set.localId).onOpenMarks : undefined}
                   />
                 </GrowIn>
               ) : null}
@@ -873,6 +882,7 @@ interface RowHandlers {
   onPressTimer: () => void;
   onFocusField: (field: SetField) => void;
   onToggleComplete: () => void;
+  onOpenMarks: () => void;
 }
 
 /** Hoisted: `RollingNumber` is memoized, and an inline object is a new prop. */

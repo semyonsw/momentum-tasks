@@ -29,6 +29,7 @@ import { countsToMax, maxLabel } from './maxReps';
 import { exerciseBests, type BodyweightLookup, type ExerciseBests } from './records';
 import { evaluateDeload, type DeloadVerdict } from './deload';
 import { plannedStartWeight } from './weightCarry';
+import { cleanRir } from './effort';
 
 /* ------------------------------------------------------------------ */
 /* Draft shapes (in-memory, screen-local)                              */
@@ -52,6 +53,11 @@ export interface DraftSet {
    * one standing in for the first.
    */
   restTakenSeconds?: number;
+  /**
+   * Reps in reserve, when the user said — see `lib/effort.ts`. Never prefilled:
+   * effort is a fact about a set that happened, not a plan carried over.
+   */
+  rir?: number;
 }
 
 export interface DraftEntry {
@@ -679,6 +685,7 @@ export function draftToSetHistory(session: DraftSession): SetHistory[] {
   for (const entry of session.entries) {
     entry.sets.forEach((set, index) => {
       if (!set.isCompleted) return;
+      const rir = cleanRir(set.rir);
       rows.push({
         id: uid('sh'),
         sessionId: session.localId,
@@ -693,6 +700,9 @@ export function draftToSetHistory(session: DraftSession): SetHistory[] {
         isCompleted: true,
         // Absent rather than zero — see `DraftSet.restTakenSeconds`.
         ...(set.restTakenSeconds != null ? { restTakenSeconds: set.restTakenSeconds } : {}),
+        // Through the one validator: a session persisted by any build reaches the
+        // database here, and a value off the scale is not written at all.
+        ...(rir != null ? { rir } : {}),
       });
     });
   }

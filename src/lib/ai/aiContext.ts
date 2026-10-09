@@ -4,8 +4,9 @@
  *
  *   buildWorkoutContext   routines, the library's names, the last 20 weeks of
  *                         sessions in the app's own shorthand, per-exercise
- *                         rollups, sets per cluster, the app's own verdicts, and
- *                         what the user SAID after each workout (the debriefs)
+ *                         rollups, sets per cluster, the app's own verdicts,
+ *                         reps in reserve where a set was graded, and what the
+ *                         user SAID after each workout (the debriefs)
  *   buildTasksContext     the tasks, and per task: asked, done, excused, missed,
  *                         streaks, weekday rates; plus the daily completion line
  *   buildExpensesContext  months of spent and income, categories per month, the
@@ -57,6 +58,7 @@ import type { CompletedWorkout } from '../completedWorkout';
 import { debriefForAi, type WorkoutDebrief } from '../debrief';
 import type { BodyweightEntry } from '../bodyweightLog';
 import { exerciseBests } from '../records';
+import { effortLine } from '../effort';
 import type { Language } from '../i18n';
 import type {
   Exercise,
@@ -476,6 +478,7 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
    * "when did I last do legs before the summer?" is about the whole log.
    */
   const allSessions = [...workouts].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  let gradedAny = false;
   const sessionRows = allSessions.map((w) => {
     const row: Record<string, unknown> = { date: dayKey(w.startedAt) };
     if (numbers[w.id] != null) row.n = numbers[w.id];
@@ -485,6 +488,25 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     row.sets = w.setCount;
     if (w.effort) row.feel = w.effort;
     row.ex = w.exercises.filter((e) => e.setCount > 0).map((e) => `${e.name}: ${e.summary}`);
+    /*
+     * EFFORT, only where somebody graded a set: reps in reserve per working set, in
+     * the order they were done (`2 1 - 0`, `-` = not said). A log that never used
+     * the chip costs this context nothing.
+     */
+    const effort = w.exercises
+      .map((e) => {
+        const line = effortLine(
+          w.sets
+            .filter((set) => set.exerciseId === e.exerciseId && !set.isWarmup)
+            .sort((a, b) => a.setIndex - b.setIndex),
+        );
+        return line ? `${e.name}: ${line}` : null;
+      })
+      .filter((line): line is string => line != null);
+    if (effort.length) {
+      row.rir = effort;
+      gradedAny = true;
+    }
     return row;
   });
 
@@ -530,6 +552,12 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     ...(bodyweightKg != null ? { bodyweightKg } : {}),
     routines: routineRows,
     sequence,
+    ...(gradedAny
+      ? {
+          effortNote:
+            'sessions[].rir lists reps in reserve per working set in order (RPE = 10 - RIR; "-" = not recorded). RIR 0-0.5 means the set was at the limit; the app does not suggest more weight off such sets.',
+        }
+      : {}),
   };
 
   /*

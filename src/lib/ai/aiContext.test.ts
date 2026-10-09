@@ -313,6 +313,48 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
   ...over,
 });
 
+describe('effort per set (T-11)', () => {
+  const build = (workouts: CompletedWorkout[]) =>
+    JSON.parse(
+      buildWorkoutContext({
+        exercises: seedExercises,
+        routines: seedRoutines,
+        workouts,
+        unitSystem: 'metric',
+        lang: 'en',
+        now: NOW,
+      }).json,
+    );
+
+  it('includes the reps in reserve of a graded session, in set order', () => {
+    const workouts = fixtureWorkouts();
+    const latest = workouts[0];
+    const exerciseId = latest.exercises[0].exerciseId;
+    const name = latest.exercises[0].name;
+    const working = latest.sets
+      .filter((set) => set.exerciseId === exerciseId && !set.isWarmup)
+      .sort((a, b) => a.setIndex - b.setIndex);
+    const grades = new Map(working.map((set, i) => [set.id, i === 1 ? undefined : i]));
+    const graded = {
+      ...latest,
+      sets: latest.sets.map((set) => {
+        const rir = grades.get(set.id);
+        return rir == null ? set : { ...set, rir };
+      }),
+    };
+    const json = build([graded, ...workouts.slice(1)]);
+    const expected = working.map((_, i) => (i === 1 ? '-' : String(i))).join(' ');
+    expect(json.sessions[0].rir).toEqual([`${name}: ${expected}`]);
+    expect(json.effortNote).toContain('reps in reserve');
+  });
+
+  it('says nothing about effort when no set was graded', () => {
+    const json = build(fixtureWorkouts());
+    expect(json.effortNote).toBeUndefined();
+    expect(json.sessions.some((row: Record<string, unknown>) => 'rir' in row)).toBe(false);
+  });
+});
+
 describe('the tasks context', () => {
   const log: TaskLog = {
     read: {

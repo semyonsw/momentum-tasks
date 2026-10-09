@@ -494,8 +494,11 @@ export interface Routine {
  *    plate. A derived number that no screen shows is a number that cannot be wrong
  *    in a way anybody notices.
  *  `rpe` — nothing collected it. Rate of perceived exertion is a real training
- *    tool and a different product: it asks the user to grade every set, which is
- *    the opposite of a log that costs one tap.
+ *    tool, and it asks the user to grade every set, which is the opposite of a
+ *    log that costs one tap. (It came back in 2.3 as `rir` below — OPTIONAL, set
+ *    from a chip only by somebody who wants it, and read by the nudge, the AI
+ *    context and the row. A field a control writes and three things read passes
+ *    the test this list applies; the deleted one did not.)
  *  `notes` — nothing wrote it, and prose per set is a search feature this app has
  *    no screen for.
  *  `side` — a per-set left/right split. `Exercise.isUnilateral` already says "each
@@ -531,6 +534,13 @@ export interface SetHistory {
   isCompleted: boolean;
   /** Actual rest taken before this set — feeds future rest suggestions. */
   restTakenSeconds?: number;
+  /**
+   * Reps in reserve, 0–5 in half steps — RPE is `10 − rir` and derived, never
+   * stored. Absent = nobody said, which is every set logged before 2.3 and every
+   * set since that was not graded. `lib/effort.ts` owns the scale, the validator
+   * and the one decision it feeds: a set at the limit is no evidence for more load.
+   */
+  rir?: number;
 }
 
 /**

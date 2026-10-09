@@ -1710,6 +1710,17 @@ const RU: Record<string, string> = {
   '{day}, nothing spent': '{day}, ничего не потрачено',
   'Expenses only: incomes, and transfers between your accounts, are not spending. The dearest day of the month is the darkest; every other day is shaded against it.':
     'Только расходы: доходы и переводы между счетами — это не траты. Самый дорогой день месяца — самый тёмный, остальные закрашены относительно него.',
+  // W1 · RIR per set
+  '{rir} in reserve · RPE {rpe}': '{rir} в запасе · RPE {rpe}',
+  'Reps in reserve': 'Повторов в запасе',
+  'Add reps in reserve': 'Указать повторы в запасе',
+  'Opens the reps-in-reserve scale': 'Открывает шкалу повторов в запасе',
+  'Set {n}': 'Подход {n}',
+  Clear: 'Очистить',
+  'How many more reps you could have done. The small number is the same answer as RPE.':
+    'Сколько ещё повторов вы могли бы сделать. Маленькое число — тот же ответ по шкале RPE.',
+  'A set at 0 or 0.5 was at the limit: it is not taken as a reason to add weight.':
+    'Подход на 0 или 0.5 — на пределе: он не считается поводом добавить вес.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

@@ -4,6 +4,7 @@
  *   ┌──────────────────────────────────────────────┐
  *   │  W     +20 KG      ×    8 REPS           ( ✓ )│  ← a warm-up
  *   │  1     +40 KG      ×    4 REPS           ( ✓ )│
+ *   │  2     +40 KG × 4 REPS  (RIR 1)          ( ✓ )│  ← graded: the effort chip
  *   │  2       2:00 MIN                    ( ▶ )( ✓ )│  ← a timed set
  *   │  3       65 KG     ×    5 REPS           ( ✓ )│
  *   │        20 + 2×10 + 2×2.5                      │  ← a barbell lift
@@ -56,6 +57,11 @@
  *     it did, and "set 2 of 5" must mean the second of five sets that counted.
  *     Same `ink-faint` as the numbers, because it is the same kind of landmark
  *     and not a warning; the toggle lives in `QuickAdjust`, beside `Remove set`.
+ *   • A GRADED SET CARRIES ITS EFFORT: `RIR 2`, a 26 dp chip after the reps,
+ *     tapping it opens the scale (`SetMarksSheet`). Only where a grade exists —
+ *     an ungraded row is drawn exactly as it always was, so a lifter who never
+ *     uses RIR never sees the feature — and the way in for a first grade is the
+ *     `RIR` door in `QuickAdjust`, on the row's own editor.
  *   • THE RINGED ROW IS ALSO THE DOOR INTO FOCUS MODE. Tapping its numbers, or
  *     long-pressing it, opens the full-screen sheet instead of the inline editor —
  *     and ONLY on that row. `QuickAdjust` is unchanged on every other row of every
@@ -97,10 +103,11 @@ import type { Exercise, UnitSystem } from '../types/models';
 import { describePlates, platesFor } from '../lib/plates';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
 import { countUnitLabel, formatCount, formatWeight, unitLabel } from '../lib/units';
+import { describeRir, effortApplies, rirChipLabel } from '../lib/effort';
 import { useLanguage, useT } from '../hooks/useT';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { gradientFill, palette, tint } from '../theme/tokens';
+import { glass, gradientFill, palette, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
 import { Icon } from './Icon';
 import { Flash, Pop, usePressScale } from './motion';
@@ -153,6 +160,8 @@ interface SetRowProps {
    * Absent everywhere outside edit mode, which is what hides it.
    */
   onRemove?: () => void;
+  /** Open the set's annotations sheet (`SetMarksSheet`) — the `RIR` chip's tap. */
+  onOpenMarks?: () => void;
 }
 
 function SetRowComponent({
@@ -170,6 +179,7 @@ function SetRowComponent({
   onToggleComplete,
   onPressTimer,
   onRemove,
+  onOpenMarks,
 }: SetRowProps) {
   const t = useT();
   const lang = useLanguage();
@@ -195,6 +205,17 @@ function SetRowComponent({
   const ghost = set.isPrefilled && !done;
   /** The count cell is standing in for a number nobody has yet. */
   const countsMax = showsMaxLabel(exercise, set);
+  /*
+   * THE EFFORT CHIP — `RIR 2`, after the reps (T-11). Only where somebody graded
+   * the set, only on reps, and never on the lit row: that row is a set about to
+   * happen, and RIR is a fact about one that did. With the chip present the two
+   * cells give up their minimum widths and the count's unit may clip to `R…` —
+   * the design's own behaviour — because 96 + 76 dp of reserved cell plus a chip
+   * leaves the ✓ less than its 48 at 360 dp. The numbers move only when a grade is
+   * SET, which is the user's own tap in a sheet, never under the thumb on a ✓.
+   */
+  const chip =
+    set.rir != null && effortApplies(exercise.countUnit) && !ring ? rirChipLabel(set.rir) : null;
   // Logged numbers step back to muted (Momentum v3): the log is history, and the
   // lit row below them is the one the eye should land on.
   const valueTone = ghost ? 'text-ink-faint' : done ? 'text-ink-muted' : 'text-ink';
@@ -294,7 +315,7 @@ function SetRowComponent({
 
       {exercise.requiresWeight ? (
         <>
-          <View className="min-w-[96px]">
+          <View className={chip ? 'shrink-0' : 'min-w-[96px]'}>
             <ValueCell
               width="w-full"
               value={formatWeight(set.weightKg, unitSystem, exercise.loadMode)}
@@ -329,7 +350,8 @@ function SetRowComponent({
       {/* Count cell — reps / rounds / minutes / metres. Takes the weight cell's
           96 dp when there is no weight, so the thumb target never moves. */}
       <ValueCell
-        width={exercise.requiresWeight ? 'min-w-[76px]' : 'min-w-[96px]'}
+        width={chip ? 'shrink' : exercise.requiresWeight ? 'min-w-[76px]' : 'min-w-[96px]'}
+        shrinkUnit={chip != null}
         /* `MAX` rather than a 0 until the first rep is counted — the word is what
            is being asked for, and the zero is only the counter. See
            `lib/maxReps.ts`. */
@@ -345,6 +367,36 @@ function SetRowComponent({
           countsMax ? maxLabel(lang) : `${set.count} ${countUnitLabel(exercise.countUnit, lang)}`
         }
       />
+
+      {chip ? (
+        <Pressable
+          onPress={onOpenMarks}
+          disabled={!onOpenMarks}
+          hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
+          accessibilityRole="button"
+          accessibilityLabel={describeRir(set.rir ?? 0, lang)}
+          accessibilityHint={t('Opens the reps-in-reserve scale')}
+          style={{
+            height: 26,
+            marginLeft: 6,
+            paddingHorizontal: 8,
+            borderRadius: 13,
+            borderWidth: 1,
+            borderColor: palette.hairline,
+            backgroundColor: glass.sunken,
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Text
+            maxFontSizeMultiplier={1.3}
+            numberOfLines={1}
+            className="text-[12.5px] font-semibold tabular-nums text-ink"
+          >
+            {chip}
+          </Text>
+        </Pressable>
+      ) : null}
 
       <View className="flex-1" />
 
@@ -532,8 +584,11 @@ function ValueCell({
   focused,
   onPress,
   accessibilityLabel,
+  shrinkUnit = false,
 }: {
   width: string;
+  /** Let the unit clip (`REPS` → `R…`) before anything else gives way. */
+  shrinkUnit?: boolean;
   value: string;
   unit: string;
   tone: string;
@@ -560,11 +615,13 @@ function ValueCell({
       <Text
         allowFontScaling={false}
         className={['font-semibold tabular-nums', emphasis ? 'text-acc' : tone].join(' ')}
-        style={emphasis ? PRIMED_NUMERAL : ROW_NUMERAL}
+        style={[emphasis ? PRIMED_NUMERAL : ROW_NUMERAL, { flexShrink: 0 }]}
       >
         {value}
       </Text>
       <Text
+        numberOfLines={shrinkUnit ? 1 : undefined}
+        style={shrinkUnit ? { flexShrink: 1 } : undefined}
         className={[
           'ml-xs font-semibold uppercase',
           // The unit rides with the number, one notch behind it in size and in

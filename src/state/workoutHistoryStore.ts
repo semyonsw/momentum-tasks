@@ -93,6 +93,7 @@ import {
 } from './historyDb';
 import { currentSettings } from './settingsStore';
 import { bodyweightAt } from '../lib/bodyweightLog';
+import { cleanRir, withRir } from '../lib/effort';
 import {
   addExerciseToWorkout,
   addSetToWorkout,
@@ -120,6 +121,17 @@ import type {
  */
 function newRowId(workoutId: ID): ID {
   return `${workoutId}_add_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
+/**
+ * One correction to a logged set. An absent key means "leave it"; `weightKg: null`
+ * is a real value (an unweighted set) and `rir: null` clears the effort.
+ */
+export interface SetCorrection {
+  weightKg?: number | null;
+  count?: number;
+  isWarmup?: boolean;
+  rir?: number | null;
 }
 
 interface WorkoutHistoryState {
@@ -163,7 +175,7 @@ interface WorkoutHistoryState {
   saveSession: (session: DraftSession, endedAt?: Date) => CompletedWorkout | null;
   deleteWorkout: (id: ID) => void;
   /**
-   * Correct one logged set: its weight, its count, or its warm-up flag.
+   * Correct one logged set: its weight, its count, its warm-up flag or its RIR.
    *
    * The only write in this store that touches a row the user did not just perform,
    * and the only one that needs `recomputeWorkout` — see rule 5. Returns true when
@@ -172,11 +184,7 @@ interface WorkoutHistoryState {
    * `weightKg: null` is a real value (an unweighted set), so the patch is a partial
    * rather than a set of nullable fields: an absent key means "leave it".
    */
-  updateWorkoutSet: (
-    workoutId: ID,
-    setId: ID,
-    patch: { weightKg?: number | null; count?: number; isWarmup?: boolean },
-  ) => boolean;
+  updateWorkoutSet: (workoutId: ID, setId: ID, patch: SetCorrection) => boolean;
   /**
    * Remove one logged set. Refused for the last row of a workout — that is
    * `deleteWorkout`, which asks first. Returns false when nothing was removed.
@@ -442,14 +450,15 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()((set, get) => ({
 
     const sets = workout.sets.map((row) => {
       if (row.id !== setId) return row;
-      return {
-        ...row,
+      const next: SetHistory = {
+        ...(patch.rir !== undefined ? withRir(row, patch.rir) : row),
         // `undefined` means "not in the patch"; `null` is a real weight for an
         // unweighted set, so the two cannot be collapsed.
         ...(patch.weightKg !== undefined ? { weightKg: patch.weightKg } : {}),
         ...(patch.count !== undefined ? { count: Math.max(0, Math.round(patch.count)) } : {}),
         ...(patch.isWarmup !== undefined ? { isWarmup: patch.isWarmup } : {}),
       };
+      return next;
     });
 
     return writeRecomputed(set, get, workoutId, sets);
@@ -934,6 +943,10 @@ function sanitizeSetRow(value: unknown): SetHistory | null {
     ...(typeof row.restTakenSeconds === 'number' && Number.isFinite(row.restTakenSeconds)
       ? { restTakenSeconds: Math.max(0, Math.round(row.restTakenSeconds)) }
       : {}),
+    // Optional since 2.3. Absent on every older row and kept absent; a value off
+    // the scale (RIR 37, NaN) is dropped and the SET is kept — losing a logged set
+    // over a bad annotation would be the wrong way round.
+    ...(cleanRir(row.rir) != null ? { rir: cleanRir(row.rir) } : {}),
   };
 }
 

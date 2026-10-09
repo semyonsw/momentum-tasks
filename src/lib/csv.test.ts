@@ -276,8 +276,8 @@ describe('workoutsToCsv', () => {
     ]);
     const rows = records(csv);
     expect(rows[0]).toBe(SET_COLUMNS.join(','));
-    expect(rows[1]).toBe('2026-10-03,1,Push,Bench press,1,40,kg,8,reps,external,true,62');
-    expect(rows[2]).toBe('2026-10-03,1,Push,Bench press,2,60,kg,8,reps,external,false,');
+    expect(rows[1]).toBe('2026-10-03,1,Push,Bench press,1,40,kg,8,reps,external,true,62,');
+    expect(rows[2]).toBe('2026-10-03,1,Push,Bench press,2,60,kg,8,reps,external,false,,');
   });
 
   it('quotes commas, quotes and newlines in exercise and routine names; Cyrillic kept', () => {
@@ -301,7 +301,7 @@ describe('workoutsToCsv', () => {
     const rows = records(
       workoutsToCsv([newer, older], { numbering: { workoutId: 'w2', number: 212 } }),
     );
-    expect(rows[1]).toBe('2026-01-01,211,Core,Bench press,1,,,90,seconds,none,false,');
+    expect(rows[1]).toBe('2026-01-01,211,Core,Bench press,1,,,90,seconds,none,false,,');
     expect(rows[2]).toMatch(/^2026-10-03,212,Push,/);
   });
 
@@ -325,6 +325,22 @@ describe('workoutsToCsv', () => {
       }),
     );
     expect(rows[1]).toContain(',220.46,lb,');
+  });
+
+  it('reps in reserve go in the last column, blank where nobody graded the set', () => {
+    const rows = records(
+      workoutsToCsv([
+        workout('w1', at(2026, 10, 3), 'Push', [
+          set({ rir: 1.5 }, 0),
+          set({ rir: 0 }, 1),
+          set({}, 2),
+        ]),
+      ]),
+    );
+    expect(SET_COLUMNS.at(-1)).toBe('rir');
+    expect(rows[1].endsWith(',false,,1.5')).toBe(true);
+    expect(rows[2].endsWith(',false,,0')).toBe(true);
+    expect(rows[3].endsWith(',false,,')).toBe(true);
   });
 
   it('a deleted exercise exports under its id rather than vanishing', () => {

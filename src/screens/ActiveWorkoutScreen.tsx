@@ -183,8 +183,10 @@ import { useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStor
 import { platesInForce, useSettings } from '../state/settingsStore';
 import { PrimaryButton, Separator, TextButton } from '../components/primitives';
 import { Sheet } from '../components/Sheet';
+import { SetMarksSheet } from '../components/SetMarksSheet';
+import { effortApplies } from '../lib/effort';
 import { FloatingPair, Lamps, Toast, type ToastAction } from '../components/glass';
-import { draftToSetHistory, sessionVolume } from '../lib/draft';
+import { draftToSetHistory, sessionVolume, workingSetLabels } from '../lib/draft';
 import type { ID, RoutineItem, UnitSystem } from '../types/models';
 
 /**
@@ -213,6 +215,7 @@ interface CardHandlers {
   onPressTimer: (setId: ID) => void;
   onToggleSet: (setId: ID) => void;
   onPatchSet: (setId: ID, patch: Partial<DraftSet>) => void;
+  onOpenSetMarks: (setId: ID) => void;
   onAddWarmup: () => void;
   onAddSet: () => void;
   onRemoveSet: (setId: ID) => void;
@@ -344,6 +347,8 @@ export function ActiveWorkoutScreen({
   const [collapsedId, setCollapsedId] = useState<ID | null>(null);
   /** Focus mode is open over this screen. See the file header. */
   const [focusOpen, setFocusOpen] = useState(false);
+  /** The set whose annotations sheet is open (`SetMarksSheet`). */
+  const [marking, setMarking] = useState<{ entryId: ID; setId: ID } | null>(null);
 
   /* --- store bindings: one selector per slice, never the whole store --- */
   const session = useActiveWorkout((s) => s.session);
@@ -382,6 +387,7 @@ export function ActiveWorkoutScreen({
   const completeSet = useActiveWorkout((s) => s.completeSet);
   const uncompleteSet = useActiveWorkout((s) => s.uncompleteSet);
   const patchSet = useActiveWorkout((s) => s.patchSet);
+  const markSet = useActiveWorkout((s) => s.markSet);
   const addSet = useActiveWorkout((s) => s.addSet);
   const addWarmupSets = useActiveWorkout((s) => s.addWarmupSets);
   const removeSet = useActiveWorkout((s) => s.removeSet);
@@ -833,6 +839,7 @@ export function ActiveWorkoutScreen({
         live.current.handleToggleSet(entryId, setId, target?.isCompleted ?? false);
       },
       onPatchSet: (setId, patch) => patchSet(entryId, setId, patch),
+      onOpenSetMarks: (setId) => setMarking({ entryId, setId }),
       onAddWarmup: () => {
         const plan = live.current.warmupPlans[entryId];
         if (plan) addWarmupSets(entryId, plan.sets);
@@ -970,6 +977,21 @@ export function ActiveWorkoutScreen({
 
   const dimmed = confirming != null;
   const allLogged = progress.total > 0 && progress.done === progress.total;
+
+  /* The set the annotations sheet is about, read live — and its title, in the
+     row's own numbering: `Set 2` counts working sets, a warm-up is a warm-up. */
+  const markingTarget = (() => {
+    if (!marking) return null;
+    const entry = session.entries.find((e) => e.localId === marking.entryId);
+    const index = entry?.sets.findIndex((s) => s.localId === marking.setId) ?? -1;
+    if (!entry || index < 0) return null;
+    const label = workingSetLabels(entry.sets)[index];
+    return {
+      entry,
+      set: entry.sets[index],
+      title: label == null ? t('Warm-up') : t('Set {n}', { n: label }),
+    };
+  })();
 
   return (
     <View className="flex-1 bg-bg">
@@ -1109,6 +1131,7 @@ export function ActiveWorkoutScreen({
                       onPressTimer={handlers.onPressTimer}
                       onToggleSet={handlers.onToggleSet}
                       onPatchSet={handlers.onPatchSet}
+                      onOpenSetMarks={handlers.onOpenSetMarks}
                       /*
                       WARM-UP. Decided here rather than in the card because it
                       needs the gym's plates and `lib/warmup.ts` — the card renders
@@ -1233,6 +1256,20 @@ export function ActiveWorkoutScreen({
           onConfirm={() => void commitFinish()}
           onConfirmAndUpdatePlan={() => void commitFinish(true)}
           onDismiss={() => setConfirming(null)}
+        />
+      ) : null}
+
+      {/* A set's annotations — the RIR chip and the editor's `RIR` door. Read
+          from the live session, so a set that left it closes the sheet. */}
+      {markingTarget ? (
+        <SetMarksSheet
+          title={markingTarget.title}
+          rir={markingTarget.set.rir}
+          showEffort={effortApplies(markingTarget.entry.exercise.countUnit)}
+          onRir={(rir) => {
+            if (marking) markSet(marking.entryId, marking.setId, { rir });
+          }}
+          onDismiss={() => setMarking(null)}
         />
       ) : null}
 

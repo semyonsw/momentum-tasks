@@ -35,6 +35,10 @@
  * The label says what tapping it will do, not what the set currently is:
  * `Warm-up` on a working set, `Working set` on a warm-up. It is green-bright in the
  * second case because green means "this is on" everywhere else in the app.
+ *
+ * EFFORT (RIR) has a row of its own under them, on a logged rep set only: the
+ * door to `SetMarksSheet`, labelled with the grade when there is one. It is the
+ * one way to a FIRST grade — the set row draws its chip only once one exists.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -55,6 +59,7 @@ import {
   unitLabel,
 } from '../lib/units';
 import type { SetField } from './SetRow';
+import { describeRir, effortApplies, rirChipLabel } from '../lib/effort';
 import { useLanguage, useT } from '../hooks/useT';
 import { palette } from '../theme/tokens';
 
@@ -66,6 +71,8 @@ interface QuickAdjustProps {
   onChange: (patch: Partial<DraftSet>) => void;
   onClose: () => void;
   onRemoveSet: () => void;
+  /** Open `SetMarksSheet` — the `RIR` door below. Absent = no door. */
+  onOpenMarks?: () => void;
 }
 
 export function QuickAdjust({
@@ -76,6 +83,7 @@ export function QuickAdjust({
   onChange,
   onClose,
   onRemoveSet,
+  onOpenMarks,
 }: QuickAdjustProps) {
   const t = useT();
   const lang = useLanguage();
@@ -295,6 +303,38 @@ export function QuickAdjust({
           <Text className="text-label font-semibold text-acc">{t('Done')}</Text>
         </Pressable>
       </View>
+
+      {/* EFFORT, on a set that happened and counts reps — the way to a FIRST grade,
+          since the row only draws its chip once one exists. A row of its own
+          rather than a fifth word in the line above, which is full in Russian. */}
+      {onOpenMarks && set.isCompleted && effortApplies(exercise.countUnit) ? (
+        <View className="mt-sm flex-row items-center justify-between">
+          <Text maxFontSizeMultiplier={1.3} className="text-label text-ink-muted">
+            {t('Reps in reserve')}
+          </Text>
+          <Pressable
+            onPress={() => {
+              tap();
+              onOpenMarks();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              set.rir != null ? describeRir(set.rir, lang) : t('Add reps in reserve')
+            }
+            className="h-[48px] min-w-[72px] items-center justify-center rounded-pill border border-hairline bg-ink/5 px-md"
+          >
+            <Text
+              maxFontSizeMultiplier={1.3}
+              className={[
+                'text-label font-semibold tabular-nums',
+                set.rir != null ? 'text-ink' : 'text-acc',
+              ].join(' ')}
+            >
+              {set.rir != null ? rirChipLabel(set.rir) : '+ RIR'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }

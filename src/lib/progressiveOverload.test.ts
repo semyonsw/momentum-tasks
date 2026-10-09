@@ -516,3 +516,119 @@ describe('a running ladder stands this engine down', () => {
     expect(verdict.status).not.toBe('insufficient_data');
   });
 });
+
+/**
+ * T-11 · IMPLEMENTATION_DECISIONS: a set at RPE ≥ 9.5 (RIR ≤ 0.5) is not used as
+ * evidence to raise the weight, because it was at the limit.
+ */
+describe('a set at the limit is no evidence for more load', () => {
+  /** The +25 kg sit-up plateau from the first test, with the latest session graded. */
+  function plateau(latest: SetHistory[]): SetHistory[] {
+    return [
+      ...sets('ex_situps', 's80', '2026-07-21', 25, [12, 12, 12]),
+      ...sets('ex_situps', 's81', '2026-07-23', 25, [12, 12, 12]),
+      ...sets('ex_situps', 's82', '2026-07-28', 25, [12, 12, 12]),
+      ...sets('ex_situps', 's84', '2026-08-04', 25, [12, 12, 12]),
+      ...latest,
+    ];
+  }
+  const graded = (rows: SetHistory[], rirs: (number | undefined)[]): SetHistory[] =>
+    rows.map((row, i) => (rirs[i] == null ? row : { ...row, rir: rirs[i] }));
+
+  it('holds the weight when every set that met the target was at RIR 0', () => {
+    const latest = graded(sets('ex_situps', 's86', '2026-08-08', 25, [12, 12, 12]), [0, 0, 0]);
+    const verdict = evaluateOverload({
+      exercise: weightedExercise,
+      history: plateau(latest),
+      now: NOW,
+    });
+    expect(verdict.status).toBe('building');
+    expect(verdict.shouldNudge).toBe(false);
+    expect(verdict.suggestedWeightKg).toBeNull();
+  });
+
+  it('treats RIR 0.5 (RPE 9.5) as the limit too', () => {
+    const latest = graded(
+      sets('ex_situps', 's86', '2026-08-08', 25, [12, 12, 12]),
+      [0.5, 0.5, 0.5],
+    );
+    const verdict = evaluateOverload({
+      exercise: weightedExercise,
+      history: plateau(latest),
+      now: NOW,
+    });
+    expect(verdict.shouldNudge).toBe(false);
+  });
+
+  it('still nudges at RIR 1 — that set had a rep left', () => {
+    const latest = graded(sets('ex_situps', 's86', '2026-08-08', 25, [12, 12, 12]), [1, 1, 0]);
+    const verdict = evaluateOverload({
+      exercise: weightedExercise,
+      history: plateau(latest),
+      now: NOW,
+    });
+    expect(verdict.status).toBe('due_weight');
+    expect(verdict.suggestedWeightKg).toBe(27.5);
+  });
+
+  it('judges the target on the sets owned: one owned set short of it holds the weight', () => {
+    // Target 8: the 9 was at the limit, the owned set is a 7.
+    const latest = graded(sets('ex_situps', 's86', '2026-08-08', 25, [9, 7]), [0, 2]);
+    const verdict = evaluateOverload({
+      exercise: weightedExercise,
+      history: plateau(latest),
+      now: NOW,
+    });
+    expect(verdict.status).toBe('building');
+  });
+
+  it('counts a set nobody graded — unknown effort is not assumed maximal', () => {
+    const latest = graded(sets('ex_situps', 's86', '2026-08-08', 25, [12, 12, 12]), [
+      0,
+      undefined,
+      0,
+    ]);
+    const verdict = evaluateOverload({
+      exercise: weightedExercise,
+      history: plateau(latest),
+      now: NOW,
+    });
+    expect(verdict.status).toBe('due_weight');
+  });
+
+  it('leaves an ungraded log exactly as it was', () => {
+    const latest = sets('ex_situps', 's86', '2026-08-08', 25, [12, 12, 12]);
+    const verdict = evaluateOverload({
+      exercise: weightedExercise,
+      history: plateau(latest),
+      now: NOW,
+    });
+    expect(verdict.status).toBe('due_weight');
+  });
+
+  it('still asks for a rep when the target was not reached at all', () => {
+    const latest = graded(sets('ex_situps', 's86', '2026-08-08', 25, [6, 6]), [0, 0]);
+    const history = [
+      ...sets('ex_situps', 's80', '2026-07-21', 25, [6, 6]),
+      ...sets('ex_situps', 's82', '2026-07-28', 25, [6, 6]),
+      ...latest,
+    ];
+    const verdict = evaluateOverload({ exercise: weightedExercise, history, now: NOW });
+    expect(verdict.status).toBe('due_reps');
+    expect(verdict.suggestedCount).toBe(7);
+  });
+
+  it('without a rep target, refuses only a top weight where every set was at the limit', () => {
+    const policy = { ...DEFAULT_OVERLOAD_POLICY, requireRepTargetMet: false };
+    const allOut = graded(sets('ex_situps', 's86', '2026-08-08', 25, [12, 12]), [0, 0]);
+    expect(
+      evaluateOverload({ exercise: weightedExercise, history: plateau(allOut), policy, now: NOW })
+        .shouldNudge,
+    ).toBe(false);
+    const oneOwned = graded(sets('ex_situps', 's86', '2026-08-08', 25, [12, 12]), [0, 2]);
+    expect(
+      evaluateOverload({ exercise: weightedExercise, history: plateau(oneOwned), policy, now: NOW })
+        .status,
+    ).toBe('due_weight');
+  });
+});

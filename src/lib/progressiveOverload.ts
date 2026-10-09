@@ -16,7 +16,7 @@
  * (calendar staleness — the spec's "2 weeks") and DEEP ENOUGH IN SESSIONS
  * (so a 2-week holiday between two sessions isn't mistaken for stagnation).
  *
- * Two refinements over a naive "same weight for 14 days → +2.5 kg":
+ * Three refinements over a naive "same weight for 14 days → +2.5 kg":
  *
  *  1. REPS BEFORE WEIGHT. If the user hasn't hit the rep target at the current
  *     weight, the correct progression is one more rep, not more load. The
@@ -24,6 +24,11 @@
  *  2. REGRESSION GUARD. If the user recently handled MORE than they're using
  *     now (deload, injury, fatigue), they are already working back up — a nudge
  *     there is noise, and worse, it's wrong. Verdict: `regressing`, stay quiet.
+ *  3. NOT OFF A SET AT THE LIMIT. A set graded RIR ≤ 0.5 (RPE ≥ 9.5) does not
+ *     count as owning the weight: eight reps with nothing left is not eight reps
+ *     you can add a plate to. Only the WEIGHT step reads this — the count axis
+ *     and `due_reps` are about doing one more, which a hard set does not argue
+ *     against. See `lib/effort.ts`.
  *
  * ── THE COUNT AXIS ─────────────────────────────────────────────────────────
  *
@@ -60,6 +65,7 @@ import { term, type Language } from './i18n';
 import { resolveTimerMode } from './setTimer';
 import { ladderOf } from './repLadder';
 import { countsToMax } from './maxReps';
+import { atLimit } from './effort';
 
 /* ------------------------------------------------------------------ */
 /* Public types                                                        */
@@ -137,6 +143,13 @@ interface SessionSummary {
   /** Best reps achieved AT the top weight (not the best reps overall). */
   bestRepsAtTop: number;
   /**
+   * The same, counting only sets that were NOT at the limit (`lib/effort.ts`):
+   * the reps at the top weight the user owns rather than survived. 0 when every
+   * set at the top weight was at the limit. Sets nobody graded count — unknown
+   * effort is not assumed to be maximal.
+   */
+  ownedRepsAtTop: number;
+  /**
    * The session's best count, ignoring weight entirely: the most reps, the
    * longest hold, the furthest distance.
    *
@@ -183,6 +196,7 @@ export function summarizeSessions(history: SetHistory[], exerciseId: string): Se
         performedAt: set.performedAt,
         topWeightKg: weight,
         bestRepsAtTop: set.count,
+        ownedRepsAtTop: atLimit(set) ? 0 : set.count,
         topCount: set.count,
       });
       continue;
@@ -197,8 +211,10 @@ export function summarizeSessions(history: SetHistory[], exerciseId: string): Se
       // reset the rep tally (reps at a lighter weight tell us nothing about it).
       existing.topWeightKg = weight;
       existing.bestRepsAtTop = set.count;
+      existing.ownedRepsAtTop = atLimit(set) ? 0 : set.count;
     } else if (weight === existing.topWeightKg) {
       existing.bestRepsAtTop = Math.max(existing.bestRepsAtTop, set.count);
+      if (!atLimit(set)) existing.ownedRepsAtTop = Math.max(existing.ownedRepsAtTop, set.count);
     }
   }
 
@@ -361,6 +377,31 @@ export function evaluateOverload(params: EvaluateOverloadParams): OverloadVerdic
       currentWeightKg: currentWeight,
       currentCount: bestReps,
       suggestedCount: bestReps + 1,
+      plateauDays,
+      sessionsInRun: run,
+      bestRepsAtWeight: bestReps,
+      since: sinceDate,
+    };
+  }
+
+  /* --- at the limit: no evidence for more load -------------------------- */
+  /*
+   * IMPLEMENTATION_DECISIONS (T-11): a set at RPE ≥ 9.5 (RIR ≤ 0.5) is not used as
+   * evidence to raise the weight, because it was at the limit. So the rep target
+   * is judged on the sets the user OWNED at this weight — and when only a set they
+   * barely survived met it, the honest answer is "hold it here", not "+2.5 kg" and
+   * not "one more rep" (they already did the reps; what is missing is the margin).
+   * With the rep target switched off the staleness alone is the evidence, so the
+   * one thing left to refuse is a top weight at which EVERY set was at the limit.
+   */
+  const owned = latest.ownedRepsAtTop;
+  const atTheLimit = policy.requireRepTargetMet ? owned < policy.repTarget : owned <= 0;
+  if (atTheLimit) {
+    return {
+      ...empty,
+      status: 'building',
+      currentWeightKg: currentWeight,
+      currentCount: bestReps,
       plateauDays,
       sessionsInRun: run,
       bestRepsAtWeight: bestReps,

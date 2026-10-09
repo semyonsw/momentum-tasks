@@ -170,7 +170,9 @@ import {
   unitLabel,
   weightSteps,
 } from '../lib/units';
-import { historyTotals } from '../state/workoutHistoryStore';
+import { historyTotals, type SetCorrection } from '../state/workoutHistoryStore';
+import { SetMarksSheet } from '../components/SetMarksSheet';
+import { describeRir, effortApplies, rirChipLabel } from '../lib/effort';
 import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import { term, type Language } from '../lib/i18n';
 import { formatMonth } from '../lib/days';
@@ -262,11 +264,7 @@ export interface HistoryScreenProps {
    * Correct one logged set. The store recomputes every derived number from the
    * rows — see `recomputeWorkout` — so this screen never patches a summary string.
    */
-  onEditSet: (
-    workoutId: ID,
-    setId: ID,
-    patch: { weightKg?: number | null; count?: number },
-  ) => void;
+  onEditSet: (workoutId: ID, setId: ID, patch: SetCorrection) => void;
   /** Remove one logged set. False when it was refused — the last row of a workout. */
   onDeleteSet: (workoutId: ID, setId: ID) => boolean;
   /**
@@ -336,6 +334,11 @@ export function HistoryScreen({
   const [openId, setOpenId] = useState<ID | null>(null);
   const [deleting, setDeleting] = useState<CompletedWorkout | null>(null);
   const [numbering, setNumbering] = useState<CompletedWorkout | null>(null);
+  /** The logged set whose annotations sheet is open. */
+  const [marking, setMarking] = useState<{ workoutId: ID; setId: ID; title: string } | null>(null);
+  const markingRow = marking
+    ? workouts.find((w) => w.id === marking.workoutId)?.sets.find((r) => r.id === marking.setId)
+    : undefined;
   const scrollRef = useRef<ScrollView>(null);
   /**
    * Where each workout row sits in the SCROLL CONTENT, captured on layout.
@@ -486,6 +489,7 @@ export function HistoryScreen({
         tap();
         setNumbering(workout);
       },
+      askMarks: (workoutId, setId, title) => setMarking({ workoutId, setId, title }),
     }),
     [],
   );
@@ -748,6 +752,16 @@ export function HistoryScreen({
         />
       ) : null}
 
+      {marking && markingRow ? (
+        <SetMarksSheet
+          title={marking.title}
+          rir={markingRow.rir}
+          showEffort={effortApplies(markingRow.countUnit)}
+          onRir={(rir) => onEditSet(marking.workoutId, marking.setId, { rir })}
+          onDismiss={() => setMarking(null)}
+        />
+      ) : null}
+
       {toast ? <Toast key={toast.key} label={toast.text} action={toast.action} /> : null}
     </View>
   );
@@ -760,7 +774,7 @@ const UNDO_TOAST_MS = 4500;
 
 /** What every row can do, keyed by workout — one object for the whole list. */
 interface RowActions {
-  editSet: (workoutId: ID, setId: ID, patch: { weightKg?: number | null; count?: number }) => void;
+  editSet: (workoutId: ID, setId: ID, patch: SetCorrection) => void;
   deleteSet: (workoutId: ID, setId: ID) => boolean;
   editWorkout: (
     workoutId: ID,
@@ -772,6 +786,8 @@ interface RowActions {
   toggle: (workoutId: ID) => void;
   askDelete: (workout: CompletedWorkout) => void;
   askNumber: (workout: CompletedWorkout) => void;
+  /** Open a logged set's annotations sheet (RIR). */
+  askMarks: (workoutId: ID, setId: ID, title: string) => void;
 }
 
 /**
@@ -826,6 +842,7 @@ const HistoryRow = memo(function HistoryRow({
       onPress={() => actions.toggle(id)}
       onDelete={() => actions.askDelete(workout)}
       onEditNumber={() => actions.askNumber(workout)}
+      onOpenMarks={(setId, title) => actions.askMarks(id, setId, title)}
     />
   );
 });
@@ -844,6 +861,7 @@ function WorkoutRow({
   onAddSet,
   onRemoveExercise,
   onAddExercise,
+  onOpenMarks,
 }: {
   workout: CompletedWorkout;
   /** Its ordinal, or undefined / below 1 when the pinning leaves it without one. */
@@ -852,7 +870,7 @@ function WorkoutRow({
   unitSystem: UnitSystem;
   onPress: () => void;
   onDelete: () => void;
-  onEditSet: (setId: ID, patch: { weightKg?: number | null; count?: number }) => void;
+  onEditSet: (setId: ID, patch: SetCorrection) => void;
   onDeleteSet: (setId: ID) => boolean;
   onEditNumber: () => void;
   /** Rename it, move it in time, or say how long it took. */
@@ -867,6 +885,8 @@ function WorkoutRow({
   onRemoveExercise: (exerciseId: ID) => boolean;
   /** Open the library picker for this workout. Absent = no way to navigate there. */
   onAddExercise?: () => void;
+  /** Open one logged set's annotations sheet, under the title given. */
+  onOpenMarks: (setId: ID, title: string) => void;
 }) {
   const t = useT();
   const lang = useLanguage();
@@ -1120,6 +1140,12 @@ function WorkoutRow({
                             if (onDeleteSet(row.id)) setEditing(null);
                           }}
                           onDone={() => setEditing(null)}
+                          onOpenMarks={() =>
+                            onOpenMarks(
+                              row.id,
+                              row.isWarmup ? t('Warm-up') : t('Set {n}', { n: index + 1 }),
+                            )
+                          }
                           canRemove={workout.sets.length > 1}
                         />
                       ))}
@@ -1624,6 +1650,7 @@ function LoggedSetRow({
   onChange,
   onRemove,
   onDone,
+  onOpenMarks,
 }: {
   row: SetHistory;
   /** 1-based position among this exercise's logged sets. `W` for a warm-up. */
@@ -1632,13 +1659,16 @@ function LoggedSetRow({
   editing: 'weight' | 'count' | null;
   canRemove: boolean;
   onFocusField: (field: 'weight' | 'count') => void;
-  onChange: (patch: { weightKg?: number | null; count?: number }) => void;
+  onChange: (patch: SetCorrection) => void;
   onRemove: () => void;
   onDone: () => void;
+  /** The `RIR` door in the correction panel, and the chip's tap. */
+  onOpenMarks: () => void;
 }) {
   const t = useT();
   const lang = useLanguage();
   const weighted = row.weightKg != null;
+  const graded = row.rir != null && effortApplies(row.countUnit);
   const steps = weightSteps(unitSystem);
   const countDelta = countStep(row.countUnit);
 
@@ -1707,6 +1737,24 @@ function LoggedSetRow({
           </Text>
         </Pressable>
 
+        {graded ? (
+          <Pressable
+            onPress={onOpenMarks}
+            hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel={describeRir(row.rir ?? 0, lang)}
+            style={pressedStyle}
+            className="ml-sm h-[26px] justify-center rounded-pill border border-hairline px-sm"
+          >
+            <Text
+              maxFontSizeMultiplier={1.3}
+              className="text-[12.5px] font-semibold tabular-nums text-ink-muted"
+            >
+              {rirChipLabel(row.rir ?? 0)}
+            </Text>
+          </Pressable>
+        ) : null}
+
         <View className="flex-1" />
         <Icon
           name={editing ? 'chevron-down' : 'chevron-right'}
@@ -1738,6 +1786,37 @@ function LoggedSetRow({
               </Pressable>
             ))}
           </View>
+
+          {/* Effort, as in the session's editor: the door to the scale. */}
+          {effortApplies(row.countUnit) ? (
+            <View className="mt-sm flex-row items-center justify-between">
+              <Text maxFontSizeMultiplier={1.3} className="text-label text-ink-muted">
+                {t('Reps in reserve')}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  tap();
+                  onOpenMarks();
+                }}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  row.rir != null ? describeRir(row.rir, lang) : t('Add reps in reserve')
+                }
+                style={pressedStyle}
+                className="h-hit min-w-[72px] items-center justify-center rounded-pill border border-hairline bg-surface-alt px-md"
+              >
+                <Text
+                  className={[
+                    'text-label font-semibold tabular-nums',
+                    row.rir != null ? 'text-ink' : 'text-green-bright',
+                  ].join(' ')}
+                >
+                  {row.rir != null ? rirChipLabel(row.rir) : '+ RIR'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <View className="mt-sm flex-row items-center justify-between">
             {/* Only where it is not the last row of the workout. See the note above. */}

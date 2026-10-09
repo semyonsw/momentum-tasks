@@ -69,6 +69,7 @@ import { moveToIndex } from '../lib/reorder';
 import { hasRoundLeft, isRoundExercise } from '../lib/rounds';
 import { nextInSupersetRound } from '../lib/superset';
 import { carriesWeight, carryWeightForward, defaultWeightUpdate } from '../lib/weightCarry';
+import { cleanRir, withRir } from '../lib/effort';
 import { currentSettings } from './settingsStore';
 import { rememberDefaultWeight } from './weightSync';
 import type { Exercise, ID, SessionEffort } from '../types/models';
@@ -167,6 +168,16 @@ interface ActiveWorkoutState {
   completeSet: (entryId: ID, setId: ID) => void;
   uncompleteSet: (entryId: ID, setId: ID) => void;
   patchSet: (entryId: ID, setId: ID, patch: Partial<DraftSet>) => void;
+  /**
+   * Annotate a set — its effort (`rir`, `null` to clear) — WITHOUT touching its
+   * numbers.
+   *
+   * Not `patchSet`, because `patchSet` is an EDIT: it turns `isPrefilled` off, and
+   * that flag is what lets an accepted nudge and the ladder keep rewriting a row
+   * nobody has touched. Saying how hard a set was is not touching its weight, so
+   * a graded row stays exactly as overwritable as it was.
+   */
+  markSet: (entryId: ID, setId: ID, marks: SetMarks) => void;
   addSet: (entryId: ID) => void;
   /**
    * Put generated warm-up rows at the TOP of an exercise.
@@ -671,6 +682,19 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
               sets: entry.sets.map((s) =>
                 s.localId === setId ? { ...s, ...patch, isPrefilled: false } : s,
               ),
+            }),
+          ),
+        });
+      },
+
+      markSet: (entryId, setId, marks) => {
+        const { session } = get();
+        if (!session) return;
+        set({
+          session: mapEntry(session, entryId, (entry) =>
+            withLadderPlan({
+              ...entry,
+              sets: entry.sets.map((s) => (s.localId === setId ? applySetMarks(s, marks) : s)),
             }),
           ),
         });
@@ -1212,7 +1236,7 @@ function sanitizeState(persisted: unknown): PersistedSlice {
   if (typeof persisted !== 'object' || persisted === null) return empty;
 
   const raw = persisted as Partial<PersistedSlice>;
-  const session = isRenderableSession(raw.session) ? raw.session : null;
+  const session = isRenderableSession(raw.session) ? withCleanMarks(raw.session) : null;
   if (!session) return empty;
 
   const entryIds = new Set(session.entries.map((e) => e.localId));
@@ -1226,6 +1250,27 @@ function sanitizeState(persisted: unknown): PersistedSlice {
     activeEntryId,
     rest: sanitizeRest(raw.rest),
     setTimer: sanitizeTimer(raw.setTimer, entryIds),
+  };
+}
+
+/**
+ * A persisted session with every set's annotations put through their validators.
+ *
+ * The set's NUMBERS are already guarded by `isRenderableSession`; the annotations
+ * are optional, so a bad one is dropped and the set is kept — a session restored
+ * from disk must never lose a logged set over a chip.
+ */
+function withCleanMarks(session: DraftSession): DraftSession {
+  return {
+    ...session,
+    entries: session.entries.map((entry) => ({
+      ...entry,
+      sets: entry.sets.map((set) => {
+        if (set.rir === undefined) return set;
+        const rir = cleanRir(set.rir);
+        return rir == null ? withRir(set, null) : rir === set.rir ? set : { ...set, rir };
+      }),
+    })),
   };
 }
 
@@ -1374,6 +1419,15 @@ function withLadderPlan(entry: DraftEntry): DraftEntry {
 /* ------------------------------------------------------------------ */
 /* Immutable helpers                                                   */
 /* ------------------------------------------------------------------ */
+
+/** What `markSet` may change on a set. An absent key means "leave it". */
+export interface SetMarks {
+  rir?: number | null;
+}
+
+function applySetMarks(set: DraftSet, marks: SetMarks): DraftSet {
+  return marks.rir !== undefined ? withRir(set, marks.rir) : set;
+}
 
 function mapEntry(
   session: DraftSession,
