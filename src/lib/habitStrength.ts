@@ -53,10 +53,22 @@
  * POINTS — a tenth, which is what "forgives one bad day" has to mean to be
  * visible on a 140 dp ring. A once-a-week task loses up to 13: one miss there is
  * a whole week of its habit, and the number is honest about that.
+ *
+ * ── N TIMES A WEEK STEPS BY THE WEEK (T2) ─────────────────────────────────
+ *
+ * A weekly task owes no single day, so it cannot step per asked day: an
+ * unanswered Tuesday is not a 0. It steps once per WEEK, with that week's share
+ * — done ÷ needed, capped at 1 (`weekProgress`) — so 2 of 3 is two thirds of a
+ * good week rather than a failed one. The week's multiplier is the per-day one
+ * to the power N (a week is N asked slots, f = N/7), which keeps Loop's calendar
+ * half-life: 3 a week ≈ 20 days, the same as Mon/Wed/Fri. A week is applied the
+ * day it is met (as today counts once done), or after its Sunday with its
+ * share; the week being lived and still short is not evidence yet; a week that
+ * asked nothing (paused) is skipped.
  */
 
 import { shiftDay } from './days';
-import { asksOn, entryOf, type Task, type TaskLog } from './tasks';
+import { asksOn, entryOf, weekProgress, type Task, type TaskLog } from './tasks';
 
 /** Loop's 13: the half-life, in asked days, of a once-a-day habit. */
 const HALF_LIFE_DAILY = 13;
@@ -71,6 +83,7 @@ export const STRENGTH_SERIES_DAYS = 90;
 export function strengthFrequency(task: Task): number | null {
   if (task.schedule.kind === 'once') return null;
   if (task.schedule.kind === 'daily') return 1;
+  if (task.schedule.kind === 'weekly') return task.schedule.times / 7;
   const days = new Set(task.schedule.days).size;
   return days === 0 ? null : days / 7;
 }
@@ -99,6 +112,9 @@ function walk(
 ): number | null {
   const frequency = strengthFrequency(task);
   if (frequency === null) return null;
+  if (task.schedule.kind === 'weekly') {
+    return walkWeeks(task, log, today, task.schedule.times, frequency, onDay, from);
+  }
   const m = strengthMultiplier(frequency);
 
   const floor = shiftDay(today, -MAX_WALK_DAYS);
@@ -110,6 +126,44 @@ function walk(
       const { mark } = entryOf(log, task.id, day);
       const evidence = mark !== 'missed' && (day < today || mark === 'done');
       if (evidence) score = score * m + (mark === 'done' ? 1 - m : 0);
+    }
+    if (onDay && (from === undefined || day >= from)) onDay(day, score * 100);
+  }
+  return score * 100;
+}
+
+/** `walk` for a weekly task (T2): one step per week. See the header. */
+function walkWeeks(
+  task: Task,
+  log: TaskLog,
+  today: string,
+  times: number,
+  frequency: number,
+  onDay?: (day: string, value: number | null) => void,
+  from?: string,
+): number {
+  const m = Math.pow(strengthMultiplier(frequency), times);
+  const floor = shiftDay(today, -MAX_WALK_DAYS);
+  let day = task.startedOn > floor ? task.startedOn : floor;
+  let score = 0;
+  let week = weekProgress(task, log, day);
+  let doneSoFar = 0;
+  let applied = false;
+  for (let i = 0; i <= MAX_WALK_DAYS + 1 && day <= today; i += 1, day = shiftDay(day, 1)) {
+    if (week === null || day > week.to) {
+      week = weekProgress(task, log, day);
+      doneSoFar = 0;
+      applied = false;
+    }
+    if (week && !applied && week.needed > 0) {
+      if (asksOn(task, day) && entryOf(log, task.id, day).mark === 'done') doneSoFar += 1;
+      if (doneSoFar >= week.needed) {
+        score = score * m + (1 - m);
+        applied = true;
+      } else if (day === week.to && day < today) {
+        score = score * m + (1 - m) * Math.min(1, week.done / week.needed);
+        applied = true;
+      }
     }
     if (onDay && (from === undefined || day >= from)) onDay(day, score * 100);
   }

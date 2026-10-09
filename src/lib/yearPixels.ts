@@ -49,7 +49,15 @@
 
 import { dayKey, formatShortDay } from './days';
 import { t, type Language } from './i18n';
-import { asksOn, dayProgress, entryOf, type Task, type TaskLog } from './tasks';
+import {
+  allExcusedOn,
+  asksOn,
+  dayProgress,
+  entryOf,
+  isWeekly,
+  type Task,
+  type TaskLog,
+} from './tasks';
 import type { ID } from '../types/models';
 
 /** 0 = the empty step, 1–4 = the four heat steps (`greenSteps()` 24/42/60/82%). */
@@ -137,10 +145,13 @@ function allTasksPixel(
   today: string,
 ): Pixel {
   if (!tasks.some((task) => asksOn(task, date))) return emptyPixel(day, date, 'blank', today);
-  const progress = dayProgress(tasks, log, date);
-  // `total` is what is left after excusals: zero with tasks asking means all of them.
-  if (progress.total === 0) return emptyPixel(day, date, 'paused', today);
+  // Every asking task excused. Not "nothing left to count": an unanswered weekly
+  // task (T2) leaves nothing to count either, and that day was not paused.
+  if (allExcusedOn(tasks, log, date)) return emptyPixel(day, date, 'paused', today);
   if (date > today) return emptyPixel(day, date, 'future', today);
+  const progress = dayProgress(tasks, log, date);
+  // Only weekly tasks asked, none of them done: offered, not owed — no score.
+  if (progress.total === 0) return emptyPixel(day, date, 'blank', today);
   return {
     day,
     date,
@@ -157,6 +168,8 @@ function oneTaskPixel(task: Task, log: TaskLog, day: number, date: string, today
   const { mark } = entryOf(log, task.id, date);
   if (mark === 'missed') return emptyPixel(day, date, 'paused', today);
   if (date > today) return emptyPixel(day, date, 'future', today);
+  // A weekly task's unanswered day was offered, not owed (T2): not a 0.
+  if (mark === null && isWeekly(task)) return emptyPixel(day, date, 'blank', today);
   const done = mark === 'done' ? 1 : 0;
   return {
     day,

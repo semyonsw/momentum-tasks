@@ -64,7 +64,15 @@
 
 import { parseClockTime, parseDay, shiftDay } from './days';
 import { t, type Language } from './i18n';
-import { asksOn, describeSchedule, entryOf, type Task, type TaskLog, type Weekday } from './tasks';
+import {
+  asksOn,
+  describeSchedule,
+  entryOf,
+  weekProgress,
+  type Task,
+  type TaskLog,
+  type Weekday,
+} from './tasks';
 
 /** When an alert fires. Two repeat forever; the third is one instant. */
 export type ReminderTrigger =
@@ -144,6 +152,8 @@ export function planReminders(input: ReminderInputs): PlannedReminder[] {
   const todayKey = dayKeyOf(input.now);
   const log = input.log ?? {};
   const answered = (task: Task, day: string) => entryOf(log, task.id, day).mark !== null;
+  // A weekly task (T2) whose week is already met has nothing left to ask that week.
+  const weekMet = (task: Task, day: string) => weekProgress(task, log, day)?.met === true;
 
   for (const task of input.tasks) {
     if (task.archivedAt !== null) continue;
@@ -153,7 +163,7 @@ export function planReminders(input: ReminderInputs): PlannedReminder[] {
     if (at.every) {
       for (let offset = 0; offset < FOLLOW_UP_DAYS; offset += 1) {
         const day = shiftDay(todayKey, offset);
-        if (!asksOn(task, day) || answered(task, day)) continue;
+        if (!asksOn(task, day) || answered(task, day) || weekMet(task, day)) continue;
         followUps.push(...followUpsOn(task, day, at.every, input));
       }
     }
@@ -189,7 +199,8 @@ export function planReminders(input: ReminderInputs): PlannedReminder[] {
     // weekly alert that would start early.
     if (task.startedOn > todayKey) continue;
 
-    if (task.schedule.kind === 'daily') {
+    // A weekly task is offered every day, so its alert is a daily one.
+    if (task.schedule.kind === 'daily' || task.schedule.kind === 'weekly') {
       plan.push({
         id: `task:${task.id}:daily`,
         title,

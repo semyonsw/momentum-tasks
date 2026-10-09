@@ -1748,6 +1748,18 @@ const RU: Record<string, string> = {
   'Set a number…': 'Указать число…',
   'Type how many, instead of a tap each': 'Ввести сколько, а не нажимать по одному',
   '{name} · the target is {count} {unit}': '{name} · цель — {count} {unit}',
+  // T2 · N times a week (design copy editor.week)
+  'A number of times per week': 'Несколько раз в неделю',
+  'Any days you like · the streak counts weeks': 'В любые дни · серия считается неделями',
+  'Times a week': 'Раз в неделю',
+  'A day not done is not a miss; the week is what counts.':
+    'Невыполненный день — не пропуск: считается неделя.',
+  '{n} × a week': '{n} × в неделю',
+  '{done} / {times} this week': '{done} / {times} на этой неделе',
+  week: 'неделя',
+  weeks: 'недель',
+  wk: 'нед',
+  'of {asked} weeks met': 'из {asked} недель',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

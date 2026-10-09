@@ -81,6 +81,26 @@
  * mark on every read from the current target — it would rewrite a year of
  * streaks the moment a number in the editor moved.
  *
+ * ── "THREE TIMES A WEEK" IS JUDGED BY THE WEEK (T2) ──────────────────────
+ *
+ * A `weekly` task is offered EVERY day and owes nothing to any one of them, so
+ * an unanswered day is not a miss — not in the day's denominator, not in the
+ * month, not in the year (`dayProgress` counts it only on a day it was done,
+ * as a day's bonus rather than a day's debt). The week is the unit: Monday to
+ * Sunday (ISO, the app's one week), met when the days done reach N
+ * (`weekProgress`), and the streak counts WEEKS in a row. Doing it a fourth
+ * time is fine and changes nothing — a week is met, not over-met.
+ *
+ * Excused days shrink what a week can ask: N, or the days left once the
+ * excused ones are out, whichever is fewer. A fully paused week asks nothing
+ * and is stepped over like an excused day. The first and last weeks of a task
+ * shrink the same way, by the days it asked at all. The week being lived
+ * counts for the streak once met and never breaks it before Sunday is over.
+ *
+ * Rejected: counting each unanswered day against the day's ring until the
+ * quota is met (a 3-a-week task would grade every Monday as a miss), and a
+ * hidden per-day "required" flag (a second schedule the user never wrote).
+ *
  * Everything here is pure and local-time: a task belongs to the day you were
  * standing in, which is what `calendar.dayKey` computes.
  */
@@ -93,10 +113,12 @@ import {
   formatShortDay,
   parseDay,
   shiftDay,
+  weekEnd,
+  weekStart,
   weekdayIndex,
   weekdayLabels,
 } from './days';
-import { t, type Language } from './i18n';
+import { plural, t, type Language } from './i18n';
 import { moveToIndex } from './reorder';
 import { rangeLength, type TrendRange } from './trends';
 import type { ID } from '../types/models';
@@ -124,7 +146,12 @@ export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type TaskSchedule =
   | { kind: 'daily' }
   | { kind: 'weekdays'; days: readonly Weekday[] }
-  | { kind: 'once'; day: string };
+  | { kind: 'once'; day: string }
+  /** N times a week, any days (T2). See "THREE TIMES A WEEK…" in the header. */
+  | { kind: 'weekly'; times: number };
+
+/** The most a week can ask: every day of it. */
+export const WEEKLY_MAX = 7;
 
 /** What the circle on the left of a row says. Absent = unanswered. */
 export type TaskMark = 'done' | 'missed';
@@ -264,7 +291,8 @@ export function asksOn(task: Task, day: string): boolean {
   // before `startedOn` is consulted — see the note on `TaskSchedule`.
   if (task.schedule.kind === 'once') return day === task.schedule.day;
   if (day < task.startedOn) return false;
-  if (task.schedule.kind === 'daily') return true;
+  // A weekly task is OFFERED every day; what it asks of the week is `weekProgress`.
+  if (task.schedule.kind === 'daily' || task.schedule.kind === 'weekly') return true;
   const weekday = weekdayOf(day);
   return weekday !== null && task.schedule.days.includes(weekday);
 }
@@ -310,6 +338,82 @@ export function entryOf(log: TaskLog, taskId: ID, day: string): TaskEntry {
 /** An entry that says nothing — the log deletes these rather than storing them. */
 export function isEmptyEntry(entry: TaskEntry): boolean {
   return entry.mark === null && entry.note === '' && !entry.count;
+}
+
+/* ------------------------------------------------------------------ */
+/* N times a week (T2)                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Is this task judged by the week? */
+export function isWeekly(task: Task): task is Task & { schedule: { kind: 'weekly' } } {
+  return task.schedule.kind === 'weekly';
+}
+
+/** One Monday–Sunday of a weekly task. */
+export interface WeekProgress {
+  /** The Monday and the Sunday. */
+  from: string;
+  to: string;
+  /** Days done this week — past N too; a fourth time is still a day done. */
+  done: number;
+  /** What the week asks: N, or the days it could still be done on if fewer. */
+  needed: number;
+  /** `done` reached `needed`. Never true of a week that asked nothing. */
+  met: boolean;
+}
+
+/**
+ * The week `day` falls in, for a weekly task (null for any other). `needed` is
+ * N, shrunk to the days the task asked that week less the excused ones — the
+ * week it started, the week it was archived, a week half paused. Future days
+ * of the current week still count as days it could be done on.
+ */
+export function weekProgress(task: Task, log: TaskLog, day: string): WeekProgress | null {
+  if (task.schedule.kind !== 'weekly') return null;
+  const from = weekStart(day);
+  const to = weekEnd(day);
+  let done = 0;
+  let available = 0;
+  for (let i = 0, cursor = from; i < 7; i += 1, cursor = shiftDay(cursor, 1)) {
+    if (!asksOn(task, cursor)) continue;
+    const { mark } = entryOf(log, task.id, cursor);
+    if (mark === 'missed') continue;
+    available += 1;
+    if (mark === 'done') done += 1;
+  }
+  const needed = Math.min(task.schedule.times, available);
+  return { from, to, done, needed, met: needed > 0 && done >= needed };
+}
+
+/**
+ * Weeks in a row, for a weekly task: the current week once met, then back a
+ * week at a time — met counts, a week that asked nothing (paused, or before
+ * the task) is stepped over, the first one short stops the walk.
+ */
+function weekStreakOf(task: Task, log: TaskLog, today: string): number {
+  const current = weekProgress(task, log, today);
+  if (!current) return 0;
+  let streak = current.met ? 1 : 0;
+  let sunday = shiftDay(current.from, -1);
+  for (let guard = 0; guard < 600 && sunday >= task.startedOn; guard += 1) {
+    const week = weekProgress(task, log, sunday) as WeekProgress;
+    if (week.met) streak += 1;
+    else if (week.needed > 0) break;
+    sunday = shiftDay(week.from, -1);
+  }
+  return streak;
+}
+
+/** "2 / 3 this week" — a weekly row's line, and the pips under it. */
+export function describeWeek(week: WeekProgress, times: number, lang: Language = 'en'): string {
+  return t('{done} / {times} this week', lang, { done: week.done, times });
+}
+
+/** "4 weeks" · "4 days" — a streak in its own unit. */
+export function streakUnit(task: Task, streak: number, lang: Language = 'en'): string {
+  return isWeekly(task)
+    ? plural(streak, lang, { one: t('week', lang), few: 'недели', many: t('weeks', lang) })
+    : plural(streak, lang, { one: t('day', lang), few: 'дня', many: t('days', lang) });
 }
 
 /* ------------------------------------------------------------------ */
@@ -400,6 +504,7 @@ export function describeSchedule(schedule: TaskSchedule, lang: Language = 'en'):
     return `${t('Once', lang)} · ${formatShortDay(schedule.day, lang)}`;
   }
   if (schedule.kind === 'daily') return t('Every day', lang);
+  if (schedule.kind === 'weekly') return t('{n} × a week', lang, { n: schedule.times });
   if (schedule.days.length === 0) return t('Never', lang);
   const labels = weekdayLabels(lang);
   const ordered = [...schedule.days].sort((a, b) => a - b);
@@ -430,6 +535,8 @@ export function describeReminder(task: Task, lang: Language = 'en'): string | nu
  * Bounded by `startedOn`, so a task created yesterday cannot walk 2015.
  */
 export function streakOf(task: Task, log: TaskLog, today: string): number {
+  // A weekly task's run is counted in WEEKS (T2).
+  if (isWeekly(task)) return weekStreakOf(task, log, today);
   let streak = 0;
   // A ticked today is already part of the run it belongs to.
   if (asksOn(task, today) && entryOf(log, task.id, today).mark === 'done') streak += 1;
@@ -463,7 +570,9 @@ export interface TaskRun {
  * ending the run, and `today` never ending one (it is still being lived).
  *
  * Only days INSIDE the window count, so a month's run is that month's, not the
- * tail of one that began in spring. Null when it was never done there.
+ * tail of one that began in spring. Null when it was never done there — and
+ * always null for a weekly task (T2), whose runs are weeks, not days: a run of
+ * days is not a thing it asked for.
  */
 export function longestRunIn(
   task: Task,
@@ -472,6 +581,7 @@ export function longestRunIn(
   to: string,
   today: string,
 ): TaskRun | null {
+  if (isWeekly(task)) return null;
   let best: TaskRun | null = null;
   let run = null as TaskRun | null;
   const last = to < today ? to : today;
@@ -509,10 +619,27 @@ export function dayProgress(tasks: readonly Task[], log: TaskLog, day: string): 
     if (!asksOn(task, day)) continue;
     const { mark } = entryOf(log, task.id, day);
     if (mark === 'missed') continue;
+    // A weekly task (T2) owes no single day: it counts here only once done.
+    if (mark === null && isWeekly(task)) continue;
     total += 1;
     if (mark === 'done') done += 1;
   }
   return { done, total, fraction: total === 0 ? 1 : done / total };
+}
+
+/**
+ * Every task that asked on this day was excused on purpose — a paused day. Not
+ * the same as "nothing left in the denominator": an unanswered weekly task
+ * (T2) leaves nothing there either, and that day was not paused.
+ */
+export function allExcusedOn(tasks: readonly Task[], log: TaskLog, day: string): boolean {
+  let asking = 0;
+  for (const task of tasks) {
+    if (!asksOn(task, day)) continue;
+    asking += 1;
+    if (entryOf(log, task.id, day).mark !== 'missed') return false;
+  }
+  return asking > 0;
 }
 
 /**
@@ -552,6 +679,11 @@ export function describeTaskRow(
   // A counted row leads with how far it got: that is the line's news, and the
   // schedule is the same every day.
   if (isCounted(task)) parts.push(describeProgress(task, entry, lang));
+  const week = weekProgress(task, log, day);
+  // A weekly row (T2) says where its week stands, which is what it is judged on.
+  if (week && task.schedule.kind === 'weekly') {
+    parts.push(describeWeek(week, task.schedule.times, lang));
+  }
   parts.push(describeSchedule(task.schedule, lang));
   // Behind the flag, not filtered after the fact: `streakOf` walks back a day at
   // a time to the start of the run, so on a task answered every day for a year
@@ -559,7 +691,10 @@ export function describeTaskRow(
   // which draws it once per row, does not want the number at all.
   if (withStreak) {
     const streak = streakOf(task, log, day);
-    if (streak >= 2) parts.push(`${streak} ${t('in a row', lang)}`);
+    if (isWeekly(task)) {
+      if (streak >= 2)
+        parts.push(`${streak} ${streakUnit(task, streak, lang)} ${t('in a row', lang)}`);
+    } else if (streak >= 2) parts.push(`${streak} ${t('in a row', lang)}`);
   }
   const reminder = describeReminder(task, lang);
   if (reminder) parts.push(reminder);
@@ -594,6 +729,13 @@ export interface TaskMonth {
   asked: number;
   /** Days excused on purpose this month, paused days ahead of today included. */
   excused: number;
+  /**
+   * A weekly task's month in weeks (T2): weeks met, of the weeks judged — the
+   * weeks whose Thursday is in this month (the ISO rule, so each week belongs to
+   * one month), finished or already met; the week being lived and still short
+   * is in neither. Absent on every other task.
+   */
+  weekTally?: { met: number; of: number };
 }
 
 /**
@@ -635,6 +777,9 @@ export function taskMonth(
       if (mark === 'missed') {
         state = 'missed';
         excused += 1;
+      } else if (mark === null && isWeekly(task)) {
+        // Offered, not owed (T2): blank rather than an empty ring that reads as a miss.
+        state = 'blank';
       } else if (date <= today) {
         state = mark === 'done' ? 'done' : 'unanswered';
         asked += 1;
@@ -647,7 +792,42 @@ export function taskMonth(
   const weeks: TaskCell[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
-  return { year, month, label: formatMonth(year, month, lang), weeks, done, asked, excused };
+  const result: TaskMonth = {
+    year,
+    month,
+    label: formatMonth(year, month, lang),
+    weeks,
+    done,
+    asked,
+    excused,
+  };
+  if (isWeekly(task)) result.weekTally = weeksOfMonth(task, log, year, month, today);
+  return result;
+}
+
+/** See `TaskMonth.weekTally`. */
+function weeksOfMonth(
+  task: Task,
+  log: TaskLog,
+  year: number,
+  month: number,
+  today: string,
+): { met: number; of: number } {
+  let met = 0;
+  let of = 0;
+  // The Monday of the week holding the 1st, then each Monday while its Thursday is in the month.
+  for (let monday = weekStart(dayKey(new Date(year, month, 1))); ; monday = shiftDay(monday, 7)) {
+    const thursday = parseDay(shiftDay(monday, 3));
+    if (!thursday) break;
+    if (thursday.getFullYear() * 12 + thursday.getMonth() > year * 12 + month) break;
+    if (thursday.getMonth() !== month || monday > today) continue;
+    const week = weekProgress(task, log, monday) as WeekProgress;
+    if (week.met) {
+      met += 1;
+      of += 1;
+    } else if (week.needed > 0 && week.to < today) of += 1;
+  }
+  return { met, of };
 }
 
 /** How many days apart two days are, for "since 4 January 2026" style copy. */
@@ -891,7 +1071,7 @@ export function tasksMonth(
     const isBlank = date > today || progress.total === 0;
     // Asked for something, and every one of those was excused: `total` is what is
     // left after excusals, so zero here with tasks asking means all of them.
-    const paused = progress.total === 0 && tasks.some((task) => asksOn(task, date));
+    const paused = allExcusedOn(tasks, log, date);
     if (paused) pausedDays += 1;
     if (!isBlank) {
       days += 1;

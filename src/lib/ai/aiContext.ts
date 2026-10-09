@@ -46,7 +46,7 @@
  */
 
 import { clusterBalance } from '../balance';
-import { dayKey, parseDay, shiftDay, weekdayIndex, weekdayLabels } from '../days';
+import { dayKey, parseDay, shiftDay, weekStart, weekdayIndex, weekdayLabels } from '../days';
 import { evaluateDeload } from '../deload';
 import { MUSCLE_CLUSTER } from '../muscles';
 import { evaluateOverloadBatch } from '../progressiveOverload';
@@ -57,8 +57,11 @@ import {
   dayProgress,
   entryOf,
   isCounted,
+  isWeekly,
   streakOf,
+  weekProgress,
   type Task,
+  type WeekProgress,
   type TaskLog,
 } from '../tasks';
 import { totalsIn, type Amount, type MoneyAccount, type MoneyCategory } from '../money';
@@ -698,6 +701,7 @@ function scheduleLabel(task: Task): string {
   const schedule = task.schedule;
   if (schedule.kind === 'daily') return 'every day';
   if (schedule.kind === 'once') return `once on ${schedule.day}`;
+  if (schedule.kind === 'weekly') return `${schedule.times}x a week, any days`;
   const labels = weekdayLabels('en');
   return schedule.days.length === 0 ? 'never' : schedule.days.map((d) => labels[d]).join(' ');
 }
@@ -749,6 +753,8 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
         best = Math.max(best, run);
         byWeekday[weekday].counted += 1;
         byWeekday[weekday].done += 1;
+      } else if (isWeekly(task)) {
+        // Offered, not owed (T2): an unanswered day is not a miss; the week is judged.
       } else if (day < today) {
         missed += 1;
         run = 0;
@@ -773,6 +779,28 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       if (task.reminder.every) row.remindAgainEveryMin = task.reminder.every;
     }
     if (task.auto) row.ticksItself = task.auto;
+    if (isWeekly(task)) {
+      // Judged by the week (T2): weeks met and short in the window, and the
+      // streak and best run in weeks rather than days.
+      let met = 0;
+      let short = 0;
+      let weeks = 0;
+      let bestWeeks = 0;
+      for (let monday = weekStart(first); monday <= today; monday = shiftDay(monday, 7)) {
+        const week = weekProgress(task, log, monday) as WeekProgress;
+        if (week.met) {
+          met += 1;
+          weeks += 1;
+          bestWeeks = Math.max(bestWeeks, weeks);
+        } else if (week.needed > 0 && week.to < today) {
+          short += 1;
+          weeks = 0;
+        }
+      }
+      Object.assign(row, { weeksMet: met, weeksShort: short, bestWeekStreak: bestWeeks });
+      const current = weekProgress(task, log, today) as WeekProgress;
+      row.thisWeek = `${current.done}/${current.needed}`;
+    }
     if (task.target) {
       row.target = `${task.target.count} ${task.target.unit.trim() || 'times'} a day`;
     }
@@ -783,7 +811,7 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       excused,
       missed,
       streak: streakOf(task, log, today),
-      bestStreak: best,
+      ...(isWeekly(task) ? { streakUnit: 'weeks' } : { bestStreak: best }),
       donePctByWeekday: rates,
       // The days themselves, so "what did I do on the 12th?" has an answer.
       doneOn: doneDays,
@@ -827,6 +855,12 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
     language: LANGUAGE_NAME[lang],
     window: `${first}..${today}`,
     note: 'excused = the user chose not to on purpose, never a miss; missed = asked and left unanswered; notes are what the user wrote on a day, newest first',
+    ...(tasks.some(isWeekly)
+      ? {
+          weeklyNote:
+            'a task asked N times a week owes no single day: an unanswered day is not a miss; a week (Mon-Sun) is met when done days reach N, and its streak is in weeks',
+        }
+      : {}),
     ...(tasks.some(isCounted)
       ? {
           targetNote:

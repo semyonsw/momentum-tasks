@@ -48,7 +48,7 @@ import { dayKey, shiftDay, weekStart } from './days';
 import { plural, t, type Language } from './i18n';
 import { formatValue, formatWeek, type Amount, type MoneyCategory } from './money';
 import { isSpending } from './moneyCalendar';
-import { asksOn, dayProgress, entryOf, type Task, type TaskLog } from './tasks';
+import { asksOn, dayProgress, entryOf, isWeekly, type Task, type TaskLog } from './tasks';
 
 /** Monday to Sunday, inclusive. */
 export interface ReviewWeek {
@@ -146,6 +146,8 @@ function tasksIn(
   let slipped: TasksReview['slipped'] = null;
   const ordered = [...tasks].sort((a, b) => a.order - b.order);
   for (const task of ordered) {
+    // A weekly task (T2) leaves days unanswered by design; not a slip.
+    if (isWeekly(task)) continue;
     let count = 0;
     for (let day = week.from; day <= week.to; day = shiftDay(day, 1)) {
       if (asksOn(task, day) && entryOf(log, task.id, day).mark === null) count += 1;

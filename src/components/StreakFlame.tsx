@@ -26,7 +26,7 @@
  */
 
 import { useMemo } from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { Icon } from './Icon';
 import { RollingNumber } from './RollingNumber';
@@ -36,7 +36,14 @@ import { palette, radius, tint } from '../theme/tokens';
 const WARM = 7;
 const HOT = 21;
 
-export function StreakFlame({ streak }: { streak: number }) {
+export function StreakFlame({
+  streak,
+  unit,
+}: {
+  streak: number;
+  /** A short unit after the number — `wk` for a run of weeks (T2). Absent: days. */
+  unit?: string;
+}) {
   const hot = streak >= HOT;
   const warm = streak >= WARM;
   // Above the early return, for the rules of hooks: a fresh style object would
@@ -74,6 +81,11 @@ export function StreakFlame({ streak }: { streak: number }) {
         style={numberStyle}
         className="font-semibold"
       />
+      {unit ? (
+        <Text maxFontSizeMultiplier={1.3} style={[numberStyle, { marginLeft: 3 }]}>
+          {unit}
+        </Text>
+      ) : null}
     </View>
   );
 }

@@ -74,7 +74,7 @@ import {
   type BodyweightLookup,
   type SessionRecord,
 } from './records';
-import { asksOn, entryOf, longestRunIn, type Task, type TaskLog } from './tasks';
+import { asksOn, entryOf, isWeekly, longestRunIn, type Task, type TaskLog } from './tasks';
 import { formatClock, formatWeight, kgToLb, unitLabel } from './units';
 import type { ID, UnitSystem } from '../types/models';
 
@@ -221,6 +221,8 @@ function tasksDone(tasks: readonly Task[], log: TaskLog, days: readonly string[]
       const { mark } = entryOf(log, task.id, day);
       // Excused on purpose: out of both, as `dayProgress` keeps it everywhere.
       if (mark === 'missed') continue;
+      // A weekly task (T2) counts on a day only once done — `dayProgress`'s rule.
+      if (mark === null && isWeekly(task)) continue;
       asked += 1;
       if (mark === 'done') done += 1;
     }

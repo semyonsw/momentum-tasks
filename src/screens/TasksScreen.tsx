@@ -184,6 +184,8 @@ import {
   tasksOn,
   unitOf,
   upcomingOnce,
+  weekProgress,
+  type WeekProgress,
 } from '../lib/tasks';
 import type { Language } from '../lib/i18n';
 import { showTasksHint, taskRowActions, tasksEmptyState, type TaskRowAction } from '../lib/taskTap';
@@ -327,6 +329,8 @@ export function TasksScreen({
         mark: entryOf(log, task.id, day).mark,
         // T1: how far a counted row got today, and of what. Null on a plain row.
         progress: progressOf(task, entryOf(log, task.id, day)),
+        // T2: a weekly row's week — its pips, and the flame's unit.
+        week: weekProgress(task, log, day),
         streak: streakOf(task, log, day),
         // T4: the 22 dp ring beside the flame — as of the day on screen, like
         // the streak. Null for a one-day task, which then draws no ring.
@@ -600,7 +604,7 @@ export function TasksScreen({
             geometry still adds up. 16 above it — card to card is the rhythm's
             short step; the old 24 read as a new section starting. */}
         <View {...panHandlers} className="mx-lg mt-md">
-          {rowViews.map(({ task, mark, progress, streak, strength, detail }) => {
+          {rowViews.map(({ task, mark, progress, week, streak, strength, detail }) => {
             const isLifted = task.id === lifted;
             return (
               <ReorderRow
@@ -621,6 +625,7 @@ export function TasksScreen({
                     task={task}
                     mark={mark}
                     progress={progress}
+                    week={week}
                     streak={streak}
                     strength={strength}
                     detail={detail}
@@ -983,6 +988,7 @@ const TaskRow = memo(function TaskRow({
   task,
   mark,
   progress,
+  week,
   streak,
   strength,
   detail,
@@ -995,6 +1001,8 @@ const TaskRow = memo(function TaskRow({
   mark: TaskMark | null;
   /** A counted row's parts today (T1), or null on a plain row. */
   progress: number | null;
+  /** A weekly row's week (T2), or null. */
+  week: WeekProgress | null;
   streak: number;
   /** Habit strength 0–100 (T4), or null for a one-day task. */
   strength: number | null;
@@ -1091,14 +1099,19 @@ const TaskRow = memo(function TaskRow({
               fadeColor={fade}
               className={['text-task', missed ? 'text-ink-muted' : 'text-ink'].join(' ')}
             />
-            <RunningText
-              text={missed ? `${detail} · ${t('streak kept')}` : detail}
-              maxFontSizeMultiplier={1.3}
-              fadeColor={fade}
-              containerStyle={{ marginTop: 2 }}
-              style={{ fontSize: 13.5, lineHeight: 18, color: DETAIL_INK }}
-              className="tabular-nums"
-            />
+            <View className="flex-row items-center" style={{ marginTop: 2 }}>
+              {week && task.schedule.kind === 'weekly' ? (
+                <WeekPips done={week.done} times={task.schedule.times} />
+              ) : null}
+              <RunningText
+                text={missed ? `${detail} · ${t('streak kept')}` : detail}
+                maxFontSizeMultiplier={1.3}
+                fadeColor={fade}
+                containerStyle={{ flex: 1 }}
+                style={{ fontSize: 13.5, lineHeight: 18, color: DETAIL_INK }}
+                className="tabular-nums"
+              />
+            </View>
           </View>
           {/* T4: habit strength, 22 dp, then the flame — the design's order.
               Both hidden while excused: the run is kept, but that day's row is
@@ -1114,7 +1127,7 @@ const TaskRow = memo(function TaskRow({
               />
             </View>
           )}
-          {missed ? null : <StreakFlame streak={streak} />}
+          {missed ? null : <StreakFlame streak={streak} unit={week ? t('wk') : undefined} />}
           <View className="ml-sm">
             <Icon name="chevron-right" size={16} color={palette.inkFaint} />
           </View>
@@ -1243,6 +1256,31 @@ function CountMark({ count, target }: { count: number; target: number }) {
     </View>
   );
 }
+
+/**
+ * A weekly row's week (T2): one 8 dp pip per time it asks, lit for each day
+ * done — `●●○ 2 / 3 this week`. Done past N lights them all; the line beside
+ * says the true count. Decorative: the line and the row's label say it.
+ */
+function WeekPips({ done, times }: { done: number; times: number }) {
+  return (
+    <View className="mr-[6px] flex-row" style={{ gap: 3 }} accessible={false}>
+      {Array.from({ length: times }, (_, i) => (
+        <View
+          key={i}
+          style={{
+            width: PIP,
+            height: PIP,
+            borderRadius: PIP / 2,
+            backgroundColor: i < done ? palette.greenBright : glass.dash,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+const PIP = 8;
 
 /** The counted ring's stroke, the gap between its parts, and where the parts stop being drawn. */
 const COUNT_STROKE = 3;

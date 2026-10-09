@@ -46,6 +46,7 @@ import {
   tappedCount,
   TARGET_MAX,
   UNIT_MAX,
+  WEEKLY_MAX,
   withCount,
   type TaskEntry,
   type TaskTarget,
@@ -114,7 +115,8 @@ export function seedTasks(today = dayKey(new Date())): Task[] {
 }
 
 function sanitizeSchedule(raw: unknown, fallbackDay: string): TaskSchedule {
-  const value = raw as { kind?: string; days?: unknown; day?: unknown } | undefined;
+  const value = raw as
+    { kind?: string; days?: unknown; day?: unknown; times?: unknown } | undefined;
   if (value && value.kind === 'weekdays') {
     const days = Array.isArray(value.days) ? value.days : [];
     const kept = [
@@ -123,6 +125,17 @@ function sanitizeSchedule(raw: unknown, fallbackDay: string): TaskSchedule {
       ),
     ];
     return { kind: 'weekdays', days: kept.sort((a, b) => a - b) };
+  }
+  if (value && value.kind === 'weekly') {
+    /*
+     * N times a week (T2), N whole and 1–7. An unreadable N falls to 1, the
+     * least the shape can ask — a junk value should never make a week harder.
+     */
+    const times = Number(value.times);
+    return {
+      kind: 'weekly',
+      times: Number.isFinite(times) ? Math.max(1, Math.min(WEEKLY_MAX, Math.round(times))) : 1,
+    };
   }
   if (value && value.kind === 'once') {
     /*

@@ -103,6 +103,15 @@ describe('an existing task', () => {
     expect(taskDraftChanged(counted, { ...counted, target: null })).toBe(true);
   });
 
+  it('is dirty when switched to N times a week, or N changes (T2)', () => {
+    const weekly = { ...existing, schedule: { kind: 'weekly' as const, times: 3 } };
+    expect(taskDraftChanged(existing, weekly)).toBe(true);
+    expect(taskDraftChanged(weekly, { ...weekly, schedule: { kind: 'weekly', times: 4 } })).toBe(
+      true,
+    );
+    expect(taskDraftChanged(weekly, { ...weekly })).toBe(false);
+  });
+
   it('treats an absent target and a null one as the same ordinary task', () => {
     expect(taskDraftChanged(existing, { ...existing, target: null })).toBe(false);
     const counted = { ...existing, target: { count: 8, unit: 'glasses' } };

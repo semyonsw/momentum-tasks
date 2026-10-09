@@ -257,3 +257,51 @@ describe('counted tasks (T1)', () => {
     expect(entryOf(useTasks.getState().log, 'water', DAY).count).toBe(5);
   });
 });
+
+describe('N times a week (T2)', () => {
+  it('sanitizes N to a whole 1–7, and junk to the least it can ask', () => {
+    const read = (schedule: unknown) =>
+      sanitizeTasks({ tasks: [{ ...stored(), schedule }] as never }).tasks[0].schedule;
+    expect(read({ kind: 'weekly', times: 3 })).toEqual({ kind: 'weekly', times: 3 });
+    expect(read({ kind: 'weekly', times: 12 })).toEqual({ kind: 'weekly', times: 7 });
+    expect(read({ kind: 'weekly', times: 0 })).toEqual({ kind: 'weekly', times: 1 });
+    expect(read({ kind: 'weekly', times: 2.6 })).toEqual({ kind: 'weekly', times: 3 });
+    expect(read({ kind: 'weekly' })).toEqual({ kind: 'weekly', times: 1 });
+  });
+
+  it('is saved and changed through the editor path', () => {
+    const { addTask, updateTask } = useTasks.getState();
+    const id = addTask({ name: 'Stretch', schedule: { kind: 'weekly', times: 3 } })!;
+    const find = () => useTasks.getState().tasks.find((task) => task.id === id)!;
+    expect(find().schedule).toEqual({ kind: 'weekly', times: 3 });
+    updateTask(id, { schedule: { kind: 'daily' } });
+    expect(find().schedule).toEqual({ kind: 'daily' });
+  });
+
+  it('travels in a backup and comes back', () => {
+    useTasks.getState().importTasks({
+      tasks: [stored({ schedule: { kind: 'weekly', times: 4 } })],
+      log: { water: { [DAY]: { mark: 'done', note: '' } } },
+    });
+    const text = exportBackupText();
+    useTasks.getState().importTasks({ tasks: [stored()], log: {} });
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useTasks.getState().tasks[0].schedule).toEqual({ kind: 'weekly', times: 4 });
+    expect(entryOf(useTasks.getState().log, 'water', DAY).mark).toBe('done');
+  });
+
+  it('cold-starts with the schedule as it was', async () => {
+    useTasks.getState().importTasks({ tasks: [stored()] });
+    await AsyncStorage.setItem(
+      'tasks',
+      JSON.stringify({
+        version: 2,
+        state: { tasks: [stored({ schedule: { kind: 'weekly', times: 2 } })], log: {} },
+      }),
+    );
+    await useTasks.persist.rehydrate();
+    expect(useTasks.getState().tasks[0].schedule).toEqual({ kind: 'weekly', times: 2 });
+  });
+});

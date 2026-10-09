@@ -83,6 +83,10 @@
  * the empty unit rather than a stored English word, so it follows the app's
  * language. The presets are stored in the language they were picked in.
  *
+ * `A number of times per week` (T2) IS a schedule — "any 3 days" — so turning
+ * it on folds `Repeats` away rather than leaving two answers to one question;
+ * turning it off brings back whatever the segments last said. 1–7 on ±.
+ *
  * ── A DRAFT IS NOT THROWN AWAY BY A STRAY TAP ─────────────────────────────
  *
  * Scrim, handle, back and `Cancel` used to drop whatever was typed. Now, when
@@ -110,6 +114,7 @@ import {
   PrimaryButton,
   Segmented,
   SelectChip,
+  Separator,
   StepperRow,
   SwitchRow,
   Toggle,
@@ -123,6 +128,7 @@ import { useLanguage, useT } from '../hooks/useT';
 import {
   REMIND_AGAIN_MINUTES,
   UNIT_MAX,
+  WEEKLY_MAX,
   formatInterval,
   stepTarget,
   type TaskReminder,
@@ -153,6 +159,8 @@ export interface TaskDraft {
 
 /** What `A target, counted in parts` starts at when switched on. */
 const DEFAULT_TARGET = 8;
+/** What `A number of times per week` starts at: the design's Растяжка, 3. */
+const DEFAULT_PER_WEEK = 3;
 
 /** The unit chips, in English; each is stored in the language it was picked in. */
 const UNIT_PRESETS = ['glasses', 'pages', 'minutes'] as const;
@@ -201,12 +209,20 @@ export function TaskEditorSheet({
       ? isWorkdays(initialSchedule.days)
         ? 'workdays'
         : 'pick'
-      : initialSchedule.kind,
+      : // A weekly task's segments sit on `Every day` — what switching it off gives.
+        initialSchedule.kind === 'weekly'
+        ? 'daily'
+        : initialSchedule.kind,
+  );
+  /** `A number of times per week` (T2): N, or null while the switch is off. */
+  const [perWeek, setPerWeek] = useState<number | null>(
+    initialSchedule.kind === 'weekly' ? initialSchedule.times : null,
   );
   const [days, setDays] = useState<readonly Weekday[]>(
     initialSchedule.kind === 'weekdays' ? initialSchedule.days : [0, 2, 4],
   );
-  const kind = mode === 'workdays' || mode === 'pick' ? 'weekdays' : mode;
+  const kind =
+    perWeek !== null ? 'weekly' : mode === 'workdays' || mode === 'pick' ? 'weekdays' : mode;
   const [onceDay, setOnceDay] = useState(
     initialSchedule.kind === 'once' ? initialSchedule.day : shiftDay(today, 1),
   );
@@ -226,11 +242,13 @@ export function TaskEditorSheet({
   );
 
   const schedule: TaskSchedule =
-    kind === 'daily'
-      ? { kind: 'daily' }
-      : kind === 'once'
-        ? { kind: 'once', day: onceDay }
-        : { kind: 'weekdays', days: mode === 'workdays' ? WORKDAYS : days };
+    perWeek !== null
+      ? { kind: 'weekly', times: perWeek }
+      : kind === 'daily'
+        ? { kind: 'daily' }
+        : kind === 'once'
+          ? { kind: 'once', day: onceDay }
+          : { kind: 'weekdays', days: mode === 'workdays' ? WORKDAYS : days };
 
   /*
    * A one-day task for today, set to remind at a minute that has already gone,
@@ -245,7 +263,7 @@ export function TaskEditorSheet({
     reminder.hour * 60 + reminder.minute <= now.getHours() * 60 + now.getMinutes();
 
   // A task with no name is not a task, and one that asks on no day never asks.
-  const savable = taskSavable(name, mode === 'pick' ? days : null);
+  const savable = taskSavable(name, mode === 'pick' && perWeek === null ? days : null);
 
   /** What `Save task` would send — and so what a close would lose. */
   const draft: TaskDraft = {
@@ -364,22 +382,47 @@ export function TaskEditorSheet({
               ) : null}
             </>
           ) : null}
+          <Separator inset={16} />
+          <SwitchRow
+            label={t('A number of times per week')}
+            hint={t('Any days you like · the streak counts weeks')}
+            value={perWeek !== null}
+            onChange={(on) => {
+              setPerWeek(on ? DEFAULT_PER_WEEK : null);
+              setDatePicker(null);
+            }}
+          />
+          {perWeek !== null ? (
+            <StepperRow
+              label={t('Times a week')}
+              hint={t('A day not done is not a miss; the week is what counts.')}
+              value={t('{n} × a week', { n: perWeek })}
+              onDecrease={() => setPerWeek(Math.max(1, perWeek - 1))}
+              onIncrease={() => setPerWeek(Math.min(WEEKLY_MAX, perWeek + 1))}
+            />
+          ) : null}
         </View>
 
-        <Kicker className="mb-sm mt-lg">{t('Repeats')}</Kicker>
-        <Segmented
-          options={MODES}
-          value={mode}
-          onChange={(next) => {
-            setMode(next);
-            // The grid belongs to whichever date is in play; switching kind while
-            // it is open would leave it editing a date the sheet no longer shows.
-            setDatePicker(null);
-          }}
-          accessibilityLabel={t('Repeats')}
-        />
+        {/* `Repeats` answers which days; a weekly task answers "any of them", so
+            the switch above replaces it rather than sitting beside it. */}
+        {perWeek === null ? (
+          <>
+            <Kicker className="mb-sm mt-lg">{t('Repeats')}</Kicker>
+            <Segmented
+              options={MODES}
+              value={mode}
+              onChange={(next) => {
+                setMode(next);
+                // The grid belongs to whichever date is in play; switching kind while
+                // it is open would leave it editing a date the sheet no longer shows.
+                setDatePicker(null);
+              }}
+              accessibilityLabel={t('Repeats')}
+            />
+          </>
+        ) : null}
 
-        {mode === 'pick' ? (
+        {mode === 'pick' && perWeek === null ? (
           <View className="mt-md flex-row flex-wrap">
             {weekdayLabels(lang).map((label, index) => {
               const weekday = index as Weekday;

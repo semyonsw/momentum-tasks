@@ -86,7 +86,7 @@ import {
   type StrengthPoint,
 } from '../lib/habitStrength';
 import { DangerFootAction, FieldWell, Kicker } from '../components/primitives';
-import { useLanguage, usePlural, useT } from '../hooks/useT';
+import { useLanguage, useT } from '../hooks/useT';
 import {
   dayKey,
   formatLongDay,
@@ -101,6 +101,8 @@ import {
   describeReminder,
   describeSchedule,
   describeTarget,
+  isWeekly,
+  streakUnit,
   entryOf,
   excusedAhead,
   pausedUntil,
@@ -120,7 +122,6 @@ interface TaskDetailScreenProps {
 export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProps) {
   const t = useT();
   const lang = useLanguage();
-  const plural = usePlural();
   const log = useTasks((s) => s.log);
   const setNote = useTasks((s) => s.setNote);
   const updateTask = useTasks((s) => s.updateTask);
@@ -219,11 +220,7 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
         <View className="mx-lg mt-lg flex-row" style={{ gap: 10 }}>
           <View
             accessible
-            accessibilityLabel={`${t('Streak')}: ${streak} ${plural(streak, {
-              one: t('day'),
-              few: 'дня',
-              many: t('days'),
-            })}`}
+            accessibilityLabel={`${t('Streak')}: ${streak} ${streakUnit(task, streak, lang)}`}
             style={[STAT_CARD, LIT_CARD()]}
           >
             <Text style={STAT_KICKER} className="font-semibold uppercase text-acc">
@@ -238,6 +235,10 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
                 {streak}
               </Text>
               <Icon name="flame" size={20} color={palette.acc} />
+              {/* A weekly task's run is weeks (T2), and says so. */}
+              {isWeekly(task) ? (
+                <Text className="text-label text-ink-muted">{streakUnit(task, streak, lang)}</Text>
+              ) : null}
             </View>
           </View>
           <View style={[STAT_CARD, PLAIN_CARD]}>
@@ -250,10 +251,12 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
                 style={STAT_VALUE}
                 className="font-semibold tabular-nums text-ink"
               >
-                {month.done}
+                {month.weekTally ? month.weekTally.met : month.done}
               </Text>
               <Text className="ml-xs text-label text-ink-muted">
-                {t('of {asked}', { asked: month.asked })}
+                {month.weekTally
+                  ? t('of {asked} weeks met', { asked: month.weekTally.of })
+                  : t('of {asked}', { asked: month.asked })}
               </Text>
             </View>
             {month.excused > 0 ? (
