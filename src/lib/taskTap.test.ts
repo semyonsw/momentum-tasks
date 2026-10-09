@@ -48,6 +48,12 @@ describe('the hold menu', () => {
     }
   });
 
+  it('leads with Set a number on a counted row (T1), and only there', () => {
+    expect(taskRowActions(null, 3, true)).toEqual(['count', 'skip', 'pause', 'move', 'open']);
+    expect(taskRowActions('missed', 1, true)).toEqual(['count', 'unskip', 'pause', 'open']);
+    expect(taskRowActions(null, 3, false)).not.toContain('count');
+  });
+
   it('keeps Move out when there is nothing to move past', () => {
     expect(taskRowActions(null, 1)).toEqual(['skip', 'pause', 'open']);
   });

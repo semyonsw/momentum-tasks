@@ -463,6 +463,31 @@ describe('the tasks context', () => {
     expect(JSON.parse(missed.json).tasks[0].missed).toBe(4);
   });
 
+  it('carries a target, and the days short of it, with a note only when one exists (T1)', () => {
+    const counted = JSON.parse(
+      buildTasksContext({
+        tasks: [task('water', { startedOn: '2026-09-25', target: { count: 8, unit: 'glasses' } })],
+        log: {
+          water: {
+            '2026-09-25': { mark: 'done', note: '', count: 8 },
+            '2026-09-26': { mark: null, note: '', count: 3 },
+          },
+        },
+        today: '2026-09-27',
+        lang: 'en',
+      }).json,
+    );
+    expect(counted.tasks[0]).toMatchObject({
+      target: '8 glasses a day',
+      done: 1,
+      missed: 1,
+      partialOn: ['2026-09-26:3'],
+    });
+    expect(counted.targetNote).toContain('partialOn');
+    expect(json.targetNote).toBeUndefined();
+    expect(json.tasks[0].target).toBeUndefined();
+  });
+
   it('stays under the cap with a year of daily tasks', () => {
     const tasks = Array.from({ length: 12 }, (_, i) =>
       task(`t${i}`, { name: `A task with a long name number ${i}`, startedOn: '2025-01-01' }),

@@ -52,7 +52,15 @@ import { MUSCLE_CLUSTER } from '../muscles';
 import { evaluateOverloadBatch } from '../progressiveOverload';
 import { ladderOf } from '../repLadder';
 import { plannedStartWeight } from '../weightCarry';
-import { asksOn, dayProgress, entryOf, streakOf, type Task, type TaskLog } from '../tasks';
+import {
+  asksOn,
+  dayProgress,
+  entryOf,
+  isCounted,
+  streakOf,
+  type Task,
+  type TaskLog,
+} from '../tasks';
 import { totalsIn, type Amount, type MoneyAccount, type MoneyCategory } from '../money';
 import type { CompletedWorkout } from '../completedWorkout';
 import { debriefForAi, type WorkoutDebrief } from '../debrief';
@@ -711,6 +719,8 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
   const perTask = tasks.map((task) => {
     const doneDays: string[] = [];
     const excusedDays: string[] = [];
+    /** A counted task's days short of the target, `day:count` (T1). */
+    const partialDays: string[] = [];
     let asked = 0;
     let done = 0;
     let excused = 0;
@@ -744,6 +754,8 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
         run = 0;
         byWeekday[weekday].counted += 1;
       }
+      const count = entryOf(log, task.id, day).count;
+      if (mark !== 'done' && isCounted(task) && count) partialDays.push(`${day}:${count}`);
     }
     const rates = Object.fromEntries(
       byWeekday
@@ -761,6 +773,9 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       if (task.reminder.every) row.remindAgainEveryMin = task.reminder.every;
     }
     if (task.auto) row.ticksItself = task.auto;
+    if (task.target) {
+      row.target = `${task.target.count} ${task.target.unit.trim() || 'times'} a day`;
+    }
     if (task.archivedAt) row.archivedOn = dayKey(task.archivedAt);
     Object.assign(row, {
       asked,
@@ -773,6 +788,7 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
       // The days themselves, so "what did I do on the 12th?" has an answer.
       doneOn: doneDays,
       ...(excusedDays.length ? { excusedOn: excusedDays } : {}),
+      ...(partialDays.length ? { partialOn: partialDays } : {}),
     });
     return row;
   });
@@ -811,6 +827,12 @@ export function buildTasksContext(input: TasksContextInput): TasksContext {
     language: LANGUAGE_NAME[lang],
     window: `${first}..${today}`,
     note: 'excused = the user chose not to on purpose, never a miss; missed = asked and left unanswered; notes are what the user wrote on a day, newest first',
+    ...(tasks.some(isCounted)
+      ? {
+          targetNote:
+            'a task with a target is done on a day only when the count reached it; partialOn lists days short of it as day:count, and those count as missed',
+        }
+      : {}),
     tasks: perTask,
   };
   let dailyRows = daily;

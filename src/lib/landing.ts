@@ -38,7 +38,7 @@
  * an unstarted session is a routine somebody opened to read.
  */
 
-import { entryOf, tasksOn, type Task, type TaskLog } from './tasks';
+import { entryOf, isCounted, tasksOn, type Task, type TaskLog } from './tasks';
 
 /** The account the Finance tile reads. See the header. */
 export function landingAccount<A extends { id: string; archivedAt: string | null }>(
@@ -58,6 +58,9 @@ export function nextUnansweredTask(
 ): Task | null {
   for (const task of tasksOn(tasks, day)) {
     if (options.autoTick && task.auto !== null) continue;
+    // A counted row (T1) is never the chip's: one tap there is one glass, and a
+    // ✓ that drank one glass of eight would read as the task done.
+    if (isCounted(task)) continue;
     if (entryOf(log, task.id, day).mark === null) return task;
   }
   return null;

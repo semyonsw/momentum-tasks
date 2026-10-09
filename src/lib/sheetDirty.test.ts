@@ -91,6 +91,26 @@ describe('an existing task', () => {
     expect(taskDraftChanged(existing, { ...existing, reminder: null })).toBe(true);
   });
 
+  it('is dirty when a target is switched on, changed or taken off (T1)', () => {
+    const counted = { ...existing, target: { count: 8, unit: 'glasses' } };
+    expect(taskDraftChanged(existing, counted)).toBe(true);
+    expect(taskDraftChanged(counted, { ...counted, target: { count: 9, unit: 'glasses' } })).toBe(
+      true,
+    );
+    expect(taskDraftChanged(counted, { ...counted, target: { count: 8, unit: 'pages' } })).toBe(
+      true,
+    );
+    expect(taskDraftChanged(counted, { ...counted, target: null })).toBe(true);
+  });
+
+  it('treats an absent target and a null one as the same ordinary task', () => {
+    expect(taskDraftChanged(existing, { ...existing, target: null })).toBe(false);
+    const counted = { ...existing, target: { count: 8, unit: 'glasses' } };
+    expect(taskDraftChanged(counted, { ...counted, target: { count: 8, unit: ' glasses ' } })).toBe(
+      false,
+    );
+  });
+
   it('treats a missing `every` and an undefined one as the same single alert', () => {
     const single = { ...existing, reminder: { hour: 7, minute: 0 } };
     expect(

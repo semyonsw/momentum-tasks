@@ -100,6 +100,7 @@ import {
   type TaskCell,
   describeReminder,
   describeSchedule,
+  describeTarget,
   entryOf,
   excusedAhead,
   pausedUntil,
@@ -198,6 +199,7 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
         >
           {[
             describeSchedule(task.schedule, lang),
+            describeTarget(task, lang),
             /* A one-day task's start day IS its day — see `addTask` — so saying
                "since the 14th" about a task that only ever asks on the 14th is a
                sentence with no information in it. */
@@ -410,6 +412,7 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
           schedule={task.schedule}
           startedOn={task.startedOn}
           reminder={task.reminder}
+          target={task.target ?? null}
           onSave={(draft) => {
             updateTask(task.id, draft);
             setEditing(false);

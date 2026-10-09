@@ -72,6 +72,17 @@
  * two are nearly every one-day task ever typed, and the month grid is three
  * taps for either.
  *
+ * ── WHAT KIND OF TASK, AS SWITCHES UNDER THE NAME (Wave 2) ───────────────
+ *
+ * `A target, counted in parts` (T1) is a switch that opens a ± and a row of
+ * unit chips. A switch rather than a fourth `Repeats` segment, because it is
+ * not a schedule: "8 glasses" asks every day or on Mondays just the same. The
+ * number moves on ± only (`stepTarget`), never the system keyboard — a number
+ * in a form here is always chips. The unit is a word, so `+ unit` does open
+ * a text field: glasses / pages / minutes cover most targets, and "times" is
+ * the empty unit rather than a stored English word, so it follows the app's
+ * language. The presets are stored in the language they were picked in.
+ *
  * ── A DRAFT IS NOT THROWN AWAY BY A STRAY TAP ─────────────────────────────
  *
  * Scrim, handle, back and `Cancel` used to drop whatever was typed. Now, when
@@ -99,6 +110,8 @@ import {
   PrimaryButton,
   Segmented,
   SelectChip,
+  StepperRow,
+  SwitchRow,
   Toggle,
 } from './primitives';
 import { dayKey, formatLongDay, shiftDay, weekdayLabels } from '../lib/days';
@@ -109,9 +122,12 @@ import { taskSavable } from '../lib/sheetSubmit';
 import { useLanguage, useT } from '../hooks/useT';
 import {
   REMIND_AGAIN_MINUTES,
+  UNIT_MAX,
   formatInterval,
+  stepTarget,
   type TaskReminder,
   type TaskSchedule,
+  type TaskTarget,
   type Weekday,
 } from '../lib/tasks';
 import { curve, palette } from '../theme/tokens';
@@ -131,7 +147,15 @@ export interface TaskDraft {
   schedule: TaskSchedule;
   startedOn: string;
   reminder: TaskReminder | null;
+  /** A target counted in parts (T1), or null for a one-tap task. */
+  target: TaskTarget | null;
 }
+
+/** What `A target, counted in parts` starts at when switched on. */
+const DEFAULT_TARGET = 8;
+
+/** The unit chips, in English; each is stored in the language it was picked in. */
+const UNIT_PRESETS = ['glasses', 'pages', 'minutes'] as const;
 
 interface TaskEditorSheetProps {
   title: string;
@@ -140,6 +164,7 @@ interface TaskEditorSheetProps {
   schedule?: TaskSchedule;
   startedOn?: string;
   reminder?: TaskReminder | null;
+  target?: TaskTarget | null;
   onSave: (draft: TaskDraft) => void;
   onDismiss: () => void;
 }
@@ -150,6 +175,7 @@ export function TaskEditorSheet({
   schedule: initialSchedule = { kind: 'daily' },
   startedOn: initialStartedOn,
   reminder: initialReminder = null,
+  target: initialTarget = null,
   onSave,
   onDismiss,
 }: TaskEditorSheetProps) {
@@ -190,6 +216,14 @@ export function TaskEditorSheet({
   const [reminder, setReminder] = useState<TaskReminder | null>(initialReminder);
   /** The permission was asked for when the switch went on, and refused. */
   const [blocked, setBlocked] = useState(false);
+  const [target, setTarget] = useState<TaskTarget | null>(initialTarget);
+  /** `+ unit` was tapped, or the saved unit is none of the presets. */
+  const presetUnits = UNIT_PRESETS.map((unit) => t(unit));
+  const [customUnit, setCustomUnit] = useState(
+    initialTarget !== null &&
+      initialTarget.unit !== '' &&
+      !presetUnits.includes(initialTarget.unit),
+  );
 
   const schedule: TaskSchedule =
     kind === 'daily'
@@ -221,6 +255,7 @@ export function TaskEditorSheet({
     // this is the half that keeps the sheet honest about what it is about to send.
     startedOn: kind === 'once' ? onceDay : startedOn,
     reminder,
+    target: target ? { count: target.count, unit: target.unit.trim() } : null,
   };
   // What the sheet opened with, frozen: the props are the saved task.
   const opened = useRef<TaskDraft>({
@@ -228,6 +263,7 @@ export function TaskEditorSheet({
     schedule: initialSchedule,
     startedOn: initialSchedule.kind === 'once' ? initialSchedule.day : (initialStartedOn ?? today),
     reminder: initialReminder,
+    target: initialTarget,
   }).current;
   const dirty = taskDraftChanged(opened, draft);
 
@@ -266,6 +302,69 @@ export function TaskEditorSheet({
           autoFocus={initialName === ''}
           accessibilityLabel={t('Task name')}
         />
+
+        {/* What kind of task (Wave 2): switches, each opening its own few
+            controls. See the header. */}
+        <View className="mt-md overflow-hidden rounded-surface bg-surface-alt">
+          <SwitchRow
+            label={t('A target, counted in parts')}
+            hint={t('The circle fills by parts · +1 per tap')}
+            value={target !== null}
+            onChange={(on) => setTarget(on ? { count: DEFAULT_TARGET, unit: '' } : null)}
+          />
+          {target ? (
+            <>
+              <StepperRow
+                label={t('Target')}
+                value={`${target.count} ${target.unit.trim() || t('times')}`}
+                onDecrease={() => setTarget({ ...target, count: stepTarget(target.count, -1) })}
+                onIncrease={() => setTarget({ ...target, count: stepTarget(target.count, 1) })}
+              />
+              <View className="flex-row flex-wrap px-lg pb-sm">
+                <SelectChip
+                  label={t('times')}
+                  selected={!customUnit && target.unit === ''}
+                  onPress={() => {
+                    setCustomUnit(false);
+                    setTarget({ ...target, unit: '' });
+                  }}
+                />
+                {presetUnits.map((unit) => (
+                  <SelectChip
+                    key={unit}
+                    label={unit}
+                    selected={!customUnit && target.unit === unit}
+                    onPress={() => {
+                      setCustomUnit(false);
+                      setTarget({ ...target, unit });
+                    }}
+                  />
+                ))}
+                <SelectChip
+                  label={`+ ${t('unit')}`}
+                  selected={customUnit}
+                  onPress={() => {
+                    setCustomUnit(true);
+                    // A preset carried into the field would have to be deleted first.
+                    if (presetUnits.includes(target.unit)) setTarget({ ...target, unit: '' });
+                  }}
+                />
+              </View>
+              {customUnit ? (
+                <View className="px-lg pb-md">
+                  <FieldWell
+                    value={target.unit}
+                    size="body"
+                    placeholder={t('e.g. km, push-ups, pages')}
+                    onChangeText={(unit) => setTarget({ ...target, unit: unit.slice(0, UNIT_MAX) })}
+                    autoFocus
+                    accessibilityLabel={t('Unit')}
+                  />
+                </View>
+              ) : null}
+            </>
+          ) : null}
+        </View>
 
         <Kicker className="mb-sm mt-lg">{t('Repeats')}</Kicker>
         <Segmented

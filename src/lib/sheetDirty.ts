@@ -19,7 +19,7 @@
  * routine and exercise editors leave by: ask when dirty, leave otherwise.
  */
 
-import type { TaskReminder, TaskSchedule } from './tasks';
+import type { TaskReminder, TaskSchedule, TaskTarget } from './tasks';
 
 /** What the task editor opened with, or would save now. */
 export interface TaskDraftShape {
@@ -27,6 +27,8 @@ export interface TaskDraftShape {
   schedule: TaskSchedule;
   startedOn: string;
   reminder: TaskReminder | null;
+  /** A target counted in parts (T1); absent and null are the same answer. */
+  target?: TaskTarget | null;
 }
 
 /** The draft as the store would receive it: trimmed, days in order, no empty `every`. */
@@ -48,6 +50,7 @@ function canonical(draft: TaskDraftShape): string {
     // A one-day task's start IS its day; the editor sends it that way.
     startedOn: draft.schedule.kind === 'once' ? draft.schedule.day : draft.startedOn,
     reminder,
+    target: draft.target ? { count: draft.target.count, unit: draft.target.unit.trim() } : null,
   });
 }
 

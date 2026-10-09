@@ -1730,6 +1730,24 @@ const RU: Record<string, string> = {
   'Opens the set type and reps in reserve': 'Открывает тип подхода и повторы в запасе',
   'Drop, failure and AMRAP sets are working sets: they count as volume. A warm-up counts for nothing.':
     'Дроп-сет, до отказа и максимум повторов — рабочие подходы, они идут в объём. Разминка не считается.',
+  // T1 · counted tasks (design copy editor.target)
+  'A target, counted in parts': 'Цель по частям',
+  'The circle fills by parts · +1 per tap': 'Круг заполняется по частям · +1 за нажатие',
+  Target: 'Цель',
+  unit: 'единица',
+  Unit: 'Единица',
+  glasses: 'стаканов',
+  pages: 'страниц',
+  minutes: 'минут',
+  'e.g. km, push-ups, pages': 'например, км, отжиманий, страниц',
+  '{count} {unit} a day': '{count} {unit} в день',
+  '{n} of {count} {unit}': '{n} из {count} {unit}',
+  'Tap to add one.': 'Нажмите, чтобы добавить одну.',
+  'Tap to start again.': 'Нажмите, чтобы начать заново.',
+  'Set a number': 'Указать число',
+  'Set a number…': 'Указать число…',
+  'Type how many, instead of a tap each': 'Ввести сколько, а не нажимать по одному',
+  '{name} · the target is {count} {unit}': '{name} · цель — {count} {unit}',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

@@ -38,7 +38,7 @@ export function toggledMark(current: TaskMark | null): TaskMark | null {
   return current === 'done' ? null : 'done';
 }
 
-export type TaskRowAction = 'skip' | 'unskip' | 'pause' | 'move' | 'open';
+export type TaskRowAction = 'count' | 'skip' | 'unskip' | 'pause' | 'move' | 'open';
 
 /**
  * The hold menu for one row, top to bottom.
@@ -47,9 +47,18 @@ export type TaskRowAction = 'skip' | 'unskip' | 'pause' | 'move' | 'open';
  * it already is, the same rule the old long press had. `pause` (T3) sits under
  * the skip because it is the same answer for a run of days: the one-day version
  * first, the many-day one next to it.
+ *
+ * A counted row (T1) LEADS with `Set a number…`: its tap adds one part, so
+ * "I drank six while I was out" has no other way in, and it is the thing that
+ * row's hold is most often for.
  */
-export function taskRowActions(mark: TaskMark | null, visibleRows: number): TaskRowAction[] {
-  const actions: TaskRowAction[] = [mark === 'missed' ? 'unskip' : 'skip', 'pause'];
+export function taskRowActions(
+  mark: TaskMark | null,
+  visibleRows: number,
+  counted = false,
+): TaskRowAction[] {
+  const actions: TaskRowAction[] = counted ? ['count'] : [];
+  actions.push(mark === 'missed' ? 'unskip' : 'skip', 'pause');
   if (visibleRows > 1) actions.push('move');
   actions.push('open');
   return actions;

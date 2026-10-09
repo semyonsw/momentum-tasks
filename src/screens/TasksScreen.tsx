@@ -154,6 +154,7 @@ import {
 } from '../components/glass';
 import { pressedStyle, usePressScale } from '../components/motion';
 import { Kicker, Separator, TextButton } from '../components/primitives';
+import { NumberSheet } from '../components/NumberSheet';
 import { Sheet } from '../components/Sheet';
 import { TaskEditorSheet } from '../components/TaskEditorSheet';
 import { useDragReorder, type CardLayout } from '../hooks/useDragReorder';
@@ -174,10 +175,14 @@ import {
   type TaskMark,
   asksOn,
   dayProgress,
+  describeProgress,
   describeTaskRow,
   entryOf,
+  isCounted,
+  progressOf,
   streakOf,
   tasksOn,
+  unitOf,
   upcomingOnce,
 } from '../lib/tasks';
 import type { Language } from '../lib/i18n';
@@ -223,9 +228,16 @@ export function TasksScreen({
 }: TasksScreenProps) {
   const t = useT();
   const lang = useLanguage();
+  const tRef = useRef(t);
+  tRef.current = t;
+  const langRef = useRef(lang);
+  langRef.current = lang;
   const tasks = useTasks((s) => s.tasks);
   const log = useTasks((s) => s.log);
   const toggleMark = useTasks((s) => s.toggleMark);
+  const tapCount = useTasks((s) => s.tapCount);
+  const setCount = useTasks((s) => s.setCount);
+  const restoreEntry = useTasks((s) => s.restoreEntry);
   const setMark = useTasks((s) => s.setMark);
   const addTask = useTasks((s) => s.addTask);
   const reorderTasks = useTasks((s) => s.reorderTasks);
@@ -237,6 +249,8 @@ export function TasksScreen({
   const [menuFor, setMenuFor] = useState<ID | null>(null);
   /** The pause sheet, opened from the hold menu (T3). */
   const [pausing, setPausing] = useState(false);
+  /** The counted row whose "Set a number…" sheet is up (T1). */
+  const [countingFor, setCountingFor] = useState<ID | null>(null);
   const unpause = useTasks((s) => s.unpause);
 
   const rows = useMemo(() => tasksOn(tasks, day), [tasks, day]);
@@ -311,6 +325,8 @@ export function TasksScreen({
       rows.map((task) => ({
         task,
         mark: entryOf(log, task.id, day).mark,
+        // T1: how far a counted row got today, and of what. Null on a plain row.
+        progress: progressOf(task, entryOf(log, task.id, day)),
         streak: streakOf(task, log, day),
         // T4: the 22 dp ring beside the flame — as of the day on screen, like
         // the streak. Null for a one-day task, which then draws no ring.
@@ -340,7 +356,34 @@ export function TasksScreen({
    */
   const openTask = useRef(onOpenTask);
   openTask.current = onOpenTask;
-  const toggleRow = useCallback((taskId: ID) => toggleMark(taskId, day), [toggleMark, day]);
+  /*
+   * The circle's tap. A plain row toggles and says nothing — the tap is its own
+   * undo. A COUNTED row (T1) adds a part, and from a finished day goes back to
+   * zero, which a second tap cannot reverse; so it says the new count in the
+   * toast with an Undo that puts the entry back exactly. Read through refs so
+   * the callback stays stable for the memoized rows.
+   */
+  const toastRef = useRef(onToast);
+  toastRef.current = onToast;
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const toggleRow = useCallback(
+    (taskId: ID) => {
+      const task = tasksRef.current.find((row) => row.id === taskId);
+      if (!task || !isCounted(task)) {
+        toggleMark(taskId, day);
+        return;
+      }
+      const before = tapCount(taskId, day);
+      if (!before) return;
+      const after = entryOf(useTasks.getState().log, taskId, day);
+      toastRef.current(`${task.name} · ${describeProgress(task, after, langRef.current)}`, {
+        label: tRef.current('Undo'),
+        onPress: () => restoreEntry(taskId, day, before),
+      });
+    },
+    [toggleMark, tapCount, restoreEntry, day],
+  );
   const openRow = useCallback((taskId: ID) => openTask.current(taskId), []);
   const holdRow = useCallback((taskId: ID) => setMenuFor(taskId), []);
 
@@ -351,6 +394,7 @@ export function TasksScreen({
    * the day's note alone either way.
    */
   const menuTask = menuFor ? (rows.find((row) => row.id === menuFor) ?? null) : null;
+  const countingTask = countingFor ? (rows.find((row) => row.id === countingFor) ?? null) : null;
   const menuMark = menuTask ? entryOf(log, menuTask.id, day).mark : null;
   const onMenu = (action: TaskRowAction) => {
     if (!menuTask) return;
@@ -366,6 +410,7 @@ export function TasksScreen({
         { label: t('Undo'), onPress: () => setMark(taskId, day, before) },
       );
     } else if (action === 'unskip') setMark(taskId, day, null);
+    else if (action === 'count') setCountingFor(taskId);
     else if (action === 'pause') setPausing(true);
     else if (action === 'move') lift(taskId);
     else openRow(taskId);
@@ -555,7 +600,7 @@ export function TasksScreen({
             geometry still adds up. 16 above it — card to card is the rhythm's
             short step; the old 24 read as a new section starting. */}
         <View {...panHandlers} className="mx-lg mt-md">
-          {rowViews.map(({ task, mark, streak, strength, detail }) => {
+          {rowViews.map(({ task, mark, progress, streak, strength, detail }) => {
             const isLifted = task.id === lifted;
             return (
               <ReorderRow
@@ -575,6 +620,7 @@ export function TasksScreen({
                   <TaskRow
                     task={task}
                     mark={mark}
+                    progress={progress}
                     streak={streak}
                     strength={strength}
                     detail={detail}
@@ -675,9 +721,34 @@ export function TasksScreen({
           task={menuTask}
           day={day}
           isToday={isToday}
-          actions={taskRowActions(menuMark, rows.length)}
+          actions={taskRowActions(menuMark, rows.length, isCounted(menuTask))}
           onAction={onMenu}
           onDismiss={() => setMenuFor(null)}
+        />
+      ) : null}
+
+      {countingTask && isCounted(countingTask) ? (
+        <NumberSheet
+          title={t('Set a number')}
+          body={t('{name} · the target is {count} {unit}', {
+            name: countingTask.name,
+            count: countingTask.target.count,
+            unit: unitOf(countingTask, lang),
+          })}
+          initial={progressOf(countingTask, entryOf(log, countingTask.id, day))}
+          min={0}
+          onConfirm={(value) => {
+            const taskId = countingTask.id;
+            setCountingFor(null);
+            const before = setCount(taskId, day, value);
+            if (!before) return;
+            const after = entryOf(useTasks.getState().log, taskId, day);
+            onToast(`${countingTask.name} · ${describeProgress(countingTask, after, lang)}`, {
+              label: t('Undo'),
+              onPress: () => restoreEntry(taskId, day, before),
+            });
+          }}
+          onCancel={() => setCountingFor(null)}
         />
       ) : null}
 
@@ -774,6 +845,10 @@ function TaskMenu({
   const t = useT();
   const lang = useLanguage();
   const copy: Record<TaskRowAction, { label: string; detail: string }> = {
+    count: {
+      label: t('Set a number…'),
+      detail: t('Type how many, instead of a tap each'),
+    },
     skip: isToday
       ? {
           label: t('Skip today, on purpose'),
@@ -907,6 +982,7 @@ function CountPill({
 const TaskRow = memo(function TaskRow({
   task,
   mark,
+  progress,
   streak,
   strength,
   detail,
@@ -917,6 +993,8 @@ const TaskRow = memo(function TaskRow({
 }: {
   task: Task;
   mark: TaskMark | null;
+  /** A counted row's parts today (T1), or null on a plain row. */
+  progress: number | null;
   streak: number;
   /** Habit strength 0–100 (T4), or null for a one-day task. */
   strength: number | null;
@@ -927,6 +1005,7 @@ const TaskRow = memo(function TaskRow({
   onLongPress?: (taskId: ID) => void;
 }) {
   const t = useT();
+  const lang = useLanguage();
   const done = mark === 'done';
   const missed = mark === 'missed';
   const press = usePressScale(0.88);
@@ -959,9 +1038,17 @@ const TaskRow = memo(function TaskRow({
           onPressOut={press.onPressOut}
           onLongPress={onLongPress ? () => onLongPress(task.id) : undefined}
           delayLongPress={280}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: done }}
-          accessibilityLabel={`${task.name}. ${t(answerOf(mark))}. ${t('Tap to change.')}`}
+          accessibilityRole={progress === null ? 'checkbox' : 'button'}
+          accessibilityState={progress === null ? { checked: done } : undefined}
+          accessibilityLabel={
+            progress !== null && task.target
+              ? `${task.name}. ${t('{n} of {count} {unit}', {
+                  n: progress,
+                  count: task.target.count,
+                  unit: unitOf(task, lang),
+                })}. ${done ? t('Tap to start again.') : t('Tap to add one.')}`
+              : `${task.name}. ${t(answerOf(mark))}. ${t('Tap to change.')}`
+          }
           accessibilityHint={onLongPress ? t('Hold for more: skip today, pause, move') : undefined}
           style={pressedStyle}
           // 62 × 60, the row's full height — the one control on this screen
@@ -969,7 +1056,11 @@ const TaskRow = memo(function TaskRow({
           className="h-[60px] w-[62px] items-center justify-center"
         >
           <Animated.View style={{ transform: press.style.transform }}>
-            <Mark mark={mark} />
+            {progress !== null && task.target && mark === null ? (
+              <CountMark count={progress} target={task.target.count} />
+            ) : (
+              <Mark mark={mark} />
+            )}
           </Animated.View>
         </Pressable>
 
@@ -1095,6 +1186,68 @@ function Mark({ mark }: { mark: TaskMark | null }) {
     />
   );
 }
+
+/**
+ * A counted row's circle on an unfinished day (T1): the 36 dp footprint of the
+ * other marks, a track cut into one dash per part and the parts done filled in
+ * over it, with `3/8` in the middle — the design's "fills by parts". Past
+ * `SEGMENTS_MAX` parts the dashes would be slivers, so the track is whole and
+ * the fill is a share. A finished day is the ordinary ✓, because done is done.
+ */
+function CountMark({ count, target }: { count: number; target: number }) {
+  const r = (MARK - COUNT_STROKE) / 2;
+  const length = 2 * Math.PI * r;
+  const parts = Math.min(count, target);
+  const cut = target <= SEGMENTS_MAX;
+  const segment = length / target;
+  const filled = cut
+    ? Math.max(0, segment * parts - (parts > 0 ? COUNT_GAP : 0))
+    : (length * parts) / target;
+  return (
+    <View style={{ width: MARK, height: MARK, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg
+        width={MARK}
+        height={MARK}
+        style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}
+      >
+        <Circle
+          cx={MARK / 2}
+          cy={MARK / 2}
+          r={r}
+          fill="none"
+          stroke={palette.greenDim}
+          strokeWidth={COUNT_STROKE}
+          strokeDasharray={cut ? `${segment - COUNT_GAP} ${COUNT_GAP}` : undefined}
+        />
+        {parts > 0 ? (
+          <Circle
+            cx={MARK / 2}
+            cy={MARK / 2}
+            r={r}
+            fill="none"
+            stroke={palette.greenBright}
+            strokeWidth={COUNT_STROKE}
+            strokeDasharray={`${filled} ${length}`}
+          />
+        ) : null}
+      </Svg>
+      {/* `3/8` while it fits inside the ring at the app's 12.5 floor; past
+          three characters just the count — the line beside it says the rest. */}
+      <Text
+        allowFontScaling={false}
+        style={{ fontSize: 12.5, letterSpacing: -0.4 }}
+        className="font-semibold tabular-nums text-ink"
+      >
+        {`${count}/${target}`.length <= 3 ? `${count}/${target}` : String(count)}
+      </Text>
+    </View>
+  );
+}
+
+/** The counted ring's stroke, the gap between its parts, and where the parts stop being drawn. */
+const COUNT_STROKE = 3;
+const COUNT_GAP = 3;
+const SEGMENTS_MAX = 12;
 
 /**
  * The ✓ arriving: scale 0 → 1.18 → 1 over 340 ms, on the overshoot curve.

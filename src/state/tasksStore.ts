@@ -39,6 +39,16 @@ import { useSettings } from './settingsStore';
 import {
   asksOn,
   clearExcused,
+  COUNT_MAX,
+  entryOf,
+  isCounted,
+  isEmptyEntry,
+  tappedCount,
+  TARGET_MAX,
+  UNIT_MAX,
+  withCount,
+  type TaskEntry,
+  type TaskTarget,
   excuseCells,
   excuseRange,
   type ExcusedCell,
@@ -145,6 +155,20 @@ function sanitizeReminder(raw: unknown): TaskReminder | null {
   return reminder;
 }
 
+/**
+ * A target the editor could have produced, or undefined — and undefined means an
+ * ordinary task, which is what every task saved before targets existed is. A
+ * count that is not a whole number of at least one is not a target.
+ */
+function sanitizeTarget(raw: unknown): TaskTarget | undefined {
+  const value = raw as { count?: unknown; unit?: unknown } | null | undefined;
+  if (!value || typeof value !== 'object') return undefined;
+  const count = Number(value.count);
+  if (!Number.isInteger(count) || count < 1) return undefined;
+  const unit = typeof value.unit === 'string' ? value.unit.trim().slice(0, UNIT_MAX) : '';
+  return { count: Math.min(TARGET_MAX, count), unit };
+}
+
 function sanitizeTask(raw: unknown, index: number, today: string): Task | null {
   const value = raw as Partial<Task> | undefined;
   if (!value || typeof value.id !== 'string' || value.id === '') return null;
@@ -153,7 +177,10 @@ function sanitizeTask(raw: unknown, index: number, today: string): Task | null {
   const auto = value.auto === 'workout' || value.auto === 'money' ? value.auto : null;
   const startedOn =
     typeof value.startedOn === 'string' && value.startedOn !== '' ? value.startedOn : today;
+  const target = sanitizeTarget(value.target);
   return {
+    // Spread only when present, so an old task comes back key for key.
+    ...(target ? { target } : {}),
     id: value.id,
     name,
     schedule: sanitizeSchedule(value.schedule, startedOn),
@@ -176,12 +203,19 @@ function sanitizeLog(raw: unknown, tasks: readonly Task[]): TaskLog {
     const kept: TaskLog[string] = {};
     for (const [day, entry] of Object.entries(days as Record<string, unknown>)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-      const value = entry as { mark?: unknown; note?: unknown } | null;
+      const value = entry as { mark?: unknown; note?: unknown; count?: unknown } | null;
       const mark =
         value?.mark === 'done' || value?.mark === 'missed' ? (value.mark as TaskMark) : null;
       const note = typeof value?.note === 'string' ? value.note : '';
-      if (mark === null && note === '') continue;
-      kept[day] = { mark, note };
+      // A counted day's parts (T1). Kept even on a task that has since lost its
+      // target — the number is still what happened, and the target may return.
+      const count =
+        Number.isInteger(value?.count) && (value?.count as number) > 0
+          ? Math.min(COUNT_MAX, value?.count as number)
+          : undefined;
+      const answer: TaskEntry = count !== undefined ? { mark, note, count } : { mark, note };
+      if (isEmptyEntry(answer)) continue;
+      kept[day] = answer;
     }
     if (Object.keys(kept).length > 0) log[taskId] = kept;
   }
@@ -217,6 +251,8 @@ export interface TaskSpec {
    */
   startedOn?: string;
   reminder?: TaskReminder | null;
+  /** A target counted in parts (T1). Absent or null: an ordinary task. */
+  target?: TaskTarget | null;
 }
 
 interface TasksState extends TasksValue {
@@ -229,6 +265,11 @@ interface TasksState extends TasksValue {
       startedOn?: string;
       /** `null` clears it, which is why this is not `TaskReminder | undefined`. */
       reminder?: TaskReminder | null;
+      /**
+       * `null` makes it an ordinary task again. The days already counted keep
+       * their marks and their numbers — see "A COUNTED TASK…" in `lib/tasks.ts`.
+       */
+      target?: TaskTarget | null;
     },
   ) => void;
   archiveTask: (id: ID) => void;
@@ -249,6 +290,16 @@ interface TasksState extends TasksValue {
    * menu. `lib/taskTap.ts` has why. Returns the mark it replaced, for an Undo.
    */
   toggleMark: (id: ID, day: string) => TaskMark | null;
+  /**
+   * A counted row's tap (T1): one more part, or back to zero from a finished
+   * day (`tappedCount`). Returns the entry it replaced, for the Undo; null (and
+   * nothing written) on a task with no target.
+   */
+  tapCount: (id: ID, day: string) => TaskEntry | null;
+  /** "Set a number…" (T1): the day's count, the mark judged from it. Returns the old entry. */
+  setCount: (id: ID, day: string, count: number) => TaskEntry | null;
+  /** Put an entry back exactly as it was — the Undo of a count. */
+  restoreEntry: (id: ID, day: string, entry: TaskEntry) => void;
   setNote: (id: ID, day: string, note: string) => void;
   /**
    * Vacation mode (T3): excuse `from`…`to` for `taskIds` in one action. Writes
@@ -278,13 +329,18 @@ function writeEntry(
   patch: { mark?: TaskMark | null; note?: string },
 ): TaskLog {
   const current = log[id]?.[day] ?? { mark: null, note: '' };
-  const next = {
+  // The spread carries a counted day's parts through a note or a skip.
+  return putEntry(log, id, day, {
+    ...current,
     mark: patch.mark !== undefined ? patch.mark : current.mark,
     note: patch.note ?? current.note,
-  };
+  });
+}
+
+/** Write a whole entry. An empty one is deleted rather than stored, so the log stays sparse. */
+function putEntry(log: TaskLog, id: ID, day: string, next: TaskEntry): TaskLog {
   const days = { ...(log[id] ?? {}) };
-  // An empty entry is deleted rather than stored, so the log stays sparse.
-  if (next.mark === null && next.note === '') delete days[day];
+  if (isEmptyEntry(next)) delete days[day];
   else days[day] = next;
   const updated = { ...log };
   if (Object.keys(days).length === 0) delete updated[id];
@@ -327,6 +383,7 @@ export const useTasks = create<TasksState>()(
               reminder: spec.reminder ?? null,
               archivedAt: null,
               order: state.tasks.length,
+              ...(spec.target ? { target: spec.target } : {}),
             },
           ],
         }));
@@ -339,8 +396,11 @@ export const useTasks = create<TasksState>()(
             if (task.id !== id) return task;
             const name = patch.name?.trim();
             const schedule = patch.schedule ?? task.schedule;
+            const next: Task = { ...task };
+            if (patch.target === null) delete next.target;
+            else if (patch.target !== undefined) next.target = patch.target;
             return {
-              ...task,
+              ...next,
               name: name !== undefined && name !== '' ? name : task.name,
               schedule,
               // Same rule as `addTask`: for a one-day row the two dates are one
@@ -388,6 +448,27 @@ export const useTasks = create<TasksState>()(
         set((state) => ({ log: writeEntry(state.log, id, day, { mark: next }) }));
         return current;
       },
+
+      tapCount: (id, day) => {
+        const task = get().tasks.find((row) => row.id === id);
+        if (!task || !isCounted(task)) return null;
+        const before = entryOf(get().log, id, day);
+        const next = withCount(before, tappedCount(task, before), task.target.count);
+        set((state) => ({ log: putEntry(state.log, id, day, next) }));
+        return before;
+      },
+
+      setCount: (id, day, count) => {
+        const task = get().tasks.find((row) => row.id === id);
+        if (!task || !isCounted(task)) return null;
+        const before = entryOf(get().log, id, day);
+        const next = withCount(before, count, task.target.count);
+        set((state) => ({ log: putEntry(state.log, id, day, next) }));
+        return before;
+      },
+
+      restoreEntry: (id, day, entry) =>
+        set((state) => ({ log: putEntry(state.log, id, day, entry) })),
 
       setNote: (id, day, note) =>
         set((state) => ({ log: writeEntry(state.log, id, day, { note }) })),

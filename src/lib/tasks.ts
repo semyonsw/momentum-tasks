@@ -62,6 +62,25 @@
  * marks only the days a task asks on, so a Mon/Wed/Fri row gets no stray marks
  * on its Tuesdays and a one-day task is excused only if its day is inside.
  *
+ * ── A COUNTED TASK STILL ANSWERS WITH THE SAME MARK (T1) ─────────────────
+ *
+ * "8 glasses of water" keeps a number per day (`TaskEntry.count`), and the day's
+ * MARK is written from it at the moment it changes: `done` when the count
+ * reaches the target, unanswered below it (`withCount`). So every reader that
+ * already exists — the streak, the denominator, the month, habit strength, the
+ * year in pixels, the weekly review, Wrapped, the reminders' "answered" check —
+ * sees a counted day as done exactly when the target was reached, with no code
+ * of its own. A PARTIAL day is unanswered, and in the past it breaks the streak
+ * like any other unanswered day: three glasses of eight is not the habit, and
+ * calling it a kept day would make the target decoration.
+ *
+ * The judgement is made when the count is written, against the target of that
+ * moment, and is not re-made when the target is edited later: a day judged
+ * done at 8 glasses stays done after the target becomes 10. History is what
+ * happened, not what today's rule would say about it. Rejected: deriving the
+ * mark on every read from the current target — it would rewrite a year of
+ * streaks the moment a number in the editor moved.
+ *
  * Everything here is pure and local-time: a task belongs to the day you were
  * standing in, which is what `calendar.dayKey` computes.
  */
@@ -160,11 +179,34 @@ export function formatInterval(minutes: number, lang: Language = 'en'): string {
   return t('{hours} h', lang, { hours: minutes / 60 });
 }
 
+/**
+ * A measurable task's daily goal (T1): `8` `glasses`. The unit is the user's
+ * word, stored as they chose it; empty means plain "times".
+ */
+export interface TaskTarget {
+  /** 1–`TARGET_MAX`. */
+  count: number;
+  unit: string;
+}
+
+/** The largest target the editor's ± reaches. */
+export const TARGET_MAX = 999;
+/** The largest count one day can hold — far past any target, short of junk. */
+export const COUNT_MAX = 9999;
+/** A unit is a word or two, not a sentence. */
+export const UNIT_MAX = 24;
+
 export interface Task {
   id: ID;
   name: string;
   schedule: TaskSchedule;
   auto: TaskAutoSource | null;
+  /**
+   * A target counted in parts (T1), or absent for an ordinary one-tap task.
+   * Optional rather than `null` so every task written before it existed reads
+   * as exactly what it was.
+   */
+  target?: TaskTarget;
   /** The first day it asked for anything, `YYYY-MM-DD`. Days before it are blank. */
   startedOn: string;
   /**
@@ -185,6 +227,11 @@ export interface Task {
 export interface TaskEntry {
   mark: TaskMark | null;
   note: string;
+  /**
+   * How many parts of a counted task's target were done that day (T1). Absent
+   * on every other entry, and on a counted day nobody has counted on yet.
+   */
+  count?: number;
 }
 
 /** `taskId` → `YYYY-MM-DD` → entry. Sparse: most days have no row at all. */
@@ -258,6 +305,93 @@ export function upcomingOnce(tasks: readonly Task[], today: string, limit = 4): 
 
 export function entryOf(log: TaskLog, taskId: ID, day: string): TaskEntry {
   return log[taskId]?.[day] ?? EMPTY_ENTRY;
+}
+
+/** An entry that says nothing — the log deletes these rather than storing them. */
+export function isEmptyEntry(entry: TaskEntry): boolean {
+  return entry.mark === null && entry.note === '' && !entry.count;
+}
+
+/* ------------------------------------------------------------------ */
+/* Counted tasks (T1)                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Does this task count in parts? */
+export function isCounted(task: Task): task is Task & { target: TaskTarget } {
+  return task.target !== undefined;
+}
+
+/**
+ * How far a counted task got on a day, or null for an ordinary task.
+ *
+ * A day marked `done` short of its target — ticked before the task had one, or by
+ * the auto-tick — reads as at least the whole target: it was done, and drawing
+ * it as 0 / 8 would contradict its own ✓. A count past the target stays itself.
+ */
+export function progressOf(task: Task, entry: TaskEntry): number | null {
+  if (!isCounted(task)) return null;
+  const count = entry.count ?? 0;
+  return entry.mark === 'done' ? Math.max(count, task.target.count) : count;
+}
+
+/**
+ * The entry after its count is set to `count`, with the mark judged from it:
+ * `done` at or past the target, unanswered below it. Zero clears the count and
+ * leaves an excusal in place (nothing was done, and the skip still stands); any
+ * part done takes the skip back, as a tap on an excused row does. The note is
+ * never touched.
+ */
+export function withCount(entry: TaskEntry, count: number, target: number): TaskEntry {
+  const value = Math.max(0, Math.min(COUNT_MAX, Math.round(Number.isFinite(count) ? count : 0)));
+  const mark: TaskMark | null =
+    value >= target ? 'done' : value === 0 && entry.mark === 'missed' ? 'missed' : null;
+  return value > 0 ? { mark, note: entry.note, count: value } : { mark, note: entry.note };
+}
+
+/**
+ * The circle's tap on a counted row: one more part, and from a finished day
+ * back to zero — the prototype's cycle, and the only way a tap can take a
+ * finished day back. The tap shows an Undo, because unlike the plain tap it is
+ * not its own inverse.
+ */
+export function tappedCount(task: Task & { target: TaskTarget }, entry: TaskEntry): number {
+  if (entry.mark === 'done') return 0;
+  return (progressOf(task, entry) ?? 0) + 1;
+}
+
+/**
+ * The editor's ± on a target: by 1 up to 20, by 5 up to 100, by 10 past it —
+ * so 8 glasses is a tap or two, 30 pages a handful, and 250 ml-sized numbers
+ * are reachable without a keyboard (numbers in this app are never typed in a
+ * form). A step down lands on the same grid going back. 1…`TARGET_MAX`.
+ */
+export function stepTarget(value: number, direction: 1 | -1): number {
+  const step = (from: number) => (from >= 100 ? 10 : from >= 20 ? 5 : 1);
+  if (direction === 1) {
+    const by = step(value);
+    return Math.min(TARGET_MAX, Math.floor(value / by) * by + by);
+  }
+  const by = step(value - 1);
+  return Math.max(1, Math.ceil(value / by) * by - by);
+}
+
+/** The task's unit as a row says it: the user's word, or "times". */
+export function unitOf(task: Task, lang: Language = 'en'): string {
+  const unit = task.target?.unit.trim() ?? '';
+  return unit === '' ? t('times', lang) : unit;
+}
+
+/** "3 / 8 glasses" — a counted day, as the row and the toast say it. */
+export function describeProgress(task: Task, entry: TaskEntry, lang: Language = 'en'): string {
+  const progress = progressOf(task, entry);
+  if (progress === null || !task.target) return '';
+  return `${progress} / ${task.target.count} ${unitOf(task, lang)}`;
+}
+
+/** "8 glasses a day" — the target, as the task's own screen says it. */
+export function describeTarget(task: Task, lang: Language = 'en'): string | null {
+  if (!task.target) return null;
+  return t('{count} {unit} a day', lang, { count: task.target.count, unit: unitOf(task, lang) });
 }
 
 /** "Every day" · "Mon · Wed · Fri" · "Once · 14 September" · "Never". */
@@ -414,7 +548,11 @@ export function describeTaskRow(
   withStreak = true,
 ): string {
   const entry = entryOf(log, task.id, day);
-  const parts: string[] = [describeSchedule(task.schedule, lang)];
+  const parts: string[] = [];
+  // A counted row leads with how far it got: that is the line's news, and the
+  // schedule is the same every day.
+  if (isCounted(task)) parts.push(describeProgress(task, entry, lang));
+  parts.push(describeSchedule(task.schedule, lang));
   // Behind the flag, not filtered after the fact: `streakOf` walks back a day at
   // a time to the start of the run, so on a task answered every day for a year
   // it is the most expensive thing this function could do — and the day list,
@@ -839,7 +977,9 @@ export function excuseRange(
       const entry = entryOf(next, task.id, day);
       if (entry.mark !== null) continue;
       days ??= { ...(next[task.id] ?? {}) };
-      days[day] = { mark: 'missed', note: entry.note };
+      // The spread keeps a counted day's parts: a pause excuses the day, it
+      // does not forget the two glasses already drunk.
+      days[day] = { ...entry, mark: 'missed' };
       written.push({ taskId: task.id, day });
     }
     if (days) next = { ...next, [task.id]: days };
@@ -859,7 +999,7 @@ export function excuseCells(log: TaskLog, cells: readonly ExcusedCell[]): TaskLo
     if (entry.mark !== null) continue;
     next = {
       ...next,
-      [taskId]: { ...(next[taskId] ?? {}), [day]: { mark: 'missed', note: entry.note } },
+      [taskId]: { ...(next[taskId] ?? {}), [day]: { ...entry, mark: 'missed' } },
     };
   }
   return next;
@@ -877,8 +1017,9 @@ export function clearExcused(log: TaskLog, cells: readonly ExcusedCell[]): TaskL
     const entry = next[taskId]?.[day];
     if (!entry || entry.mark !== 'missed') continue;
     const days = { ...next[taskId] };
-    if (entry.note === '') delete days[day];
-    else days[day] = { mark: null, note: entry.note };
+    const cleared: TaskEntry = { ...entry, mark: null };
+    if (isEmptyEntry(cleared)) delete days[day];
+    else days[day] = cleared;
     next = { ...next };
     if (Object.keys(days).length === 0) delete next[taskId];
     else next[taskId] = days;
