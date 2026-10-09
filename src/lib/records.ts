@@ -401,6 +401,53 @@ export function prTimeline(
   return entries.reverse();
 }
 
+/** One session that set a record on one exercise — what E1/E2 count (Wave 3). */
+export interface RecordMoment {
+  exerciseId: ID;
+  sessionId: ID;
+  at: string;
+}
+
+/**
+ * Every (session, exercise) that broke a record, oldest first, by the FINISH
+ * SHEET'S rules (`recordsBrokenIn`), not the timeline's: a record needs a bar on
+ * its axis, so an exercise's first session and an axis it never had are not
+ * records, and pure bodyweight work has no e1RM. One moment per exercise per
+ * session, however many axes moved — the sheet's one row.
+ *
+ * The badges and XP count these, so "your first record" is the session whose
+ * Finish sheet first said so.
+ */
+export function recordMoments(
+  history: readonly SetHistory[],
+  bodyweightAtDate: BodyweightLookup = () => null,
+): RecordMoment[] {
+  const byExercise = new Map<ID, SetHistory[]>();
+  for (const row of history) {
+    const bucket = byExercise.get(row.exerciseId);
+    if (bucket) bucket.push(row);
+    else byExercise.set(row.exerciseId, [row]);
+  }
+  const moments: RecordMoment[] = [];
+  for (const [exerciseId, rows] of byExercise) {
+    const standing: Standing = {};
+    for (const session of sessionsOf(rows, exerciseId)) {
+      const tops = sessionTops(session, bodyweightAtDate);
+      const moved = KIND_ORDER.some((kind) => {
+        const top = tops[kind];
+        const bar = standing[kind];
+        if (!top || bar == null || !(top.value > bar)) return false;
+        return !(kind === 'e1rm' && top.row.loadMode === 'none');
+      });
+      if (moved) {
+        moments.push({ exerciseId, sessionId: session[0].sessionId, at: session[0].performedAt });
+      }
+      raise(standing, tops);
+    }
+  }
+  return moments.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
+
 /** One session's best on each axis, and the set that holds it. */
 type SessionTops = Partial<Record<RecordKind, { value: number; row: SetHistory }>>;
 /** The best on each axis across a run of sessions. */

@@ -1973,6 +1973,117 @@ const RU: Record<string, string> = {
     'Для карточки нужно хотя бы {days} дней в каждой группе ({weeks} недели для сравнения недель) за последние {window} недель и разница в {points} пунктов по задачам или {relative}% по тратам. Меньшие различия не показываются.',
   '{n} found': 'найдено: {n}',
   'Not enough data yet': 'Пока мало данных',
+  // E1 · achievements (design 19a/19b, Wave 3 — behind the one switch)
+  'Achievements and levels': 'Достижения и уровни',
+  'Off by default. Quiet badges and levels, worked out from your logs.':
+    'По умолчанию выключено. Тихие значки и уровни, посчитанные по вашим журналам.',
+  Badges: 'Значки',
+  '{n} of {total} earned.': 'Получено {n} из {total}.',
+  'Worked out from your logs, so days before the switch count too.':
+    'Считаются по вашим журналам, поэтому дни до включения тоже идут в зачёт.',
+  Bronze: 'Бронза',
+  Silver: 'Серебро',
+  Gold: 'Золото',
+  Locked: 'Ещё не получен',
+  'Not yet': 'Пока нет',
+  'Earned {date}': 'Получен {date}',
+  'badge:task': 'задача',
+  'badge:record': 'рекорд',
+  'badge:records': 'рекордов',
+  'badge:t': 'т',
+  'badge:perfect day': 'идеальный день',
+  'badge:perfect days': 'идеальных дней',
+  'badge:amount': 'сумма',
+  'badge:amounts': 'сумм',
+  'badge:day logged': 'день с записями',
+  'badge:days logged': 'дней с записями',
+  'badge:goal': 'цель',
+  'badge:goals': 'целей',
+  'First workout': 'Первая тренировка',
+  'Save your first workout.': 'Сохраните первую тренировку.',
+  '10 workouts': '10 тренировок',
+  'Save 10 workouts.': 'Сохраните 10 тренировок.',
+  '50 workouts': '50 тренировок',
+  'Save 50 workouts.': 'Сохраните 50 тренировок.',
+  '100 workouts': '100 тренировок',
+  'Save 100 workouts.': 'Сохраните 100 тренировок.',
+  '250 workouts': '250 тренировок',
+  'Save 250 workouts.': 'Сохраните 250 тренировок.',
+  '500 workouts': '500 тренировок',
+  'Save 500 workouts.': 'Сохраните 500 тренировок.',
+  '1 tonne in a session': '1 тонна за тренировку',
+  'Move 1,000 kg in the working sets of one workout.':
+    'Поднимите 1000 кг в рабочих подходах одной тренировки.',
+  '5 tonnes in a session': '5 тонн за тренировку',
+  'Move 5,000 kg in the working sets of one workout.':
+    'Поднимите 5000 кг в рабочих подходах одной тренировки.',
+  '10 tonnes in a session': '10 тонн за тренировку',
+  'Move 10,000 kg in the working sets of one workout.':
+    'Поднимите 10 000 кг в рабочих подходах одной тренировки.',
+  '10 tonnes moved': '10 тонн поднято',
+  'Move 10 tonnes in working sets, all workouts together.':
+    'Поднимите 10 тонн в рабочих подходах, все тренировки вместе.',
+  '100 tonnes moved': '100 тонн поднято',
+  'Move 100 tonnes in working sets, all workouts together.':
+    'Поднимите 100 тонн в рабочих подходах, все тренировки вместе.',
+  '1,000 tonnes moved': '1000 тонн поднято',
+  'Move 1,000 tonnes in working sets, all workouts together.':
+    'Поднимите 1000 тонн в рабочих подходах, все тренировки вместе.',
+  'First record': 'Первый рекорд',
+  'Beat a previous best: a new e1RM, heaviest set or most reps.':
+    'Побейте прежний лучший результат: новый e1RM, самый тяжёлый подход или больше всего повторений.',
+  '10 records': '10 рекордов',
+  'Beat a previous best in 10 exercise sessions.':
+    'Побейте прежний лучший результат в упражнении на 10 тренировках.',
+  '50 records': '50 рекордов',
+  'Beat a previous best in 50 exercise sessions.':
+    'Побейте прежний лучший результат в упражнении на 50 тренировках.',
+  '1,000 working sets': '1000 рабочих подходов',
+  'Log 1,000 working sets. Warm-ups are not counted.':
+    'Запишите 1000 рабочих подходов. Разминка не считается.',
+  'First task done': 'Первая выполненная задача',
+  'Tick a task on a day it asks.': 'Отметьте задачу в день, когда она запланирована.',
+  '100 tasks done': '100 выполненных задач',
+  'Tick 100 tasks, on the days they ask.': 'Отметьте 100 задач в дни, когда они запланированы.',
+  '1,000 tasks done': '1000 выполненных задач',
+  'Tick 1,000 tasks, on the days they ask.': 'Отметьте 1000 задач в дни, когда они запланированы.',
+  '7 days in a row': '7 дней подряд',
+  'Do one daily task 7 asked days in a row. A day skipped on purpose is stepped over, not counted.':
+    'Выполняйте одну ежедневную задачу 7 запланированных дней подряд. День, пропущенный намеренно, не прерывает и не засчитывается.',
+  '30-day streak': 'Серия 30 дней',
+  'Do one daily task 30 asked days in a row. A day skipped on purpose is stepped over, not counted.':
+    'Выполняйте одну ежедневную задачу 30 запланированных дней подряд. День, пропущенный намеренно, не прерывает и не засчитывается.',
+  '100-day streak': 'Серия 100 дней',
+  'Do one daily task 100 asked days in a row. A day skipped on purpose is stepped over, not counted.':
+    'Выполняйте одну ежедневную задачу 100 запланированных дней подряд. День, пропущенный намеренно, не прерывает и не засчитывается.',
+  'A full week': 'Полная неделя',
+  'Every task done on every day of a Monday–Sunday week, at least 5 days of it. A paused day does not count.':
+    'Все задачи выполнены в каждый день недели с понедельника по воскресенье, минимум 5 дней. День на паузе не засчитывается.',
+  '30 perfect days': '30 идеальных дней',
+  'Finish every task 30 days. Days skipped on purpose are left out.':
+    'Выполните все задачи за 30 дней. Намеренно пропущенные задачи не учитываются.',
+  'First amount': 'Первая сумма',
+  'Record your first amount. Transfers are not counted.':
+    'Запишите первую сумму. Переводы не считаются.',
+  '100 amounts': '100 сумм',
+  'Record 100 amounts. Transfers are not counted.': 'Запишите 100 сумм. Переводы не считаются.',
+  '30 days of logging': '30 дней записей',
+  'Record spending on 30 different days.': 'Записывайте расходы в 30 разных дней.',
+  '100 days of logging': '100 дней записей',
+  'Record spending on 100 different days.': 'Записывайте расходы в 100 разных дней.',
+  'A year of logging': 'Год записей',
+  'Record spending on 365 different days.': 'Записывайте расходы в 365 разных дней.',
+  'Budget kept': 'Бюджет соблюдён',
+  'A whole month inside every budget you have set.': 'Целый месяц в рамках всех заданных бюджетов.',
+  'Budget kept 3 months': 'Бюджет соблюдён 3 месяца',
+  'Three whole months inside every budget you have set.':
+    'Три целых месяца в рамках всех заданных бюджетов.',
+  'Budget kept a year': 'Бюджет соблюдён год',
+  'Twelve whole months inside every budget you have set.':
+    'Двенадцать целых месяцев в рамках всех заданных бюджетов.',
+  'Goal reached': 'Цель достигнута',
+  'A savings goal’s subsection reaches its target.':
+    'Подраздел цели накопления достигает целевой суммы.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

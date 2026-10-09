@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeSessionRecord, prTimeline, recordsBrokenIn } from './records';
+import { describeSessionRecord, prTimeline, recordMoments, recordsBrokenIn } from './records';
 import type { SetHistory } from '../types/models';
 
 /**
@@ -262,5 +262,40 @@ describe('describeSessionRecord', () => {
       'en',
     );
     expect(lb.record).toMatch(/^heaviest yet, 22\d(\.\d)? lb$/);
+  });
+});
+
+describe('recordMoments (what E1 badges and E2 XP count)', () => {
+  it('is, session by session, exactly what the Finish sheet said at the time', () => {
+    const history = [
+      row('a', '2026-09-01', 'bench', 80, 5),
+      row('a', '2026-09-01', 'squat', 100, 5),
+      row('b', '2026-09-03', 'bench', 80, 5), // equalled: no record
+      row('b', '2026-09-03', 'squat', 105, 5), // a record
+      row('c', '2026-09-05', 'bench', 82.5, 5), // a record
+      row('c', '2026-09-05', 'bench', 85, 6), // same session, same exercise: one moment
+      row('c', '2026-09-05', 'row', 60, 10), // first ever: none
+      row('d', '2026-09-07', 'bench', 90, 5, { isWarmup: true }), // a warm-up never counts
+    ];
+    const sessions = ['a', 'b', 'c', 'd'];
+    const expected = sessions.flatMap((id, i) => {
+      const live = history.filter((r) => r.sessionId === id);
+      const before = history.filter((r) => sessions.indexOf(r.sessionId) < i);
+      return recordsBrokenIn(live, before, undefined, 99).map((r) => `${id}:${r.exerciseId}`);
+    });
+    const moments = recordMoments(history).map((m) => `${m.sessionId}:${m.exerciseId}`);
+    expect(moments.sort()).toEqual(expected.sort());
+    expect(moments.sort()).toEqual(['b:squat', 'c:bench']);
+  });
+
+  it('is empty with nothing logged, and oldest first otherwise', () => {
+    expect(recordMoments([])).toEqual([]);
+    const history = [
+      row('x', '2026-08-01', 'bench', 80, 5),
+      row('y', '2026-08-10', 'bench', 85, 5),
+      row('x', '2026-08-01', 'squat', 80, 5),
+      row('z', '2026-08-05', 'squat', 85, 5),
+    ];
+    expect(recordMoments(history).map((m) => m.sessionId)).toEqual(['z', 'y']);
   });
 });

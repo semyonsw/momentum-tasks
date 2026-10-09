@@ -66,6 +66,7 @@ import { usableLanguage, type Language } from '../lib/i18n';
 import { INTERVALS, type Direction, type Interval } from '../lib/money';
 import type { Weekday } from '../lib/tasks';
 import { TREND_RANGES, type TrendRange } from '../lib/trends';
+import { usableEngagement } from '../lib/engagement';
 import type { MuscleCluster, UnitSystem } from '../types/models';
 
 export interface Settings {
@@ -328,6 +329,17 @@ export interface Settings {
    * such key, and an emptied log goes absent again rather than writing `{}`.
    */
   bodyMeasurements?: MeasurementLog;
+
+  /* --- the engagement layer (Wave 3) ---------------------------------- */
+  /**
+   * "Achievements and levels": the ONE switch behind every Wave 3 piece —
+   * badges, the level chip, streak freezes, milestone cards. See
+   * `lib/engagement.ts`.
+   *
+   * OPTIONAL `true`, absent = off: a 2.2.0 phone and its backups have no such
+   * key and come up exactly as they were. Never a stored `false`.
+   */
+  engagement?: true;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -388,6 +400,8 @@ export const DEFAULT_SETTINGS: Settings = {
   aiCardsDismissed: undefined,
   weeklyReviewDismissed: undefined,
   bodyMeasurements: undefined,
+  // Off by default (IMPLEMENTATION_DECISIONS row 6): nothing keeps score unasked.
+  engagement: undefined,
 };
 
 /**
@@ -524,6 +538,8 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     aiCardsDismissed: usableSections(raw.aiCardsDismissed),
     weeklyReviewDismissed: usableMonday(raw.weeklyReviewDismissed),
     bodyMeasurements: sanitizeMeasurements(raw.bodyMeasurements),
+    // Only a literal `true` is on, so junk and a 2.2.0 blob both read as off.
+    engagement: usableEngagement(raw.engagement),
   };
 }
 
@@ -734,6 +750,9 @@ interface SettingsState extends Settings {
   /** W9: remove one site's reading on one day. Asked first by the screen (U19). */
   removeMeasurement: (key: MeasurementKey, day: string) => void;
 
+  /** Wave 3's one switch. Off writes nothing (the key goes absent). */
+  setEngagement: (on: boolean) => void;
+
   resetToDefaults: () => void;
   /**
    * Replace every setting from a restored backup.
@@ -894,6 +913,8 @@ export const useSettings = create<SettingsState>()(
 
       removeMeasurement: (key, day) =>
         set({ bodyMeasurements: removeMeasurement(get().bodyMeasurements, key, day) }),
+
+      setEngagement: (on) => set({ engagement: usableEngagement(on) }),
 
       resetToDefaults: () =>
         /*

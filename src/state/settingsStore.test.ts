@@ -720,3 +720,34 @@ describe('body measurements (W9)', () => {
     });
   });
 });
+
+describe('the engagement switch (Wave 3)', () => {
+  it('is off by default and on a 2.2.0 blob, which had no such key', () => {
+    expect(DEFAULT_SETTINGS.engagement).toBeUndefined();
+    expect(sanitizeSettings({}).engagement).toBeUndefined();
+    expect(sanitizeSettings(undefined).engagement).toBeUndefined();
+  });
+
+  it('only a literal true is on; junk and a stored false read as off', () => {
+    expect(sanitizeSettings({ engagement: true }).engagement).toBe(true);
+    for (const junk of [false, 'true', 1, null, {}]) {
+      expect(
+        sanitizeSettings({ engagement: junk } as unknown as Partial<Settings>).engagement,
+      ).toBeUndefined();
+    }
+  });
+
+  it('switching it off writes no key at all', () => {
+    useSettings.getState().setEngagement(true);
+    expect(currentSettings().engagement).toBe(true);
+    useSettings.getState().setEngagement(false);
+    expect(currentSettings().engagement).toBeUndefined();
+    expect('engagement' in JSON.parse(JSON.stringify(currentSettings()))).toBe(false);
+  });
+
+  it('Reset every setting turns it off — it is a switch, and nothing it shows is stored', () => {
+    useSettings.getState().setEngagement(true);
+    useSettings.getState().resetToDefaults();
+    expect(currentSettings().engagement).toBeUndefined();
+  });
+});

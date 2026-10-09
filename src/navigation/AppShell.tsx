@@ -81,6 +81,7 @@ import { RoutineListScreen } from '../screens/RoutineListScreen';
 import { LibrarySwitch } from '../components/LibrarySwitch';
 import { SequenceScreen } from '../screens/SequenceScreen';
 import { SettingsHomeScreen } from '../screens/SettingsHomeScreen';
+import { AchievementsScreen } from '../screens/AchievementsScreen';
 import { LandingScreen, type TileRect } from '../screens/LandingScreen';
 import { WrappedScreen } from '../screens/WrappedScreen';
 import type { WrappedPeriod } from '../lib/wrapped';
@@ -214,6 +215,8 @@ type Route =
   | { name: 'muscles' }
   /* X2: patterns across the three logs, from the foot of each history. */
   | { name: 'insights' }
+  /* E1: the badge gallery, from Settings while Wave 3's switch is on. */
+  | { name: 'achievements' }
   | { name: 'taskDetail'; taskId: ID }
   /* The window travels with the tap, so the category opens on the one the tile
      was read through rather than resetting to this month. */
@@ -1779,6 +1782,10 @@ export function AppShell() {
       return <InsightsScreen onBack={pop} />;
     }
 
+    if (top?.name === 'achievements') {
+      return <AchievementsScreen onBack={pop} />;
+    }
+
     if (top?.name === 'muscles') {
       return <MuscleMapScreen workouts={workouts} exercisesById={exercisesById} onBack={pop} />;
     }
@@ -2076,6 +2083,7 @@ export function AppShell() {
         onOpenTaskSettings={() => push({ name: 'taskSettings' })}
         onOpenMoneySettings={() => push({ name: 'moneySettings' })}
         onOpenAiSettings={() => push({ name: 'aiSettings' })}
+        onOpenAchievements={() => push({ name: 'achievements' })}
       />
     );
   };

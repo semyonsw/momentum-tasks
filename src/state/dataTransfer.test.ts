@@ -571,6 +571,37 @@ describe('body measurements (W9)', () => {
   });
 });
 
+describe('the engagement switch (Wave 3)', () => {
+  it('travels in a backup and comes back on', () => {
+    useSettings.getState().setEngagement(true);
+    const text = exportBackupText();
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    expect(useSettings.getState().engagement).toBeUndefined();
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useSettings.getState().engagement).toBe(true);
+  });
+
+  it('a 2.2.0 backup, written before the key existed, imports unchanged and off', () => {
+    useSettings.getState().setEngagement(true);
+    const v220 = JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 1,
+      settings: { restSecondsBetweenSets: 90, bodyweightKg: 80 },
+      exercises: [],
+      routines: [],
+      workouts: [],
+    });
+    const parsed = parseBackup(v220);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
+    expect(useSettings.getState().bodyweightKg).toBe(80);
+    expect(useSettings.getState().engagement).toBeUndefined();
+  });
+});
+
 describe('the money scale (U25)', () => {
   it('a 2.2.0 backup with amounts imports them unchanged, in whole units', async () => {
     const { useMoney } = await import('./moneyStore');

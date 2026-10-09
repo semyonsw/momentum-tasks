@@ -286,6 +286,27 @@ describe('settings written by 2.2.0', () => {
   });
 });
 
+describe('the engagement switch on a cold start (Wave 3)', () => {
+  it('a 2.2.0 blob comes up off; a stored true comes up on', async () => {
+    const { useSettings, DEFAULT_SETTINGS } = await import('./settingsStore');
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({ version: 1, state: { restSecondsBetweenSets: 95 } }),
+    );
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().engagement).toBeUndefined();
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(95);
+
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({ version: 1, state: { engagement: true } }),
+    );
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().engagement).toBe(true);
+  });
+});
+
 describe('a task log with missed-on-purpose days, from before the tap toggled', () => {
   it('cold-starts with every mark where it was', async () => {
     const log = {

@@ -62,6 +62,13 @@
  * thing that makes remembering to export optional, and `lib/backup.ts` is right
  * that protection depending on the user's memory of a menu is not protection.
  *
+ * ── ONE SWITCH FOR THE GAME LAYER (Wave 3) ────────────────────────────────
+ *
+ * `Achievements and levels` sits under the assistant, off by default, as one
+ * switch rather than one per piece (`lib/engagement.ts` has the argument). It
+ * is here and not in a section because it spans all three logs. The badge
+ * gallery's door appears under it only while it is on.
+ *
  * ── AND THE LANGUAGE IS IN THE CORNER, NOT IN A ROW ────────────────────────
  *
  * It is the one setting whose whole job is to be findable by somebody who cannot
@@ -98,9 +105,13 @@ import {
   Kicker,
   Separator,
   StepperRow,
+  SwitchRow,
   TextButton,
   Toggle,
 } from '../components/primitives';
+import { useBadges } from '../hooks/useEngagement';
+import { describeGallery } from '../lib/achievements';
+import { engagementOn, engagementView } from '../lib/engagement';
 import { SparkleCircle } from '../components/AiEntryCard';
 import { useAi } from '../state/aiStore';
 import { runBackupNow } from '../hooks/useAutoBackup';
@@ -170,6 +181,8 @@ interface SettingsHomeScreenProps {
   onOpenMoneySettings: () => void;
   /** `AI assistant` — the key, the model, the test. */
   onOpenAiSettings: () => void;
+  /** E1: the badge gallery. Only reachable while the Wave 3 switch is on. */
+  onOpenAchievements: () => void;
 }
 
 export function SettingsHomeScreen({
@@ -177,6 +190,7 @@ export function SettingsHomeScreen({
   onOpenTaskSettings,
   onOpenMoneySettings,
   onOpenAiSettings,
+  onOpenAchievements,
 }: SettingsHomeScreenProps) {
   const settings = useSettings();
   const t = useT();
@@ -537,6 +551,12 @@ export function SettingsHomeScreen({
               it has. */}
           <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('AI')}</Kicker>
           <AiSettingsRow onPress={onOpenAiSettings} />
+
+          {/* WAVE 3's ONE SWITCH (lib/engagement.ts), off by default. Off, the
+              card is this one row and nothing else in the app changes; on, the
+              doors to what it turned on open underneath it. */}
+          <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Achievements and levels')}</Kicker>
+          <EngagementCard onOpenAchievements={onOpenAchievements} />
 
           {/* ----------------------------------------------------------
               AUTOMATIC BACKUP — the row that makes the one below it optional.
@@ -1128,6 +1148,41 @@ function AiSettingsRow({ onPress }: { onPress: () => void }) {
  * this list read as the app's map rather than as three more rows. A door inside
  * a section does not get one; there is nothing for it to be a mark of.
  */
+/**
+ * The switch, and — only while it is on — the badge door with its count. The
+ * count is worked out here (`useBadges`), which costs nothing with the switch
+ * off: the hook computes nothing then.
+ */
+function EngagementCard({ onOpenAchievements }: { onOpenAchievements: () => void }) {
+  const t = useT();
+  const lang = useLanguage();
+  const on = useSettings((s) => engagementOn(s));
+  const setEngagement = useSettings((s) => s.setEngagement);
+  const view = engagementView(on);
+  const badges = useBadges();
+  return (
+    <GlassSurface tier="well" radius={radius.row} flat className="mx-lg">
+      <SwitchRow
+        label={t('Achievements and levels')}
+        hint={t('Off by default. Quiet badges and levels, worked out from your logs.')}
+        value={on}
+        onChange={setEngagement}
+      />
+      {view.badges ? (
+        <>
+          <Separator inset={0} />
+          <SectionRow
+            label={t('Badges')}
+            hint={describeGallery(badges, lang)}
+            symbol="task_alt"
+            onPress={onOpenAchievements}
+          />
+        </>
+      ) : null}
+    </GlassSurface>
+  );
+}
+
 function SectionRow({
   label,
   hint,
