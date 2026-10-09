@@ -65,6 +65,7 @@ import {
   type TransferDraft,
 } from '../lib/money';
 import { sanitizeScale } from '../lib/moneyUnits';
+import { pruneFired, sanitizeBudgets, sanitizeFired, type Budget } from '../lib/budgets';
 import type { ID } from '../types/models';
 import { tickTaskSource } from './tasksStore';
 
@@ -79,6 +80,13 @@ export interface MoneyValue {
    * See `lib/moneyUnits.ts`; nothing ever rescales a stored amount.
    */
   scale?: number;
+  /**
+   * M1 — one monthly figure per expense category (`lib/budgets.ts`). Absent
+   * until the first budget is set, and absent in every 2.2.0 log and backup.
+   */
+  budgets?: Budget[];
+  /** The budget alerts already said this month (`food:2026-10:80`). See `lib/budgets.ts`. */
+  budgetAlertsFired?: string[];
 }
 
 /**
@@ -236,12 +244,18 @@ export function sanitizeMoney(input: Partial<MoneyValue> | undefined | null): Mo
   const reconciled = reconcileDirections(sortedCategories, valid);
 
   const scale = sanitizeScale(input?.scale);
+  const categoryIds = new Set(reconciled.categories.map((category) => category.id));
+  const budgets = sanitizeBudgets(input?.budgets, categoryIds);
+  const fired = sanitizeFired(input?.budgetAlertsFired);
   return {
     accounts,
     categories: reconciled.categories,
     amounts: linkTransfers(reconciled.amounts),
     // Only when pinned, so a log that never was writes no key at all.
     ...(scale === undefined ? {} : { scale }),
+    // The plans (Wave 2) likewise: a log without them stays the shape it was.
+    ...(budgets.length > 0 ? { budgets } : {}),
+    ...(fired.length > 0 ? { budgetAlertsFired: fired } : {}),
   };
 }
 
@@ -304,6 +318,13 @@ interface MoneyState extends MoneyValue {
    * whatever is about to write money, with the scale it computed the value in.
    */
   pinScale: (scale: number) => void;
+  /**
+   * M1 — a category's monthly budget. Zero (or less) removes it; `alerts` is
+   * the 80% / 100% notification, and leaving it out keeps what was there.
+   */
+  setBudget: (categoryId: ID, monthly: number, alerts?: boolean) => void;
+  /** Remember alerts just said, dropping every key from an earlier month. */
+  recordBudgetAlerts: (keys: readonly string[], year: number, month: number) => void;
 }
 
 export const useMoney = create<MoneyState>()(
@@ -515,8 +536,40 @@ export const useMoney = create<MoneyState>()(
 
       // `scale: undefined` first: a backup from before cents carries no scale, and
       // its amounts must not be read in the scale of the log they replace.
+      // The plans too: an import replaces the log, and a budget the file never
+      // had must not survive into it.
       importMoney: (raw) =>
-        set({ scale: undefined, ...sanitizeMoney(raw as Partial<MoneyValue> | undefined | null) }),
+        set({
+          scale: undefined,
+          budgets: undefined,
+          budgetAlertsFired: undefined,
+          ...sanitizeMoney(raw as Partial<MoneyValue> | undefined | null),
+        }),
+
+      setBudget: (categoryId, monthly, alerts) =>
+        set((state) => {
+          const current = state.budgets ?? [];
+          const existing = current.find((budget) => budget.categoryId === categoryId);
+          const rest = current.filter((budget) => budget.categoryId !== categoryId);
+          const value = Math.round(monthly);
+          if (!Number.isFinite(value) || value <= 0) {
+            return { budgets: rest.length > 0 ? rest : undefined };
+          }
+          const on = alerts ?? existing?.alerts === true;
+          const next: Budget = { categoryId, monthly: value, ...(on ? { alerts: true } : {}) };
+          return {
+            budgets: existing
+              ? current.map((budget) => (budget.categoryId === categoryId ? next : budget))
+              : [...current, next],
+          };
+        }),
+
+      recordBudgetAlerts: (keys, year, month) =>
+        set((state) => {
+          if (keys.length === 0) return {};
+          const kept = pruneFired(state.budgetAlertsFired ?? [], year, month);
+          return { budgetAlertsFired: [...new Set([...kept, ...keys])] };
+        }),
 
       pinScale: (scale) =>
         set((state) => {
@@ -548,6 +601,10 @@ export const useMoney = create<MoneyState>()(
         categories: state.categories,
         amounts: state.amounts,
         ...(state.scale === undefined ? {} : { scale: state.scale }),
+        ...(state.budgets === undefined ? {} : { budgets: state.budgets }),
+        ...(state.budgetAlertsFired === undefined
+          ? {}
+          : { budgetAlertsFired: state.budgetAlertsFired }),
       }),
       /*
        * NOTHING STORED IS NOT AN EMPTY LOG. zustand calls `merge` on a first

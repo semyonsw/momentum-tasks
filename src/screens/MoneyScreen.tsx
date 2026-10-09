@@ -126,6 +126,15 @@
  *     account's balance follows you at the top (`BalanceBubble`), while the card
  *     steps back.
  *
+ * ── THE PLANS LIVE AT THE FOOT (WAVE 2) ───────────────────────────────────
+ *
+ * Under the grid, a row of doors to what the user PLANS rather than records:
+ * budgets (M1) first. A budgeted expense tile also wears a thin outer arc — the
+ * month's spending against its figure, coral only past 100% — around the share
+ * ring it always had, and its last line says the budget in words instead of the
+ * share. The arc reads the month the window's day is in, so it leaves on a year
+ * or all-time window, where no single month is being read.
+ *
  * ── MOMENTUM V3 ───────────────────────────────────────────────────────────
  *
  * The section is called Finance to the user now (the route key and the AI's
@@ -166,7 +175,8 @@ import { Sheet } from '../components/Sheet';
 import { Stagger, pressedStyle } from '../components/motion';
 import { DashedAdd, Kicker, Separator, TextButton } from '../components/primitives';
 import { ProgressRing } from '../components/ProgressRing';
-import { dayKey } from '../lib/days';
+import { dayKey, parseDay } from '../lib/days';
+import { budgetStatus, tileBudgetLine, visibleBudgets, type BudgetStatus } from '../lib/budgets';
 import { holdActions } from '../lib/discoverability';
 import { TOUCH_MIN } from '../lib/hitTarget';
 import { quickCategoryId } from '../lib/quickCategory';
@@ -195,6 +205,7 @@ import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
 import {
   curve,
+  overBudget,
   focalType,
   glass,
   gradientFill,
@@ -258,6 +269,8 @@ interface MoneyScreenProps {
   aiReady: boolean;
   /** The money chat, asking `prompt` if a chip was tapped. */
   onOpenAi: (prompt?: string) => void;
+  /** M1 — the budgets overview, from the row of plans at the foot. */
+  onOpenBudgets: () => void;
 }
 
 /** What the money section is currently reading. See `MoneyScreenProps.window`. */
@@ -278,6 +291,7 @@ export function MoneyScreen({
   onChangeWindow,
   aiReady,
   onOpenAi,
+  onOpenBudgets,
 }: MoneyScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -290,6 +304,7 @@ export function MoneyScreen({
   const archiveAccount = useMoney((s) => s.archiveAccount);
   const setAccountBalance = useMoney((s) => s.setAccountBalance);
   const pinScale = useMoney((s) => s.pinScale);
+  const budgets = useMoney((s) => s.budgets);
 
   /*
    * The window, the direction and the subsection are the SHELL's — see the
@@ -362,6 +377,38 @@ export function MoneyScreen({
    * reads the clock, and a stale one would file tonight's taxi on yesterday.
    */
   const onDay = dayInWindow(interval, anchor, dayKey(new Date()));
+
+  /*
+   * M1 — each expense tile's budget arc, for the MONTH the window's day falls
+   * in. A day, a week or a month is read inside one month, so its tiles can say
+   * how that month's budget stands; a year or all of time has no one month to
+   * hold a monthly figure against, so the arcs leave. Every subsection counts
+   * (`lib/budgets.ts`), so the arc can be fuller than this pocket's figure.
+   */
+  const budgetMonth = parseDay(onDay);
+  const budgetYear = budgetMonth?.getFullYear() ?? 0;
+  const budgetMonthIndex = budgetMonth?.getMonth() ?? 0;
+  const tileBudgets = useMemo(() => {
+    const map = new Map<ID, BudgetStatus>();
+    if (direction !== 'expense' || interval === 'year' || interval === 'all') return map;
+    const today = dayKey(new Date());
+    for (const budget of visibleBudgets(budgets ?? [], categories)) {
+      map.set(
+        budget.categoryId,
+        budgetStatus(budget, amounts, budgetYear, budgetMonthIndex, today),
+      );
+    }
+    return map;
+  }, [amounts, budgetMonthIndex, budgetYear, budgets, categories, direction, interval]);
+  /* The plans row: how many budgets are past 100% this month. */
+  const overCount = useMemo(() => {
+    const now = new Date();
+    const today = dayKey(now);
+    return visibleBudgets(budgets ?? [], categories).filter(
+      (budget) => budgetStatus(budget, amounts, now.getFullYear(), now.getMonth(), today).over,
+    ).length;
+  }, [amounts, budgets, categories]);
+  const budgetCount = visibleBudgets(budgets ?? [], categories).length;
 
   /* The bubble, and the balance card stepping back while it is up. */
   // Finance's own line: 240 is where the balance card has left the top bar, and
@@ -605,6 +652,7 @@ export function MoneyScreen({
                 category={category}
                 total={perCategory[category.id] ?? 0}
                 share={directionTotal > 0 ? (perCategory[category.id] ?? 0) / directionTotal : 0}
+                budget={tileBudgets.get(category.id) ?? null}
                 currency={currency}
                 onPress={() =>
                   isTransferCategory(category.id)
@@ -627,6 +675,25 @@ export function MoneyScreen({
               onPress={() => setNaming(true)}
             />
           </View>
+        </View>
+
+        {/* THE PLANS (Wave 2): budgets, and the rest as they arrive — at the
+            foot, where the rare doors live (T-U7), as the design places them.
+            Below the grid, because what you came here to do is above it. */}
+        <View className="mx-lg mt-lg" style={{ gap: 8 }}>
+          <PlanDoor
+            glyph="◔"
+            label={t('Budgets')}
+            detail={
+              overCount > 0
+                ? t('{n} over', { n: overCount })
+                : budgetCount > 0
+                  ? t('{n} set', { n: budgetCount })
+                  : t('A monthly figure per category')
+            }
+            alert={overCount > 0}
+            onPress={onOpenBudgets}
+          />
         </View>
 
         {/* The 56-high green slab that used to be here is the floating pill
@@ -1134,6 +1201,7 @@ function CategoryTile({
   category,
   total,
   share,
+  budget,
   currency,
   onPress,
   onLongPress,
@@ -1143,6 +1211,12 @@ function CategoryTile({
   total: number;
   /** 0–1 of the direction's total for the window. */
   share: number;
+  /**
+   * M1 — the month's budget, when this category has one and the window sits in
+   * one month. A THIN outer arc, coral only past 100% (`overBudget`, the danger
+   * hue's one other use), and the line under the figure says it in words.
+   */
+  budget: BudgetStatus | null;
   currency: string;
   onPress: () => void;
   onLongPress: () => void;
@@ -1150,7 +1224,9 @@ function CategoryTile({
   onOpen: () => void;
 }) {
   const t = useT();
+  const lang = useLanguage();
   const units = useMoneyScale();
+  const budgetLine = budget ? tileBudgetLine(budget, currency, units, lang) : null;
 
   return (
     <BubblePressable
@@ -1159,7 +1235,9 @@ function CategoryTile({
       delayLongPress={280}
       radius={radius.card}
       accessibilityRole="button"
-      accessibilityLabel={`${category.name}, ${formatMoney(total, currency, units)}`}
+      accessibilityLabel={`${category.name}, ${formatMoney(total, currency, units)}${
+        budgetLine ? `. ${t('Budget')}: ${budgetLine}` : ''
+      }`}
       accessibilityHint={t(
         'Tap to add an amount here. Long press or tap the arrow to open the category.',
       )}
@@ -1182,9 +1260,23 @@ function CategoryTile({
         color={total > 0 ? 'rgba(236,241,238,0.1)' : 'rgba(236,241,238,0.06)'}
         radius={radius.card}
       />
-      <ProgressRing fraction={share} size={62} stroke={3.5}>
-        <Text className="text-[24px]">{category.glyph}</Text>
-      </ProgressRing>
+      {budget ? (
+        <ProgressRing
+          fraction={budget.fraction}
+          size={74}
+          stroke={2}
+          color={budget.over ? overBudget : palette.greenBright}
+          trackColor={palette.hairline}
+        >
+          <ProgressRing fraction={share} size={62} stroke={3.5}>
+            <Text className="text-[24px]">{category.glyph}</Text>
+          </ProgressRing>
+        </ProgressRing>
+      ) : (
+        <ProgressRing fraction={share} size={62} stroke={3.5}>
+          <Text className="text-[24px]">{category.glyph}</Text>
+        </ProgressRing>
+      )}
       <Text
         numberOfLines={1}
         maxFontSizeMultiplier={1.3}
@@ -1202,13 +1294,25 @@ function CategoryTile({
         style={{ fontSize: 14.5 }}
         className={['font-semibold', total > 0 ? 'text-green-bright' : 'text-ink-faint'].join(' ')}
       />
-      <Text
-        maxFontSizeMultiplier={1.3}
-        style={{ fontSize: 12.5, letterSpacing: 1.1 }}
-        className="mt-[2px] font-semibold uppercase tabular-nums text-ink-faint"
-      >
-        {total > 0 ? `${Math.round(share * 100)}%` : '\u2014'}
-      </Text>
+      {budgetLine ? (
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          maxFontSizeMultiplier={1.3}
+          style={{ fontSize: 12.5, color: budget?.over ? overBudget : palette.inkFaint }}
+          className="mt-[2px] w-full text-center font-medium tabular-nums"
+        >
+          {budgetLine}
+        </Text>
+      ) : (
+        <Text
+          maxFontSizeMultiplier={1.3}
+          style={{ fontSize: 12.5, letterSpacing: 1.1 }}
+          className="mt-[2px] font-semibold uppercase tabular-nums text-ink-faint"
+        >
+          {total > 0 ? `${Math.round(share * 100)}%` : '\u2014'}
+        </Text>
+      )}
       {/* › — the hold's destination, said on the tile and tappable on its own.
           44 × 44 in the corner, clear of the ring and the figures; the rest of
           the tile still records an amount. */}
@@ -1231,6 +1335,71 @@ function CategoryTile({
       >
         <Icon name="chevron-right" size={16} color={palette.inkFaint} />
       </Pressable>
+    </BubblePressable>
+  );
+}
+
+/**
+ * One door in the row of plans at the foot: a glyph, the name, a short count
+ * and a `›`. 56 dp, glass, like every other row that goes somewhere. `alert`
+ * puts the count in coral — only ever for a budget past 100%.
+ */
+function PlanDoor({
+  glyph,
+  label,
+  detail,
+  alert = false,
+  onPress,
+}: {
+  glyph: string;
+  label: string;
+  detail: string;
+  alert?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <BubblePressable
+      onPress={onPress}
+      radius={radius.row}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}. ${detail}`}
+      style={(state) => [
+        pressedStyle(state),
+        {
+          minHeight: 56,
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 16,
+          borderRadius: radius.row,
+          borderWidth: 1,
+          borderColor: glass.raisedEdge,
+          backgroundColor: glass.raised,
+        },
+      ]}
+    >
+      <Text
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 18, width: 28 }}
+        className="text-ink-muted"
+      >
+        {glyph}
+      </Text>
+      <Text
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.3}
+        className="flex-1 text-body font-medium text-ink"
+      >
+        {label}
+      </Text>
+      <Text
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 13, color: alert ? overBudget : palette.inkFaint, maxWidth: '45%' }}
+        className="mr-sm tabular-nums"
+      >
+        {detail}
+      </Text>
+      <Icon name="chevron-right" size={16} color={palette.inkFaint} />
     </BubblePressable>
   );
 }

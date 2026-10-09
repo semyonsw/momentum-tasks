@@ -7,7 +7,7 @@ import {
   exportBackupText,
   exportCsvText,
 } from './dataTransfer';
-import { useMoney } from './moneyStore';
+import { seedCategories, useMoney } from './moneyStore';
 import { useLibrary } from './libraryStore';
 import { DEFAULT_SETTINGS, useSettings } from './settingsStore';
 import { useWorkoutHistory } from './workoutHistoryStore';
@@ -574,5 +574,60 @@ describe('the money scale (U25)', () => {
     if (!parsed.ok) throw new Error(parsed.error);
     applyBackup(parsed.envelope);
     expect(useMoney.getState().scale).toBe(2);
+  });
+});
+
+describe('budgets (M1)', () => {
+  it('travel in a backup and come back', () => {
+    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
+    useMoney.getState().setBudget('food', 80000, true);
+    const text = exportBackupText();
+    useMoney.getState().importMoney({});
+    expect(useMoney.getState().budgets).toBeUndefined();
+
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useMoney.getState().budgets).toEqual([
+      { categoryId: 'food', monthly: 80000, alerts: true },
+    ]);
+  });
+
+  it('a 2.2.0 backup, written before budgets existed, imports unchanged with none', () => {
+    useMoney.getState().importMoney({});
+    useMoney.getState().setBudget('food', 80000);
+    const v220 = JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 2,
+      exercises: [],
+      routines: [],
+      workouts: [],
+      money: {
+        accounts: [{ id: 'cash', name: 'Cash', glyph: '💵', order: 0, opening: 1000 }],
+        categories: [{ id: 'food', name: 'Food', glyph: '🧊', order: 0, direction: 'expense' }],
+        amounts: [
+          {
+            id: 'a1',
+            categoryId: 'food',
+            accountId: 'cash',
+            direction: 'expense',
+            value: 12500,
+            when: { kind: 'month', year: 2026, month: 8 },
+            note: 'rent',
+            createdAt: '2026-09-01T10:00:00.000Z',
+          },
+        ],
+      },
+    });
+    const parsed = parseBackup(v220);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+
+    const money = useMoney.getState();
+    expect(money.budgets).toBeUndefined();
+    expect(money.budgetAlertsFired).toBeUndefined();
+    expect(money.amounts).toHaveLength(1);
+    expect(money.amounts[0]).toMatchObject({ value: 12500, note: 'rent' });
+    expect(money.accounts[0].opening).toBe(1000);
   });
 });

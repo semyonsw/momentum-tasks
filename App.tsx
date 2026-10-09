@@ -77,6 +77,7 @@ import { rgbChannels, themeColors } from './src/lib/theme';
 import { applyTheme } from './src/theme/tokens';
 import {
   REMINDER_KIND,
+  BUDGET_KIND,
   dismissTimerAlerts,
   ensureTimerChannels,
   notificationKind,
@@ -86,6 +87,7 @@ import { migrateHistoryIfNeeded, useWorkoutHistory } from './src/state/workoutHi
 import { useAutoBackup } from './src/hooks/useAutoBackup';
 import { useAutoRounds } from './src/hooks/useAutoRounds';
 import { useReminders } from './src/hooks/useReminders';
+import { useBudgetAlerts } from './src/hooks/useBudgetAlerts';
 import { useTimerAlerts } from './src/hooks/useTimerAlerts';
 import { useSetTimerCommit } from './src/hooks/useSetTimerCommit';
 
@@ -115,7 +117,9 @@ import { useSetTimerCommit } from './src/hooks/useSetTimerCommit';
 try {
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
-      const reminder = notificationKind(notification.request.content.data) === REMINDER_KIND;
+      const kind = notificationKind(notification.request.content.data);
+      // A budget alert (M1) is a message too, raised by a save made in the app.
+      const reminder = kind === REMINDER_KIND || kind === BUDGET_KIND;
       const foreground = AppState.currentState === 'active';
       const show = reminder || !foreground;
       return {
@@ -195,6 +199,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <Reminders />
+      <BudgetAlerts />
       <Themed>
         {(themeKey) => (
           <>
@@ -317,6 +322,16 @@ function Root() {
  */
 function Reminders() {
   useReminders();
+  return null;
+}
+
+/**
+ * The budget alerts (M1), mounted beside the reminders for the same reason: an
+ * amount saved anywhere — the landing's quick add, a confirmed recurring
+ * payment — can be the one that crosses 80%. Off unless a budget opted in.
+ */
+function BudgetAlerts() {
+  useBudgetAlerts();
   return null;
 }
 

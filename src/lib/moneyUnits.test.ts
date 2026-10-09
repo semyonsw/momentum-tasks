@@ -15,6 +15,7 @@ import {
   minorUnitsOf,
   moneyScale,
   sanitizeScale,
+  typedToMinor,
 } from './moneyUnits';
 
 /** Every key in turn, from an empty entry. */
@@ -201,5 +202,27 @@ describe('the scale on disk', () => {
     expect(logIsEmpty([], [{ opening: 0 }, { opening: 0 }])).toBe(true);
     expect(logIsEmpty([{}], [{ opening: 0 }])).toBe(false);
     expect(logIsEmpty([], [{ opening: 500 }])).toBe(false);
+  });
+});
+
+describe('typedToMinor — a plan figure typed on the phone keyboard', () => {
+  it('reads whole units with or without thousands formatting', () => {
+    expect(typedToMinor('80000', 0)).toBe(80000);
+    expect(typedToMinor('80 000', 0)).toBe(80000);
+    expect(typedToMinor('80,000', 0)).toBe(80000);
+  });
+
+  it('keeps a fraction in a log in cents, and drops it in a whole-unit log', () => {
+    expect(typedToMinor('12.50', 2)).toBe(1250);
+    expect(typedToMinor('12,5', 2)).toBe(1250);
+    expect(typedToMinor('1,250.75', 2)).toBe(125075);
+    expect(typedToMinor('1234.50', 0)).toBe(1234);
+  });
+
+  it('is null for nothing, or for something that is not a number', () => {
+    expect(typedToMinor('', 0)).toBeNull();
+    expect(typedToMinor('  ', 2)).toBeNull();
+    expect(typedToMinor('12a', 0)).toBeNull();
+    expect(typedToMinor('-5', 0)).toBeNull();
   });
 });

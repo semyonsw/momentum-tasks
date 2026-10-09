@@ -206,3 +206,30 @@ export function centsNote(scale: number, currency: string): 'cents' | 'wholeLog'
   if (minorUnitsOf(currency) > 0 && scale === 0) return 'wholeLog';
   return null;
 }
+
+/**
+ * A figure TYPED on the system keyboard into a plan's field — a budget, a
+ * recurring payment, a goal — as a stored integer. Null when it is not a number.
+ *
+ * The plan sheets type with the phone's own number pad rather than the amount
+ * editor's keypad: they are set once and nudged by chips after that, and a
+ * twelve-key pad would push the chips off a sheet. So the rules are the
+ * balance field's: spaces and thousands commas are formatting, and only a
+ * separator followed by one or two digits — at the END, in a log with a scale —
+ * is a fraction (`12.50`, `12,5`). In a whole-unit log a trailing fraction is
+ * dropped, never folded in: `1234.50` is 1,234 and not 123,450.
+ */
+export function typedToMinor(text: string, scale: number): number | null {
+  const trimmed = text.replace(/\s/g, '');
+  if (trimmed === '') return null;
+  if (!/^[\d.,]+$/.test(trimmed)) return null;
+  const fraction = /[.,](\d{1,2})$/.exec(trimmed);
+  const wholePart = fraction ? trimmed.slice(0, fraction.index) : trimmed;
+  const digits = wholePart.replace(/[.,]/g, '').slice(0, MAX_DIGITS);
+  if (digits === '' && !fraction) return null;
+  const whole = Number(digits || '0');
+  if (!Number.isFinite(whole)) return null;
+  const unit = 10 ** scale;
+  const cents = fraction && scale > 0 ? Number(fraction[1].padEnd(scale, '0').slice(0, scale)) : 0;
+  return whole * unit + cents;
+}

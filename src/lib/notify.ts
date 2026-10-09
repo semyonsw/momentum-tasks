@@ -548,3 +548,35 @@ export async function cancelAllReminders(): Promise<void> {
     // Nothing scheduled, or the module is unavailable. Either way, nothing to do.
   }
 }
+
+/** `data.kind` on a budget alert (M1) — shown even with the app open, like a reminder. */
+export const BUDGET_KIND = 'budget';
+
+/**
+ * A budget crossed 80% or 100% — said NOW, once (`lib/budgets.ts` decides when).
+ *
+ * Presented immediately rather than scheduled: the crossing happens at a save,
+ * so the moment is already here. Never asks for the permission (the budget's
+ * switch did that when it was turned on) and never throws.
+ */
+export async function presentBudgetAlert(
+  title: string,
+  body: string,
+  lang: Language = 'en',
+): Promise<void> {
+  try {
+    if (!(await notificationsGranted())) return;
+    await ensureTimerChannels(lang);
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: { kind: BUDGET_KIND },
+        ...(Platform.OS === 'android' ? { channelId: CHANNEL_REMINDER } : {}),
+      },
+      trigger: Platform.OS === 'android' ? { channelId: CHANNEL_REMINDER } : null,
+    });
+  } catch {
+    // No permission, or no module in this build: the budget screen still says it.
+  }
+}

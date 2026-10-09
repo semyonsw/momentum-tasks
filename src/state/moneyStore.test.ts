@@ -460,3 +460,72 @@ describe('the scale — cents without rescaling anything (U25)', () => {
     expect(useMoney.getState().scale).toBe(2);
   });
 });
+
+describe('budgets (M1)', () => {
+  it('are absent on a 2.2.0 log, and set, changed and removed per category', () => {
+    expect(useMoney.getState().budgets).toBeUndefined();
+    expect('budgets' in sanitizeMoney({ categories: seedCategories, amounts: [] })).toBe(false);
+
+    useMoney.getState().setBudget('food', 80000);
+    expect(useMoney.getState().budgets).toEqual([{ categoryId: 'food', monthly: 80000 }]);
+    useMoney.getState().setBudget('food', 85000, true);
+    useMoney.getState().setBudget('transport', 12000);
+    expect(useMoney.getState().budgets).toEqual([
+      { categoryId: 'food', monthly: 85000, alerts: true },
+      { categoryId: 'transport', monthly: 12000 },
+    ]);
+    // Changing the figure alone keeps the alert switch where it was.
+    useMoney.getState().setBudget('food', 90000);
+    expect(useMoney.getState().budgets?.[0]).toEqual({
+      categoryId: 'food',
+      monthly: 90000,
+      alerts: true,
+    });
+    useMoney.getState().setBudget('food', 0);
+    useMoney.getState().setBudget('transport', 0);
+    expect(useMoney.getState().budgets).toBeUndefined();
+  });
+
+  it('touch no amount', () => {
+    useMoney.getState().addAmount({
+      categoryId: 'food',
+      accountId: 'cash',
+      direction: 'expense',
+      value: 5000,
+      when: { kind: 'day', date: '2026-10-02' },
+      note: '',
+    });
+    const before = useMoney.getState().amounts;
+    useMoney.getState().setBudget('food', 1000);
+    expect(useMoney.getState().amounts).toBe(before);
+  });
+
+  it('survive their category being archived, and go with a category that is gone', () => {
+    useMoney.getState().setBudget('food', 80000);
+    useMoney.getState().archiveCategory('food');
+    expect(sanitizeMoney(useMoney.getState()).budgets).toEqual([
+      { categoryId: 'food', monthly: 80000 },
+    ]);
+    const without = sanitizeMoney({
+      categories: seedCategories.filter((c) => c.id !== 'food'),
+      amounts: [],
+      budgets: [{ categoryId: 'food', monthly: 80000 }],
+    });
+    expect(without.budgets).toBeUndefined();
+  });
+
+  it('remember fired alerts for this month only', () => {
+    useMoney.getState().recordBudgetAlerts(['food:2026-09:80'], 2026, 8);
+    useMoney.getState().recordBudgetAlerts(['food:2026-10:80'], 2026, 9);
+    useMoney.getState().recordBudgetAlerts(['food:2026-10:80'], 2026, 9);
+    expect(useMoney.getState().budgetAlertsFired).toEqual(['food:2026-10:80']);
+  });
+
+  it('are replaced by an import, never merged into it', () => {
+    useMoney.getState().setBudget('food', 80000);
+    useMoney.getState().recordBudgetAlerts(['food:2026-10:80'], 2026, 9);
+    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
+    expect(useMoney.getState().budgets).toBeUndefined();
+    expect(useMoney.getState().budgetAlertsFired).toBeUndefined();
+  });
+});

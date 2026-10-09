@@ -17,7 +17,12 @@ import { seedTasks, useTasks } from './tasksStore';
  */
 
 beforeEach(async () => {
-  useMoney.setState({ categories: seedCategories.map((c) => ({ ...c })), amounts: [] });
+  useMoney.setState({
+    categories: seedCategories.map((c) => ({ ...c })),
+    amounts: [],
+    budgets: undefined,
+    budgetAlertsFired: undefined,
+  });
   useTasks.setState({ tasks: seedTasks('2026-01-01'), log: {} });
   // AFTER the resets: a `setState` on a persisted store writes it straight back
   // to storage, and "nothing stored" is the case under test.
@@ -110,6 +115,56 @@ describe('a money log written by 2.2.0, before cents (U25)', () => {
     );
     await useMoney.persist.rehydrate();
     expect(useMoney.getState().scale).toBe(2);
+  });
+});
+
+describe('the money plans (Wave 2) on a cold start', () => {
+  it('a 2.2.0 money blob comes back whole, with no plans in it', async () => {
+    await AsyncStorage.setItem(
+      'money',
+      JSON.stringify({
+        version: 3,
+        state: {
+          categories: seedCategories,
+          amounts: [
+            {
+              id: 'a1',
+              categoryId: 'food',
+              accountId: 'cash',
+              direction: 'expense',
+              value: 4200,
+              when: { kind: 'day', date: '2026-10-02' },
+              note: '',
+              createdAt: '2026-10-02T10:00:00.000Z',
+            },
+          ],
+        },
+      }),
+    );
+    await useMoney.persist.rehydrate();
+    const money = useMoney.getState();
+    expect(money.amounts.map((amount) => amount.value)).toEqual([4200]);
+    expect(money.budgets).toBeUndefined();
+  });
+
+  it('reads stored budgets back after a restart', async () => {
+    await AsyncStorage.setItem(
+      'money',
+      JSON.stringify({
+        version: 3,
+        state: {
+          categories: seedCategories,
+          amounts: [],
+          budgets: [{ categoryId: 'food', monthly: 80000, alerts: true }],
+          budgetAlertsFired: ['food:2026-10:80'],
+        },
+      }),
+    );
+    await useMoney.persist.rehydrate();
+    expect(useMoney.getState().budgets).toEqual([
+      { categoryId: 'food', monthly: 80000, alerts: true },
+    ]);
+    expect(useMoney.getState().budgetAlertsFired).toEqual(['food:2026-10:80']);
   });
 });
 

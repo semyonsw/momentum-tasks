@@ -676,7 +676,8 @@ export const motion = {
 
 /**
  * THE ONE NON-GREEN HUE, and the rule that keeps it rare (U19): it lives on the
- * DESTRUCTIVE CONFIRM and nowhere else — the sheet's edge, its kicker and its
+ * DESTRUCTIVE CONFIRM and nowhere else but a budget past 100% (`overBudget`
+ * below) — the sheet's edge, its kicker and its
  * outlined answer (`ConfirmSheet tone="danger"`). The control that opens that
  * sheet is muted text at the foot of its screen (`DangerFootAction`), not
  * coral: one rule for every delete, archive, reset and discard, so the colour
@@ -688,6 +689,16 @@ export const motion = {
  * by its ring and its glyph, in `inkMuted`, the same as every other way out.
  */
 export const danger = '#E0735F';
+
+/**
+ * ITS ONE OTHER PLACE: a budget past 100% (M1, the design's token table) — the
+ * arc on the category tile, the bar and the note on the Budgets screen, the
+ * count on the plans row. Spent past a line the user drew is the one fact on a
+ * non-destructive screen that is worth the hue; "ahead of the month" is said in
+ * words, and under 100% nothing is coral. A name of its own so the destructive
+ * rule's guard (`lib/destructive.ts`) still finds every OTHER use of `danger`.
+ */
+export const overBudget = danger;
 
 /** The danger confirm's washes, from the design: edge .35, outline .40, fill .08. */
 export const dangerTint = {

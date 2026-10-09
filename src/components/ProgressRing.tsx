@@ -63,6 +63,13 @@ interface ProgressRingProps {
   stroke: number;
   /** The date, the glyph — whatever the ring is about. Centred over it. */
   children?: ReactNode;
+  /**
+   * The arc's colour. The accent unless said otherwise — the one other value in
+   * use is `danger`, on a budget arc past 100% (M1), and nowhere else.
+   */
+  color?: string;
+  /** The track under it. `greenDim` unless said otherwise. */
+  trackColor?: string;
 }
 
 /**
@@ -73,7 +80,14 @@ interface ProgressRingProps {
  * native driver cannot run it, and six rings on the JS driver were six props
  * pushed from JS and six canvases redrawn on every frame of the step.
  */
-export function ProgressRing({ fraction, size, stroke, children }: ProgressRingProps) {
+export function ProgressRing({
+  fraction,
+  size,
+  stroke,
+  children,
+  color,
+  trackColor,
+}: ProgressRingProps) {
   const clamped = Math.max(0, Math.min(1, fraction));
   const radius = (size - stroke) / 2;
   const length = 2 * Math.PI * radius;
@@ -107,7 +121,7 @@ export function ProgressRing({ fraction, size, stroke, children }: ProgressRingP
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={palette.greenDim}
+          stroke={trackColor ?? palette.greenDim}
           strokeWidth={stroke}
         />
         <AnimatedCircle
@@ -115,7 +129,7 @@ export function ProgressRing({ fraction, size, stroke, children }: ProgressRingP
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={palette.greenBright}
+          stroke={color ?? palette.greenBright}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={length}

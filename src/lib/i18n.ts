@@ -1769,6 +1769,38 @@ const RU: Record<string, string> = {
   'avoid this': 'избегать',
   'Avoided: {name}': 'Удалось избежать: {name}',
   'Mark {name} avoided': 'Отметить: удалось избежать — {name}',
+  // M1 · budgets (design copy budget.*)
+  Budgets: 'Бюджеты',
+  Budget: 'Бюджет',
+  '{amount} over budget': '{amount} сверх бюджета',
+  'ahead of the month': 'быстрее, чем идёт месяц',
+  '{amount} left': 'осталось {amount}',
+  '{percent}% of {amount}': '{percent}% от {amount}',
+  '{month} · day {day} of {total}.': '{month} · день {day} из {total}.',
+  'The tick on each bar is how much of the month has passed.':
+    'Отметка на каждой полосе — сколько месяца уже прошло.',
+  'No budget': 'Без бюджета',
+  'Tap to set one': 'Нажмите, чтобы задать',
+  'Opens the budget': 'Открывает бюджет',
+  'Monthly budget': 'Бюджет на месяц',
+  'Save budget': 'Сохранить бюджет',
+  'Budget in {currency}': 'Бюджет в {currency}',
+  'Less by {amount}': 'Меньше на {amount}',
+  'More by {amount}': 'Больше на {amount}',
+  'The ring on the tile turns coral only once the month goes past 100%.':
+    'Кольцо на плитке становится коралловым, только когда месяц переходит за 100%.',
+  'Set it to 0 to remove the budget.': 'Поставьте 0, чтобы убрать бюджет.',
+  'Tell me at 80% and 100%': 'Сообщить при 80% и 100%',
+  'One notification each, once a month. Off unless you turn it on.':
+    'По одному уведомлению, раз в месяц. Выключено, пока вы не включите.',
+  'Budgets count every subsection, so food bought by card is still food. Each month starts at its own figure: what is left over does not carry into the next.':
+    'Бюджет считает все подразделы: еда, купленная картой, — всё равно еда. Каждый месяц начинается со своей суммы: остаток на следующий не переносится.',
+  '{n} over': 'превышено: {n}',
+  '{n} set': 'задано: {n}',
+  'A monthly figure per category': 'Сумма на месяц для категории',
+  '{name}: the budget is spent': '{name}: бюджет исчерпан',
+  '{name}: 80% of the budget': '{name}: 80% бюджета',
+  '{spent} of {limit} this month.': '{spent} из {limit} в этом месяце.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */
