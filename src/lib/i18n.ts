@@ -2084,6 +2084,22 @@ const RU: Record<string, string> = {
   'Goal reached': 'Цель достигнута',
   'A savings goal’s subsection reaches its target.':
     'Подраздел цели накопления достигает целевой суммы.',
+  // E2 · XP and levels (design 20)
+  'Log a working set': 'Рабочий подход',
+  'Finish a workout': 'Завершённая тренировка',
+  'Tick a task': 'Отмеченная задача',
+  'A day with every task done': 'День, когда сделаны все задачи',
+  'Record an amount': 'Записанная сумма',
+  'A personal record': 'Личный рекорд',
+  'of {xp} XP to level {level}': 'из {xp} опыта до уровня {level}',
+  'Level {n}': 'Уровень {n}',
+  'Lv {n}': 'Ур. {n}',
+  'How XP is earned': 'Как начисляется опыт',
+  '{n} so far': 'пока: {n}',
+  'XP only goes up. A missed day earns nothing and takes nothing.':
+    'Опыт только растёт. Пропущенный день ничего не даёт и ничего не отнимает.',
+  'Level {n}, {xp} XP. Open the level': 'Уровень {n}, опыт {xp}. Открыть уровень',
+  XP: 'опыт',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

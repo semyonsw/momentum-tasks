@@ -48,6 +48,10 @@
  * (`navigation/AppShell.tsx`) — the wide Finance row and the Settings row
  * included. There is no nav bar here — the tiles are the nav.
  *
+ * With Wave 3's switch on (and only then — `lib/engagement.ts`), a small level
+ * chip sits under the greeting and opens `LevelSheet`. Off, nothing on this
+ * screen moves by a pixel.
+ *
  * Composition only. The words are `lib/home.ts`; the numbers come from the
  * stores through the same pure functions each section already uses, so a tile
  * can never disagree with the screen it opens.
@@ -60,6 +64,8 @@ import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppMark } from '../components/AppMark';
+import { LevelChip, LevelSheet } from '../components/LevelSheet';
+import { useEngagementView, useLevel } from '../hooks/useEngagement';
 import { WrappedOffers } from '../components/WrappedEntry';
 import type { WrappedPeriod } from '../lib/wrapped';
 import { BubblePressable } from '../components/bubbles';
@@ -119,6 +125,8 @@ interface LandingScreenProps {
   /** X1: open a Wrapped from its offer card. */
   onOpenWrapped: (period: WrappedPeriod) => void;
   onToast: (text: string, action?: ToastAction) => void;
+  /** E1: the badge gallery, from the level sheet (Wave 3 switch on only). */
+  onOpenAchievements: () => void;
 }
 
 /** The two half tiles (the design's 150, down from 262). */
@@ -142,6 +150,7 @@ export function LandingScreen({
   onResume,
   onOpenWrapped,
   onToast,
+  onOpenAchievements,
 }: LandingScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -190,6 +199,11 @@ export function LandingScreen({
         : null,
     [amounts, categories, log, reviewDismissed, tasks, today, workouts],
   );
+
+  /* E2: the level chip, only with Wave 3's switch on (`lib/engagement.ts`). */
+  const view = useEngagementView();
+  const level = useLevel();
+  const [levelOpen, setLevelOpen] = useState(false);
 
   const themeId = useSettings((s) => s.themeId);
   const lastBackupAt = useSettings((s) => s.lastBackupAt);
@@ -283,6 +297,11 @@ export function LandingScreen({
               </Text>
               <AppMark size={46} />
             </View>
+            {view.level && level ? (
+              <View style={{ marginTop: 8 }}>
+                <LevelChip progress={level.progress} onPress={() => setLevelOpen(true)} />
+              </View>
+            ) : null}
             <Text
               maxFontSizeMultiplier={1.3}
               style={{ marginTop: 6, fontSize: 15.5, lineHeight: 21 }}
@@ -439,6 +458,17 @@ export function LandingScreen({
           onPress={(rect) => onOpen('Settings', rect)}
         />
       </ScrollView>
+      {levelOpen && view.level && level ? (
+        <LevelSheet
+          progress={level.progress}
+          lines={level.lines}
+          onOpenBadges={() => {
+            setLevelOpen(false);
+            onOpenAchievements();
+          }}
+          onDismiss={() => setLevelOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }

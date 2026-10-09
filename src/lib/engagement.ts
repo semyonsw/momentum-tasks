@@ -46,8 +46,10 @@ export function usableEngagement(value: unknown): true | undefined {
 export interface EngagementView {
   /** The `Badges` door in Settings and the achievements gallery (E1). */
   badges: boolean;
+  /** The level chip beside the Landing greeting and its sheet (E2). */
+  level: boolean;
 }
 
 export function engagementView(on: boolean): EngagementView {
-  return { badges: on };
+  return { badges: on, level: on };
 }

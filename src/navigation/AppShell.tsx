@@ -215,7 +215,8 @@ type Route =
   | { name: 'muscles' }
   /* X2: patterns across the three logs, from the foot of each history. */
   | { name: 'insights' }
-  /* E1: the badge gallery, from Settings while Wave 3's switch is on. */
+  /* E1: the badge gallery, from Settings and the level sheet while Wave 3's
+     switch is on. */
   | { name: 'achievements' }
   | { name: 'taskDetail'; taskId: ID }
   /* The window travels with the tap, so the category opens on the one the tile
@@ -1991,6 +1992,7 @@ export function AppShell() {
           onResume={() => jumpFromLanding('Workout', { name: 'session' })}
           onOpenWrapped={openWrapped}
           onToast={setToast}
+          onOpenAchievements={() => push({ name: 'achievements' })}
         />
       );
     }

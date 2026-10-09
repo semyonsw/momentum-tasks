@@ -13,6 +13,7 @@ import { useMemo } from 'react';
 import { achievements, logFacts, type Badge, type LogFacts } from '../lib/achievements';
 import { bodyweightAt } from '../lib/bodyweightLog';
 import { engagementOn, engagementView, type EngagementView } from '../lib/engagement';
+import { levelProgress, xpBreakdown, type LevelProgress, type XpLine } from '../lib/xp';
 import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
 import { useTasks } from '../state/tasksStore';
@@ -60,4 +61,14 @@ export function useLogFacts(): LogFacts | null {
 export function useBadges(): Badge[] {
   const facts = useLogFacts();
   return useMemo(() => (facts ? achievements(facts) : []), [facts]);
+}
+
+/** The level and its table, or null while the switch is off (E2). */
+export function useLevel(): { progress: LevelProgress; lines: XpLine[] } | null {
+  const facts = useLogFacts();
+  return useMemo(() => {
+    if (!facts) return null;
+    const lines = xpBreakdown(facts);
+    return { progress: levelProgress(lines.reduce((sum, line) => sum + line.xp, 0)), lines };
+  }, [facts]);
 }
