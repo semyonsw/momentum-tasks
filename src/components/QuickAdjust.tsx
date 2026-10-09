@@ -36,6 +36,13 @@
  * `Warm-up` on a working set, `Working set` on a warm-up. It is green-bright in the
  * second case because green means "this is on" everywhere else in the app.
  *
+ * SET TYPES (T-12) replaced that toggle with a door: `Set type`, with the set's
+ * badge in front of it when it has one, opening `SetMarksSheet` — warm-up is one
+ * of five kinds there now, and five kinds do not fit one word that flips. The
+ * toggle survives only where no sheet is wired (`onOpenMarks` absent). Making a
+ * warm-up is a tap more than it was; the `+ Warm-up` generator in edit mode is
+ * still the one-tap way to add a whole ramp.
+ *
  * EFFORT (RIR) has a row of its own under them, on a logged rep set only: the
  * door to `SetMarksSheet`, labelled with the grade when there is one. It is the
  * one way to a FIRST grade — the set row draws its chip only once one exists.
@@ -60,6 +67,7 @@ import {
 } from '../lib/units';
 import type { SetField } from './SetRow';
 import { describeRir, effortApplies, rirChipLabel } from '../lib/effort';
+import { kindBadge, kindName, setKindOf } from '../lib/setType';
 import { useLanguage, useT } from '../hooks/useT';
 import { palette } from '../theme/tokens';
 
@@ -87,6 +95,8 @@ export function QuickAdjust({
 }: QuickAdjustProps) {
   const t = useT();
   const lang = useLanguage();
+  const kind = setKindOf(set);
+  const badge = kindBadge(kind);
   const [typing, setTyping] = useState(false);
   const [buffer, setBuffer] = useState('');
   const inputRef = useRef<TextInput>(null);
@@ -254,28 +264,61 @@ export function QuickAdjust({
           <Text className="text-label font-medium text-ink-muted">{t('Type')}</Text>
         </Pressable>
 
-        <Pressable
-          onPress={() => {
-            tap();
-            onChange({ isWarmup: !set.isWarmup });
-          }}
-          hitSlop={8}
-          className="h-hit justify-center"
-          accessibilityRole="switch"
-          accessibilityState={{ checked: set.isWarmup }}
-          accessibilityLabel={
-            set.isWarmup ? t('Make this a working set') : t('Mark this set as a warm-up')
-          }
-        >
-          <Text
-            className={[
-              'text-label font-medium',
-              set.isWarmup ? 'text-acc' : 'text-ink-muted',
-            ].join(' ')}
+        {onOpenMarks ? (
+          /* THE SET'S KIND, behind a door (T-12): five kinds do not fit a toggle.
+             The badge rides in front when the set has one, so the door says what
+             the set is before it is opened. */
+          <Pressable
+            onPress={() => {
+              tap();
+              onOpenMarks();
+            }}
+            hitSlop={8}
+            className="h-hit flex-row items-center justify-center"
+            accessibilityRole="button"
+            accessibilityLabel={`${t('Set type')}: ${kindName(kind, lang)}`}
           >
-            {set.isWarmup ? t('Working set') : t('Warm-up')}
-          </Text>
-        </Pressable>
+            {badge ? (
+              <Text
+                className={kind === 'warmup' ? 'mr-xs text-ink-faint' : 'mr-xs text-acc'}
+                style={{ fontSize: 13, fontWeight: '700' }}
+              >
+                {badge}
+              </Text>
+            ) : null}
+            <Text
+              className={[
+                'text-label font-medium',
+                kind === 'working' ? 'text-ink-muted' : 'text-acc',
+              ].join(' ')}
+            >
+              {t('Set type')}
+            </Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => {
+              tap();
+              onChange({ isWarmup: !set.isWarmup });
+            }}
+            hitSlop={8}
+            className="h-hit justify-center"
+            accessibilityRole="switch"
+            accessibilityState={{ checked: set.isWarmup }}
+            accessibilityLabel={
+              set.isWarmup ? t('Make this a working set') : t('Mark this set as a warm-up')
+            }
+          >
+            <Text
+              className={[
+                'text-label font-medium',
+                set.isWarmup ? 'text-acc' : 'text-ink-muted',
+              ].join(' ')}
+            >
+              {set.isWarmup ? t('Working set') : t('Warm-up')}
+            </Text>
+          </Pressable>
+        )}
 
         <Pressable
           onPress={onRemoveSet}

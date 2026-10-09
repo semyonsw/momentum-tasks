@@ -185,6 +185,7 @@ import { PrimaryButton, Separator, TextButton } from '../components/primitives';
 import { Sheet } from '../components/Sheet';
 import { SetMarksSheet } from '../components/SetMarksSheet';
 import { effortApplies } from '../lib/effort';
+import { setKindOf } from '../lib/setType';
 import { FloatingPair, Lamps, Toast, type ToastAction } from '../components/glass';
 import { draftToSetHistory, sessionVolume, workingSetLabels } from '../lib/draft';
 import type { ID, RoutineItem, UnitSystem } from '../types/models';
@@ -1259,11 +1260,16 @@ export function ActiveWorkoutScreen({
         />
       ) : null}
 
-      {/* A set's annotations — the RIR chip and the editor's `RIR` door. Read
+      {/* A set's annotations — type and RIR, from the row's number or badge, its
+          chip, and the editor's doors. Read
           from the live session, so a set that left it closes the sheet. */}
       {markingTarget ? (
         <SetMarksSheet
           title={markingTarget.title}
+          kind={setKindOf(markingTarget.set)}
+          onKind={(kind) => {
+            if (marking) markSet(marking.entryId, marking.setId, { kind });
+          }}
           rir={markingTarget.set.rir}
           showEffort={effortApplies(markingTarget.entry.exercise.countUnit)}
           onRir={(rir) => {

@@ -57,6 +57,7 @@
  */
 
 import { formatRir } from './effort';
+import { setKindOf } from './setType';
 import type { CompletedWorkout, WorkoutNumberAnchor } from './completedWorkout';
 import { workoutNumbers } from './completedWorkout';
 import { dayKey, pad } from './days';
@@ -95,6 +96,7 @@ export const SET_COLUMNS = [
   'rest_s',
   // Appended, never inserted: a sheet built on the columns above keeps working.
   'rir',
+  'set_type',
 ] as const;
 
 /**
@@ -218,7 +220,9 @@ function csvWeight(kg: number, unitSystem: UnitSystem): string {
  * started from or the name it was given. `set` is `setIndex + 1`, warm-ups
  * included, so the column matches the rows; `warmup` says which ones count.
  * `rir` is the reps in reserve when the set was graded, blank when it was not
- * (RPE is `10 − rir`, a formula a spreadsheet can do).
+ * (RPE is `10 − rir`, a formula a spreadsheet can do). `set_type` is what the set
+ * was — `working`, `warmup`, `drop`, `failure` or `amrap` — so a filter on it does
+ * not need the `warmup` column, which stays for the sheets already built on it.
  * Weight is blank, not 0, for unweighted work: a spreadsheet summing the column
  * must not be told a push-up weighed nothing.
  */
@@ -254,6 +258,7 @@ export function workoutsToCsv(
         bool(set.isWarmup),
         set.restTakenSeconds == null ? '' : String(Math.round(set.restTakenSeconds)),
         set.rir == null ? '' : formatRir(set.rir),
+        setKindOf(set),
       ]);
     }
   }

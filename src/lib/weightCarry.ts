@@ -64,15 +64,17 @@ export function carryWeightForward(sets: readonly DraftSet[], fromSetId: ID): Dr
   const index = sets.findIndex((s) => s.localId === fromSetId);
   if (index === -1) return sets as DraftSet[];
   // A warm-up's weight is the ramp, not the working weight: ticking the 40 kg
-  // warm-up used to rewrite every working set below it to 40.
-  if (sets[index].isWarmup) return sets as DraftSet[];
+  // warm-up used to rewrite every working set below it to 40. A DROP SET's is
+  // lighter on purpose (T-12) — it says nothing about what today's weight is.
+  if (sets[index].isWarmup || sets[index].setType === 'drop') return sets as DraftSet[];
 
   const weightKg = sets[index].weightKg;
   if (weightKg == null || !Number.isFinite(weightKg)) return sets as DraftSet[];
 
   let changed = false;
   const next = sets.map((set, i) => {
-    if (i <= index || set.isCompleted || set.isWarmup) return set;
+    // A planned drop row keeps its lighter weight; a warm-up keeps its ramp.
+    if (i <= index || set.isCompleted || set.isWarmup || set.setType === 'drop') return set;
     if (set.weightKg === weightKg && !set.isPrefilled) return set;
     changed = true;
     return { ...set, weightKg, isPrefilled: false };

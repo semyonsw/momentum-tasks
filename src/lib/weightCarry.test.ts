@@ -201,3 +201,28 @@ describe('a planned starting weight', () => {
     expect(plannedStartWeight({ ...planned, requiresWeight: false }, null)).toBeNull();
   });
 });
+
+describe('a drop set carries nothing (T-12)', () => {
+  it('logging a drop set leaves the rows below it alone', () => {
+    const sets = [
+      set('s1', 80, { isCompleted: true }),
+      set('d1', 60, { isCompleted: true, setType: 'drop' }),
+      set('s3', 80),
+    ];
+    expect(carryWeightForward(sets, 'd1').map((s) => s.weightKg)).toEqual([80, 60, 80]);
+  });
+
+  it('a planned drop row keeps its lighter weight when the set above changes the day', () => {
+    const sets = [
+      set('s1', 75, { isCompleted: true }),
+      set('s2', 80),
+      set('d1', 60, { setType: 'drop' }),
+    ];
+    expect(carryWeightForward(sets, 's1').map((s) => s.weightKg)).toEqual([75, 75, 60]);
+  });
+
+  it('failure and AMRAP sets carry like any working set', () => {
+    const sets = [set('s1', 75, { isCompleted: true, setType: 'amrap' }), set('s2', 80)];
+    expect(carryWeightForward(sets, 's1').map((s) => s.weightKg)).toEqual([75, 75]);
+  });
+});

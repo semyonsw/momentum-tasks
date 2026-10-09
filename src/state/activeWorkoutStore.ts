@@ -70,6 +70,7 @@ import { hasRoundLeft, isRoundExercise } from '../lib/rounds';
 import { nextInSupersetRound } from '../lib/superset';
 import { carriesWeight, carryWeightForward, defaultWeightUpdate } from '../lib/weightCarry';
 import { cleanRir, withRir } from '../lib/effort';
+import { cleanSetType, isLadderRung, withKind, type SetKind } from '../lib/setType';
 import { currentSettings } from './settingsStore';
 import { rememberDefaultWeight } from './weightSync';
 import type { Exercise, ID, SessionEffort } from '../types/models';
@@ -169,8 +170,8 @@ interface ActiveWorkoutState {
   uncompleteSet: (entryId: ID, setId: ID) => void;
   patchSet: (entryId: ID, setId: ID, patch: Partial<DraftSet>) => void;
   /**
-   * Annotate a set — its effort (`rir`, `null` to clear) — WITHOUT touching its
-   * numbers.
+   * Annotate a set — its effort (`rir`, `null` to clear) and its kind (warm-up,
+   * drop, failure, AMRAP) — WITHOUT touching its numbers.
    *
    * Not `patchSet`, because `patchSet` is an EDIT: it turns `isPrefilled` off, and
    * that flag is what lets an accepted nudge and the ladder keep rewriting a row
@@ -520,9 +521,11 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
          * it skips warm-up ROWS — but a warm-up ✓ still names a weight, and this is
          * where that weight would have escaped.)
          */
-        const newDefault = justLogged?.isWarmup
-          ? null
-          : defaultWeightUpdate(target.exercise, justLogged?.weightKg ?? null);
+        // ...nor does a drop set, which is lighter than the working weight on purpose.
+        const newDefault =
+          justLogged?.isWarmup || justLogged?.setType === 'drop'
+            ? null
+            : defaultWeightUpdate(target.exercise, justLogged?.weightKg ?? null);
         const sets = carried;
         const exercise =
           newDefault != null
@@ -1265,10 +1268,17 @@ function withCleanMarks(session: DraftSession): DraftSession {
     ...session,
     entries: session.entries.map((entry) => ({
       ...entry,
-      sets: entry.sets.map((set) => {
-        if (set.rir === undefined) return set;
-        const rir = cleanRir(set.rir);
-        return rir == null ? withRir(set, null) : rir === set.rir ? set : { ...set, rir };
+      sets: entry.sets.map((raw) => {
+        let set = raw;
+        if (set.rir !== undefined) {
+          const rir = cleanRir(set.rir);
+          set = rir == null ? withRir(set, null) : rir === set.rir ? set : { ...set, rir };
+        }
+        if (set.setType !== undefined && cleanSetType(set.setType, set.isWarmup) == null) {
+          // An unknown type, or one on a warm-up: the set stays, the claim goes.
+          set = withKind(set, set.isWarmup ? 'warmup' : 'working');
+        }
+        return set;
       }),
     })),
   };
@@ -1393,7 +1403,8 @@ function withLadderPlan(entry: DraftEntry): DraftEntry {
   const ladder = normalizeLadder(entry.ladder);
   if (!ladder) return entry;
 
-  const working = entry.sets.filter((s) => !s.isWarmup);
+  // Rungs: working sets that are not drop sets — see `isLadderRung`.
+  const working = entry.sets.filter(isLadderRung);
   if (working.length === 0) return entry;
 
   const top = working[0];
@@ -1423,10 +1434,13 @@ function withLadderPlan(entry: DraftEntry): DraftEntry {
 /** What `markSet` may change on a set. An absent key means "leave it". */
 export interface SetMarks {
   rir?: number | null;
+  /** Warm-up, working, drop, failure, AMRAP — both kind fields at once. */
+  kind?: SetKind;
 }
 
 function applySetMarks(set: DraftSet, marks: SetMarks): DraftSet {
-  return marks.rir !== undefined ? withRir(set, marks.rir) : set;
+  const graded = marks.rir !== undefined ? withRir(set, marks.rir) : set;
+  return marks.kind !== undefined ? withKind(graded, marks.kind) : graded;
 }
 
 function mapEntry(

@@ -173,6 +173,8 @@ import {
 import { historyTotals, type SetCorrection } from '../state/workoutHistoryStore';
 import { SetMarksSheet } from '../components/SetMarksSheet';
 import { describeRir, effortApplies, rirChipLabel } from '../lib/effort';
+import { kindBadge, kindName, setKindOf } from '../lib/setType';
+import { workingSetLabels } from '../lib/draft';
 import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import { term, type Language } from '../lib/i18n';
 import { formatMonth } from '../lib/days';
@@ -755,6 +757,8 @@ export function HistoryScreen({
       {marking && markingRow ? (
         <SetMarksSheet
           title={marking.title}
+          kind={setKindOf(markingRow)}
+          onKind={(kind) => onEditSet(marking.workoutId, marking.setId, { kind })}
           rir={markingRow.rir}
           showEffort={effortApplies(markingRow.countUnit)}
           onRir={(rir) => onEditSet(marking.workoutId, marking.setId, { rir })}
@@ -1052,6 +1056,9 @@ function WorkoutRow({
                     .filter((row) => row.exerciseId === exercise.exerciseId)
                     .sort((a, b) => a.setIndex - b.setIndex)
                 : [];
+              /* Working sets numbered around warm-ups, as the session numbers
+                 them: W, 1, 2 — so `Set 2` here is the `Set 2` it was on the day. */
+              const labels = workingSetLabels(rows);
 
               return (
                 <View key={`${exercise.exerciseId}-${exercise.name}`}>
@@ -1125,7 +1132,7 @@ function WorkoutRow({
                         <LoggedSetRow
                           key={row.id}
                           row={row}
-                          number={index + 1}
+                          number={labels[index]}
                           unitSystem={unitSystem}
                           editing={editing?.setId === row.id ? editing.field : null}
                           onFocusField={(field) =>
@@ -1140,12 +1147,10 @@ function WorkoutRow({
                             if (onDeleteSet(row.id)) setEditing(null);
                           }}
                           onDone={() => setEditing(null)}
-                          onOpenMarks={() =>
-                            onOpenMarks(
-                              row.id,
-                              row.isWarmup ? t('Warm-up') : t('Set {n}', { n: index + 1 }),
-                            )
-                          }
+                          onOpenMarks={() => {
+                            const n = labels[index];
+                            onOpenMarks(row.id, n == null ? t('Warm-up') : t('Set {n}', { n }));
+                          }}
                           canRemove={workout.sets.length > 1}
                         />
                       ))}
@@ -1635,6 +1640,13 @@ function ClusterRow({
  * snaps nothing — `QuickAdjust`'s rule about not rounding to a grid the app has
  * never seen applies at least as strongly to a number that is already a record.
  *
+ * TYPE AND EFFORT (T-11, T-12) are corrected here too, through the same sheet the
+ * session uses (`SetMarksSheet`): the set's number or letter opens it, so do the
+ * `Set type` and `Reps in reserve` rows in the correction panel, and so does a
+ * graded set's `RIR` chip. The left column numbers WORKING sets now (W, 1, 2),
+ * as the session does — it used to count warm-ups, so a set read `2` here that
+ * had been `Set 1` on the day.
+ *
  * NO CONFIRMATION on a nudge, because a nudge is reversible by the opposite nudge
  * and the number is on screen while it changes. `Remove set` is not offered at all
  * on the last row of a workout: that is deleting the workout, which exists two rows
@@ -1653,8 +1665,8 @@ function LoggedSetRow({
   onOpenMarks,
 }: {
   row: SetHistory;
-  /** 1-based position among this exercise's logged sets. `W` for a warm-up. */
-  number: number;
+  /** The working-set number (warm-ups not counted), or null for a warm-up. */
+  number: number | null;
   unitSystem: UnitSystem;
   editing: 'weight' | 'count' | null;
   canRemove: boolean;
@@ -1669,6 +1681,7 @@ function LoggedSetRow({
   const lang = useLanguage();
   const weighted = row.weightKg != null;
   const graded = row.rir != null && effortApplies(row.countUnit);
+  const kind = setKindOf(row);
   const steps = weightSteps(unitSystem);
   const countDelta = countStep(row.countUnit);
 
@@ -1687,9 +1700,34 @@ function LoggedSetRow({
   return (
     <View>
       <View className="flex-row items-center px-lg py-xs">
-        <Text className="w-[20px] text-micro font-semibold uppercase tabular-nums text-ink-faint">
-          {row.isWarmup ? 'W' : number}
-        </Text>
+        {/* The number, or the set type's letter in its place (W D F A) — tapping it
+            opens the type and RIR sheet, as on the session's row. */}
+        <Pressable
+          onPress={() => {
+            tap();
+            onOpenMarks();
+          }}
+          hitSlop={{ top: 10, bottom: 10, left: 8, right: 0 }}
+          accessibilityRole="button"
+          accessibilityLabel={
+            number == null
+              ? kindName(kind, lang)
+              : kind === 'working'
+                ? t('Set {n}', { n: number })
+                : t('Set {n}, {kind}', { n: number, kind: kindName(kind, lang) })
+          }
+          accessibilityHint={t('Opens the set type and reps in reserve')}
+          className="w-[24px]"
+        >
+          <Text
+            className={[
+              'text-micro font-semibold uppercase tabular-nums',
+              kind === 'working' || kind === 'warmup' ? 'text-ink-faint' : 'text-green-bright',
+            ].join(' ')}
+          >
+            {kindBadge(kind) ?? number}
+          </Text>
+        </Pressable>
 
         {weighted ? (
           <Pressable
@@ -1785,6 +1823,33 @@ function LoggedSetRow({
                 </Text>
               </Pressable>
             ))}
+          </View>
+
+          {/* The set's kind, as in the session's editor: the door to the sheet. */}
+          <View className="mt-sm flex-row items-center justify-between">
+            <Text maxFontSizeMultiplier={1.3} className="text-label text-ink-muted">
+              {t('Set type')}
+            </Text>
+            <Pressable
+              onPress={() => {
+                tap();
+                onOpenMarks();
+              }}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel={`${t('Set type')}: ${kindName(kind, lang)}`}
+              style={pressedStyle}
+              className="h-hit min-w-[72px] items-center justify-center rounded-pill border border-hairline bg-surface-alt px-md"
+            >
+              <Text
+                className={[
+                  'text-label font-semibold',
+                  kind === 'working' ? 'text-ink' : 'text-green-bright',
+                ].join(' ')}
+              >
+                {kindName(kind, lang)}
+              </Text>
+            </Pressable>
           </View>
 
           {/* Effort, as in the session's editor: the door to the scale. */}

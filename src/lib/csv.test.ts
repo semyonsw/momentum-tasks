@@ -276,8 +276,8 @@ describe('workoutsToCsv', () => {
     ]);
     const rows = records(csv);
     expect(rows[0]).toBe(SET_COLUMNS.join(','));
-    expect(rows[1]).toBe('2026-10-03,1,Push,Bench press,1,40,kg,8,reps,external,true,62,');
-    expect(rows[2]).toBe('2026-10-03,1,Push,Bench press,2,60,kg,8,reps,external,false,,');
+    expect(rows[1]).toBe('2026-10-03,1,Push,Bench press,1,40,kg,8,reps,external,true,62,,warmup');
+    expect(rows[2]).toBe('2026-10-03,1,Push,Bench press,2,60,kg,8,reps,external,false,,,working');
   });
 
   it('quotes commas, quotes and newlines in exercise and routine names; Cyrillic kept', () => {
@@ -301,7 +301,7 @@ describe('workoutsToCsv', () => {
     const rows = records(
       workoutsToCsv([newer, older], { numbering: { workoutId: 'w2', number: 212 } }),
     );
-    expect(rows[1]).toBe('2026-01-01,211,Core,Bench press,1,,,90,seconds,none,false,,');
+    expect(rows[1]).toBe('2026-01-01,211,Core,Bench press,1,,,90,seconds,none,false,,,working');
     expect(rows[2]).toMatch(/^2026-10-03,212,Push,/);
   });
 
@@ -337,10 +337,28 @@ describe('workoutsToCsv', () => {
         ]),
       ]),
     );
-    expect(SET_COLUMNS.at(-1)).toBe('rir');
-    expect(rows[1].endsWith(',false,,1.5')).toBe(true);
-    expect(rows[2].endsWith(',false,,0')).toBe(true);
-    expect(rows[3].endsWith(',false,,')).toBe(true);
+    expect(SET_COLUMNS.at(-2)).toBe('rir');
+    expect(rows[1].endsWith(',false,,1.5,working')).toBe(true);
+    expect(rows[2].endsWith(',false,,0,working')).toBe(true);
+    expect(rows[3].endsWith(',false,,,working')).toBe(true);
+  });
+
+  it('the set type goes in the last column; the warm-up flag keeps its own', () => {
+    const rows = records(
+      workoutsToCsv([
+        workout('w1', at(2026, 10, 3), 'Push', [
+          set({ isWarmup: true }, 0),
+          set({ setType: 'failure' }, 1),
+          set({ setType: 'amrap', rir: 0 }, 2),
+          set({ setType: 'drop', weightKg: 40 }, 3),
+        ]),
+      ]),
+    );
+    expect(SET_COLUMNS.at(-1)).toBe('set_type');
+    expect(rows[1].endsWith(',true,,,warmup')).toBe(true);
+    expect(rows[2].endsWith(',false,,,failure')).toBe(true);
+    expect(rows[3].endsWith(',false,,0,amrap')).toBe(true);
+    expect(rows[4].endsWith(',false,,,drop')).toBe(true);
   });
 
   it('a deleted exercise exports under its id rather than vanishing', () => {

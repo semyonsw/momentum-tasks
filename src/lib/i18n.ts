@@ -1721,6 +1721,15 @@ const RU: Record<string, string> = {
     'Сколько ещё повторов вы могли бы сделать. Маленькое число — тот же ответ по шкале RPE.',
   'A set at 0 or 0.5 was at the limit: it is not taken as a reason to add weight.':
     'Подход на 0 или 0.5 — на пределе: он не считается поводом добавить вес.',
+  // W2 · set types (design copy set.type.*)
+  'Drop set': 'Дроп-сет',
+  'To failure': 'До отказа',
+  AMRAP: 'Максимум повторов',
+  'Set type': 'Тип',
+  'Set {n}, {kind}': 'Подход {n}, {kind}',
+  'Opens the set type and reps in reserve': 'Открывает тип подхода и повторы в запасе',
+  'Drop, failure and AMRAP sets are working sets: they count as volume. A warm-up counts for nothing.':
+    'Дроп-сет, до отказа и максимум повторов — рабочие подходы, они идут в объём. Разминка не считается.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

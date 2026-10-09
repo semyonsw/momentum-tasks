@@ -30,6 +30,7 @@ import { exerciseBests, type BodyweightLookup, type ExerciseBests } from './reco
 import { evaluateDeload, type DeloadVerdict } from './deload';
 import { plannedStartWeight } from './weightCarry';
 import { cleanRir } from './effort';
+import { cleanSetType, isLadderRung, type SetType } from './setType';
 
 /* ------------------------------------------------------------------ */
 /* Draft shapes (in-memory, screen-local)                              */
@@ -58,6 +59,8 @@ export interface DraftSet {
    * effort is a fact about a set that happened, not a plan carried over.
    */
   rir?: number;
+  /** Drop / failure / AMRAP — see `lib/setType.ts`. Never prefilled, like `rir`. */
+  setType?: SetType;
 }
 
 export interface DraftEntry {
@@ -267,7 +270,7 @@ export function formatTarget(
     exercise: Exercise;
     ladder?: RepLadder;
     /** The session's own rows, when there are any — see the ladder note above. */
-    sets?: readonly Pick<DraftSet, 'isWarmup'>[];
+    sets?: readonly Pick<DraftSet, 'isWarmup' | 'setType'>[];
   },
   lang: Language = 'en',
 ): string {
@@ -276,7 +279,8 @@ export function formatTarget(
 
   const ladder = entry.ladder ? ladderOf({ ...exercise, ladder: entry.ladder }) : null;
   if (ladder) {
-    const working = entry.sets?.filter((s) => !s.isWarmup).length;
+    // Rungs, not every working set: a drop set is extra work after the ladder.
+    const working = entry.sets?.filter(isLadderRung).length;
     return describeLadder(ladderTargets(ladder, working && working > 0 ? working : targetSets));
   }
 
@@ -686,6 +690,7 @@ export function draftToSetHistory(session: DraftSession): SetHistory[] {
     entry.sets.forEach((set, index) => {
       if (!set.isCompleted) return;
       const rir = cleanRir(set.rir);
+      const setType = cleanSetType(set.setType, set.isWarmup);
       rows.push({
         id: uid('sh'),
         sessionId: session.localId,
@@ -703,6 +708,7 @@ export function draftToSetHistory(session: DraftSession): SetHistory[] {
         // Through the one validator: a session persisted by any build reaches the
         // database here, and a value off the scale is not written at all.
         ...(rir != null ? { rir } : {}),
+        ...(setType ? { setType } : {}),
       });
     });
   }

@@ -94,6 +94,7 @@ import {
 import { currentSettings } from './settingsStore';
 import { bodyweightAt } from '../lib/bodyweightLog';
 import { cleanRir, withRir } from '../lib/effort';
+import { cleanSetType, withKind, type SetKind } from '../lib/setType';
 import {
   addExerciseToWorkout,
   addSetToWorkout,
@@ -132,6 +133,8 @@ export interface SetCorrection {
   count?: number;
   isWarmup?: boolean;
   rir?: number | null;
+  /** What the set IS — warm-up, working, drop, failure, AMRAP. Wins over `isWarmup`. */
+  kind?: SetKind;
 }
 
 interface WorkoutHistoryState {
@@ -175,7 +178,7 @@ interface WorkoutHistoryState {
   saveSession: (session: DraftSession, endedAt?: Date) => CompletedWorkout | null;
   deleteWorkout: (id: ID) => void;
   /**
-   * Correct one logged set: its weight, its count, its warm-up flag or its RIR.
+   * Correct one logged set: its weight, its count, its kind or its RIR.
    *
    * The only write in this store that touches a row the user did not just perform,
    * and the only one that needs `recomputeWorkout` — see rule 5. Returns true when
@@ -458,7 +461,9 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()((set, get) => ({
         ...(patch.count !== undefined ? { count: Math.max(0, Math.round(patch.count)) } : {}),
         ...(patch.isWarmup !== undefined ? { isWarmup: patch.isWarmup } : {}),
       };
-      return next;
+      if (patch.kind !== undefined) return withKind(next, patch.kind);
+      // A warm-up carries no type — the flag wins (`lib/setType.ts`).
+      return next.isWarmup ? withKind(next, 'warmup') : next;
     });
 
     return writeRecomputed(set, get, workoutId, sets);
@@ -947,6 +952,11 @@ function sanitizeSetRow(value: unknown): SetHistory | null {
     // the scale (RIR 37, NaN) is dropped and the SET is kept — losing a logged set
     // over a bad annotation would be the wrong way round.
     ...(cleanRir(row.rir) != null ? { rir: cleanRir(row.rir) } : {}),
+    // Optional since 2.3, and dropped on a warm-up: the flag is the older fact and
+    // the one every reader trusts, so a row claiming both stays a warm-up.
+    ...(cleanSetType(row.setType, row.isWarmup)
+      ? { setType: cleanSetType(row.setType, row.isWarmup) }
+      : {}),
   };
 }
 

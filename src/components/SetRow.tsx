@@ -2,7 +2,7 @@
  * SetRow — the most important 56 dp in the app.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │  W     +20 KG      ×    8 REPS           ( ✓ )│  ← a warm-up
+ *   │ [W]    +20 KG      ×    8 REPS           ( ✓ )│  ← a warm-up
  *   │  1     +40 KG      ×    4 REPS           ( ✓ )│
  *   │  2     +40 KG × 4 REPS  (RIR 1)          ( ✓ )│  ← graded: the effort chip
  *   │  2       2:00 MIN                    ( ▶ )( ✓ )│  ← a timed set
@@ -56,7 +56,12 @@
  *     shorthand and out of every verdict — so it must not be numbered as though
  *     it did, and "set 2 of 5" must mean the second of five sets that counted.
  *     Same `ink-faint` as the numbers, because it is the same kind of landmark
- *     and not a warning; the toggle lives in `QuickAdjust`, beside `Remove set`.
+ *     and not a warning.
+ *   • SO DO THE OTHER SET TYPES (T-12): a 26 dp badge in the number's place —
+ *     `W` muted, `D` drop / `F` failure / `A` AMRAP in green, because those three
+ *     ARE working sets and are counted as such underneath: W, 1, D, 3 — the
+ *     drop was the second working set. Tapping the badge or the number opens
+ *     `SetMarksSheet`; `QuickAdjust`'s `Set type` is the labelled way to it.
  *   • A GRADED SET CARRIES ITS EFFORT: `RIR 2`, a 26 dp chip after the reps,
  *     tapping it opens the scale (`SetMarksSheet`). Only where a grade exists —
  *     an ungraded row is drawn exactly as it always was, so a lifter who never
@@ -104,6 +109,7 @@ import { describePlates, platesFor } from '../lib/plates';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
 import { countUnitLabel, formatCount, formatWeight, unitLabel } from '../lib/units';
 import { describeRir, effortApplies, rirChipLabel } from '../lib/effort';
+import { kindBadge, kindName, setKindOf, type SetKind } from '../lib/setType';
 import { useLanguage, useT } from '../hooks/useT';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -298,20 +304,17 @@ function SetRowComponent({
           numbers: 38 dp in from the left, the row's content slides over by it. */}
       {onRemove ? <RemoveMark onPress={onRemove} /> : null}
 
-      {/* Set index — never a tap target, purely a landmark. `W` for a warm-up:
-          see the file header. It goes green and up a size on the ringed row with
-          the numbers beside it: it is the label OF those numbers, and a micro
-          `ink-faint` 3 next to a 30 dp green weight reads as a different row's. */}
-      <Text
-        maxFontSizeMultiplier={1.3}
-        className={[
-          'w-[22px] font-semibold uppercase tabular-nums',
-          ring ? 'text-acc' : 'text-ink-faint',
-        ].join(' ')}
-        style={{ fontSize: 14 }}
-      >
-        {workingNumber == null ? 'W' : workingNumber}
-      </Text>
+      {/* Set index — the number, or the set type's badge (`W` `D` `F` `A`, T-12)
+          in its place: see the file header. It goes green and up a size on the
+          ringed row with the numbers beside it: it is the label OF those numbers,
+          and a micro `ink-faint` 3 next to a 30 dp green weight reads as a
+          different row's. Tapping it opens the set's sheet — type and RIR. */}
+      <SetLabel
+        kind={setKindOf(set)}
+        workingNumber={workingNumber}
+        ring={ring}
+        onPress={onOpenMarks}
+      />
 
       {exercise.requiresWeight ? (
         <>
@@ -491,6 +494,93 @@ function SetRowComponent({
     </Pressable>
   ) : (
     <View style={rowStyle}>{rowChildren}</View>
+  );
+}
+
+/**
+ * The leftmost 26 dp: a working set's number, or its type's badge.
+ *
+ * The badge is the design's 26 dp rounded square with the letter in it — muted
+ * for a warm-up (a set that does not count), green for drop / failure / AMRAP
+ * (working sets of a particular kind). A plain working set keeps its bare number,
+ * so a session with no types looks exactly as it did.
+ *
+ * A TAP TARGET NOW, where it used to be "purely a landmark": it is the one place
+ * on every row — logged or not, lit or not — that is about the set as a whole
+ * rather than one of its numbers, which is what a type is. Slop above, below and
+ * to the left only, so it reaches 44 dp tall without eating into the weight cell.
+ * `QuickAdjust`'s `Set type` is the labelled way to the same sheet.
+ */
+function SetLabel({
+  kind,
+  workingNumber,
+  ring,
+  onPress,
+}: {
+  kind: SetKind;
+  workingNumber: number | null;
+  ring: boolean;
+  onPress?: () => void;
+}) {
+  const t = useT();
+  const lang = useLanguage();
+  const badge = kindBadge(kind);
+  const label =
+    workingNumber == null
+      ? kindName(kind, lang)
+      : kind === 'working'
+        ? t('Set {n}', { n: workingNumber })
+        : t('Set {n}, {kind}', { n: workingNumber, kind: kindName(kind, lang) });
+  const face = badge ? (
+    <View
+      style={{
+        width: 26,
+        height: 26,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: kind === 'warmup' ? palette.hairline : tint(0.4),
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        maxFontSizeMultiplier={1.3}
+        className={kind === 'warmup' ? 'text-ink-faint' : 'text-acc'}
+        style={{ fontSize: 13, fontWeight: '700' }}
+      >
+        {badge}
+      </Text>
+    </View>
+  ) : (
+    <Text
+      maxFontSizeMultiplier={1.3}
+      className={[
+        'font-semibold uppercase tabular-nums',
+        ring ? 'text-acc' : 'text-ink-faint',
+      ].join(' ')}
+      style={{ fontSize: 14 }}
+    >
+      {workingNumber ?? ''}
+    </Text>
+  );
+  return onPress ? (
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      hitSlop={{ top: 9, bottom: 9, left: 8, right: 0 }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={t('Opens the set type and reps in reserve')}
+      style={{ width: 26, minHeight: 26, justifyContent: 'center' }}
+    >
+      {face}
+    </Pressable>
+  ) : (
+    <View accessible accessibilityLabel={label} style={{ width: 26, justifyContent: 'center' }}>
+      {face}
+    </View>
   );
 }
 

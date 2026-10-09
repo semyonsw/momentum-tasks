@@ -348,6 +348,29 @@ describe('effort per set (T-11)', () => {
     expect(json.effortNote).toContain('reps in reserve');
   });
 
+  it('carries set types in the shorthand, with a legend only when one is used', () => {
+    const workouts = fixtureWorkouts();
+    const latest = workouts[0];
+    const exerciseId = latest.exercises[0].exerciseId;
+    const last = latest.sets
+      .filter((set) => set.exerciseId === exerciseId && !set.isWarmup)
+      .sort((a, b) => a.setIndex - b.setIndex)
+      .at(-1);
+    if (!last) throw new Error('fixture has no working set');
+    const typed = recomputeWorkout(
+      {
+        ...latest,
+        sets: latest.sets.map((set) => (set.id === last.id ? { ...set, setType: 'failure' } : set)),
+      },
+      null,
+      'en',
+    );
+    const json = build([typed, ...workouts.slice(1)]);
+    expect(json.setTypeNote).toContain('failure');
+    expect(json.sessions[0].ex[0]).toMatch(/\dF/);
+    expect(build(workouts).setTypeNote).toBeUndefined();
+  });
+
   it('says nothing about effort when no set was graded', () => {
     const json = build(fixtureWorkouts());
     expect(json.effortNote).toBeUndefined();

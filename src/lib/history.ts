@@ -5,6 +5,12 @@
  *   80 kg · 8 6 5 5              a clean session
  *   80 kg · 7 · 75 kg · 7 7 6    a top set, then a drop
  *   12 rounds · 3 min            nothing to weigh
+ *   80 kg · 5 5 8+ · 60 kg · 10D  an AMRAP last set, then a drop set
+ *
+ * SET TYPES MARK THE REPS: `F` to failure, `+` AMRAP, `D` a drop set. A plain
+ * working set is the bare number, so every line written before set types existed
+ * reads exactly as it did. Time, distance and rounds carry no marks — they are
+ * summarised as a length or a total, not set by set.
  *
  * The split between `lead` and `drops` is the whole point: the LEAD is the top
  * working weight, which is the number the chart plots and the overload engine
@@ -17,6 +23,7 @@ import { plural, t, term, type Language } from './i18n';
 import type { Exercise, ID, SetHistory } from '../types/models';
 import type { TrendPoint } from './trends';
 import { formatDuration } from './units';
+import { shorthandMark } from './setType';
 
 export interface SessionRow {
   sessionId: ID;
@@ -36,6 +43,8 @@ export type ShorthandSubject = Pick<Exercise, 'countUnit' | 'loadMode'>;
 interface WeightGroup {
   weightKg: number | null;
   counts: number[];
+  /** Each count's set-type mark (`F`, `+`, `D` or ''), aligned with `counts`. */
+  marks: string[];
 }
 
 /**
@@ -186,8 +195,11 @@ function groupByWeight(ordered: SetHistory[]): WeightGroup[] {
   const groups: WeightGroup[] = [];
   for (const set of ordered) {
     const last = groups[groups.length - 1];
-    if (last && last.weightKg === set.weightKg) last.counts.push(set.count);
-    else groups.push({ weightKg: set.weightKg, counts: [set.count] });
+    const mark = shorthandMark(set);
+    if (last && last.weightKg === set.weightKg) {
+      last.counts.push(set.count);
+      last.marks.push(mark);
+    } else groups.push({ weightKg: set.weightKg, counts: [set.count], marks: [mark] });
   }
   return groups;
 }
@@ -213,7 +225,9 @@ function formatGroup(
     return `${group.counts.reduce((sum, c) => sum + c, 0)} ${term('unit', 'm', lang)}`;
   }
 
-  const counts = group.counts.join(' ');
+  // Reps carry their set type's mark — `8F`, `8+`, `10D` (`lib/setType.ts`); a plain
+  // working set is the bare number it always was.
+  const counts = group.counts.map((c, i) => `${c}${group.marks[i] ?? ''}`).join(' ');
   if (group.weightKg == null) return counts;
   const prefix = exercise.loadMode === 'added_bodyweight' ? '+' : '';
   return `${prefix}${group.weightKg} ${term('unit', 'kg', lang)} · ${counts}`;

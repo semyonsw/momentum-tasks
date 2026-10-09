@@ -42,6 +42,7 @@
 
 import { t, type Language } from './i18n';
 import type { CountUnit } from '../types/models';
+import { endsAtLimit, type SetType } from './setType';
 
 /** The scale's ends, and its step. */
 export const RIR_MIN = 0;
@@ -117,9 +118,16 @@ export function effortApplies(countUnit: CountUnit): boolean {
   return countUnit === 'reps';
 }
 
-/** A set that was at the limit — see `RIR_LIMIT`. Unknown effort is not. */
-export function atLimit(set: { rir?: number }): boolean {
-  return set.rir != null && set.rir <= RIR_LIMIT;
+/**
+ * A set that was at the limit — see `RIR_LIMIT`.
+ *
+ * A grade decides when there is one. Without one, a set typed to-failure or AMRAP
+ * is at the limit by its own definition (`lib/setType.ts`), and anything else is
+ * unknown — and unknown effort is never assumed to be maximal.
+ */
+export function atLimit(set: { rir?: number; setType?: SetType }): boolean {
+  if (set.rir != null) return set.rir <= RIR_LIMIT;
+  return endsAtLimit(set);
 }
 
 /**

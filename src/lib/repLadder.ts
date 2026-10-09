@@ -71,6 +71,7 @@
 
 import { plural, t, type Language } from './i18n';
 import type { CountUnit, Exercise, ID, RepLadder } from '../types/models';
+import { isLadderRung, type SetType } from './setType';
 
 /* ------------------------------------------------------------------ */
 /* Limits                                                             */
@@ -386,12 +387,15 @@ export function ladderMet(targets: readonly number[], performed: readonly number
  * Warm-ups are dropped here for the same reason they are dropped from the
  * shorthand, the volume and every overload verdict — a warm-up is a set that does
  * not count, and counting one as the top set would hand out a rep for a rep
- * nobody did.
+ * nobody did. DROP SETS are dropped too, for a different reason: they are working
+ * volume, but they are not rungs — a burn-out after the ladder is extra work, and
+ * judging it against the next rung could fail a session the user completed
+ * (`lib/setType.ts`). Failure and AMRAP sets stay: the top set is all-out anyway.
  */
 export function performedLadderCounts(
-  sets: readonly { count: number; isWarmup: boolean; isCompleted: boolean }[],
+  sets: readonly { count: number; isWarmup: boolean; isCompleted: boolean; setType?: SetType }[],
 ): number[] {
-  return sets.filter((s) => s.isCompleted && !s.isWarmup).map((s) => s.count);
+  return sets.filter((s) => s.isCompleted && isLadderRung(s)).map((s) => s.count);
 }
 
 /* ------------------------------------------------------------------ */
@@ -438,18 +442,25 @@ export type ReshapedCount = number | null;
  *     is nudged, and this respects it — the same rule the overload nudge follows.
  *  3. WARM-UPS ARE NOT IN THE LADDER. They keep their own numbers and do not
  *     consume a rung, so a warm-up single on top of five working sets still gets
- *     the whole `16 + 10 + 8 + 8 + 6` underneath it.
+ *     the whole `16 + 10 + 8 + 8 + 6` underneath it. Nor are drop sets.
  *
  * Returns one entry per row, aligned with the input. Rows past the end of the
  * ladder keep what they have — an exercise can carry more sets than the plan.
  */
 export function reshapeLadderSets(
-  sets: readonly { count: number; isWarmup: boolean; isCompleted: boolean; isPrefilled: boolean }[],
+  sets: readonly {
+    count: number;
+    isWarmup: boolean;
+    isCompleted: boolean;
+    isPrefilled: boolean;
+    setType?: SetType;
+  }[],
   targets: readonly number[],
 ): ReshapedCount[] {
   let rung = 0;
   return sets.map((set) => {
-    if (set.isWarmup) return null;
+    // Warm-ups and drop sets keep their own numbers and take no rung.
+    if (!isLadderRung(set)) return null;
     const target = targets[rung];
     rung += 1;
     if (target == null) return null;
@@ -465,7 +476,7 @@ export function reshapeLadderSets(
 /** One exercise in a finished session, as far as its ladder is concerned. */
 export interface LadderEntryLike {
   exercise: { id: ID; name: string; countUnit: CountUnit; ladder?: RepLadder };
-  sets: readonly { count: number; isWarmup: boolean; isCompleted: boolean }[];
+  sets: readonly { count: number; isWarmup: boolean; isCompleted: boolean; setType?: SetType }[];
 }
 
 /** A ladder that moved, and everything a caller needs to say so. */
@@ -522,7 +533,7 @@ export function ladderOutcomes(entries: readonly LadderEntryLike[]): LadderOutco
     const before = ladderOf(entry.exercise);
     if (!before) continue;
 
-    const working = entry.sets.filter((s) => !s.isWarmup);
+    const working = entry.sets.filter(isLadderRung);
     const targets = ladderTargets(before, working.length);
     const performed = performedLadderCounts(entry.sets);
     if (!ladderMet(targets, performed)) continue;

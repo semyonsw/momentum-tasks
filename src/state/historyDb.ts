@@ -177,6 +177,9 @@ CREATE TABLE IF NOT EXISTS set_history (
   -- Reps in reserve (lib/effort.ts), or NULL for a set nobody graded. Added by
   -- addMissingColumns on a database that predates it, like workouts.effort.
   rir                REAL,
+  -- Drop / failure / AMRAP (lib/setType.ts), or NULL for a plain working set or a
+  -- warm-up, which is is_warmup and never this.
+  set_type           TEXT,
   FOREIGN KEY (session_id) REFERENCES workouts(id) ON DELETE CASCADE
 );
 
@@ -224,8 +227,8 @@ export function db(): Db {
 }
 
 /**
- * Columns added to a table (`workouts.effort`, `set_history.rir`) after it already
- * existed on real devices.
+ * Columns added to a table (`workouts.effort`, `set_history.rir`,
+ * `set_history.set_type`) after it already existed on real devices.
  *
  * SQLite has no `ADD COLUMN IF NOT EXISTS`, and `CREATE TABLE IF NOT EXISTS` is a
  * no-op on a table that is already there — so a column added to the schema above
@@ -242,6 +245,7 @@ function addMissingColumns(database: Db): void {
   const wanted: readonly { table: string; column: string; type: string }[] = [
     { table: 'workouts', column: 'effort', type: 'TEXT' },
     { table: 'set_history', column: 'rir', type: 'REAL' },
+    { table: 'set_history', column: 'set_type', type: 'TEXT' },
   ];
 
   for (const { table, column, type } of wanted) {
@@ -293,6 +297,7 @@ interface SetRow {
   rest_taken_seconds: number | null;
   /** Absent from the row object entirely on a database `addMissingColumns` could not repair. */
   rir?: number | null;
+  set_type?: string | null;
 }
 
 /**
@@ -359,6 +364,7 @@ function toSetHistory(row: SetRow): Record<string, unknown> {
     ...(row.rest_taken_seconds != null ? { restTakenSeconds: row.rest_taken_seconds } : {}),
     // NULL reads back as an absent key, like `effort`: absence is "nobody said".
     ...(row.rir != null ? { rir: row.rir } : {}),
+    ...(row.set_type ? { setType: row.set_type } : {}),
   };
 }
 
@@ -383,8 +389,8 @@ function insertSet(database: Db, sessionId: string, row: SetHistory): void {
   database.runSync(
     `INSERT OR REPLACE INTO set_history
        (id, session_id, exercise_id, performed_at, set_index, weight_kg,
-        count, count_unit, load_mode, is_warmup, rest_taken_seconds, rir)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        count, count_unit, load_mode, is_warmup, rest_taken_seconds, rir, set_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     row.id,
     // The workout's id, not the row's claimed `sessionId`: they are the same thing
     // by construction, and the foreign key has to point at a workout that exists.
@@ -399,6 +405,7 @@ function insertSet(database: Db, sessionId: string, row: SetHistory): void {
     row.isWarmup ? 1 : 0,
     row.restTakenSeconds ?? null,
     row.rir ?? null,
+    row.setType ?? null,
   );
 }
 

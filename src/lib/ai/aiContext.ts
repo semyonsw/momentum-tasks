@@ -479,6 +479,7 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
    */
   const allSessions = [...workouts].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   let gradedAny = false;
+  let typedAny = false;
   const sessionRows = allSessions.map((w) => {
     const row: Record<string, unknown> = { date: dayKey(w.startedAt) };
     if (numbers[w.id] != null) row.n = numbers[w.id];
@@ -507,6 +508,7 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
       row.rir = effort;
       gradedAny = true;
     }
+    if (w.sets.some((set) => set.setType)) typedAny = true;
     return row;
   });
 
@@ -556,6 +558,12 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
       ? {
           effortNote:
             'sessions[].rir lists reps in reserve per working set in order (RPE = 10 - RIR; "-" = not recorded). RIR 0-0.5 means the set was at the limit; the app does not suggest more weight off such sets.',
+        }
+      : {}),
+    ...(typedAny
+      ? {
+          setTypeNote:
+            'in sessions[].ex the reps carry a mark: 8F = taken to failure, 8+ = AMRAP, 10D = drop set. All three are working sets (they count as volume); warm-ups are never listed. Failure and AMRAP sets count as at the limit unless an RIR says otherwise.',
         }
       : {}),
   };

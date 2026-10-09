@@ -28,6 +28,8 @@
  * (see `src/lib/units.ts`) so history never gets corrupted by a unit toggle.
  */
 
+import type { SetType } from '../lib/setType';
+
 export type ID = string;
 /** ISO-8601 UTC timestamp, e.g. "2026-08-11T18:31:14.000Z". */
 export type ISODateTime = string;
@@ -531,6 +533,12 @@ export interface SetHistory {
 
   /** Warm-ups are excluded from every analysis. */
   isWarmup: boolean;
+  /**
+   * Drop set, to failure or AMRAP — a WORKING set of a particular kind. Absent =
+   * a plain working set (or a warm-up, which is `isWarmup` and never this). Since
+   * 2.3; `lib/setType.ts` has why the warm-up flag stayed beside it.
+   */
+  setType?: SetType;
   isCompleted: boolean;
   /** Actual rest taken before this set — feeds future rest suggestions. */
   restTakenSeconds?: number;
