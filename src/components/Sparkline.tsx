@@ -13,6 +13,11 @@
  * is that one bad day is a small dip. Leading `null`s (days before the task
  * existed) are left out, so a young task draws a short line ending at the
  * right edge rather than a floor of zeros.
+ *
+ * `min` (W9) lifts the floor for a series that is never near zero — a waist in
+ * centimetres on a 0–100 scale is a flat line at the top. The caller picks the
+ * band (the measurement rows pad their own range by half a unit each side), so
+ * the fixed-scale promise above still holds where it is asked for.
  */
 
 import { useState } from 'react';
@@ -24,10 +29,12 @@ import { chartWash, palette, tint } from '../theme/tokens';
 export function Sparkline({
   values,
   height = 52,
+  min = 0,
   max = 100,
 }: {
   values: readonly (number | null)[];
   height?: number;
+  min?: number;
   max?: number;
 }) {
   const [width, setWidth] = useState(0);
@@ -43,7 +50,8 @@ export function Sparkline({
     values.forEach((value, i) => {
       if (value === null) return;
       const x = (i / (n - 1)) * width;
-      const y = top + usable * (1 - Math.max(0, Math.min(max, value)) / max);
+      const span = max - min || 1;
+      const y = top + usable * (1 - (Math.max(min, Math.min(max, value)) - min) / span);
       line += `${line === '' ? 'M' : ' L'}${x.toFixed(1)} ${y.toFixed(1)}`;
       if (firstX === null) firstX = x;
       lastX = x;

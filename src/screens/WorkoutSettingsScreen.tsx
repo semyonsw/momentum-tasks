@@ -76,6 +76,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Pressable } from '../components/Pressable';
 
+import { BodyDoor } from '../components/BodyDoor';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { Icon } from '../components/Icon';
 import { pressedStyle } from '../components/motion';
@@ -180,7 +181,14 @@ function formatSeconds(seconds: number, t: Translate, zeroLabel = 'Off'): string
   return formatClock(seconds);
 }
 
-export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
+export function WorkoutSettingsScreen({
+  onBack,
+  onOpenBody,
+}: {
+  onBack: () => void;
+  /** W9: the tape-measure log, beside the bodyweight it sits next to. */
+  onOpenBody?: () => void;
+}) {
   const t = useT();
   const lang = useLanguage();
   const countedWorkouts = usePlural();
@@ -551,6 +559,13 @@ export function WorkoutSettingsScreen({ onBack }: { onBack: () => void }) {
                   'Read only when working out session volume. It is not logged, charted or compared to anything.',
                 )}
           </Text>
+          {/* W9: the rest of the body — a record, unlike the number above, and
+              read by nothing in the training maths. */}
+          {onOpenBody ? (
+            <View className="mx-lg mt-md">
+              <BodyDoor onPress={onOpenBody} />
+            </View>
+          ) : null}
 
           {/* ----------------------------------------------------------
               PLATES — what is on the rack behind you.

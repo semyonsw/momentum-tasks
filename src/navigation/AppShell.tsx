@@ -94,6 +94,7 @@ import { MoneySettingsScreen } from '../screens/MoneySettingsScreen';
 import { BudgetsScreen } from '../screens/BudgetsScreen';
 import { RecurringScreen } from '../screens/RecurringScreen';
 import { GoalsScreen } from '../screens/GoalsScreen';
+import { BodyScreen } from '../screens/BodyScreen';
 import { AmountEditorScreen } from '../screens/AmountEditorScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { MoneyScreen, type MoneyWindow } from '../screens/MoneyScreen';
@@ -204,6 +205,9 @@ type Route =
   | { name: 'budgets' }
   | { name: 'recurring' }
   | { name: 'goals' }
+  /* W9: the tape-measure log, pushed from the Graphs view and from Workout
+     settings → Body — the two places bodyweight already lives. */
+  | { name: 'body' }
   | { name: 'taskDetail'; taskId: ID }
   /* The window travels with the tap, so the category opens on the one the tile
      was read through rather than resetting to this month. */
@@ -1736,7 +1740,7 @@ export function AppShell() {
     }
 
     if (top?.name === 'workoutSettings') {
-      return <WorkoutSettingsScreen onBack={pop} />;
+      return <WorkoutSettingsScreen onBack={pop} onOpenBody={() => push({ name: 'body' })} />;
     }
 
     if (top?.name === 'taskSettings') {
@@ -1759,6 +1763,10 @@ export function AppShell() {
 
     if (top?.name === 'recurring') {
       return <RecurringScreen onBack={pop} />;
+    }
+
+    if (top?.name === 'body') {
+      return <BodyScreen onBack={pop} />;
     }
 
     if (top?.name === 'goals') {
@@ -1871,6 +1879,7 @@ export function AppShell() {
           }}
           onOpenSettings={() => push({ name: sectionSettingsRoute('Workout') })}
           onOpenWrapped={openWrapped}
+          onOpenBody={() => push({ name: 'body' })}
         />
       );
     }
@@ -2154,6 +2163,7 @@ function WorkoutHistory({
   onBack,
   onOpenSettings,
   onOpenWrapped,
+  onOpenBody,
 }: {
   workouts: CompletedWorkout[];
   loadFailed: boolean;
@@ -2175,6 +2185,7 @@ function WorkoutHistory({
   onBack: () => void;
   onOpenSettings: () => void;
   onOpenWrapped: (period: WrappedPeriod) => void;
+  onOpenBody: () => void;
 }) {
   const t = useT();
   const [view, setView] = useState<'log' | 'graphs' | 'calendar'>('log');
@@ -2210,6 +2221,7 @@ function WorkoutHistory({
         exercisesById={exercisesById}
         toolbar={toolbar}
         onBack={onBack}
+        onOpenBody={onOpenBody}
       />
     );
   }

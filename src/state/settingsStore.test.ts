@@ -666,3 +666,57 @@ describe('the weekly review closed this week (X3)', () => {
     expect(currentSettings().weeklyReviewDismissed).toBe('2026-10-05');
   });
 });
+
+describe('body measurements (W9)', () => {
+  it('are absent by default and on a blob from 2.2.0, which had no such key', () => {
+    expect(DEFAULT_SETTINGS.bodyMeasurements).toBeUndefined();
+    expect(sanitizeSettings({}).bodyMeasurements).toBeUndefined();
+    expect(sanitizeSettings(undefined).bodyMeasurements).toBeUndefined();
+  });
+
+  it('go through the sanitizer on the way in', () => {
+    const raw = {
+      bodyMeasurements: {
+        waist: [
+          { day: '2026-10-05', cm: 82.5 },
+          { day: 'nope', cm: 80 },
+        ],
+        tail: [{ day: '2026-10-05', cm: 30 }],
+      },
+    } as unknown as Partial<Settings>;
+    expect(sanitizeSettings(raw).bodyMeasurements).toEqual({
+      waist: [{ day: '2026-10-05', cm: 82.5 }],
+    });
+    expect(
+      sanitizeSettings({ bodyMeasurements: 'junk' } as unknown as Partial<Settings>)
+        .bodyMeasurements,
+    ).toBeUndefined();
+  });
+
+  it('record, replace on the same day, and go absent when the last one is removed', () => {
+    useSettings.getState().recordMeasurement('waist', '2026-10-05', 83);
+    useSettings.getState().recordMeasurement('waist', '2026-10-05', 82.5);
+    expect(currentSettings().bodyMeasurements).toEqual({
+      waist: [{ day: '2026-10-05', cm: 82.5 }],
+    });
+    useSettings.getState().removeMeasurement('waist', '2026-10-05');
+    expect(currentSettings().bodyMeasurements).toBeUndefined();
+  });
+
+  it('do not touch the bodyweight log, and it does not touch them', () => {
+    useSettings.getState().setBodyweightKg(80);
+    useSettings.getState().recordMeasurement('arm', '2026-10-05', 37);
+    expect(currentSettings().bodyweightKg).toBe(80);
+    expect(currentSettings().bodyweightLog).toHaveLength(1);
+    useSettings.getState().setBodyweightKg(undefined);
+    expect(currentSettings().bodyMeasurements?.arm).toHaveLength(1);
+  });
+
+  it('survive Reset settings to defaults — a record is not a duration', () => {
+    useSettings.getState().recordMeasurement('chest', '2026-10-05', 103);
+    useSettings.getState().resetToDefaults();
+    expect(currentSettings().bodyMeasurements).toEqual({
+      chest: [{ day: '2026-10-05', cm: 103 }],
+    });
+  });
+});

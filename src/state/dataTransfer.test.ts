@@ -527,6 +527,50 @@ describe('the closed assistant cards', () => {
   });
 });
 
+describe('body measurements (W9)', () => {
+  it('travel in a backup and come back', () => {
+    useSettings.getState().recordMeasurement('waist', '2026-10-05', 82.5);
+    useSettings.getState().recordMeasurement('arm', '2026-09-01', 36.83);
+    const text = exportBackupText();
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    expect(useSettings.getState().bodyMeasurements).toBeUndefined();
+
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useSettings.getState().bodyMeasurements).toEqual({
+      waist: [{ day: '2026-10-05', cm: 82.5 }],
+      arm: [{ day: '2026-09-01', cm: 36.83 }],
+    });
+  });
+
+  it('a 2.2.0 backup, written before the key existed, imports unchanged with none', () => {
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    const v220 = JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 1,
+      settings: {
+        restSecondsBetweenSets: 90,
+        bodyweightKg: 80,
+        bodyweightLog: [{ at: '2026-08-30T08:00:00.000Z', kg: 80 }],
+      },
+      exercises: [],
+      routines: [],
+      workouts: [],
+    });
+    const parsed = parseBackup(v220);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
+    expect(useSettings.getState().bodyweightKg).toBe(80);
+    expect(useSettings.getState().bodyweightLog).toEqual([
+      { at: '2026-08-30T08:00:00.000Z', kg: 80 },
+    ]);
+    expect(useSettings.getState().bodyMeasurements).toBeUndefined();
+  });
+});
+
 describe('the money scale (U25)', () => {
   it('a 2.2.0 backup with amounts imports them unchanged, in whole units', async () => {
     const { useMoney } = await import('./moneyStore');

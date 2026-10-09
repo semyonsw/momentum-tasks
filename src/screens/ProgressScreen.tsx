@@ -36,6 +36,7 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { BodyDoor } from '../components/BodyDoor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Kicker, SelectChip } from '../components/primitives';
 import { TrendChart } from '../components/TrendChart';
@@ -69,6 +70,8 @@ interface ProgressScreenProps {
   toolbar?: ReactNode;
   /** `‹` — this screen is pushed by the ⟲ on the workout section now. */
   onBack?: () => void;
+  /** W9: the door under the graphs to the tape-measure log. */
+  onOpenBody?: () => void;
 }
 
 export function ProgressScreen({
@@ -77,6 +80,7 @@ export function ProgressScreen({
   exercisesById,
   toolbar,
   onBack,
+  onOpenBody,
 }: ProgressScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -230,6 +234,14 @@ export function ProgressScreen({
         ) : (
           <Empty hasWorkouts={workouts.length > 0} />
         )}
+
+        {/* W9: under the bodyweight line, the rest of the body — always offered,
+            because the first measurement is typed there, not here. */}
+        {onOpenBody ? (
+          <View className="mx-lg mt-xl">
+            <BodyDoor onPress={onOpenBody} />
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );

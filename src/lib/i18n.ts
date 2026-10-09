@@ -1871,6 +1871,44 @@ const RU: Record<string, string> = {
   'Add a goal': 'Добавить цель',
   'Only the goal goes. The money stays in its subsection.':
     'Удалится только цель. Деньги останутся в своём подразделе.',
+  // W9 · body measurements (design 16)
+  'unit:cm': 'см',
+  'unit:in': 'дюйм',
+  'measure:Waist': 'Талия',
+  'measure:Hips': 'Бёдра',
+  'measure:Chest': 'Грудь',
+  'measure:Arm': 'Рука',
+  'measure:Thigh': 'Бедро',
+  'measure:Calf': 'Голень',
+  'measure:Neck': 'Шея',
+  'One reading': 'Одно измерение',
+  '{change} since {date}': '{change} с {date}',
+  reading: 'измерение',
+  readings: 'измерений',
+  'Body measurements': 'Замеры тела',
+  'Tap a measurement for its readings, and a reading to correct it.':
+    'Нажмите на замер, чтобы увидеть измерения, и на измерение, чтобы исправить его.',
+  'Nothing measured yet. Add a reading — waist, chest, arm… — on any date, so older notes can go in too.':
+    'Пока ничего не измерено. Добавьте измерение — талия, грудь, рука… — на любую дату, так что старые записи тоже можно внести.',
+  'Add a reading': 'Добавить измерение',
+  'Delete the {name} reading from {date}?': 'Удалить измерение «{name}» от {date}?',
+  'Only this reading goes. The others stay as they are.':
+    'Удалится только это измерение. Остальные останутся как есть.',
+  Weight: 'Вес',
+  'Set in Workout settings': 'Задаётся в настройках тренировок',
+  'Opens the reading': 'Открывает измерение',
+  'First reading': 'Первое измерение',
+  'New reading': 'Новое измерение',
+  'This day already has a reading; saving replaces it.':
+    'За этот день уже есть измерение; сохранение заменит его.',
+  'Any past day, so older notes can go in too.':
+    'Любой прошедший день — старые записи тоже можно внести.',
+  'Save changes': 'Сохранить изменения',
+  'Save {name}': 'Сохранить: {name}',
+  'Between {min} and {max} {unit}.': 'От {min} до {max} {unit}.',
+  'Delete this reading': 'Удалить это измерение',
+  '{n} measured': 'измерено: {n}',
+  'Waist, chest, arm…': 'Талия, грудь, рука…',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

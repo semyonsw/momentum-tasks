@@ -260,6 +260,30 @@ describe('settings written by 2.2.0', () => {
 
     expect(useSettings.getState().weeklyReviewDismissed).toBe('2026-10-05');
   });
+  it('cold-start with no body measurements, and read them back when there are some', async () => {
+    const { useSettings, DEFAULT_SETTINGS } = await import('./settingsStore');
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({ version: 1, state: { bodyweightKg: 81, restSecondsBetweenSets: 95 } }),
+    );
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().bodyMeasurements).toBeUndefined();
+    expect(useSettings.getState().bodyweightKg).toBe(81);
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(95);
+
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({
+        version: 1,
+        state: { bodyMeasurements: { waist: [{ day: '2026-10-05', cm: 82.5 }] } },
+      }),
+    );
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().bodyMeasurements).toEqual({
+      waist: [{ day: '2026-10-05', cm: 82.5 }],
+    });
+  });
 });
 
 describe('a task log with missed-on-purpose days, from before the tap toggled', () => {

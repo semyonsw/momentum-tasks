@@ -40,6 +40,13 @@ import {
   sanitizeBodyweightLog,
   type BodyweightEntry,
 } from '../lib/bodyweightLog';
+import {
+  recordMeasurement,
+  removeMeasurement,
+  sanitizeMeasurements,
+  type MeasurementKey,
+  type MeasurementLog,
+} from '../lib/bodyMeasurements';
 import { DEFAULT_PLATES_KG } from '../lib/plates';
 import {
   activeGymPlates,
@@ -309,6 +316,18 @@ export interface Settings {
    * have no such key and come up showing the card.
    */
   weeklyReviewDismissed?: string;
+
+  /* --- body measurements (W9) ----------------------------------------- */
+  /**
+   * The tape-measure log: waist, chest, arm… each a dated series in canonical
+   * centimetres — see `lib/bodyMeasurements.ts`. Beside the bodyweight log
+   * because it is the same kind of record, and like it NOT a setting the reset
+   * touches.
+   *
+   * OPTIONAL, absent = nothing measured: a 2.2.0 phone and its backups have no
+   * such key, and an emptied log goes absent again rather than writing `{}`.
+   */
+  bodyMeasurements?: MeasurementLog;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -368,6 +387,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // Declared so the key set is complete; absent on disk means "no card closed".
   aiCardsDismissed: undefined,
   weeklyReviewDismissed: undefined,
+  bodyMeasurements: undefined,
 };
 
 /**
@@ -503,6 +523,7 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     autoBackupUris: usableUriList(raw.autoBackupUris),
     aiCardsDismissed: usableSections(raw.aiCardsDismissed),
     weeklyReviewDismissed: usableMonday(raw.weeklyReviewDismissed),
+    bodyMeasurements: sanitizeMeasurements(raw.bodyMeasurements),
   };
 }
 
@@ -708,6 +729,10 @@ interface SettingsState extends Settings {
 
   /** Close the weekly review until next Monday (X3); `today` picks the week. */
   dismissWeeklyReview: (today: string) => void;
+  /** W9: one site's reading on one day (a second one that day replaces it), in cm. */
+  recordMeasurement: (key: MeasurementKey, day: string, cm: number) => void;
+  /** W9: remove one site's reading on one day. Asked first by the screen (U19). */
+  removeMeasurement: (key: MeasurementKey, day: string) => void;
 
   resetToDefaults: () => void;
   /**
@@ -864,6 +889,12 @@ export const useSettings = create<SettingsState>()(
       dismissWeeklyReview: (today) =>
         set({ weeklyReviewDismissed: usableMonday(weekStart(today)) }),
 
+      recordMeasurement: (key, day, cm) =>
+        set({ bodyMeasurements: recordMeasurement(get().bodyMeasurements, key, day, cm) }),
+
+      removeMeasurement: (key, day) =>
+        set({ bodyMeasurements: removeMeasurement(get().bodyMeasurements, key, day) }),
+
       resetToDefaults: () =>
         /*
          * The gyms, the bodyweight log and the granted folder are NOT settings in
@@ -900,6 +931,8 @@ export const useSettings = create<SettingsState>()(
           // timers is no reason for it to come back.
           aiCardsDismissed: get().aiCardsDismissed,
           weeklyReviewDismissed: get().weeklyReviewDismissed,
+          // A record, like the bodyweight log: the reset is about durations.
+          bodyMeasurements: get().bodyMeasurements,
         }),
 
       importSettings: (raw) =>
