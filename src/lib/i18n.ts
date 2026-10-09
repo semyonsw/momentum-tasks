@@ -1638,6 +1638,14 @@ const RU: Record<string, string> = {
     '{year}: {done} из {asked} сделано. Нажмите на квадрат, чтобы увидеть день.',
   'One row a month, one square a day. Hatched days were excused and are out of the count; empty squares asked for nothing.':
     'Строка — месяц, квадрат — день. Заштрихованные дни освобождены и в счёт не входят; пустые квадраты — дни без задач.',
+  // W6 · records this session
+  'Records this session': 'Рекорды этой тренировки',
+  'new best e1RM, {value}': 'новый лучший e1RM, {value}',
+  'heaviest yet, {value}': 'самый большой вес, {value}',
+  'most reps yet, {value}': 'больше всего повторов, {value}',
+  'longest yet, {value}': 'дольше всего, {value}',
+  'furthest yet, {value}': 'дальше всего, {value}',
+  'most rounds yet, {value}': 'больше всего раундов, {value}',
   // M4 · money calendar
   Calendar: 'Календарь',
   'The day or the calendar': 'День или календарь',

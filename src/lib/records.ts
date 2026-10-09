@@ -376,26 +376,13 @@ export function prTimeline(
   exerciseId: ID,
   bodyweightAtDate: BodyweightLookup = () => null,
 ): TimelineEntry[] {
-  const standing: Partial<Record<RecordKind, number>> = {};
+  const standing: Standing = {};
   const entries: TimelineEntry[] = [];
   let first = true;
 
   for (const rows of sessionsOf(history, exerciseId)) {
     const at = rows[0].performedAt;
-    const tops: Partial<Record<RecordKind, { value: number; row: SetHistory }>> = {};
-
-    const e = sessionE1rm(rows, bodyweightAtDate);
-    if (e) tops.e1rm = e;
-    for (const row of rows) {
-      if (tops.mostCount == null || row.count > tops.mostCount.value) {
-        tops.mostCount = { value: row.count, row };
-      }
-      if (row.loadMode === 'none') continue;
-      const load = loadOf(row, bodyweightAtDate);
-      if (load == null) continue;
-      const value = settle(load);
-      if (tops.heaviest == null || value > tops.heaviest.value) tops.heaviest = { value, row };
-    }
+    const tops = sessionTops(rows, bodyweightAtDate);
 
     const moved: TimelineEntry[] = [];
     for (const kind of KIND_ORDER) {
@@ -403,24 +390,195 @@ export function prTimeline(
       if (!top) continue;
       const before = standing[kind];
       if (!first && (before == null || top.value > before)) {
-        moved.push({
-          kind,
-          value: top.value,
-          at,
-          sessionId: top.row.sessionId,
-          weightKg: top.row.weightKg,
-          count: top.row.count,
-          countUnit: top.row.countUnit,
-          loadMode: top.row.loadMode,
-        });
+        moved.push({ kind, value: top.value, at, ...setOf(top.row) });
       }
-      if (before == null || top.value > before) standing[kind] = top.value;
     }
+    raise(standing, tops);
     entries.push(...moved.reverse());
     first = false;
   }
 
   return entries.reverse();
+}
+
+/** One session's best on each axis, and the set that holds it. */
+type SessionTops = Partial<Record<RecordKind, { value: number; row: SetHistory }>>;
+/** The best on each axis across a run of sessions. */
+type Standing = Partial<Record<RecordKind, number>>;
+
+/**
+ * One session reduced to its best on each axis — earliest set on a tie. The one
+ * reading `prTimeline` and `recordsBrokenIn` share, so the Finish sheet and the
+ * exercise screen cannot disagree about what a session set.
+ */
+function sessionTops(rows: readonly SetHistory[], bodyweightAtDate: BodyweightLookup): SessionTops {
+  const tops: SessionTops = {};
+  const e = sessionE1rm(rows, bodyweightAtDate);
+  if (e) tops.e1rm = e;
+  for (const row of rows) {
+    if (tops.mostCount == null || row.count > tops.mostCount.value) {
+      tops.mostCount = { value: row.count, row };
+    }
+    if (row.loadMode === 'none') continue;
+    const load = loadOf(row, bodyweightAtDate);
+    if (load == null) continue;
+    const value = settle(load);
+    if (tops.heaviest == null || value > tops.heaviest.value) tops.heaviest = { value, row };
+  }
+  return tops;
+}
+
+/** Fold one session's tops into the standing bests. */
+function raise(standing: Standing, tops: SessionTops): void {
+  for (const kind of KIND_ORDER) {
+    const top = tops[kind];
+    if (!top) continue;
+    const before = standing[kind];
+    if (before == null || top.value > before) standing[kind] = top.value;
+  }
+}
+
+/** The fields of the set that did it, as a record row carries them. */
+function setOf(row: SetHistory) {
+  return {
+    sessionId: row.sessionId,
+    weightKg: row.weightKg,
+    count: row.count,
+    countUnit: row.countUnit,
+    loadMode: row.loadMode,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Records this session — the Finish sheet (T-09)                      */
+/* ------------------------------------------------------------------ */
+
+/** One exercise's record on the Finish sheet: the best kind it set, and the bar. */
+export interface SessionRecord {
+  exerciseId: ID;
+  kind: RecordKind;
+  /** Same units as `TimelineEntry.value`. */
+  value: number;
+  /** The standing best it beat, same units. Always there: no bar, no record. */
+  previous: number;
+  weightKg: number | null;
+  count: number;
+  countUnit: CountUnit;
+  loadMode: LoadMode;
+}
+
+/** How many rows the Finish sheet shows: a block, not a list. */
+export const SESSION_RECORDS_SHOWN = 3;
+
+/**
+ * Which exercises in the session being finished beat their previous best.
+ *
+ * `session` is the live workout's completed rows (`draftToSetHistory`), before
+ * it is saved; any of them already in `history` are left out of the bar.
+ *
+ * THE RULES, all the timeline's (see the file header) plus three of its own:
+ *
+ *  - A RECORD NEEDS A BAR, per axis. An exercise's first-ever session shows
+ *    nothing (IMPLEMENTATION_DECISIONS, T-09), and neither does an axis the
+ *    history never had — the first loaded set after months of unweighed work is
+ *    a first reading, not a record. Rejected: the timeline's looser "any later
+ *    session that adds an axis", which would greet a lifter who just typed their
+ *    bodyweight with a record on every dip.
+ *  - ONE ROW PER EXERCISE, naming the best kind it set: the e1RM, else the
+ *    heaviest, else the most reps (or the longest hold). The estimate leads
+ *    because it is the one that moves when either of the facts does, and three
+ *    rows for one bench set would be the wall of medals the README rules out.
+ *  - NO e1RM FOR PURE BODYWEIGHT WORK (`loadMode: 'none'`). Its "load" is the
+ *    scale's reading, so the estimate moves when the lifter gets heavier — the
+ *    reason the timeline keeps no heaviest for it. The reps are the honest fact.
+ *
+ * ORDERED most significant first: by kind in that same order, then by the
+ * relative jump over the old best, then by the session's own order. At most
+ * `limit` rows.
+ */
+export function recordsBrokenIn(
+  session: readonly SetHistory[],
+  history: readonly SetHistory[],
+  bodyweightAtDate: BodyweightLookup = () => null,
+  limit: number = SESSION_RECORDS_SHOWN,
+): SessionRecord[] {
+  const live = new Set(session.map((row) => row.sessionId));
+  const before = history.filter((row) => !live.has(row.sessionId));
+
+  const exerciseIds: ID[] = [];
+  for (const row of session) {
+    if (!exerciseIds.includes(row.exerciseId)) exerciseIds.push(row.exerciseId);
+  }
+
+  const found: { record: SessionRecord; gain: number; order: number }[] = [];
+  exerciseIds.forEach((exerciseId, order) => {
+    const earlier = sessionsOf(before, exerciseId);
+    if (earlier.length === 0) return;
+    const standing: Standing = {};
+    for (const rows of earlier) raise(standing, sessionTops(rows, bodyweightAtDate));
+
+    // Every live row of this exercise is one session, however it was split.
+    const rows = session
+      .filter((row) => row.exerciseId === exerciseId && counts(row))
+      .sort((a, b) => a.setIndex - b.setIndex);
+    if (rows.length === 0) return;
+    const tops = sessionTops(rows, bodyweightAtDate);
+
+    for (const kind of KIND_ORDER) {
+      const top = tops[kind];
+      const bar = standing[kind];
+      if (!top || bar == null || !(top.value > bar)) continue;
+      if (kind === 'e1rm' && top.row.loadMode === 'none') continue;
+      found.push({
+        record: { exerciseId, kind, value: top.value, previous: bar, ...setOf(top.row) },
+        gain: bar > 0 ? (top.value - bar) / bar : Infinity,
+        order,
+      });
+      return;
+    }
+  });
+
+  return found
+    .sort(
+      (a, b) =>
+        KIND_ORDER.indexOf(a.record.kind) - KIND_ORDER.indexOf(b.record.kind) ||
+        b.gain - a.gain ||
+        a.order - b.order,
+    )
+    .slice(0, Math.max(0, limit))
+    .map((entry) => entry.record);
+}
+
+/**
+ * "Bench press · 82.5 × 5" and "new best e1RM, 96.3 kg" — the Finish sheet row,
+ * in two halves because the second is lit. The e1RM says e1RM, which is how the
+ * row admits it is an estimate (the exercise screen spells out the formula).
+ */
+export function describeSessionRecord(
+  record: SessionRecord,
+  name: string,
+  unitSystem: UnitSystem,
+  lang: Language = 'en',
+): { lead: string; record: string } {
+  const lead = `${name} · ${recordSet(record, unitSystem)}`;
+  const value = recordValue(record, unitSystem, lang);
+  if (record.kind === 'e1rm') return { lead, record: t('new best e1RM, {value}', lang, { value }) };
+  if (record.kind === 'heaviest')
+    return { lead, record: t('heaviest yet, {value}', lang, { value }) };
+  const phrase =
+    record.countUnit === 'seconds'
+      ? 'longest yet, {value}'
+      : record.countUnit === 'meters'
+        ? 'furthest yet, {value}'
+        : record.countUnit === 'rounds'
+          ? 'most rounds yet, {value}'
+          : 'most reps yet, {value}';
+  return {
+    lead,
+    record: t(phrase, lang, {
+      value: record.countUnit === 'reps' ? String(record.value) : value,
+    }),
+  };
 }
 
 /** Where the line went: the sentence above the e1RM chart. */

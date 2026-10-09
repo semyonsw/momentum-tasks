@@ -52,19 +52,35 @@
  *    to update, and an exercise added mid-session has no routine item — deciding to
  *    do neck work halfway through pull day says something about today.
  *    `plannedSetDiff` is where all of that is decided and tested.
+ *
+ * ── RECORDS THIS SESSION (W6) ──────────────────────────────────────────────
+ *
+ *   │ RECORDS THIS SESSION                       │
+ *   │ ╭ ✦ Bench press · 82.5 × 5 · new best ──╮  │  ← lit, one spark lands
+ *   │ ╰   e1RM, 96.3 kg ──────────────────────╯  │
+ *   │ ╭ ✦ Plank · 3:10 · longest yet, 3:10 ───╮  │
+ *
+ * One to three rows, one per exercise, and NOTHING when nothing moved — no
+ * "no records today" line, which would turn an ordinary good session into a
+ * miss. `recordsBrokenIn` decides which and in what order. Quiet on purpose
+ * (IMPLEMENTATION_DECISIONS row 7): ONE `SparkBurst` on the first row as the
+ * sheet lands, and one line each. Rejected: the design's light sweep and a
+ * banner, and a spark per row — the README's "no medals, no banners" is the
+ * reason the bests were a micro line in the first place.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT, type Translate } from '../hooks/useT';
 import { formatValue } from '../lib/money';
-import { curve, gradientFill, motion, palette, radius, tint } from '../theme/tokens';
+import { curve, glass, gradientFill, motion, palette, radius, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
 import { Kicker, PrimaryButton } from './primitives';
 import { RollingNumber } from './RollingNumber';
+import { SparkBurst } from './SparkBurst';
 import { sparkle } from '../lib/feedback';
 import { SlidingThumb } from './SlidingThumb';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -131,6 +147,18 @@ interface FinishSheetProps {
   minutes?: number | null;
   /** Kilograms moved in the working sets — `sessionVolume`. */
   volumeKg?: number;
+  /**
+   * The records this session broke, already worded (`describeSessionRecord`):
+   * at most three, most significant first. Empty hides the block entirely.
+   */
+  records?: readonly FinishRecord[];
+}
+
+/** One row of `Records this session`: the set, and the record it set (lit). */
+export interface FinishRecord {
+  key: string;
+  lead: string;
+  record: string;
 }
 
 export function FinishSheet({
@@ -146,6 +174,7 @@ export function FinishSheet({
   workoutNumber = null,
   minutes = null,
   volumeKg = 0,
+  records = [],
 }: FinishSheetProps) {
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -215,6 +244,7 @@ export function FinishSheet({
           paddingTop: 12,
           paddingHorizontal: 16,
           paddingBottom: insets.bottom + 24,
+          maxHeight: height * 0.94,
           borderTopLeftRadius: radius.sheet,
           borderTopRightRadius: radius.sheet,
           backgroundColor: palette.surface,
@@ -224,66 +254,82 @@ export function FinishSheet({
         }}
       >
         <View className="mb-[18px] h-[4px] w-[36px] self-center rounded-pill bg-hairline" />
-        <Kicker tone="green">{t('Session complete')}</Kicker>
-        <Text
-          maxFontSizeMultiplier={1.3}
-          style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.9 }}
-          className="mt-[6px] font-semibold text-ink"
-        >
-          {workoutNumber != null
-            ? t('Workout {number}', { number: workoutNumber })
-            : t('Finish workout?')}
-        </Text>
+        {/* Scrolls only when it must: three records, a plan line and a ladder line
+            on a short phone would otherwise push the title off the top. */}
+        <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={{ flexGrow: 0 }}>
+          <Kicker tone="green">{t('Session complete')}</Kicker>
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 30, lineHeight: 34, letterSpacing: -0.9 }}
+            className="mt-[6px] font-semibold text-ink"
+          >
+            {workoutNumber != null
+              ? t('Workout {number}', { number: workoutNumber })
+              : t('Finish workout?')}
+          </Text>
 
-        {/* The three facts of the session, rolling up from zero. The last one is
+          {/* The three facts of the session, rolling up from zero. The last one is
             lit: it is the number that grows workout over workout. */}
-        <View className="mt-[18px] flex-row" style={{ gap: 8 }}>
-          <StatTile
-            label={t('Minutes')}
-            value={revealStats ? String(Math.max(0, minutes ?? 0)) : '0'}
-            duration={900}
-          />
-          <StatTile
-            label={t('Sets')}
-            value={revealStats ? String(loggedCount) : '0'}
-            duration={900}
-          />
-          <StatTile
-            label={t('Kg moved')}
-            value={revealStats ? formatValue(volumeKg) : '0'}
-            duration={1100}
-            lit
-          />
-        </View>
+          <View className="mt-[18px] flex-row" style={{ gap: 8 }}>
+            <StatTile
+              label={t('Minutes')}
+              value={revealStats ? String(Math.max(0, minutes ?? 0)) : '0'}
+              duration={900}
+            />
+            <StatTile
+              label={t('Sets')}
+              value={revealStats ? String(loggedCount) : '0'}
+              duration={900}
+            />
+            <StatTile
+              label={t('Kg moved')}
+              value={revealStats ? formatValue(volumeKg) : '0'}
+              duration={1100}
+              lit
+            />
+          </View>
 
-        {/* Only when there is something to lose. A session with everything logged
+          {records.length > 0 ? (
+            <>
+              <Kicker tone="faint" className="mt-[20px]">
+                {t('Records this session')}
+              </Kicker>
+              <View className="mt-[8px]" style={{ gap: 6 }}>
+                {records.map((record, index) => (
+                  <RecordRow key={record.key} record={record} lit={index === 0} />
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {/* Only when there is something to lose. A session with everything logged
             is on this sheet to be saved, and telling it "0 sets are still
             unlogged" would be the sheet reading out a zero. */}
-        {unloggedCount > 0 ? (
-          <Text className="mt-lg text-body tabular-nums text-ink-muted">
-            {t('{count} still unlogged. They won’t be saved.', {
-              count:
-                unloggedCount === 1
-                  ? t('{count} set is', { count: unloggedCount })
-                  : t('{count} sets are', { count: unloggedCount }),
-            })}
-          </Text>
-        ) : null}
+          {unloggedCount > 0 ? (
+            <Text className="mt-lg text-body tabular-nums text-ink-muted">
+              {t('{count} still unlogged. They won’t be saved.', {
+                count:
+                  unloggedCount === 1
+                    ? t('{count} set is', { count: unloggedCount })
+                    : t('{count} sets are', { count: unloggedCount }),
+              })}
+            </Text>
+          ) : null}
 
-        {/* What the ladder did. Green, because it is the one thing on this sheet
+          {/* What the ladder did. Green, because it is the one thing on this sheet
             that is progressive overload — the app's single meaning for colour. */}
-        {ladderChange ? (
-          <Text className="mt-lg text-body tabular-nums text-green-bright">{ladderChange}</Text>
-        ) : null}
+          {ladderChange ? (
+            <Text className="mt-lg text-body tabular-nums text-green-bright">{ladderChange}</Text>
+          ) : null}
 
-        {/* The fact, then the button that acts on it. Stated above the buttons
+          {/* The fact, then the button that acts on it. Stated above the buttons
             rather than inside one, because it is a sentence about the session and
             the button is a choice about the routine. */}
-        {planChange ? (
-          <Text className="mt-lg text-body tabular-nums text-ink">{planChange}</Text>
-        ) : null}
+          {planChange ? (
+            <Text className="mt-lg text-body tabular-nums text-ink">{planChange}</Text>
+          ) : null}
 
-        {/*
+          {/*
           HOW DID THAT GO — above the buttons, because it is about the session and
           the buttons are about what to do with it.
 
@@ -293,90 +339,137 @@ export function FinishSheet({
           selected word again takes it back, which is why there is no fourth
           segment reading `Skip`.
         */}
-        {onSetEffort ? (
-          <>
-            <Kicker tone={effort ? 'green' : 'faint'} className="mt-[20px]">
-              {t('How did that go')}
-            </Kicker>
-            <View
-              accessibilityRole="radiogroup"
-              onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-              style={{
-                marginTop: 8,
-                height: 44,
-                flexDirection: 'row',
-                padding: 4,
-                borderRadius: radius.pill,
-                backgroundColor: 'rgba(236,241,238,0.03)',
-                borderWidth: 1,
-                borderColor: palette.hairline,
-              }}
-            >
-              <SlidingThumb
-                index={effortIndex}
-                count={EFFORT_CHOICES.length}
-                trackWidth={trackWidth - 2}
-                duration={320}
-                bezier={[0.34, 1.3, 0.64, 1]}
-                style={{
-                  borderRadius: radius.pill,
-                  backgroundColor: palette.green,
-                }}
-              />
-              {EFFORT_CHOICES.map((choice) => {
-                const selected = effort === choice;
-                return (
-                  <Pressable
-                    key={choice}
-                    onPress={() => onSetEffort(choice)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={efforts[choice]}
-                    style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Text
-                      maxFontSizeMultiplier={1.3}
-                      style={{ fontSize: 13 }}
-                      className={
-                        selected ? 'font-semibold text-on-acc' : 'font-medium text-ink-muted'
-                      }
-                    >
-                      {efforts[choice]}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        ) : null}
-
-        <View className="mt-[20px]">
-          {planChange ? (
+          {onSetEffort ? (
             <>
-              <PrimaryButton
-                label={t('Finish and update the plan')}
-                onPress={onConfirmAndUpdatePlan}
-              />
-              <View className="h-sm" />
-              <PrimaryButton label={t('Save workout')} variant="ghost" onPress={onConfirm} />
+              <Kicker tone={effort ? 'green' : 'faint'} className="mt-[20px]">
+                {t('How did that go')}
+              </Kicker>
+              <View
+                accessibilityRole="radiogroup"
+                onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+                style={{
+                  marginTop: 8,
+                  height: 44,
+                  flexDirection: 'row',
+                  padding: 4,
+                  borderRadius: radius.pill,
+                  backgroundColor: 'rgba(236,241,238,0.03)',
+                  borderWidth: 1,
+                  borderColor: palette.hairline,
+                }}
+              >
+                <SlidingThumb
+                  index={effortIndex}
+                  count={EFFORT_CHOICES.length}
+                  trackWidth={trackWidth - 2}
+                  duration={320}
+                  bezier={[0.34, 1.3, 0.64, 1]}
+                  style={{
+                    borderRadius: radius.pill,
+                    backgroundColor: palette.green,
+                  }}
+                />
+                {EFFORT_CHOICES.map((choice) => {
+                  const selected = effort === choice;
+                  return (
+                    <Pressable
+                      key={choice}
+                      onPress={() => onSetEffort(choice)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={efforts[choice]}
+                      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text
+                        maxFontSizeMultiplier={1.3}
+                        style={{ fontSize: 13 }}
+                        className={
+                          selected ? 'font-semibold text-on-acc' : 'font-medium text-ink-muted'
+                        }
+                      >
+                        {efforts[choice]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </>
-          ) : (
-            /* Demoted to ghost above when there are two ways to finish, so the two
+          ) : null}
+
+          <View className="mt-[20px]">
+            {planChange ? (
+              <>
+                <PrimaryButton
+                  label={t('Finish and update the plan')}
+                  onPress={onConfirmAndUpdatePlan}
+                />
+                <View className="h-sm" />
+                <PrimaryButton label={t('Save workout')} variant="ghost" onPress={onConfirm} />
+              </>
+            ) : (
+              /* Demoted to ghost above when there are two ways to finish, so the two
                are not one mis-tap apart at the same weight. Neither is
                destructive: both save the workout, and only one also touches the
                routine. */
-            <SaveButton label={t('Save workout')} onPress={onConfirm} />
-          )}
-          <Pressable
-            onPress={onDismiss}
-            accessibilityRole="button"
-            accessibilityLabel={t('Keep going')}
-            className="mt-xs h-[48px] items-center justify-center"
-          >
-            <Text className="text-label font-medium text-ink-muted">{t('Keep going')}</Text>
-          </Pressable>
-        </View>
+              <SaveButton label={t('Save workout')} onPress={onConfirm} />
+            )}
+            <Pressable
+              onPress={onDismiss}
+              accessibilityRole="button"
+              accessibilityLabel={t('Keep going')}
+              className="mt-xs h-[48px] items-center justify-center"
+            >
+              <Text className="text-label font-medium text-ink-muted">{t('Keep going')}</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * One record. The first is lit and is where the session's single spark lands; the
+ * rest sit on plain glass, so the block reads as one moment with footnotes.
+ */
+function RecordRow({ record, lit }: { record: FinishRecord; lit: boolean }) {
+  const motionScale = useMotionScale();
+  return (
+    <View
+      accessible
+      accessibilityLabel={`${record.lead} · ${record.record}`}
+      style={{
+        minHeight: 56,
+        borderRadius: radius.row,
+        borderWidth: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: lit ? tint(0.13) : glass.raised,
+        borderColor: lit ? tint(0.3) : glass.raisedEdge,
+      }}
+    >
+      <Text
+        maxFontSizeMultiplier={1.3}
+        style={{
+          fontSize: 20,
+          width: 22,
+          textAlign: 'center',
+          color: lit ? palette.c1 : palette.acc,
+        }}
+      >
+        ✦
+      </Text>
+      <Text
+        maxFontSizeMultiplier={1.3}
+        style={{ flex: 1, fontSize: 15.5, lineHeight: 21 }}
+        className="tabular-nums text-ink"
+      >
+        {record.lead} · <Text className="text-green-bright">{record.record}</Text>
+      </Text>
+      {lit && motionScale > 0 ? <SparkBurst y={20} /> : null}
     </View>
   );
 }

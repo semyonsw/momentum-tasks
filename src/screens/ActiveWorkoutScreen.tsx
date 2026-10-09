@@ -151,7 +151,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { ExerciseCard } from '../components/ExerciseCard';
-import { FinishSheet } from '../components/FinishSheet';
+import { FinishSheet, type FinishRecord } from '../components/FinishSheet';
 import { FocusMode } from '../components/FocusMode';
 import { GrowIn, pressedStyle } from '../components/motion';
 import { ReorderRow } from '../components/ReorderRow';
@@ -170,14 +170,21 @@ import { describePlannedSetDiff, performedSetCounts, plannedSetDiff } from '../l
 import { supersetPosition } from '../lib/superset';
 import { upNextSet } from '../lib/upNext';
 import { describeWarmup, warmupSets, type WarmupSet } from '../lib/warmup';
-import { beatSomething, recordsBeatenBy } from '../lib/records';
+import {
+  beatSomething,
+  describeSessionRecord,
+  recordsBeatenBy,
+  recordsBrokenIn,
+} from '../lib/records';
+import { bodyweightAt } from '../lib/bodyweightLog';
+import { useWorkoutHistory } from '../state/workoutHistoryStore';
 import { formatCount, formatWeight, unitLabel } from '../lib/units';
 import { useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStore';
 import { platesInForce, useSettings } from '../state/settingsStore';
 import { PrimaryButton, Separator, TextButton } from '../components/primitives';
 import { Sheet } from '../components/Sheet';
 import { FloatingPair, Lamps, Toast, type ToastAction } from '../components/glass';
-import { sessionVolume } from '../lib/draft';
+import { draftToSetHistory, sessionVolume } from '../lib/draft';
 import type { ID, RoutineItem, UnitSystem } from '../types/models';
 
 /**
@@ -675,6 +682,40 @@ export function ActiveWorkoutScreen({
     [session?.entries, lang],
   );
 
+  /**
+   * The records this session broke (W6), for the Finish sheet.
+   *
+   * Against the whole saved log, with each set weighed at that day's bodyweight —
+   * the same reading the exercise screen's timeline makes, so the row on the sheet
+   * and the timeline entry the save is about to create say the same number.
+   * A function rather than a memo because `handleFinish` asks it before the sheet
+   * exists; the memo below is only the sheet's copy, worked out while it is open.
+   */
+  const historyWorkouts = useWorkoutHistory((s) => s.workouts);
+  const bodyweightLog = useSettings((s) => s.bodyweightLog);
+  const findRecords = useCallback(
+    (draft: DraftSession) => {
+      const rows = draftToSetHistory(draft);
+      if (rows.length === 0) return [];
+      const ids = new Set(rows.map((row) => row.exerciseId));
+      const history = historyWorkouts.flatMap((w) => w.sets.filter((r) => ids.has(r.exerciseId)));
+      return recordsBrokenIn(rows, history, (at) => bodyweightAt(bodyweightLog, at));
+    },
+    [bodyweightLog, historyWorkouts],
+  );
+  const finishRecords = useMemo((): FinishRecord[] => {
+    if (confirming !== 'finish' || !session) return [];
+    return findRecords(session).map((record) => {
+      const name =
+        session.entries.find((entry) => entry.exercise.id === record.exerciseId)?.exercise.name ??
+        '';
+      return {
+        key: record.exerciseId,
+        ...describeSessionRecord(record, name, unitSystem, lang),
+      };
+    });
+  }, [confirming, findRecords, lang, session, unitSystem]);
+
   /*
    * SAVE FIRST, CLEAR SECOND. This used to clear the session (and so its
    * persisted copy) and then save it: a save that threw — a full disk, a
@@ -841,7 +882,7 @@ export function ActiveWorkoutScreen({
   const handleFinish = useCallback(() => {
     if (!session) return;
     /*
-     * The sheet appears for either of two reasons.
+     * The sheet appears for any of three reasons.
      *
      *  1. UNLOGGED SETS are an intention, not history. Say so, then let them go.
      *  2. A LADDER MOVED. Nothing is being asked — the rep is earned either way —
@@ -850,15 +891,18 @@ export function ActiveWorkoutScreen({
      *     is opened is a progression the app forgot to mention. One tap, on the
      *     button the thumb is already going for.
      *
-     * Neither is a nag: with nothing unlogged and no ladder in the session, Finish
-     * still finishes in one tap, exactly as it always did.
+     *  3. A RECORD FELL (W6). The same argument as the ladder: the number is the
+     *     news, and it is only news today. Still one tap to save.
+     *
+     * Neither is a nag: with nothing unlogged, no ladder and no record in the
+     * session, Finish still finishes in one tap, exactly as it always did.
      */
-    if (progress.total - progress.done > 0 || ladderChange) {
+    if (progress.total - progress.done > 0 || ladderChange || findRecords(session).length > 0) {
       setConfirming('finish');
       return;
     }
     void commitFinish();
-  }, [commitFinish, ladderChange, progress.done, progress.total, session]);
+  }, [commitFinish, findRecords, ladderChange, progress.done, progress.total, session]);
 
   /* --- empty states --------------------------------------------------- */
   /*
@@ -1180,6 +1224,7 @@ export function ActiveWorkoutScreen({
           loggedCount={progress.done}
           planChange={describePlannedSetDiff(planChanges, lang)}
           ladderChange={ladderChange}
+          records={finishRecords}
           effort={session.effort}
           onSetEffort={(effort) => {
             tap();
