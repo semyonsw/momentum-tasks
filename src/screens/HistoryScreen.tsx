@@ -137,6 +137,7 @@ import { NumberSheet } from '../components/NumberSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SettingsFootRow } from '../components/SettingsFootRow';
 import { WrappedHistoryFoot } from '../components/WrappedEntry';
+import { InsightsDoor } from '../components/InsightsDoor';
 import type { WrappedPeriod } from '../lib/wrapped';
 import {
   DangerFootAction,
@@ -307,6 +308,8 @@ export interface HistoryScreenProps {
   onOpenWrapped?: (period: WrappedPeriod) => void;
   /** W3: the muscle map, from the foot of the sets-per-cluster card. */
   onOpenMuscles?: () => void;
+  /** X2: Insights, at the foot under Wrapped. */
+  onOpenInsights?: () => void;
 }
 
 export function HistoryScreen({
@@ -331,6 +334,7 @@ export function HistoryScreen({
   onOpenSettings,
   onOpenWrapped,
   onOpenMuscles,
+  onOpenInsights,
 }: HistoryScreenProps) {
   const t = useT();
   const lang = useLanguage();
@@ -582,6 +586,8 @@ export function HistoryScreen({
           <>
             <Empty loadFailed={loadFailed} />
             {onOpenWrapped ? <WrappedHistoryFoot onOpen={onOpenWrapped} /> : null}
+            {/* X2: patterns across the three logs, under the look back. */}
+            {onOpenInsights ? <InsightsDoor onPress={onOpenInsights} /> : null}
             {onOpenSettings ? (
               <View style={{ paddingBottom: 40 }}>
                 <SettingsFootRow sectionLabel={t('Workout settings')} onPress={onOpenSettings} />
@@ -732,6 +738,8 @@ export function HistoryScreen({
 
             {/* X1: last month's Wrapped, at any time (and the year's, in its window). */}
             {onOpenWrapped ? <WrappedHistoryFoot onOpen={onOpenWrapped} /> : null}
+            {/* X2: patterns across the three logs, under the look back. */}
+            {onOpenInsights ? <InsightsDoor onPress={onOpenInsights} /> : null}
             {/* U24: the section's settings, where you notice one is wrong. */}
             {onOpenSettings ? (
               <SettingsFootRow sectionLabel={t('Workout settings')} onPress={onOpenSettings} />

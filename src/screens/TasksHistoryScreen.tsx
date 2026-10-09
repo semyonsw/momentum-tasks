@@ -48,6 +48,7 @@ import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SettingsFootRow } from '../components/SettingsFootRow';
 import { WrappedHistoryFoot } from '../components/WrappedEntry';
+import { InsightsDoor } from '../components/InsightsDoor';
 import type { WrappedPeriod } from '../lib/wrapped';
 import { TrendChart } from '../components/TrendChart';
 import { pressedStyle } from '../components/motion';
@@ -109,6 +110,8 @@ interface TasksHistoryScreenProps {
   onOpenSettings?: () => void;
   /** X1: open a Wrapped. Absent = no Wrapped row at the foot. */
   onOpenWrapped?: (period: WrappedPeriod) => void;
+  /** X2: Insights, at the foot under Wrapped. */
+  onOpenInsights?: () => void;
 }
 
 export function TasksHistoryScreen({
@@ -117,6 +120,7 @@ export function TasksHistoryScreen({
   onPickDay,
   onOpenSettings,
   onOpenWrapped,
+  onOpenInsights,
 }: TasksHistoryScreenProps) {
   const t = useT();
   const tasks = useTasks((s) => s.tasks);
@@ -154,6 +158,8 @@ export function TasksHistoryScreen({
         {/* U24: the section's settings, where you notice one is wrong. */}
         {/* X1: last month's Wrapped, at any time (and the year's, in its window). */}
         {onOpenWrapped ? <WrappedHistoryFoot onOpen={onOpenWrapped} /> : null}
+        {/* X2: patterns across the three logs, under the look back. */}
+        {onOpenInsights ? <InsightsDoor onPress={onOpenInsights} /> : null}
         {onOpenSettings ? (
           <SettingsFootRow sectionLabel={t('Daily tasks settings')} onPress={onOpenSettings} />
         ) : null}

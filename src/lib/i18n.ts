@@ -1929,6 +1929,50 @@ const RU: Record<string, string> = {
   '{n} sets to your target': 'До цели подходов: {n}',
   'Target met · {n} over': 'Цель достигнута · сверх: {n}',
   'Target met': 'Цель достигнута',
+  // X2 · insights (design 18, copy insights.note)
+  'On training days you finish more of your tasks: {a} vs {b} on rest days.':
+    'В дни тренировок вы выполняете больше задач: {a} против {b} в дни отдыха.',
+  'On training days you finish fewer of your tasks: {a} vs {b} on rest days.':
+    'В дни тренировок вы выполняете меньше задач: {a} против {b} в дни отдыха.',
+  'In weeks with 3+ workouts you finish more of your tasks: {a} vs {b} in weeks with fewer.':
+    'В недели с 3+ тренировками вы выполняете больше задач: {a} против {b} в недели с меньшим числом.',
+  'In weeks with 3+ workouts you finish fewer of your tasks: {a} vs {b} in weeks with fewer.':
+    'В недели с 3+ тренировками вы выполняете меньше задач: {a} против {b} в недели с меньшим числом.',
+  'You spend {effect}% more a day on training days than on rest days.':
+    'В дни тренировок вы тратите в день на {effect}% больше, чем в дни отдыха.',
+  'You spend {effect}% less a day on training days than on rest days.':
+    'В дни тренировок вы тратите в день на {effect}% меньше, чем в дни отдыха.',
+  'You spend {effect}% more a day on weekends than on weekdays.':
+    'В выходные вы тратите в день на {effect}% больше, чем в будни.',
+  'You spend {effect}% less a day on weekends than on weekdays.':
+    'В выходные вы тратите в день на {effect}% меньше, чем в будни.',
+  'Training days': 'Дни тренировок',
+  'Rest days': 'Дни отдыха',
+  '3+ workouts': '3+ тренировки',
+  Fewer: 'Меньше',
+  Weekends: 'Выходные',
+  '{amount} a day': '{amount} в день',
+  'based on {a} and {b}': 'выборка: {a} и {b}',
+  'based on {a} with 3+ workouts and {b} with fewer':
+    'выборка: {a} с 3+ тренировками и {b} с меньшим числом',
+  '{n} training day': '{n} тренировочный день',
+  '{n} training days': '{n} тренировочных дней',
+  '{n} rest day': '{n} день отдыха',
+  '{n} rest days': '{n} дней отдыха',
+  '{n} weekend day': '{n} выходной день',
+  '{n} weekend days': '{n} выходных дней',
+  '{n} weekday': '{n} будний день',
+  '{n} weekdays': '{n} будних дней',
+  Insights: 'Наблюдения',
+  'Correlation, not cause.': 'Это связь, а не причина.',
+  'Patterns across your three logs.': 'Закономерности между тремя журналами.',
+  'Nothing to show yet': 'Пока нечего показать',
+  'Cards appear here when one log moves with another: tasks done on training days against rest days, and in weeks with 3+ workouts against weeks with fewer; spending on training days, and at weekends against weekdays.':
+    'Карточки появятся, когда один журнал меняется вместе с другим: задачи в дни тренировок и в дни отдыха, в недели с 3+ тренировками и в недели с меньшим числом; траты в дни тренировок, а также в выходные и в будни.',
+  'A card needs at least {days} days in each group ({weeks} weeks for weeks) over the last {window} weeks, and a gap of {points} points in tasks or {relative}% in spending. Smaller gaps are not shown.':
+    'Для карточки нужно хотя бы {days} дней в каждой группе ({weeks} недели для сравнения недель) за последние {window} недель и разница в {points} пунктов по задачам или {relative}% по тратам. Меньшие различия не показываются.',
+  '{n} found': 'найдено: {n}',
+  'Not enough data yet': 'Пока мало данных',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

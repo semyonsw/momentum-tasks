@@ -96,6 +96,7 @@ import { RecurringScreen } from '../screens/RecurringScreen';
 import { GoalsScreen } from '../screens/GoalsScreen';
 import { BodyScreen } from '../screens/BodyScreen';
 import { MuscleMapScreen } from '../screens/MuscleMapScreen';
+import { InsightsScreen } from '../screens/InsightsScreen';
 import { AmountEditorScreen } from '../screens/AmountEditorScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { MoneyScreen, type MoneyWindow } from '../screens/MoneyScreen';
@@ -211,6 +212,8 @@ type Route =
   | { name: 'body' }
   /* W3: this week's sets on a body, from the sets-per-cluster card. */
   | { name: 'muscles' }
+  /* X2: patterns across the three logs, from the foot of each history. */
+  | { name: 'insights' }
   | { name: 'taskDetail'; taskId: ID }
   /* The window travels with the tap, so the category opens on the one the tile
      was read through rather than resetting to this month. */
@@ -1772,6 +1775,10 @@ export function AppShell() {
       return <BodyScreen onBack={pop} />;
     }
 
+    if (top?.name === 'insights') {
+      return <InsightsScreen onBack={pop} />;
+    }
+
     if (top?.name === 'muscles') {
       return <MuscleMapScreen workouts={workouts} exercisesById={exercisesById} onBack={pop} />;
     }
@@ -1888,6 +1895,7 @@ export function AppShell() {
           onOpenWrapped={openWrapped}
           onOpenBody={() => push({ name: 'body' })}
           onOpenMuscles={() => push({ name: 'muscles' })}
+          onOpenInsights={() => push({ name: 'insights' })}
         />
       );
     }
@@ -1905,6 +1913,7 @@ export function AppShell() {
           }}
           onOpenSettings={() => push({ name: sectionSettingsRoute('Tasks') })}
           onOpenWrapped={openWrapped}
+          onOpenInsights={() => push({ name: 'insights' })}
         />
       );
     }
@@ -1929,6 +1938,7 @@ export function AppShell() {
             }
             onOpenSettings={() => push({ name: sectionSettingsRoute('Expenses') })}
             onOpenWrapped={openWrapped}
+            onOpenInsights={() => push({ name: 'insights' })}
           />
           {/* Same: an amount corrected from the day list lands back here. */}
           {toast ? <Toast key={toast.key} label={toast.text} /> : null}
@@ -2173,6 +2183,7 @@ function WorkoutHistory({
   onOpenWrapped,
   onOpenBody,
   onOpenMuscles,
+  onOpenInsights,
 }: {
   workouts: CompletedWorkout[];
   loadFailed: boolean;
@@ -2196,6 +2207,7 @@ function WorkoutHistory({
   onOpenWrapped: (period: WrappedPeriod) => void;
   onOpenBody: () => void;
   onOpenMuscles: () => void;
+  onOpenInsights: () => void;
 }) {
   const t = useT();
   const [view, setView] = useState<'log' | 'graphs' | 'calendar'>('log');
@@ -2263,6 +2275,7 @@ function WorkoutHistory({
       onOpenSettings={onOpenSettings}
       onOpenWrapped={onOpenWrapped}
       onOpenMuscles={onOpenMuscles}
+      onOpenInsights={onOpenInsights}
       toolbar={toolbar}
     />
   );
