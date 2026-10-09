@@ -53,7 +53,7 @@ import {
   updateGym,
   type Gym,
 } from '../lib/gyms';
-import { formatClockTime, parseClockTime } from '../lib/days';
+import { formatClockTime, parseClockTime, parseDay, weekStart } from '../lib/days';
 import { AI_SECTIONS, type AiSection } from '../lib/ai/aiSchema';
 import { usableLanguage, type Language } from '../lib/i18n';
 import { INTERVALS, type Direction, type Interval } from '../lib/money';
@@ -298,6 +298,17 @@ export interface Settings {
    * later needs no new key.
    */
   aiCardsDismissed?: AiSection[];
+
+  /* --- the landing's weekly review (X3) ------------------------------ */
+  /**
+   * The Monday (`YYYY-MM-DD`) of the week whose review card was closed with ✕.
+   * Stamped with the week rather than set as a flag, so next Monday's card comes
+   * back on its own — see `lib/weeklyReview.ts`.
+   *
+   * OPTIONAL, absent = "not closed this week": a 2.2.0 phone and its backups
+   * have no such key and come up showing the card.
+   */
+  weeklyReviewDismissed?: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -356,6 +367,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoBackupUris: [],
   // Declared so the key set is complete; absent on disk means "no card closed".
   aiCardsDismissed: undefined,
+  weeklyReviewDismissed: undefined,
 };
 
 /**
@@ -490,6 +502,7 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     lastBackupAt: usableInstant(raw.lastBackupAt),
     autoBackupUris: usableUriList(raw.autoBackupUris),
     aiCardsDismissed: usableSections(raw.aiCardsDismissed),
+    weeklyReviewDismissed: usableMonday(raw.weeklyReviewDismissed),
   };
 }
 
@@ -596,6 +609,12 @@ function usableSections(value: unknown): AiSection[] | undefined {
   return kept.length > 0 ? kept : undefined;
 }
 
+/** A real `YYYY-MM-DD` that is a Monday, or absent. */
+function usableMonday(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return parseDay(value) != null && weekStart(value) === value ? value : undefined;
+}
+
 /** The rotation list: strings only, and capped so a corrupt blob cannot grow. */
 function usableUriList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -686,6 +705,9 @@ interface SettingsState extends Settings {
 
   /** Hide one section's assistant card for good (U2). */
   dismissAiCard: (section: AiSection) => void;
+
+  /** Close the weekly review until next Monday (X3); `today` picks the week. */
+  dismissWeeklyReview: (today: string) => void;
 
   resetToDefaults: () => void;
   /**
@@ -839,6 +861,9 @@ export const useSettings = create<SettingsState>()(
       dismissAiCard: (section) =>
         set({ aiCardsDismissed: usableSections([...(get().aiCardsDismissed ?? []), section]) }),
 
+      dismissWeeklyReview: (today) =>
+        set({ weeklyReviewDismissed: usableMonday(weekStart(today)) }),
+
       resetToDefaults: () =>
         /*
          * The gyms, the bodyweight log and the granted folder are NOT settings in
@@ -874,6 +899,7 @@ export const useSettings = create<SettingsState>()(
           // A card the user closed is not a duration or a switch; resetting the
           // timers is no reason for it to come back.
           aiCardsDismissed: get().aiCardsDismissed,
+          weeklyReviewDismissed: get().weeklyReviewDismissed,
         }),
 
       importSettings: (raw) =>

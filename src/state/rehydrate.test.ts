@@ -127,6 +127,7 @@ describe('settings written by 2.2.0', () => {
     expect(useSettings.getState().restSecondsBetweenSets).toBe(95);
     expect(useSettings.getState().language).toBe('en');
     expect(useSettings.getState().aiCardsDismissed).toBeUndefined();
+    expect(useSettings.getState().weeklyReviewDismissed).toBeUndefined();
   });
 
   it('read a closed card back after a restart', async () => {
@@ -140,6 +141,19 @@ describe('settings written by 2.2.0', () => {
     await useSettings.persist.rehydrate();
 
     expect(useSettings.getState().aiCardsDismissed).toEqual(['Workout']);
+  });
+
+  it('read a closed weekly review back after a restart', async () => {
+    const { useSettings, DEFAULT_SETTINGS } = await import('./settingsStore');
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    await AsyncStorage.setItem(
+      'settings',
+      JSON.stringify({ version: 1, state: { weeklyReviewDismissed: '2026-10-05' } }),
+    );
+
+    await useSettings.persist.rehydrate();
+
+    expect(useSettings.getState().weeklyReviewDismissed).toBe('2026-10-05');
   });
 });
 

@@ -511,6 +511,19 @@ describe('the closed assistant cards', () => {
     expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
     expect(useSettings.getState().autoTickTasks).toBe(false);
     expect(useSettings.getState().aiCardsDismissed).toBeUndefined();
+    expect(useSettings.getState().weeklyReviewDismissed).toBeUndefined();
+  });
+
+  it('the closed weekly review travels in a backup and comes back', () => {
+    useSettings.getState().dismissWeeklyReview('2026-10-07');
+    const text = exportBackupText();
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    expect(useSettings.getState().weeklyReviewDismissed).toBeUndefined();
+
+    const parsed = parseBackup(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+    expect(useSettings.getState().weeklyReviewDismissed).toBe('2026-10-05');
   });
 });
 

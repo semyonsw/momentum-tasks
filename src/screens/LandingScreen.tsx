@@ -13,7 +13,11 @@
  *   ╭───────────────────────╮
  *   │ ▣  284,600 AMD      › │      Finance, wide, with the balance
  *   ╰───────────────────────╯
- *     (the weekly review and the Wrapped entry go here — T-08, T-10)
+ *   ╭───────────────────────╮
+ *   │ LAST WEEK · 28 SEP  ✕ │      the weekly review (X3): Monday until ✕,
+ *   │ 3      84%     52,300 │      one sentence a log (lib/weeklyReview.ts)
+ *   ╰───────────────────────╯
+ *     (the Wrapped entry goes here — T-10)
  *   ⚙ Settings     Lime · backup today ●●● ›     a 56 dp row
  *
  * The app opens here now. It used to open on the workout section, which made
@@ -48,7 +52,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -58,7 +62,7 @@ import { BubblePressable } from '../components/bubbles';
 import { Lamps, type ToastAction } from '../components/glass';
 import { Icon } from '../components/Icon';
 import { MaterialSymbol, type SymbolName } from '../components/MaterialSymbol';
-import { usePressScale } from '../components/motion';
+import { pressedStyle, usePressScale } from '../components/motion';
 import { FADE_ON, RunningText } from '../components/RunningText';
 import { useLanguage, useT } from '../hooks/useT';
 import { useToday } from '../hooks/useToday';
@@ -73,6 +77,14 @@ import { dayProgress } from '../lib/tasks';
 import { figureFontSize } from '../lib/stepperFont';
 import { themeName } from '../lib/theme';
 import { formatElapsed } from '../lib/units';
+import {
+  describeWeeklyReview,
+  reviewKicker,
+  weeklyReview,
+  weeklyReviewShown,
+  type ReviewColumn,
+} from '../lib/weeklyReview';
+import { useWorkoutHistory } from '../state/workoutHistoryStore';
 import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
 import { useMoneyScale } from '../hooks/useMoneyScale';
@@ -159,6 +171,18 @@ export function LandingScreen({
       spent: totalsIn(own, 'month', today).expenses,
     };
   }, [account, amounts, today]);
+
+  /* X3: last week across the three logs, from Monday until ✕ (lib/weeklyReview). */
+  const workouts = useWorkoutHistory((s) => s.workouts);
+  const reviewDismissed = useSettings((s) => s.weeklyReviewDismissed);
+  const dismissReview = useSettings((s) => s.dismissWeeklyReview);
+  const review = useMemo(
+    () =>
+      weeklyReviewShown(today, reviewDismissed)
+        ? weeklyReview({ today, workouts, tasks, log, amounts, categories })
+        : null,
+    [amounts, categories, log, reviewDismissed, tasks, today, workouts],
+  );
 
   const themeId = useSettings((s) => s.themeId);
   const lastBackupAt = useSettings((s) => s.lastBackupAt);
@@ -376,9 +400,17 @@ export function LandingScreen({
           onPress={(rect) => onOpen('Expenses', rect)}
         />
 
-        {/* The weekly review (T-08) and the Wrapped entry (T-10) take their place
-            HERE, between the logs and Settings: above the fold at 360 × 800 once
-            the tiles are 150 dp, which is what the shorter tiles were for. */}
+        {/* The weekly review and the Wrapped entry (T-10) take their place HERE,
+            between the logs and Settings: above the fold at 360 × 800 once the
+            tiles are 150 dp, which is what the shorter tiles were for. */}
+        {review ? (
+          <WeeklyReviewCard
+            kicker={reviewKicker(review, lang)}
+            columns={describeWeeklyReview(review, { currency, scale }, lang)}
+            dismissLabel={t('Dismiss weekly review')}
+            onDismiss={() => dismissReview(today)}
+          />
+        ) : null}
 
         <SettingsRow
           width={wide}
@@ -389,6 +421,102 @@ export function LandingScreen({
           onPress={(rect) => onOpen('Settings', rect)}
         />
       </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * The weekly review: a kicker with its ✕, then one column per log that had
+ * something last week — a label, the figure, and the sentence under it. Not a
+ * door: it is read here and has nowhere better to go, so the only target on it
+ * is the ✕ (44 dp). Columns share the width equally, so two columns read wider
+ * rather than leaving a hole where the empty log would have been.
+ */
+function WeeklyReviewCard({
+  kicker,
+  columns,
+  dismissLabel,
+  onDismiss,
+}: {
+  kicker: string;
+  columns: ReviewColumn[];
+  dismissLabel: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <View
+      style={{
+        marginTop: 12,
+        borderRadius: radius.sheet,
+        borderWidth: 1,
+        borderColor: glass.raisedEdge,
+        backgroundColor: glass.raised,
+        paddingTop: 14,
+        paddingBottom: 16,
+        paddingLeft: 16,
+        paddingRight: 8,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text
+          maxFontSizeMultiplier={1.3}
+          numberOfLines={1}
+          style={{ flex: 1, fontSize: 12.5, letterSpacing: 1.1, textTransform: 'uppercase' }}
+          className="font-semibold text-ink-faint"
+        >
+          {kicker}
+        </Text>
+        {/* 44 square, pulled into the card's padding (as the design does) so the
+            kicker row stays a line tall; the press area is the whole square. */}
+        <Pressable
+          onPress={onDismiss}
+          accessibilityRole="button"
+          accessibilityLabel={dismissLabel}
+          style={({ pressed }) => [
+            {
+              width: 44,
+              height: 44,
+              marginVertical: -12,
+              alignItems: 'center',
+              justifyContent: 'center',
+            },
+            pressedStyle({ pressed }),
+          ]}
+        >
+          <Icon name="x" size={16} color={palette.inkMuted} />
+        </Pressable>
+      </View>
+      <View style={{ marginTop: 10, flexDirection: 'row', gap: 10, paddingRight: 8 }}>
+        {columns.map((column) => (
+          <View key={column.key} style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 12.5 }} className="text-ink-muted">
+              {column.label}
+            </Text>
+            <Text
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={{
+                fontSize: column.key === 'spent' ? 20 : 26,
+                lineHeight: 32,
+                letterSpacing: column.key === 'spent' ? -0.4 : -0.6,
+              }}
+              className="font-semibold text-ink"
+            >
+              {column.figure}
+            </Text>
+            {column.line !== '' ? (
+              <Text
+                maxFontSizeMultiplier={1.3}
+                style={{ fontSize: 13, lineHeight: 17 }}
+                className="text-ink-muted"
+              >
+                {column.line}
+              </Text>
+            ) : null}
+          </View>
+        ))}
+      </View>
     </View>
   );
 }

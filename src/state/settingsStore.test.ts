@@ -635,3 +635,34 @@ describe('the assistant cards that were closed (U2)', () => {
     expect(currentSettings().aiCardsDismissed).toEqual(['Expenses']);
   });
 });
+
+describe('the weekly review closed this week (X3)', () => {
+  it('is absent by default and on a blob from 2.2.0, which had no such key', () => {
+    expect(DEFAULT_SETTINGS.weeklyReviewDismissed).toBeUndefined();
+    expect(sanitizeSettings({}).weeklyReviewDismissed).toBeUndefined();
+    expect(sanitizeSettings(undefined).weeklyReviewDismissed).toBeUndefined();
+  });
+
+  it('keeps only a real Monday', () => {
+    const keep = (value: unknown) =>
+      sanitizeSettings({ weeklyReviewDismissed: value } as unknown as Partial<Settings>)
+        .weeklyReviewDismissed;
+    expect(keep('2026-10-05')).toBe('2026-10-05');
+    expect(keep('2026-10-06')).toBeUndefined(); // a Tuesday
+    expect(keep('2026-02-30')).toBeUndefined();
+    expect(keep(20261005)).toBeUndefined();
+  });
+
+  it('stamps the Monday of the week it was closed in', () => {
+    useSettings.getState().dismissWeeklyReview('2026-10-08');
+    expect(currentSettings().weeklyReviewDismissed).toBe('2026-10-05');
+    useSettings.getState().dismissWeeklyReview('2027-01-03'); // Sunday, week of 28 Dec
+    expect(currentSettings().weeklyReviewDismissed).toBe('2026-12-28');
+  });
+
+  it('survives Reset settings to defaults', () => {
+    useSettings.getState().dismissWeeklyReview('2026-10-05');
+    useSettings.getState().resetToDefaults();
+    expect(currentSettings().weeklyReviewDismissed).toBe('2026-10-05');
+  });
+});
