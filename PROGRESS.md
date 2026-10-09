@@ -4,6 +4,7 @@ Resume rule: re-read this file, `IMPLEMENTATION_DECISIONS.md` and `ROADMAP.md`, 
 on from the first unchecked task. One version bump at the very end; no APK built here.
 
 Baseline (v2.2.0): tsc clean · 86 files / 1712 tests · eslint 0 errors, 4 warnings.
+Final (v2.3.0): tsc clean · 135 files / 2673 tests · eslint 0 problems.
 
 ## Wave 0 — UX
 - [x] T-U1 Readability pass (U3, U4, U21, U22)
@@ -50,7 +51,7 @@ Baseline (v2.2.0): tsc clean · 86 files / 1712 tests · eslint 0 errors, 4 warn
 - [x] T-28 AI weekly summary
 
 ## Release
-- [ ] Version bump, final gate, push
+- [x] Version bump (2.3.0, versionCode 67), final gate, push — APK to be built on the Windows box
 
 ## Log
 - T-U1: inkFaint #57615C→#7D8882 (tokens, global.css; neutrals now `NEUTRALS` in lib/theme.ts + `contrastRatio`); the #6B766F "between" greys and actions ("Delete this workout", "Remove exercise", "Not this time") moved to inkFaint/inkMuted; 123× allowFontScaling={false}→maxFontSizeMultiplier={1.3} (RunningText gained the prop), false kept only on measured numerals (focus numerals+units, focus clock, timer-pill clock, RollingNumber, day dial, set-row numerals, landing figure, Home stat twin of a RollingNumber); every literal font <12.5 raised to 12.5 (39 sites + stepper/segment floors); focus "undo last set" is an outlined inkMuted chip; glass raised .055 + new `glass.raisedEdge` .06 (GlassCard raised uses it), lit .13/.30, `radius.sheet` 22 (Finish/Debrief sheets), radius header comments rewritten. Tests: contrast (inks + every preset acc on bg/surface/surfaceAlt), global.css↔NEUTRALS sync, type-floor grep, allowFontScaling allow-list. · decisions: tailwind `surface` stays 14 (design keeps set rows/wells at 14); floating `Sheet` SHEET_RADIUS 34 untouched (inset floating pane, not the design's edge sheet); stepper value of 5 chars is 12.5 (was 12), may be tight in its 34 dp slot. · skipped: AiOrb decorative star glyphs (8/11) treated as icons, not text.
