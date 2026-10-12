@@ -700,6 +700,19 @@ export const danger = '#E0735F';
  */
 export const overBudget = danger;
 
+/**
+ * WHICH WAY MONEY WENT, on an amount in the finance history: green in, red out.
+ *
+ * Fixed rather than themed — the accent can be any three colours, and "income
+ * is green" is a convention older than this app that a purple theme should not
+ * overrule. NOT `danger`: an expense is not a destructive action, and the
+ * destructive rule's guard (`lib/destructive.ts`) keeps that hue on confirms.
+ */
+export const moneyTone = {
+  income: '#5FD08C',
+  expense: '#EF6B5E',
+} as const;
+
 /** The danger confirm's washes, from the design: edge .35, outline .40, fill .08. */
 export const dangerTint = {
   edge: 'rgba(224,115,95,0.35)',

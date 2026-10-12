@@ -4,11 +4,13 @@
  *   ┌──────────────────────────────────────────────┐
  *   │ (‹) NEW EXPENSE                              │  ← no Save in this bar
  *   │     💵 Cash · Today, 18 Sep                  │
- *   │ AMOUNT · AMD                                 │
- *   │ 2,400| AMD                                   │  ← 62 dp, glowing once typed
- *   │ (🧊 Food)(🚌 Transport)(🏠 Home)(💊 Health)  │  ← pick the category here
+ *   │╭────────────────────────────────────────────╮│
+ *   ││ AMOUNT · AMD                   (✎ Note)    ││  ← floating glass: stays put
+ *   ││ 2,400| AMD                                 ││    while the fields scroll
+ *   │╰────────────────────────────────────────────╯│    under it (`FloatingHero`)
+ *   │ (🧊  CATEGORY · Food                    ⌄ )  │  ← one button → a list
  *   │ (💵 Cash ▾) (Expense|Income)                 │
- *   │ (‹ Today, 18 Sep ›) (Day|Month) (＋ Note)     │
+ *   │ (‹ Today, 18 Sep ›) (Day|Month)              │
  *   │                            ╭ ✓ Save ╮         │  ← floats over the keypad
  *   │ ┌──────┐┌──────┐┌──────┐                     │
  *   │ │  1   ││  2   ││  3   │                     │
@@ -55,10 +57,10 @@
  *   • It ARRIVES as a push (the shell slides it in); inside it, the fields rise
  *     in at 140 ms and the twelve keys follow 22 ms apart. It used to slide up
  *     like a sheet on its own, which stacked a second entrance on the push.
- *   • THE CATEGORY IS PICKED ON THIS SCREEN — every live category as a 38 dp
- *     chip, the chosen one lit and glowing — instead of behind a chip that opened a second
- *     sheet. It is the one field that changes what an amount is ABOUT, and
- *     correcting it used to cost two taps and a sheet.
+ *   • THE CATEGORY IS ONE BUTTON WITH A ⌄ (`CategorySelect`). It was every
+ *     live category as a chip, which with a dozen of them was a wall that
+ *     pushed the other fields under the keypad; a list in a sheet scrolls, and
+ *     the lit button still states the answer without a tap.
  *   • THE AMOUNT ROLLS as digits land, faint at zero, ink once typed.
  *   • A KEY SINKS to 0.92 and tints c2 under the finger.
  *   • Saving says what was saved on the way out: `Food · 1,200 AMD saved`.
@@ -106,7 +108,7 @@
  * lie every time you open it. See `lib/money.ts`.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from '../components/Pressable';
@@ -175,6 +177,15 @@ const SEGMENT_WIDTH = 80;
 const AMOUNT_EMPTY = '#3A433F';
 /** Key glyphs and the date: between ink and `inkMuted`, as drawn. */
 const INK_SOFT = '#AEB9B3';
+/** The floating hero before it has measured itself: kicker row + amount + air. */
+const HERO_GUESS = 132;
+/** The note box: three lines at rest, about eight before it scrolls. */
+const NOTE_MIN_HEIGHT = 84;
+const NOTE_MAX_HEIGHT = 200;
+/** The floating hero's glass: dark enough to read the amount over a chip, light
+    enough that the chip is SEEN going under it. */
+const HERO_GLASS = 'rgba(14,18,17,0.62)';
+const HERO_EDGE = 'rgba(236,241,238,0.11)';
 /** Save waking: the 420 ms overshoot. */
 const WAKE_SPRING = [0.34, 1.56, 0.64, 1] as const;
 /** The direction thumb: 360 ms, a slight overshoot. */
@@ -331,7 +342,11 @@ export function AmountEditorScreen({
   const [note, setNote] = useState(amount?.note ?? '');
   const [deleting, setDeleting] = useState(false);
   /** Which picker is open. Closed is the normal state of all three. */
-  const [picking, setPicking] = useState<'account' | 'from' | 'to' | 'note' | null>(null);
+  const [picking, setPicking] = useState<'account' | 'category' | 'from' | 'to' | 'note' | null>(
+    null,
+  );
+  /** The floating hero's measured height — the fields' top padding. */
+  const [heroHeight, setHeroHeight] = useState(HERO_GUESS);
   /** Said out loud when `Save` is pressed with nothing typed. */
   const [complaint, setComplaint] = useState(false);
 
@@ -482,179 +497,178 @@ export function AmountEditorScreen({
         bordered={false}
       />
 
-      <ScrollView
-        className="flex-1"
-        /* Room to scroll the last chips out from under the floating Save. */
-        contentContainerStyle={{ paddingBottom: 96 }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Stagger delay={140} duration={560} rise={14}>
-          {/* THE ONE HERO. Faint at zero, ink with a c2 glow the moment there is
-              something to read, and a caret that blinks at 1 s so the number
-              reads as the thing being typed into. */}
-          <View className="px-lg pt-[16px]">
+      {/* THE FIELDS, scrolling UNDER the floating hero — see `FloatingHero`. */}
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          className="flex-1"
+          /* The hero's own height on top, so the first field starts below the
+             glass at rest; room at the foot to scroll the last chips out from
+             under the floating Save. */
+          contentContainerStyle={{ paddingTop: heroHeight + 14, paddingBottom: 96 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Stagger delay={140} duration={560} rise={14}>
+            {transfer ? (
+              <TransferFields
+                from={chosenFrom}
+                to={chosenTo}
+                whenLabel={whenLabel}
+                onPickFrom={() => {
+                  tap();
+                  setPicking('from');
+                }}
+                onPickTo={() => {
+                  tap();
+                  setPicking('to');
+                }}
+                onSwap={() => {
+                  tap();
+                  setFromAccount(toAccount);
+                  setToAccount(fromAccount);
+                }}
+                onEarlier={() => setDay(shiftDay(day, -1))}
+                onLater={() => setDay(shiftDay(day, 1))}
+              />
+            ) : (
+              <>
+                {/* THE CATEGORY: one button that states the answer and opens the
+                    list. See `CategorySelect`. */}
+                {live.length > 0 ? (
+                  <CategorySelect
+                    glyph={chosen?.glyph ?? '•'}
+                    name={chosen?.name ?? t('Choose a category')}
+                    onPress={() => {
+                      tap();
+                      setPicking('category');
+                    }}
+                  />
+                ) : (
+                  <Text className="mx-lg mt-sm text-label text-ink-faint">
+                    {direction === 'expense'
+                      ? t('No expense categories yet. Add one on the Expenses tab.')
+                      : t('No income categories yet. Add one on the Incomes tab.')}
+                  </Text>
+                )}
+
+                {/* THE OTHER ANSWERED FIELDS, as one wrapping row. */}
+                <View
+                  className="flex-row flex-wrap items-center px-lg"
+                  style={{ gap: 8, marginTop: 12 }}
+                >
+                  <Chip
+                    label={chosenAccount ? `${chosenAccount.glyph} ${chosenAccount.name}` : '—'}
+                    chevron
+                    onPress={() => {
+                      tap();
+                      setPicking('account');
+                    }}
+                    accessibilityLabel={t('Subsection')}
+                  />
+                  <DirectionSwitch
+                    value={direction}
+                    onChange={changeDirection}
+                    expenseLabel={t('Expense')}
+                    incomeLabel={t('Income')}
+                    accessibilityLabel={t('Money out, or money in')}
+                  />
+                  <StepperChip
+                    label={whenLabel}
+                    onEarlier={() => stepWhen(-1)}
+                    onLater={() => stepWhen(1)}
+                  />
+                  <MiniSegmented
+                    options={[
+                      { value: 'day' as const, label: t('A day') },
+                      { value: 'month' as const, label: t('Whole month') },
+                    ]}
+                    value={span}
+                    onChange={setSpan}
+                    accessibilityLabel={t('A single day, or a whole month')}
+                  />
+                </View>
+
+                {span === 'month' ? (
+                  <Text className="mx-lg mt-sm text-label text-ink-faint">
+                    {t(
+                      'A whole month counts towards the month, the year and the balance, and towards no single day.',
+                    )}
+                  </Text>
+                ) : null}
+              </>
+            )}
+
+            {/* The one destructive rule (U19): muted, at the foot, and it asks. */}
+            {amount ? (
+              <DangerFootAction
+                label={transfer ? t('Delete this transfer') : t('Delete this amount')}
+                onPress={() => setDeleting(true)}
+                className="mx-md mt-xl"
+              />
+            ) : null}
+          </Stagger>
+        </ScrollView>
+
+        {/* THE ONE HERO, and the note, FLOATING: pinned to the top of the fields
+            on a pane of glass, with everything below scrolling under it. */}
+        <FloatingHero onHeight={setHeroHeight}>
+          <View className="flex-row items-center" style={{ minHeight: 34 }}>
             <Text
               maxFontSizeMultiplier={1.3}
               style={{ fontSize: 12.5, lineHeight: 16, letterSpacing: 1.1 }}
-              className="font-semibold uppercase text-acc"
+              className="flex-1 font-semibold uppercase text-acc"
             >
               {`${t('Amount')} · ${currency}`}
             </Text>
-            <View style={{ marginTop: 4, height: 70 }} className="flex-row items-end">
-              {/* It ROLLS as digits land — the number is seen growing. */}
-              <RollingNumber
-                value={formatEntry(digits)}
-                lineHeight={focalType.amount.lineHeight}
-                duration={350}
-                accessibilityLabel={`${t('Amount in {currency}', { currency })}: ${formatValue(value, scale)}`}
-                style={[
-                  {
-                    fontSize: focalType.amount.fontSize,
-                    letterSpacing: focalType.amount.letterSpacing,
-                    color: digits === '' ? AMOUNT_EMPTY : palette.ink,
-                  },
-                ]}
-                className="font-semibold"
+            {transfer ? null : (
+              <NoteButton
+                note={note}
+                onPress={() => {
+                  tap();
+                  setPicking('note');
+                }}
               />
-              <Caret />
-              <Text
-                maxFontSizeMultiplier={1.3}
-                style={{ fontSize: 22, lineHeight: 26, marginBottom: 10 }}
-                className="ml-sm font-semibold text-ink-muted"
-              >
-                {currency}
-              </Text>
-            </View>
-            {complaint ? (
-              <Text className="mt-xs text-label font-medium text-green-bright">
-                {value > 0
-                  ? transfer
-                    ? t('Pick two different subsections')
-                    : t('Pick a category first')
-                  : t('Type an amount first')}
-              </Text>
-            ) : null}
+            )}
           </View>
-
-          {transfer ? (
-            <TransferFields
-              from={chosenFrom}
-              to={chosenTo}
-              whenLabel={whenLabel}
-              onPickFrom={() => {
-                tap();
-                setPicking('from');
-              }}
-              onPickTo={() => {
-                tap();
-                setPicking('to');
-              }}
-              onSwap={() => {
-                tap();
-                setFromAccount(toAccount);
-                setToAccount(fromAccount);
-              }}
-              onEarlier={() => setDay(shiftDay(day, -1))}
-              onLater={() => setDay(shiftDay(day, 1))}
+          {/* Faint at zero, ink the moment there is something to read, and a
+              caret that blinks at 1 s so the number reads as the thing being
+              typed into. */}
+          <View style={{ marginTop: 2, height: 70 }} className="flex-row items-end">
+            {/* It ROLLS as digits land — the number is seen growing. */}
+            <RollingNumber
+              value={formatEntry(digits)}
+              lineHeight={focalType.amount.lineHeight}
+              duration={350}
+              accessibilityLabel={`${t('Amount in {currency}', { currency })}: ${formatValue(value, scale)}`}
+              style={[
+                {
+                  fontSize: focalType.amount.fontSize,
+                  letterSpacing: focalType.amount.letterSpacing,
+                  color: digits === '' ? AMOUNT_EMPTY : palette.ink,
+                },
+              ]}
+              className="font-semibold"
             />
-          ) : (
-            <>
-              {/* THE CATEGORY, picked right here: every live one as a chip, the
-              chosen one lit and glowing. See the file header. */}
-              <View
-                accessibilityRole="radiogroup"
-                accessibilityLabel={t('Category')}
-                className="flex-row flex-wrap px-lg"
-                style={{ gap: 8, marginTop: 14 }}
-              >
-                {live.map((option) => (
-                  <CategoryChip
-                    key={option.id}
-                    glyph={option.glyph}
-                    name={option.name}
-                    selected={option.id === category}
-                    onPress={() => {
-                      tap();
-                      setComplaint(false);
-                      setCategory(option.id);
-                    }}
-                  />
-                ))}
-              </View>
-              {live.length === 0 ? (
-                <Text className="mx-lg mt-sm text-label text-ink-faint">
-                  {direction === 'expense'
-                    ? t('No expense categories yet. Add one on the Expenses tab.')
-                    : t('No income categories yet. Add one on the Incomes tab.')}
-                </Text>
-              ) : null}
-
-              {/* THE OTHER ANSWERED FIELDS, as one wrapping row. */}
-              <View
-                className="flex-row flex-wrap items-center px-lg"
-                style={{ gap: 8, marginTop: 12 }}
-              >
-                <Chip
-                  label={chosenAccount ? `${chosenAccount.glyph} ${chosenAccount.name}` : '—'}
-                  chevron
-                  onPress={() => {
-                    tap();
-                    setPicking('account');
-                  }}
-                  accessibilityLabel={t('Subsection')}
-                />
-                <DirectionSwitch
-                  value={direction}
-                  onChange={changeDirection}
-                  expenseLabel={t('Expense')}
-                  incomeLabel={t('Income')}
-                  accessibilityLabel={t('Money out, or money in')}
-                />
-                <StepperChip
-                  label={whenLabel}
-                  onEarlier={() => stepWhen(-1)}
-                  onLater={() => stepWhen(1)}
-                />
-                <MiniSegmented
-                  options={[
-                    { value: 'day' as const, label: t('A day') },
-                    { value: 'month' as const, label: t('Whole month') },
-                  ]}
-                  value={span}
-                  onChange={setSpan}
-                  accessibilityLabel={t('A single day, or a whole month')}
-                />
-                <Chip
-                  label={note.trim() === '' ? t('Note') : note.trim()}
-                  onPress={() => {
-                    tap();
-                    setPicking('note');
-                  }}
-                  accessibilityLabel={t('Note')}
-                />
-              </View>
-
-              {span === 'month' ? (
-                <Text className="mx-lg mt-sm text-label text-ink-faint">
-                  {t(
-                    'A whole month counts towards the month, the year and the balance, and towards no single day.',
-                  )}
-                </Text>
-              ) : null}
-            </>
-          )}
-
-          {/* The one destructive rule (U19): muted, at the foot, and it asks. */}
-          {amount ? (
-            <DangerFootAction
-              label={transfer ? t('Delete this transfer') : t('Delete this amount')}
-              onPress={() => setDeleting(true)}
-              className="mx-md mt-xl"
-            />
+            <Caret />
+            <Text
+              maxFontSizeMultiplier={1.3}
+              style={{ fontSize: 22, lineHeight: 26, marginBottom: 10 }}
+              className="ml-sm font-semibold text-ink-muted"
+            >
+              {currency}
+            </Text>
+          </View>
+          {complaint ? (
+            <Text className="mt-xs text-label font-medium text-green-bright">
+              {value > 0
+                ? transfer
+                  ? t('Pick two different subsections')
+                  : t('Pick a category first')
+                : t('Type an amount first')}
+            </Text>
           ) : null}
-        </Stagger>
-      </ScrollView>
+        </FloatingHero>
+      </View>
 
       {/* THE KEYPAD. Twelve keys the app owns, at a size the app chose, rising in
           22 ms apart after the fields have landed. */}
@@ -732,9 +746,36 @@ export function AmountEditorScreen({
         </Sheet>
       ) : null}
 
+      {picking === 'category' ? (
+        <Sheet title={t('Category')} onDismiss={() => setPicking(null)}>
+          <View className="overflow-hidden rounded-surface bg-surface-alt">
+            {live.map((option, index) => (
+              <View key={option.id}>
+                {index > 0 ? <Separator inset={16} /> : null}
+                <PickRow
+                  glyph={option.glyph}
+                  name={option.name}
+                  selected={option.id === category}
+                  onPress={() => {
+                    tap();
+                    setComplaint(false);
+                    setCategory(option.id);
+                    setPicking(null);
+                  }}
+                />
+              </View>
+            ))}
+          </View>
+          <TextButton label={t('Cancel')} onPress={() => setPicking(null)} />
+        </Sheet>
+      ) : null}
+
+      {/* MULTILINE: Return is a new line, not "done" — a note can be a list of
+          what was in the bag. The box grows with the text up to ~8 lines and
+          scrolls past that; `Done` is the way out. */}
       {picking === 'note' ? (
         <Sheet title={t('Note')} onDismiss={() => setPicking(null)}>
-          <View className="h-row flex-row items-center rounded-surface border border-hairline bg-surface-alt px-lg">
+          <View className="rounded-surface border border-hairline bg-surface-alt px-lg py-md">
             <TextInput
               value={note}
               onChangeText={setNote}
@@ -744,9 +785,11 @@ export function AmountEditorScreen({
               selectionColor={palette.greenBright}
               accessibilityLabel={t('Note')}
               autoFocus
-              returnKeyType="done"
-              onSubmitEditing={() => setPicking(null)}
-              className="flex-1 text-body text-ink"
+              multiline
+              scrollEnabled
+              textAlignVertical="top"
+              style={{ minHeight: NOTE_MIN_HEIGHT, maxHeight: NOTE_MAX_HEIGHT, padding: 0 }}
+              className="text-body text-ink"
             />
           </View>
           <TextButton label={t('Done')} tone="green" onPress={() => setPicking(null)} />
@@ -981,53 +1024,174 @@ function Key({
 }
 
 /**
- * One category, as a 38 dp chip on the keypad: the glyph and the name. The one
- * this amount is in is LIT — c2 15 % fill, 36 % border, a glow, the name in acc
- * — rather than filled, so a light theme's c2 never has to carry ink.
+ * THE HERO, FLOATING — the amount and the note on one pane of glass pinned to
+ * the top of the fields, with the category, the subsection, the day and the
+ * rest scrolling UNDER it.
+ *
+ * The amount is what this screen is for and the note is the one field typed
+ * rather than picked, so both stay in reach while the chips below are scrolled
+ * to find the day switch. Absolutely positioned over the `ScrollView` rather
+ * than above it in the flow, because a pane that content moves under is the
+ * whole of the "glass" — a docked strip would look the same at rest and read as
+ * chrome. It measures itself so the fields' top padding is its real height (the
+ * complaint line makes it taller), never a guess.
+ *
+ * No blur (2.1.0 took them all out, see `glass.tsx`): a translucent fill, a
+ * diagonal sheen and the lit top edge are what make it read as liquid glass,
+ * and they cost nothing while the list scrolls.
  */
-function CategoryChip({
+function FloatingHero({
+  onHeight,
+  children,
+}: {
+  onHeight: (height: number) => void;
+  children: ReactNode;
+}) {
+  return (
+    <View
+      onLayout={(event) => onHeight(Math.round(event.nativeEvent.layout.height))}
+      style={{
+        position: 'absolute',
+        top: 6,
+        left: 12,
+        right: 12,
+        borderRadius: radius.hero,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: HERO_EDGE,
+        backgroundColor: HERO_GLASS,
+      }}
+    >
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(236,241,238,0.11)', 'rgba(236,241,238,0.02)', 'rgba(236,241,238,0.06)']}
+        locations={[0, 0.55, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      <SpecularEdge color={specularHeavy} radius={radius.hero} />
+      <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 }}>{children}</View>
+    </View>
+  );
+}
+
+/**
+ * ✎ Note, in the hero's corner. Empty it says `Note`; written, it shows the
+ * note's first line and is LIT, so a glance says the amount is explained.
+ */
+function NoteButton({ note, onPress }: { note: string; onPress: () => void }) {
+  const t = useT();
+  const text = note.trim();
+  const written = text !== '';
+  return (
+    <BubblePressable
+      onPress={onPress}
+      radius="pill"
+      accessibilityRole="button"
+      accessibilityLabel={written ? `${t('Edit the note')}: ${text}` : t('Add a note')}
+      style={(state) => [
+        pressedStyle(state),
+        {
+          height: 34,
+          maxWidth: 190,
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          borderRadius: radius.pill,
+          overflow: 'hidden',
+          borderWidth: 1,
+          borderColor: written ? tint(0.36) : 'rgba(236,241,238,0.10)',
+          backgroundColor: written ? tint(0.15) : 'rgba(236,241,238,0.07)',
+        },
+      ]}
+    >
+      <Icon name="edit" size={14} color={written ? palette.acc : palette.inkMuted} />
+      <Text
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 14, marginLeft: 6, flexShrink: 1 }}
+        className={written ? 'font-semibold text-acc' : 'font-medium text-ink'}
+      >
+        {written ? text.split('\n')[0] : t('Note')}
+      </Text>
+    </BubblePressable>
+  );
+}
+
+/**
+ * THE CATEGORY — one wide button, not a wall of chips.
+ *
+ * Every live category as a chip was fast with four of them and a wrapping wall
+ * with twelve, pushing the rest of the fields under the keypad. So it is ONE
+ * button stating the answer (glyph, kicker, name) with a round ⌄ at its right
+ * edge — the shape every phone already uses for "tap to pick from a list" — and
+ * the list itself is a sheet that scrolls. LIT like a selected chip, because the
+ * category is still the one field that changes what the amount is ABOUT.
+ */
+function CategorySelect({
   glyph,
   name,
-  selected,
   onPress,
 }: {
   glyph: string;
   name: string;
-  selected: boolean;
   onPress: () => void;
 }) {
-  const press = usePressScale(0.92);
+  const t = useT();
+  const press = usePressScale(0.97);
   return (
-    <Animated.View style={{ transform: press.style.transform }}>
+    <Animated.View className="px-lg" style={{ transform: press.style.transform }}>
       <Pressable
         onPress={onPress}
         onPressIn={press.onPressIn}
         onPressOut={press.onPressOut}
-        accessibilityRole="radio"
-        accessibilityState={{ selected }}
-        accessibilityLabel={name}
+        accessibilityRole="button"
+        accessibilityLabel={`${t('Category')}: ${name}. ${t('Tap to change the category')}`}
         style={{
-          height: 38,
-          paddingHorizontal: 14,
+          height: 58,
           flexDirection: 'row',
           alignItems: 'center',
+          paddingLeft: 14,
+          paddingRight: 8,
           borderRadius: radius.pill,
           borderWidth: 1,
-          borderColor: selected ? tint(0.36) : 'transparent',
-          backgroundColor: selected ? tint(0.15) : 'rgba(236,241,238,0.035)',
+          borderColor: tint(0.36),
+          backgroundColor: tint(0.12),
         }}
       >
-        <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 14.5 }}>
+        <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 22 }}>
           {glyph}
         </Text>
-        <Text
-          maxFontSizeMultiplier={1.3}
-          numberOfLines={1}
-          style={{ fontSize: 14.5, marginLeft: 6, maxWidth: 160 }}
-          className={selected ? 'font-semibold text-acc' : 'font-medium text-ink-muted'}
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 12.5, letterSpacing: 1 }}
+            className="font-semibold uppercase text-ink-muted"
+          >
+            {t('Category')}
+          </Text>
+          <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 16 }}
+            className="font-semibold text-acc"
+          >
+            {name}
+          </Text>
+        </View>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: radius.pill,
+            backgroundColor: tint(0.2),
+          }}
         >
-          {name}
-        </Text>
+          <Icon name="chevron-down" size={18} color={palette.acc} />
+        </View>
       </Pressable>
     </Animated.View>
   );

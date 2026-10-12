@@ -112,7 +112,8 @@ import {
   type MoneyCategory,
 } from '../lib/money';
 import { useMoney } from '../state/moneyStore';
-import { palette } from '../theme/tokens';
+import { moneyTone, palette } from '../theme/tokens';
+import { noteFolds } from '../lib/noteFold';
 import { useSettings } from '../state/settingsStore';
 import { useMoneyScale } from '../hooks/useMoneyScale';
 import { useLanguage, useT, type Translate } from '../hooks/useT';
@@ -494,9 +495,16 @@ function bucketNoun(range: TrendRange, count: number, lang: Language): string {
  * Tuesday meant opening eight categories and reassembling it by hand.
  *
  * So the note is a LINE OF ITS OWN and not a tail on the meta line: it is a
- * sentence a person wrote, it is the longest thing in the row, and truncating it
- * to fit beside a date would hide exactly the half that says why. Two lines of it,
- * then an ellipsis — the editor is one tap away and holds the rest.
+ * sentence a person wrote, and truncating it to fit beside a date would hide
+ * exactly the half that says why. ONE line of it while folded, because the note
+ * field takes line breaks now and a ten-line list would turn one row into a
+ * screen; a note that one line cannot hold (`lib/noteFold.ts`) wears a ⌄ that
+ * unfolds the whole of it IN PLACE. In place, not in the editor: reading what
+ * the 2,600 was is not the same intent as correcting it, and the row's own tap
+ * still opens the editor.
+ *
+ * The amount is GREEN in and RED out (`moneyTone`), with the `+` kept on an
+ * income so the direction survives a colour-blind reading.
  *
  * A row with no note says `no note` in `ink-faint` rather than collapsing. An
  * amount nobody explained is a fact about that amount, and a list whose rows
@@ -517,13 +525,16 @@ function DayRow({
 }) {
   const t = useT();
   const scale = useMoneyScale();
+  const [open, setOpen] = useState(false);
   const note = amount.note.trim();
+  const folds = noteFolds(note);
   const name = category?.name ?? t('Archived');
+  const income = amount.direction === 'income';
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${name}. ${formatMoney(amount.value, currency, scale)}. ${note === '' ? t('no note') : note}`}
+      accessibilityLabel={`${name}. ${income ? t('Income') : t('Expense')} ${formatMoney(amount.value, currency, scale)}. ${note === '' ? t('no note') : note}`}
       style={pressedStyle}
       className="justify-center px-lg py-md"
     >
@@ -532,18 +543,41 @@ function DayRow({
         <Text numberOfLines={1} className="flex-1 text-body text-ink">
           {name}
         </Text>
-        <Text className="ml-md text-body tabular-nums text-ink">
-          {amount.direction === 'income' ? '+' : ''}
+        <Text
+          className="ml-md text-body font-semibold tabular-nums"
+          style={{ color: income ? moneyTone.income : moneyTone.expense }}
+        >
+          {income ? '+' : '−'}
           {formatMoney(amount.value, currency, scale)}
         </Text>
         <Icon name="chevron-right" size={16} color={palette.inkFaint} />
       </View>
-      <Text
-        numberOfLines={2}
-        className={`ml-[22px] mt-[2px] text-label ${note === '' ? 'text-ink-faint' : 'text-ink-muted'}`}
-      >
-        {note === '' ? t('no note') : note}
-      </Text>
+      <View className="ml-[22px] mt-[2px] flex-row items-start">
+        <Text
+          numberOfLines={open ? undefined : 1}
+          className={`flex-1 text-label ${note === '' ? 'text-ink-faint' : 'text-ink-muted'}`}
+        >
+          {note === '' ? t('no note') : note}
+        </Text>
+        {folds ? (
+          <Pressable
+            onPress={() => {
+              tap();
+              setOpen((was) => !was);
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open }}
+            accessibilityLabel={open ? t('Show less of the note') : t('Show the whole note')}
+            style={pressedStyle}
+            className="ml-sm h-[24px] w-[32px] items-center justify-center rounded-pill bg-surface-alt"
+          >
+            <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
+              <Icon name="chevron-down" size={14} color={palette.inkMuted} />
+            </View>
+          </Pressable>
+        ) : null}
+      </View>
     </Pressable>
   );
 }
