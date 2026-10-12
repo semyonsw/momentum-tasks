@@ -378,7 +378,14 @@ export function Sheet({ title, onDismiss, guard, children }: SheetProps) {
         <SheetTitle>{title}</SheetTitle>
       </View>
       {/* Capped, so a long list scrolls rather than growing past the screen. */}
-      <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
+      {/* `handled`: a tap on `Done` under an open keyboard lands first time,
+          rather than only dismissing the keyboard — the note box is multiline,
+          so `Done` is its only way out. */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={{ maxHeight: 480 }}
+        keyboardShouldPersistTaps="handled"
+      >
         {children}
       </ScrollView>
     </SheetFrame>

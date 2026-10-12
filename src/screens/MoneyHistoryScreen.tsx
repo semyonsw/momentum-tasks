@@ -504,7 +504,8 @@ function bucketNoun(range: TrendRange, count: number, lang: Language): string {
  * still opens the editor.
  *
  * The amount is GREEN in and RED out (`moneyTone`), with the `+` kept on an
- * income so the direction survives a colour-blind reading.
+ * income so the direction survives a colour-blind reading. A transfer's two
+ * halves stay ink: moving money between pockets is neither.
  *
  * A row with no note says `no note` in `ink-faint` rather than collapsing. An
  * amount nobody explained is a fact about that amount, and a list whose rows
@@ -530,6 +531,9 @@ function DayRow({
   const folds = noteFolds(note);
   const name = category?.name ?? t('Archived');
   const income = amount.direction === 'income';
+  /* A transfer's half is money moved between your own pockets, not earned or
+     spent, so it stays ink rather than wearing the green or the red. */
+  const moved = amount.transferId !== undefined;
   return (
     <Pressable
       onPress={onPress}
@@ -545,7 +549,7 @@ function DayRow({
         </Text>
         <Text
           className="ml-md text-body font-semibold tabular-nums"
-          style={{ color: income ? moneyTone.income : moneyTone.expense }}
+          style={{ color: moved ? palette.ink : income ? moneyTone.income : moneyTone.expense }}
         >
           {income ? '+' : '−'}
           {formatMoney(amount.value, currency, scale)}

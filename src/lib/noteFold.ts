@@ -16,8 +16,13 @@
  * Pure, so the rule is a test rather than a screenshot.
  */
 
-/** Roughly one line of `text-label` in a day row, on a 360 dp phone. */
-export const FOLD_AT = 40;
+/**
+ * Comfortably LESS than one line of `text-label` in a day row: erring short
+ * costs an arrow on a note that would just have fitted, erring long hides the
+ * end of a note behind an ellipsis with no way to read it — at a larger font
+ * scale, in Cyrillic, or on a narrow phone.
+ */
+export const FOLD_AT = 28;
 
 export function noteFolds(note: string): boolean {
   const text = note.trim();
