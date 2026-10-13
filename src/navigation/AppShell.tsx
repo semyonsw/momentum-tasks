@@ -108,7 +108,7 @@ import { TasksHistoryScreen } from '../screens/TasksHistoryScreen';
 import { AiChatScreen } from '../screens/AiChatScreen';
 import { AiReviewScreen } from '../screens/AiReviewScreen';
 import { AiSettingsScreen } from '../screens/AiSettingsScreen';
-import { applySequence, applyProposal, discardProposal } from '../state/aiActions';
+import { applyChanges, applySequence, applyProposal, discardProposal } from '../state/aiActions';
 import { useAi } from '../state/aiStore';
 import { useDebriefs } from '../state/debriefStore';
 import type { AiSection } from '../lib/ai/aiSchema';
@@ -1261,6 +1261,10 @@ export function AppShell() {
             onAccept={acceptProposal}
             onApplySequence={(messageId) => {
               const applied = applySequence(route.section, messageId);
+              if (applied) setToast(applied.message, { label: t('Undo'), onPress: applied.undo });
+            }}
+            onApplyChanges={(messageId) => {
+              const applied = applyChanges(route.section, messageId);
               if (applied) setToast(applied.message, { label: t('Undo'), onPress: applied.undo });
             }}
             onToast={setToast}

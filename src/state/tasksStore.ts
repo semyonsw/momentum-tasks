@@ -295,6 +295,12 @@ interface TasksState extends TasksValue {
   ) => void;
   archiveTask: (id: ID) => void;
   /**
+   * Put the task LIST back as it was — the Undo of an applied AI suggestion,
+   * which may have renamed, rescheduled, archived or added tasks. Marks and notes
+   * are not touched: whatever was ticked in the seconds between stays ticked.
+   */
+  restoreTaskList: (tasks: readonly Task[]) => void;
+  /**
    * Put `movedId` at `toIndex` within the rows the DAY SCREEN is showing.
    *
    * `visibleIds` rather than a bare index because the day screen shows a subset —
@@ -378,7 +384,13 @@ export const useTasks = create<TasksState>()(
       addTask: (spec) => {
         const trimmed = spec.name.trim();
         if (trimmed === '') return null;
-        const id = `task_${Date.now().toString(36)}`;
+        /* Unique against the list, not just the clock: an applied AI card adds
+           two tasks in the same millisecond, and a shared id made them one task
+           to every rename, mark and archive. */
+        const stamp = `task_${Date.now().toString(36)}`;
+        const taken = new Set(get().tasks.map((task) => task.id));
+        let id = stamp;
+        for (let n = 2; taken.has(id); n += 1) id = `${stamp}_${n}`;
         const today = dayKey(new Date());
         /*
          * A one-day task starts on its own day, whatever was passed.
@@ -446,6 +458,8 @@ export const useTasks = create<TasksState>()(
             task.id === id ? { ...task, archivedAt: new Date().toISOString() } : task,
           ),
         })),
+
+      restoreTaskList: (tasks) => set({ tasks: [...tasks] }),
 
       reorderTasks: (visibleIds, movedId, toIndex) =>
         set((state) => {

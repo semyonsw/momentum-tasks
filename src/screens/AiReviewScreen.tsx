@@ -40,7 +40,7 @@ import { Kicker } from '../components/primitives';
 import { NumberSheet } from '../components/NumberSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
-import { formatRow } from '../components/AiProposalCard';
+import { formatReps, formatRow, movedOnly } from '../components/AiProposalCard';
 import { useT } from '../hooks/useT';
 import { nextStartWeights } from '../lib/ai/aiContext';
 import {
@@ -257,6 +257,8 @@ function RowCard({
   const kg = t('kg');
   const bw = t('BW');
   const removed = state === 'removed';
+  // Moved and nothing else: its `was` would repeat its own numbers — `movedOnly`.
+  const moved = movedOnly(row);
   const tag =
     row.exerciseId == null
       ? t('new to library')
@@ -264,7 +266,9 @@ function RowCard({
         ? null
         : state === 'same'
           ? null
-          : t(state);
+          : moved
+            ? t('moved')
+            : t(state);
 
   return (
     <GlassSurface
@@ -289,9 +293,9 @@ function RowCard({
             >
               {row.name}
             </Text>
-            {row.was && (state === 'changed' || removed) ? (
+            {row.was && ((state === 'changed' && !moved) || removed) ? (
               <Text className="mt-[2px] text-[12.5px] tabular-nums text-ink-faint">
-                {t('was {value}', { value: formatRow(row.was, kg, bw) })}
+                {t('was {value}', { value: formatRow(row.was, kg, bw, t('superset')) })}
               </Text>
             ) : null}
           </View>
@@ -367,8 +371,11 @@ function RowCard({
             />
             <Stepper
               label={t('Reps')}
-              value={String(row.reps)}
-              differs={row.was != null && row.reps !== row.was.reps}
+              value={formatReps(row)}
+              differs={
+                row.was != null &&
+                (row.reps !== row.was.reps || (row.repsMin ?? null) !== (row.was.repsMin ?? null))
+              }
               locked={row.repsLocked}
               onStep={(d) => onStep('reps', d)}
               onType={() => onType('reps')}

@@ -1,6 +1,6 @@
 {
   "name": "momentum-app",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "main": "expo/AppEntry.js",
   "private": true,
   "scripts": {

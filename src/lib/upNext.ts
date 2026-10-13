@@ -45,7 +45,7 @@
  */
 
 import type { DraftSession } from './draft';
-import { nextInSupersetRound } from './superset';
+import { nextInSupersetRound, nextSupersetRound } from './superset';
 import type { ID } from '../types/models';
 
 export interface UpNext {
@@ -140,6 +140,10 @@ export function upNextSet(session: DraftSession | null): UpNext | null {
   if (lastDone !== -1) {
     const partner = nextInSupersetRound(session, flat[lastDone].entryId);
     if (partner) return partner;
+    // ...and a round just closed starts the next one at its first member, not
+    // at the next row down. See `nextSupersetRound`.
+    const nextRound = nextSupersetRound(session, flat[lastDone].entryId);
+    if (nextRound) return nextRound;
   }
 
   /* Forward from the last ✓, then round again for anything skipped above it. */

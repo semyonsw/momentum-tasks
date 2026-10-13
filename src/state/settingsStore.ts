@@ -781,6 +781,11 @@ interface SettingsState extends Settings {
   removeMeasurement: (key: MeasurementKey, day: string) => void;
   /** One ± step of the weekly goal, clamped to 1–7. */
   stepWeeklyWorkoutGoal: (delta: number) => void;
+  /**
+   * The goal set outright — an applied AI suggestion, and its Undo. `undefined`
+   * is "never set", which is what an Undo of the first goal must restore.
+   */
+  setWeeklyWorkoutGoal: (goal: number | undefined) => void;
   /** Excuse, or stop excusing, the week `day` is in. Weeks ahead are refused. */
   setWeekExcused: (day: string, excused: boolean, today: string) => void;
 
@@ -960,6 +965,7 @@ export const useSettings = create<SettingsState>()(
         }),
       stepWeeklyWorkoutGoal: (delta) =>
         set({ weeklyWorkoutGoal: stepWeeklyGoal(get().weeklyWorkoutGoal, delta) }),
+      setWeeklyWorkoutGoal: (goal) => set({ weeklyWorkoutGoal: usableWeeklyGoal(goal) }),
 
       setWeekExcused: (day, excused, today) =>
         set({ excusedWeeks: setWeekExcused(get().excusedWeeks, day, excused, today) }),

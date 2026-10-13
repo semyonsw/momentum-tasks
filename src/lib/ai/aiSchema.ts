@@ -86,6 +86,16 @@ export interface ProposedExercise {
   change?: ProposalChange;
   /** Where a NEW exercise files in the library tree. See the file header. */
   muscle?: MuscleGroup;
+  /**
+   * The bottom of a rep range — `8` of `8–10`, with `reps` the top. Absent = one
+   * number, which is what most routines hold.
+   */
+  repsMin?: number;
+  /**
+   * Done as a superset WITH THE EXERCISE ABOVE IT — the editor's one control.
+   * Absent = as it is now; `false` splits it off.
+   */
+  superset?: boolean;
 }
 
 export interface RoutineProposal {
@@ -120,7 +130,19 @@ export interface SequenceBlock {
   sequence: SequenceProposal;
 }
 
-export type AiBlock = TextBlock | SummaryBlock | ProposalBlock | SequenceBlock;
+/**
+ * A SETTINGS CHANGE: the numbers and switches the user can set by hand outside a
+ * routine's rows — an exercise's rest, ladder, cue; the app's rest and weekly
+ * goal; a task's schedule; a category's budget. `lib/ai/aiChanges.ts` owns what
+ * each one means, how it is checked, and how it is applied (on a tap, with Undo).
+ * The block carries them raw; the validator here only keeps the shape.
+ */
+export interface ChangesBlock {
+  type: 'changes_proposal';
+  changes: { items: Record<string, unknown>[]; why: string };
+}
+
+export type AiBlock = TextBlock | SummaryBlock | ProposalBlock | SequenceBlock | ChangesBlock;
 
 /* ------------------------------------------------------------------ */
 /* The limits                                                          */
@@ -146,6 +168,8 @@ export const LIMITS = {
   why: 400,
   /** Steps in a suggested loop. Twelve is a quarter of training; 24 is room. */
   sequence: 24,
+  /** Settings in one change card — enough for "every exercise of Push", short of a wall. */
+  changes: 12,
 } as const;
 
 /** Every number that can reach the library, and the range it is held to. */
@@ -178,7 +202,7 @@ export const responseSchema = {
         properties: {
           type: {
             type: 'string',
-            enum: ['text', 'summary', 'routine_proposal', 'sequence_proposal'],
+            enum: ['text', 'summary', 'routine_proposal', 'sequence_proposal', 'changes_proposal'],
           },
           text: { type: 'string', description: 'The paragraph, for a "text" block.' },
           title: { type: 'string', description: 'The heading, for a "summary" block.' },
@@ -236,6 +260,14 @@ export const responseSchema = {
                     restSeconds: { type: 'integer' },
                     change: { type: 'string', enum: ['same', 'changed', 'new', 'removed'] },
                     muscle: { type: 'string', enum: [...MUSCLE_GROUPS] },
+                    repsMin: {
+                      type: 'integer',
+                      description: 'Bottom of a rep range (8 of 8-10); reps is the top.',
+                    },
+                    superset: {
+                      type: 'boolean',
+                      description: 'true = superset with the exercise above it.',
+                    },
                   },
                   required: ['name', 'sets', 'reps', 'weightKg'],
                 },
@@ -258,6 +290,34 @@ export const responseSchema = {
             },
             required: ['routineIds', 'why'],
           },
+          changes: {
+            type: 'object',
+            description: 'For a "changes_proposal" block: settings to change, applied on a tap.',
+            properties: {
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    target: { type: 'string', enum: ['exercise', 'setting', 'task', 'budget'] },
+                    id: {
+                      type: 'string',
+                      description:
+                        'exerciseId, taskId or categoryId from CONTEXT; omit for setting and for a new task.',
+                    },
+                    field: { type: 'string' },
+                    number: { type: 'number' },
+                    text: { type: 'string' },
+                    on: { type: 'boolean' },
+                    days: { type: 'array', items: { type: 'integer' } },
+                  },
+                  required: ['target', 'field'],
+                },
+              },
+              why: str,
+            },
+            required: ['items', 'why'],
+          },
         },
         required: ['type'],
         propertyOrdering: [
@@ -270,6 +330,7 @@ export const responseSchema = {
           'notes',
           'proposal',
           'sequence',
+          'changes',
         ],
       },
     },
@@ -440,6 +501,20 @@ function validateExercise(item: unknown): ProposedExercise | null {
   if (typeof item.muscle === 'string' && MUSCLES.has(item.muscle)) {
     out.muscle = item.muscle as MuscleGroup;
   }
+  /*
+   * A range is the model writing `"reps": "8-10"` properly. `looseNumber` reads
+   * that label's TOP into `reps`; its bottom is the range's other half, so a
+   * label is read both ways rather than losing the 8.
+   */
+  const labelMin =
+    typeof item.reps === 'string' ? /(\d+)\s*[-–—]\s*\d+/.exec(item.reps)?.[1] : undefined;
+  const min = looseNumber(item.repsMin ?? labelMin);
+  if (min != null) {
+    const bottom = clampInt(min, CLAMP.reps.min, CLAMP.reps.max);
+    if (bottom < out.reps) out.repsMin = bottom;
+  }
+  // false is a request too — "split those two up" — so both values are kept.
+  if (typeof item.superset === 'boolean') out.superset = item.superset;
   return out;
 }
 
@@ -570,6 +645,20 @@ export function validateBlocks(raw: unknown, ctx: ValidateContext): AiBlock[] {
       continue;
     }
 
+    if (item.type === 'changes_proposal' || (item.type == null && isRecord(item.changes))) {
+      // One per reply, like the other suggestions; its reason survives a bad shape.
+      const changes = !out.some((b) => b.type === 'changes_proposal')
+        ? validateChangesShape(item.changes)
+        : null;
+      if (changes) {
+        out.push({ type: 'changes_proposal', changes });
+        continue;
+      }
+      const why = isRecord(item.changes) ? text(item.changes.why, LIMITS.text) : null;
+      if (why) out.push({ type: 'text', text: why });
+      continue;
+    }
+
     if (item.type === 'summary' || (item.type == null && hasSummaryParts(item))) {
       const block = validateSummary(item);
       if (block) {
@@ -597,6 +686,20 @@ function validateSequence(raw: unknown, ctx: ValidateContext): SequenceProposal 
   const routineIds = kept.routineIds.slice(0, LIMITS.sequence);
   if (!why || routineIds.length === 0) return null;
   return { routineIds, next: kept.next < routineIds.length ? kept.next : 0, why };
+}
+
+/**
+ * The changes block's SHAPE only: a list of objects and a reason. What each item
+ * means — which ids exist, which fields a target has, what range a number is held
+ * to — needs the stores, and is `lib/ai/aiChanges.ts`'s job at the moment the
+ * reply is filed. A bare array is read as the items.
+ */
+function validateChangesShape(raw: unknown): ChangesBlock['changes'] | null {
+  const source = Array.isArray(raw) ? { items: raw } : raw;
+  if (!isRecord(source) || !Array.isArray(source.items)) return null;
+  const items = source.items.filter(isRecord).slice(0, LIMITS.changes);
+  if (items.length === 0) return null;
+  return { items, why: text(source.why, LIMITS.why) ?? '' };
 }
 
 /** The list of blocks, from any of the shapes a model has been seen to send. */

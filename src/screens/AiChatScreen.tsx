@@ -41,6 +41,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SparkleCircle } from '../components/AiEntryCard';
 import { ErrorAnswer, SummaryCard, TextAnswer, Typing, UserBubble } from '../components/AiBlocks';
 import { AiProposalCard } from '../components/AiProposalCard';
+import { AiChangesCard } from '../components/AiChangesCard';
 import { AiSequenceCard } from '../components/AiSequenceCard';
 import { BubblePressable } from '../components/bubbles';
 import { Sheet } from '../components/Sheet';
@@ -52,7 +53,7 @@ import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { dayKey, formatShortDay } from '../lib/days';
 import type { AiSection } from '../lib/ai/aiSchema';
 import { tap } from '../lib/feedback';
-import { discardSequence, sectionContext, sendMessage } from '../state/aiActions';
+import { discardChanges, discardSequence, sectionContext, sendMessage } from '../state/aiActions';
 import { useAi, type AiMessage } from '../state/aiStore';
 import { glassTier, gradientFill, motion, palette, radius } from '../theme/tokens';
 
@@ -98,6 +99,8 @@ export interface AiChatScreenProps {
   onAccept: (proposalId: string) => void;
   /** `Apply loop` on a suggested training loop — the shell shows the Undo. */
   onApplySequence: (messageId: string) => void;
+  /** `Apply changes` on a suggested settings card — the shell shows the Undo. */
+  onApplyChanges: (messageId: string) => void;
   /** The shell's toast, which outlives this screen — the past-chat delete's Undo. */
   onToast: (text: string, action?: ToastAction) => void;
 }
@@ -110,6 +113,7 @@ export function AiChatScreen({
   onReview,
   onAccept,
   onApplySequence,
+  onApplyChanges,
   onToast,
 }: AiChatScreenProps) {
   const t = useT();
@@ -271,6 +275,8 @@ export function AiChatScreen({
               onAccept={onAccept}
               onApplySequence={() => onApplySequence(message.id)}
               onDiscardSequence={() => discardSequence(section, message.id)}
+              onApplyChanges={() => onApplyChanges(message.id)}
+              onDiscardChanges={() => discardChanges(section, message.id)}
             />
           </Stagger>
         ))}
@@ -400,6 +406,8 @@ function Message({
   onAccept,
   onApplySequence,
   onDiscardSequence,
+  onApplyChanges,
+  onDiscardChanges,
 }: {
   message: AiMessage;
   proposals: ReturnType<typeof useAi.getState>['proposals'];
@@ -408,6 +416,8 @@ function Message({
   onAccept: (proposalId: string) => void;
   onApplySequence: () => void;
   onDiscardSequence: () => void;
+  onApplyChanges: () => void;
+  onDiscardChanges: () => void;
 }) {
   if (message.role === 'user') return <UserBubble text={message.text} />;
   if (message.role === 'error') {
@@ -430,6 +440,16 @@ function Message({
               block={block}
               onApply={onApplySequence}
               onDiscard={onDiscardSequence}
+            />
+          );
+        }
+        if (block.type === 'changes') {
+          return (
+            <AiChangesCard
+              key={index}
+              block={block}
+              onApply={onApplyChanges}
+              onDiscard={onDiscardChanges}
             />
           );
         }

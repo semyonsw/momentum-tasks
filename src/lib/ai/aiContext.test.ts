@@ -252,6 +252,121 @@ describe('the workout context', () => {
     expect(JSON.parse(big.json).sessions[0].date).toBe('2026-08-10');
   });
 
+  it('carries the app’s workout settings, with the weekly goal’s default when unset', () => {
+    const withSettings = JSON.parse(
+      buildWorkoutContext({
+        exercises: seedExercises,
+        routines: seedRoutines,
+        workouts,
+        unitSystem: 'metric',
+        lang: 'en',
+        now: NOW,
+        settings: {
+          restSecondsBetweenSets: 90,
+          restSecondsBetweenExercises: 120,
+          autoStartRest: true,
+        },
+      }).json,
+    );
+    expect(withSettings.settings).toEqual({
+      restSecondsBetweenSets: 90,
+      restSecondsBetweenExercises: 120,
+      autoStartRest: true,
+      weeklyWorkoutGoal: 3,
+    });
+    // No settings handed in: no key, rather than a guess.
+    expect(json.settings).toBeUndefined();
+  });
+
+  it('puts each exercise’s own settings on its library line, where they mean something', () => {
+    const weighted = seedExercises.find((e) => e.requiresWeight && e.countUnit === 'reps')!;
+    const timed = seedExercises.find((e) => e.countUnit === 'seconds')!;
+    const exercises = seedExercises.map((e) => {
+      if (e.id === weighted.id) {
+        const { ladder: _ladder, ...rest } = e;
+        return {
+          ...rest,
+          defaultRestSeconds: 120,
+          defaultSets: 4,
+          defaultCount: 10,
+          countToMax: true,
+          incrementKg: 2.5,
+          prepareSeconds: 7,
+        };
+      }
+      if (e.id === timed.id) return { ...e, prepareSeconds: 5, incrementKg: 1 };
+      return e;
+    });
+    const lines: string[] = JSON.parse(
+      buildWorkoutContext({
+        exercises,
+        routines: seedRoutines,
+        workouts,
+        unitSystem: 'metric',
+        lang: 'en',
+        now: NOW,
+      }).json,
+    ).library;
+    const line = lines.find((l) => l.startsWith(`${weighted.id} | `))!;
+    expect(line).toContain('rest 120s, sets 4, target 10, MAX mode, step 2.5 kg');
+    // A rep exercise has no get-ready countdown.
+    expect(line).not.toContain('get-ready');
+    const timedLine = lines.find((l) => l.startsWith(`${timed.id} | `))!;
+    expect(timedLine).toContain('get-ready 5s');
+    if (!timed.requiresWeight) expect(timedLine).not.toContain('step');
+    // An exercise with no rest of its own says whose rest it runs.
+    expect(lines.some((l) => l.includes('rest follows setting'))).toBe(true);
+  });
+
+  it('keeps the ids when the library is shed to names', () => {
+    const heavy = workouts[0];
+    const many = Array.from({ length: 150 }, (_, i) => ({
+      ...heavy,
+      id: `copy_${i}`,
+      startedAt: new Date(NOW.getTime() - i * 86_400_000).toISOString(),
+    }));
+    const big = JSON.parse(
+      buildWorkoutContext({
+        exercises: seedExercises,
+        routines: seedRoutines,
+        workouts: many,
+        unitSystem: 'metric',
+        lang: 'en',
+        now: NOW,
+        settings: {
+          restSecondsBetweenSets: 90,
+          restSecondsBetweenExercises: 120,
+          autoStartRest: false,
+        },
+        cap: 24_000,
+      }).json,
+    );
+    // The settings are tiny and never shed; the library's lines keep `id | name`.
+    expect(big.settings.restSecondsBetweenSets).toBe(90);
+    for (const line of big.library as string[])
+      expect(line.split(' | ').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('marks a superset on the row that joins the one above, never on the first of the group', () => {
+    const [routine] = seedRoutines;
+    const sorted = [...routine.items].sort((a, b) => a.order - b.order);
+    const items = sorted.map((item, i) =>
+      i === 0 || i === 1 ? { ...item, supersetGroup: 'g1' } : item,
+    );
+    const rows = JSON.parse(
+      buildWorkoutContext({
+        exercises: seedExercises,
+        routines: [{ ...routine, items }],
+        workouts,
+        unitSystem: 'metric',
+        lang: 'en',
+        now: NOW,
+      }).json,
+    ).routines[0].exercises;
+    expect(rows[0].superset).toBeUndefined();
+    expect(rows[1].superset).toBe(true);
+  });
+
   it('names the prompts from the user’s own log', () => {
     const facts = workoutFacts({
       exercises: seedExercises,
@@ -705,6 +820,28 @@ describe('the expenses context', () => {
   it('counts no notes when nobody wrote one', () => {
     expect(built.notes).toEqual([]);
     expect(built.noteCount).toBe(0);
+  });
+
+  it('names each expense category by id, with its budget when one is set', () => {
+    const budgeted = JSON.parse(
+      buildExpensesContext({
+        amounts,
+        categories,
+        accounts,
+        currency: '֏',
+        budgets: [{ categoryId: 'food', monthly: 40000 }],
+        today: '2026-09-27',
+        lang: 'en',
+      }).json,
+    );
+    expect(budgeted.categories.expense).toEqual([
+      { id: 'food', name: 'Food', monthlyBudget: 40000 },
+      { id: 'home', name: 'Home' },
+    ]);
+    expect(json.categories.expense).toEqual([
+      { id: 'food', name: 'Food' },
+      { id: 'home', name: 'Home' },
+    ]);
   });
 
   it('ranks the categories and states each balance with its opening', () => {

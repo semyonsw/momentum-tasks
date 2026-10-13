@@ -118,6 +118,32 @@ export function nextInSupersetRound(
 }
 
 /**
+ * Where the NEXT round starts, once `nextInSupersetRound` has said this one is
+ * over — or null when the entry is not in a superset or the group is finished.
+ *
+ * The member furthest behind, first in session order on a tie: after A1 B1 that
+ * is A2, after the unequal tail's B2 it is A3. Without this the glow and the
+ * cursor fell through to "the next row down", which after B1 is B2 — so a round
+ * closed by the rest went A1 B1 B2 A2 A3 B3, two of the same back to back on
+ * every second round, which is the one thing a superset is not.
+ */
+export function nextSupersetRound(
+  session: DraftSession | null,
+  justCompletedEntryId: ID,
+): SupersetNext | null {
+  if (!session) return null;
+  const members = supersetMembers(session.entries, justCompletedEntryId);
+  if (members.length < 2) return null;
+
+  let behind: DraftEntry | null = null;
+  for (const member of members) {
+    if (!member.sets.some((s) => !s.isCompleted)) continue;
+    if (behind == null || loggedCount(member) < loggedCount(behind)) behind = member;
+  }
+  return behind ? nextUnloggedSet(behind) : null;
+}
+
+/**
  * Does this entry share a bracket with the one above it in the session?
  *
  * Drives the rule down the left edge of a card: `green-dim`, the same vocabulary

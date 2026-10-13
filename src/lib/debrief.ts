@@ -46,7 +46,10 @@
 
 import type { CompletedWorkout } from './completedWorkout';
 import { dayKey } from './days';
-import type { ID } from '../types/models';
+import { formatTarget } from './draft';
+import { t, type Language } from './i18n';
+import { formatShortDate } from './units';
+import type { Exercise, ID, Routine } from '../types/models';
 
 export type QuestionKind = 'single' | 'multi' | 'text';
 
@@ -308,6 +311,126 @@ export function debriefForAi(debrief: WorkoutDebrief): Record<string, unknown> |
     ...(debrief.routineId ? { routineId: debrief.routineId } : {}),
     answers,
   };
+}
+
+/**
+ * The message `Ask the assistant about it` sends, as the first line of a NEW
+ * chat: every answered question with its answer, what was actually done, and
+ * what the routine planned — then the ask.
+ *
+ *   Analyse my workout: Push, 27 Sep.
+ *
+ *   My answers after the workout:
+ *   - How did the weights feel? A bit heavy — left shoulder, on the press
+ *   - Any pain or discomfort? Shoulder, Elbow
+ *
+ *   What I did (60 min):
+ *   - Bench press: 60 kg · 8 8 6
+ *
+ *   The plan in the routine "Push":
+ *   - Bench press: 3 × 8–10 reps
+ *
+ *   Based on all of this, how did it go, and what concrete changes …
+ *
+ * WHY SPELL IT OUT when `debriefForAi` already puts the answers in the context:
+ * the context carries every recent debrief and every recent session, and a
+ * question "how did my Push go?" leaves the model to find the right ones among
+ * them. Quoting this one workout in the message itself is the user pointing at
+ * it — and it is what the user sees in the bubble, so they can check that what
+ * the coach is reasoning from is what they said.
+ *
+ * In the USER'S language, unlike `debriefForAi`: this is a chat bubble the user
+ * reads, and the model answers in the language it is asked in. Notes stay
+ * verbatim; an exercise's name is its own (`literal`), never translated.
+ *
+ * Plain text, one line per item: a chat bubble has no tables, and a set summary
+ * is already the app's shorthand. Null when nothing was answered — the caller
+ * falls back to the short question (`debriefShortPrompt`), because a message
+ * headed "my answers" with no answers under it says the wrong thing.
+ */
+export function debriefChatMessage(
+  debrief: WorkoutDebrief,
+  /** The workout as logged; absent when it has since been deleted. */
+  workout: CompletedWorkout | undefined,
+  /** The library, for the routine's plan. A routine deleted since is skipped. */
+  library: { routines: readonly Routine[]; exercises: readonly Exercise[] },
+  lang: Language,
+): string | null {
+  const answers: string[] = [];
+  for (const question of debrief.questions) {
+    const answer = debrief.answers[question.id];
+    if (!answer || !isAnswered(answer)) continue;
+    const labels = answer.choices
+      .map((id) => question.options.find((o) => o.id === id))
+      .filter((o): o is DebriefOption => o != null)
+      .map((o) => (o.literal ? o.label : t(o.label, lang)));
+    const note = (answer.note ?? '').trim().replace(/\s+/g, ' ');
+    const said = [labels.join(', '), note].filter((part) => part !== '').join(' — ');
+    answers.push(`- ${t(question.prompt, lang)} ${said}`);
+  }
+  if (answers.length === 0) return null;
+
+  const date = formatShortDate(debrief.startedAt, lang);
+  const lines = [
+    debrief.title
+      ? t('Analyse my workout: {title}, {date}.', lang, { title: debrief.title, date })
+      : t('Analyse my last workout, {date}.', lang, { date }),
+    '',
+    t('My answers after the workout:', lang),
+    ...answers,
+  ];
+
+  const done = (workout?.exercises ?? []).filter((e) => e.setCount > 0);
+  if (workout && done.length > 0) {
+    lines.push('', t('What I did ({minutes} min):', lang, { minutes: workout.durationMinutes }));
+    for (const e of done) lines.push(e.summary ? `- ${e.name}: ${e.summary}` : `- ${e.name}`);
+  }
+
+  // The routine as it stands NOW — which is the thing a suggestion would edit.
+  const routineId = debrief.routineId ?? workout?.routineId;
+  const routine = routineId ? library.routines.find((r) => r.id === routineId) : undefined;
+  if (routine) {
+    const byId = new Map(library.exercises.map((e) => [e.id, e]));
+    const plan = [...routine.items]
+      .sort((a, b) => a.order - b.order)
+      .flatMap((item) => {
+        const exercise = byId.get(item.exerciseId);
+        if (!exercise) return [];
+        const target = formatTarget(
+          {
+            targetSets: item.targetSets,
+            targetRepsMin: item.targetRepsMin,
+            targetRepsMax: item.targetRepsMax,
+            exercise,
+            ...(exercise.ladder ? { ladder: exercise.ladder } : {}),
+          },
+          lang,
+        );
+        return [`- ${exercise.name}: ${target}`];
+      });
+    if (plan.length > 0) {
+      lines.push('', t('The plan in the routine "{routine}":', lang, { routine: routine.name }));
+      lines.push(...plan);
+    }
+  }
+
+  lines.push(
+    '',
+    t(
+      'Based on all of this, how did it go, and what concrete changes would you make for next time?',
+      lang,
+    ),
+  );
+  return lines.join('\n');
+}
+
+/** The short question, for a debrief with nothing answered in it. */
+export function debriefShortPrompt(debrief: WorkoutDebrief, lang: Language): string {
+  return debrief.title
+    ? t('How did my {routine} workout go, and should I change anything?', lang, {
+        routine: debrief.title,
+      })
+    : t('How did my last workout go, and should I change anything?', lang);
 }
 
 /* ------------------------------------------------------------------ */

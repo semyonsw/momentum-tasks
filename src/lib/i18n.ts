@@ -1440,6 +1440,14 @@ const RU: Record<string, string> = {
     'Как прошла тренировка «{routine}» и стоит ли что-то изменить?',
   'How did my last workout go, and should I change anything?':
     'Как прошла последняя тренировка и стоит ли что-то изменить?',
+  // The debrief's message to a new chat (lib/debrief.ts `debriefChatMessage`)
+  'Analyse my workout: {title}, {date}.': 'Разбери мою тренировку: «{title}», {date}.',
+  'Analyse my last workout, {date}.': 'Разбери мою последнюю тренировку, {date}.',
+  'My answers after the workout:': 'Мои ответы после тренировки:',
+  'What I did ({minutes} min):': 'Что сделано ({minutes} мин):',
+  'The plan in the routine "{routine}":': 'План в программе «{routine}»:',
+  'Based on all of this, how did it go, and what concrete changes would you make for next time?':
+    'Как прошла тренировка и какие конкретные изменения стоит внести к следующему разу?',
   'How did {routine} go?': 'Как прошла «{routine}»?',
   'How did the workout go?': 'Как прошла тренировка?',
   '{answered} of {total} answered · pick up where you left off':
@@ -1460,6 +1468,31 @@ const RU: Record<string, string> = {
   'Now: {loop}': 'Сейчас: {loop}',
   'Apply loop': 'Применить цикл',
   'Training loop updated': 'Цикл тренировок обновлён',
+
+  // Suggested settings changes (`lib/ai/aiChanges.ts`): the card, its rows'
+  // labels and values, and the toast. Short weekday names are a task schedule.
+  'Suggested changes': 'Предложенные изменения',
+  '{n} changes applied': 'Применено изменений: {n}',
+  moved: 'перемещено',
+  superset: 'суперсет',
+  '{n}× a week': '{n}× в неделю',
+  Mon: 'Пн',
+  Tue: 'Вт',
+  Wed: 'Ср',
+  Thu: 'Чт',
+  Fri: 'Пт',
+  Sat: 'Сб',
+  Sun: 'Вс',
+  'Rep target': 'Цель по повторам',
+  'Rep ladder max': 'Максимум лесенки',
+  'Weight step': 'Шаг веса',
+  'Get-ready countdown': 'Отсчёт перед стартом',
+  'Weekly workout goal': 'Цель тренировок на неделю',
+  'Rest between exercises': 'Отдых между упражнениями',
+  Schedule: 'Расписание',
+  'Daily target': 'Цель на день',
+  'Stop this task': 'Остановить задачу',
+
   'AI chat': 'чат с ИИ',
   'AI chats': 'чатов с ИИ',
   'No past chats yet.': 'Прошлых чатов пока нет.',

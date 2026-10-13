@@ -348,3 +348,122 @@ describe('a suggested training loop', () => {
     ).toEqual([{ type: 'text', text: 'W.' }]);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* Rep ranges and supersets on a proposed row                          */
+/* ------------------------------------------------------------------ */
+
+describe('a rep range and a superset on a row', () => {
+  const rowOf = (over: Record<string, unknown>) => {
+    const [block] = validateBlocks(
+      [proposal({ exercises: [{ name: 'Back squat', sets: 4, weightKg: 80, ...over }] })],
+      workout,
+    );
+    return block?.type === 'routine_proposal' ? block.proposal.exercises[0] : undefined;
+  };
+
+  it('reads a "8-10" label both ways: 10 the top, 8 the bottom', () => {
+    expect(rowOf({ reps: '8-10' })).toMatchObject({ reps: 10, repsMin: 8 });
+    expect(rowOf({ reps: '8 – 12 reps' })).toMatchObject({ reps: 12, repsMin: 8 });
+  });
+
+  it('takes repsMin as written, as a number or a string', () => {
+    expect(rowOf({ reps: 10, repsMin: 6 })).toMatchObject({ reps: 10, repsMin: 6 });
+    expect(rowOf({ reps: 10, repsMin: '6' })).toMatchObject({ reps: 10, repsMin: 6 });
+    // repsMin wins over the label's bottom.
+    expect(rowOf({ reps: '8-10', repsMin: 7 })).toMatchObject({ reps: 10, repsMin: 7 });
+  });
+
+  it('keeps no bottom at or above the top, and no bottom of nothing', () => {
+    expect(rowOf({ reps: 10, repsMin: 10 })?.repsMin).toBeUndefined();
+    expect(rowOf({ reps: 10, repsMin: 12 })?.repsMin).toBeUndefined();
+    expect(rowOf({ reps: 10, repsMin: 'x' })?.repsMin).toBeUndefined();
+    expect(rowOf({ reps: 10 })?.repsMin).toBeUndefined();
+    expect(rowOf({ reps: '10' })?.repsMin).toBeUndefined();
+    // Clamped like reps: a bottom of 0 is 1.
+    expect(rowOf({ reps: 10, repsMin: 0 })?.repsMin).toBe(1);
+  });
+
+  it('keeps superset true AND false, and nothing else', () => {
+    expect(rowOf({ reps: 10, superset: true })?.superset).toBe(true);
+    expect(rowOf({ reps: 10, superset: false })?.superset).toBe(false);
+    expect(rowOf({ reps: 10, superset: 'yes' })?.superset).toBeUndefined();
+    expect(rowOf({ reps: 10 })).not.toHaveProperty('superset');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* A settings-changes card                                             */
+/* ------------------------------------------------------------------ */
+
+describe('a changes_proposal block', () => {
+  const item = { target: 'exercise', id: 'ex_bench', field: 'rest', number: 90 };
+
+  it('keeps the items raw and the reason, in any section', () => {
+    for (const ctx of [workout, tasks]) {
+      expect(
+        validateBlocks(
+          [{ type: 'changes_proposal', changes: { items: [item], why: 'Faster.' } }],
+          ctx,
+        ),
+      ).toEqual([{ type: 'changes_proposal', changes: { items: [item], why: 'Faster.' } }]);
+    }
+  });
+
+  it('is recognised without a type, and reads a bare array as the items', () => {
+    expect(validateBlocks([{ changes: { items: [item], why: 'x' } }], workout)[0]?.type).toBe(
+      'changes_proposal',
+    );
+    expect(validateBlocks([{ type: 'changes_proposal', changes: [item] }], workout)).toEqual([
+      { type: 'changes_proposal', changes: { items: [item], why: '' } },
+    ]);
+  });
+
+  it('drops non-object items and caps the list', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ ...item, number: i }));
+    const [block] = validateBlocks(
+      [{ type: 'changes_proposal', changes: { items: ['x', null, 3, ...many], why: 'y' } }],
+      workout,
+    );
+    expect(block.type === 'changes_proposal' && block.changes.items).toHaveLength(12);
+    expect(block.type === 'changes_proposal' && block.changes.items[0]).toEqual({
+      ...item,
+      number: 0,
+    });
+  });
+
+  it('a bad shape still says its reason; nothing at all says nothing', () => {
+    expect(
+      validateBlocks(
+        [{ type: 'changes_proposal', changes: { items: [], why: 'Rest less.' } }],
+        workout,
+      ),
+    ).toEqual([{ type: 'text', text: 'Rest less.' }]);
+    expect(
+      validateBlocks(
+        [{ type: 'changes_proposal', changes: { items: 'rest', why: 'Rest less.' } }],
+        workout,
+      ),
+    ).toEqual([{ type: 'text', text: 'Rest less.' }]);
+    expect(validateBlocks([{ type: 'changes_proposal' }], workout)).toEqual([]);
+  });
+
+  it('one per reply: a second is said as its reason', () => {
+    const blocks = validateBlocks(
+      [
+        { type: 'changes_proposal', changes: { items: [item], why: 'First.' } },
+        { type: 'changes_proposal', changes: { items: [item], why: 'Second.' } },
+      ],
+      workout,
+    );
+    expect(blocks.map((b) => b.type)).toEqual(['changes_proposal', 'text']);
+  });
+
+  it('sits beside a routine proposal', () => {
+    const blocks = validateBlocks(
+      [proposal(), { type: 'changes_proposal', changes: { items: [item], why: 'x' } }],
+      workout,
+    );
+    expect(blocks.map((b) => b.type)).toEqual(['routine_proposal', 'changes_proposal']);
+  });
+});

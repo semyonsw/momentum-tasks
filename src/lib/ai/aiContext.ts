@@ -51,6 +51,10 @@ import { evaluateDeload } from '../deload';
 import { MUSCLE_CLUSTER } from '../muscles';
 import { evaluateOverloadBatch } from '../progressiveOverload';
 import { ladderOf } from '../repLadder';
+import { isSupersettedWithAbove } from '../routinePlan';
+import { ownRestSeconds } from '../rest';
+import { WEEKLY_GOAL_LIMITS } from '../weeklyGoal';
+import type { Budget } from '../budgets';
 import { plannedStartWeight } from '../weightCarry';
 import {
   asksOn,
@@ -125,8 +129,23 @@ export interface WorkoutContextInput {
   sequence?: TrainingSequence;
   /** Bodyweight readings, any order — the line the records are weighed against. */
   bodyweightLog?: readonly BodyweightEntry[];
+  /**
+   * The app's own workout settings — what a `changes_proposal` of target
+   * `setting` would move. Absent: no `settings` key, and the model has no
+   * `from` to reason about, so it is told nothing rather than a guess.
+   */
+  settings?: WorkoutSettings;
   /** Overrides `CONTEXT_CAP` — for tests that exercise the shedding. */
   cap?: number;
+}
+
+/** The four settings the assistant may suggest changing (`lib/ai/aiChanges.ts`). */
+export interface WorkoutSettings {
+  restSecondsBetweenSets: number;
+  restSecondsBetweenExercises: number;
+  autoStartRest: boolean;
+  /** Absent = never set, which the app reads as `WEEKLY_GOAL_LIMITS.default`. */
+  weeklyWorkoutGoal?: number;
 }
 
 export interface WorkoutContext {
@@ -142,6 +161,20 @@ export interface WorkoutContext {
 }
 
 const DAY_MS = 86_400_000;
+
+/** `rest 90s, sets 4, target 10, step 2.5 kg` — an exercise's own settings, compactly. */
+function exerciseSettings(e: Exercise): string {
+  const own = ownRestSeconds(e);
+  const out = [own == null ? 'rest follows setting' : `rest ${own}s`];
+  if (e.defaultSets != null) out.push(`sets ${e.defaultSets}`);
+  // A ladder's number IS its max — already said as `rep ladder max`.
+  if (e.defaultCount != null && !ladderOf(e)) out.push(`target ${e.defaultCount}`);
+  if (e.countUnit === 'reps' && e.countToMax === true) out.push('MAX mode');
+  if (e.requiresWeight && e.incrementKg != null) out.push(`step ${e.incrementKg} kg`);
+  if (e.countUnit !== 'reps' && e.prepareSeconds != null)
+    out.push(`get-ready ${e.prepareSeconds}s`);
+  return out.join(', ');
+}
 
 function repsLabel(min?: number, max?: number): string | null {
   if (min != null && max != null && min !== max) return `${min}-${max}`;
@@ -357,39 +390,52 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
 
   // What the next session will prefill — the numbers a proposal is compared with.
   const startWeights = nextStartWeights(exercises, workouts);
-  const routineRows = routines.map((routine) => ({
-    id: routine.id,
-    name: routine.name,
-    exercises: [...routine.items]
-      .sort((a, b) => a.order - b.order)
-      .filter((item) => byId[item.exerciseId])
-      .map((item) => {
-        const exercise = byId[item.exerciseId];
-        const row: Record<string, unknown> = {
-          exerciseId: exercise.id,
-          name: exercise.name,
-          sets: item.targetSets,
-        };
-        const reps = repsLabel(item.targetRepsMin, item.targetRepsMax);
-        if (reps) row.reps = reps;
-        if (exercise.countUnit !== 'reps') row.unit = exercise.countUnit;
-        if (exercise.requiresWeight) {
-          const kg = startWeights[exercise.id] ?? exercise.defaultWeightKg;
-          if (kg != null) row.weightKg = kg;
-        }
-        const ladder = ladderOf(exercise);
-        if (ladder) row.ladder = ladder.max;
-        if (item.supersetGroup) row.superset = true;
-        if (exercise.cue?.trim()) row.cue = exercise.cue.trim();
-        return row;
-      }),
-  }));
+  const routineRows = routines.map((routine) => {
+    const sorted = [...routine.items].sort((a, b) => a.order - b.order);
+    return {
+      id: routine.id,
+      name: routine.name,
+      exercises: sorted
+        .map((item, position) => ({ item, position }))
+        .filter(({ item }) => byId[item.exerciseId])
+        .map(({ item, position }) => {
+          const exercise = byId[item.exerciseId];
+          const row: Record<string, unknown> = {
+            exerciseId: exercise.id,
+            name: exercise.name,
+            sets: item.targetSets,
+          };
+          const reps = repsLabel(item.targetRepsMin, item.targetRepsMax);
+          if (reps) row.reps = reps;
+          if (exercise.countUnit !== 'reps') row.unit = exercise.countUnit;
+          if (exercise.requiresWeight) {
+            const kg = startWeights[exercise.id] ?? exercise.defaultWeightKg;
+            if (kg != null) row.weightKg = kg;
+          }
+          const ladder = ladderOf(exercise);
+          if (ladder) row.ladder = ladder.max;
+          /* "With the exercise above" — the editor's one control, and what a
+           proposal's `superset` means. Marking every member of the group put
+           `true` on the FIRST one too, and a model copying it joined that row
+           to whatever stood above it. */
+          if (isSupersettedWithAbove(sorted, position)) row.superset = true;
+          if (exercise.cue?.trim()) row.cue = exercise.cue.trim();
+          return row;
+        }),
+    };
+  });
 
   /*
    * The library, one line per exercise: id, name, where it files, and what kind
    * of exercise it is — what it counts, how it is loaded, where it starts, its
    * ladder. "Swap bench for something easier on the shoulder" needs to know
    * what else is there and what each one IS, not only what it is called.
+   *
+   * Then its own SETTINGS, the values a `changes_proposal` would move: rest,
+   * default sets, target, MAX, weight step, get-ready countdown — each only
+   * where it is set and means something for this kind of exercise, in the
+   * units the change is written in (seconds, kg), so "my rest on bench is 2:00,
+   * make it 1:30" has a `from` the model can read rather than guess.
    */
   const library = exercises
     .filter((e) => !e.isArchived)
@@ -406,6 +452,7 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
       const ladder = ladderOf(e);
       if (ladder) kind.push(`rep ladder max ${ladder.max}`);
       parts.push(kind.join(', '));
+      parts.push(exerciseSettings(e));
       // The user's own one-line form note — words the numbers cannot carry.
       if (e.cue?.trim()) parts.push(`cue: ${e.cue.trim()}`);
       return parts.join(' | ');
@@ -563,6 +610,16 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
     language: LANGUAGE_NAME[lang],
     units: unitSystem === 'imperial' ? 'lb (numbers below are kg)' : 'kg',
     ...(bodyweightKg != null ? { bodyweightKg } : {}),
+    ...(input.settings
+      ? {
+          settings: {
+            restSecondsBetweenSets: input.settings.restSecondsBetweenSets,
+            restSecondsBetweenExercises: input.settings.restSecondsBetweenExercises,
+            autoStartRest: input.settings.autoStartRest,
+            weeklyWorkoutGoal: input.settings.weeklyWorkoutGoal ?? WEEKLY_GOAL_LIMITS.default,
+          },
+        }
+      : {}),
     routines: routineRows,
     sequence,
     ...(gradedAny
@@ -917,6 +974,8 @@ export interface ExpensesContextInput {
    * stay exact, and the model is told how to read them.
    */
   scale?: number;
+  /** The monthly budgets (`lib/budgets.ts`), in the log's units. */
+  budgets?: readonly Budget[];
   today: string;
   lang: Language;
   /** Defaults to every month from the first amount to this one, at least six. */
@@ -1080,10 +1139,18 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
   const ledger = ledgerEntries.map((entry) => entry.line);
 
   /* Expenses and incomes keep separate category lists — the model is told which
-     is which, so it never files a salary under Food or suggests one. */
+     is which, so it never files a salary under Food or suggests one. An expense
+     category carries its id and its budget: a budget suggestion names the
+     category by id, and "am I over budget on food?" needs the figure. */
   const live = categories.filter((c) => c.archivedAt === null);
+  const budgetOf = new Map((input.budgets ?? []).map((b) => [b.categoryId, b.monthly]));
   const categoryLists = {
-    expense: live.filter((c) => c.direction === 'expense').map((c) => c.name),
+    expense: live
+      .filter((c) => c.direction === 'expense')
+      .map((c) => {
+        const budget = budgetOf.get(c.id);
+        return { id: c.id, name: c.name, ...(budget != null ? { monthlyBudget: budget } : {}) };
+      }),
     income: live.filter((c) => c.direction === 'income').map((c) => c.name),
   };
 
@@ -1092,7 +1159,7 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
     language: LANGUAGE_NAME[lang],
     currency,
     ...valueUnit(currency, input.scale),
-    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; expense and income categories are separate lists (categories.expense, categories.income) and an amount is only ever in a category of its own direction; a "(transfer)" amount is one half of money moved between two accounts — an expense from one and an income into the other, same value, same day; amounts lists every amount, newest first, as "date direction category value [account]: note" — the note, when present, is what the user wrote on it',
+    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; expense and income categories are separate lists (categories.expense with each id and monthlyBudget when one is set, in the same units as every amount; categories.income) and an amount is only ever in a category of its own direction; a "(transfer)" amount is one half of money moved between two accounts — an expense from one and an income into the other, same value, same day; amounts lists every amount, newest first, as "date direction category value [account]: note" — the note, when present, is what the user wrote on it',
     categories: categoryLists,
     months: monthRows,
     topCategories,

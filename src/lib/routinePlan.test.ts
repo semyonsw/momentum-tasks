@@ -270,6 +270,20 @@ describe('performedSetCounts', () => {
       ]),
     ).toEqual([{ exerciseId: 'ex_dips', name: 'Dips', completedSets: 2 }]);
   });
+
+  it('does not count a ticked warm-up as one of the planned sets', () => {
+    expect(
+      performedSetCounts([
+        {
+          exercise: { id: 'ex_bench', name: 'Bench' },
+          sets: [
+            { isCompleted: true, isWarmup: true },
+            { isCompleted: true, isWarmup: false },
+          ],
+        },
+      ])[0].completedSets,
+    ).toBe(1);
+  });
 });
 
 /* ------------------------------------------------------------------ */

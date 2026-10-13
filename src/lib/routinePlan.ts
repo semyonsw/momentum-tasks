@@ -330,13 +330,15 @@ export function describePlannedSetDiff(
 export function performedSetCounts(
   entries: readonly {
     exercise: Pick<Exercise, 'id' | 'name'>;
-    sets: readonly { isCompleted: boolean }[];
+    sets: readonly { isCompleted: boolean; isWarmup?: boolean }[];
   }[],
 ): { exerciseId: ID; name: string; completedSets: number }[] {
   return entries.map((entry) => ({
     exerciseId: entry.exercise.id,
     name: entry.exercise.name,
-    completedSets: entry.sets.filter((s) => s.isCompleted).length,
+    // Working sets only: `targetSets` never counted the ramp, so a bench day with
+    // three warm-ups offered to rewrite a 3-set plan to six.
+    completedSets: entry.sets.filter((s) => s.isCompleted && !s.isWarmup).length,
   }));
 }
 

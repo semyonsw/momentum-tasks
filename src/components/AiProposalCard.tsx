@@ -30,14 +30,42 @@ import { GlassSurface, SpecularEdge } from './glass';
 import { Icon } from './Icon';
 import { pressedStyle } from './motion';
 import { useT } from '../hooks/useT';
-import { proposalTotals, rowStatus, type RowValues } from '../lib/ai/aiProposal';
+import {
+  proposalTotals,
+  rowStatus,
+  valuesDiffer,
+  type ProposalRow,
+  type RowValues,
+} from '../lib/ai/aiProposal';
 import type { StoredProposal } from '../state/aiStore';
 import { gradientFill, palette, radius, specularHeavy } from '../theme/tokens';
 
-/** `4 × 8 · 60 kg`, or `BW` for no weight. */
-export function formatRow(values: RowValues, kg: string, bw: string): string {
+/** `8`, or `8–10` for a range — the bottom first, as the user would say it. */
+export function formatReps(values: RowValues): string {
+  return values.repsMin != null && values.repsMin < values.reps
+    ? `${values.repsMin}–${values.reps}`
+    : String(values.reps);
+}
+
+/**
+ * `4 × 8–10 · 60 kg`, or `BW` for no weight, with ` · superset` when the row is
+ * bracketed with the one above. The marker is optional because the `was` side of
+ * a diff is drawn with it too only when the bracket is what changed — passing it
+ * is the caller's decision, not this function's.
+ */
+export function formatRow(values: RowValues, kg: string, bw: string, superset?: string): string {
   const load = values.weightKg > 0 ? `${values.weightKg} ${kg}` : bw;
-  return `${values.sets} × ${values.reps} · ${load}`;
+  const text = `${values.sets} × ${formatReps(values)} · ${load}`;
+  return superset && values.superset ? `${text} · ${superset}` : text;
+}
+
+/**
+ * A row that is `changed` ONLY because the model put it elsewhere: its numbers
+ * are the ones it had. Striking those through beside themselves would read as a
+ * change that is not there, so such a row says `moved` instead.
+ */
+export function movedOnly(row: ProposalRow): boolean {
+  return row.moved === true && row.was != null && !row.removed && !valuesDiffer(row, row.was);
 }
 
 export function AiProposalCard({
@@ -56,6 +84,7 @@ export function AiProposalCard({
   const pending = status === 'pending';
   const kg = t('kg');
   const bw = t('BW');
+  const ss = t('superset');
 
   const meta = [
     isNew
@@ -126,6 +155,7 @@ export function AiProposalCard({
             {proposal.rows.map((row, index) => {
               const state = rowStatus(row);
               const tagged = !isNew && state !== 'same';
+              const moved = movedOnly(row);
               return (
                 <View
                   key={row.key}
@@ -151,13 +181,13 @@ export function AiProposalCard({
                   >
                     {row.name}
                   </Text>
-                  {state === 'changed' && row.was ? (
+                  {state === 'changed' && row.was && !moved ? (
                     <Text
                       numberOfLines={1}
                       style={{ fontSize: 12.5, textDecorationLine: 'line-through', marginRight: 6 }}
                       className="tabular-nums text-ink-faint"
                     >
-                      {formatRow(row.was, kg, bw)}
+                      {formatRow(row.was, kg, bw, ss)}
                     </Text>
                   ) : null}
                   <Text
@@ -172,10 +202,12 @@ export function AiProposalCard({
                         ? 'text-ink-faint'
                         : state === 'same'
                           ? 'text-ink-muted'
-                          : 'text-green-bright',
+                          : moved
+                            ? 'text-ink-muted'
+                            : 'text-green-bright',
                     ].join(' ')}
                   >
-                    {formatRow(row, kg, bw)}
+                    {formatRow(row, kg, bw, ss)}
                   </Text>
                   {tagged ? (
                     <Text
@@ -185,7 +217,7 @@ export function AiProposalCard({
                         state === 'removed' ? 'text-ink-muted' : 'text-green-bright',
                       ].join(' ')}
                     >
-                      {t(state)}
+                      {moved ? t('moved') : t(state)}
                     </Text>
                   ) : null}
                 </View>

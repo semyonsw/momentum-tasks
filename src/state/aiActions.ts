@@ -5,6 +5,8 @@
  *   testKey        shape check → GET /models → POST hello → key into the keystore
  *   sendMessage    context from the stores → Gemini → validated blocks → the chat
  *   applyProposal  the next library, written through `libraryStore`, with an Undo
+ *   applyChanges   a settings card — exercises, app settings, tasks, budgets —
+ *                  written through each store's own actions, with one Undo
  *
  * It lives in `state/` for the reason `dataTransfer.ts` does: it touches several
  * stores and runs outside React, on a button. Every decision it makes is a call
@@ -30,6 +32,14 @@ import {
   withBriefs,
   workoutBrief,
 } from '../lib/ai/aiContext';
+import {
+  applyExerciseChange,
+  describeChanges,
+  validateChanges,
+  type AiChange,
+  type ChangeContext,
+  type CurrentValues,
+} from '../lib/ai/aiChanges';
 import { suggestionNote, systemPrompt, type SuggestionFate } from '../lib/ai/aiPrompts';
 import { normalizeProposal, planApply, type Library } from '../lib/ai/aiProposal';
 import { AI_SECTIONS, validateBlocks, type AiSection } from '../lib/ai/aiSchema';
@@ -55,10 +65,13 @@ import {
 import { clearKey, getKey, setKey } from '../lib/ai/secureKey';
 import { send } from '../lib/ai/transport';
 import { workoutNumbers } from '../lib/completedWorkout';
+import { formatMoney } from '../lib/money';
 import { dayKey } from '../lib/days';
 import { t } from '../lib/i18n';
 import { seedUser } from '../data/seed';
+import { useActiveWorkout } from './activeWorkoutStore';
 import { useAi, type AiMessage, type ChatBlock } from './aiStore';
+import { setRestBetweenExercises, setRestBetweenSets } from './restSync';
 import { useDebriefs } from './debriefStore';
 import { useLibrary } from './libraryStore';
 import { useMoney } from './moneyStore';
@@ -210,6 +223,12 @@ export function sectionContext(section: AiSection): {
       workouts: history.workouts,
       numbers: workoutNumbers(history.workouts, history.numbering),
       bodyweightKg: settings.bodyweightKg,
+      settings: {
+        restSecondsBetweenSets: settings.restSecondsBetweenSets,
+        restSecondsBetweenExercises: settings.restSecondsBetweenExercises,
+        autoStartRest: settings.autoStartRest,
+        weeklyWorkoutGoal: settings.weeklyWorkoutGoal,
+      },
       unitSystem: settings.unitSystem,
       lang: language,
     });
@@ -234,6 +253,7 @@ export function sectionContext(section: AiSection): {
     accounts: money.accounts,
     currency: settings.currencyCode,
     scale: moneyScaleNow,
+    budgets: money.budgets ?? [],
     today,
     lang: language,
   });
@@ -257,6 +277,8 @@ function fatesOf(messages: readonly AiMessage[]): SuggestionFate[] {
     for (const block of message.blocks) {
       if (block.type === 'sequence') {
         fates.push({ what: 'loop', name: '', status: block.status });
+      } else if (block.type === 'changes') {
+        fates.push({ what: 'settings', name: '', status: block.status });
       } else if (block.type === 'proposal') {
         const stored = proposals[block.proposalId];
         if (stored) {
@@ -434,6 +456,24 @@ export async function sendMessage(
         chatBlocks.push({ type: 'sequence', ...block.sequence, status: 'pending' });
         continue;
       }
+      if (block.type === 'changes_proposal') {
+        // Checked against the stores NOW, and the card's `from` read now too.
+        const changes = validateChanges(block.changes.items, changeContext(section));
+        const rows = describeChanges(changes, currentValues(), language);
+        if (rows.length > 0) {
+          chatBlocks.push({
+            type: 'changes',
+            changes,
+            rows,
+            why: block.changes.why,
+            status: 'pending',
+          });
+        } else if (block.changes.why) {
+          // Nothing it named could be applied; its reason is still the answer.
+          chatBlocks.push({ type: 'text', text: block.changes.why });
+        }
+        continue;
+      }
       if (block.type !== 'routine_proposal') {
         chatBlocks.push(block);
         continue;
@@ -556,4 +596,176 @@ export function applySequence(section: AiSection, messageId: string): Applied | 
 
 export function discardSequence(section: AiSection, messageId: string): void {
   useAi.getState().setSequenceStatus(section, messageId, 'discarded');
+}
+
+/* ------------------------------------------------------------------ */
+/* Deciding a settings card                                            */
+/* ------------------------------------------------------------------ */
+
+/** What `validateChanges` checks ids against — this section's own things. */
+function changeContext(section: AiSection): ChangeContext {
+  return {
+    section,
+    exercises: useLibrary.getState().exercises,
+    tasks: useTasks.getState().tasks,
+    categories: useMoney
+      .getState()
+      .categories.filter((c) => c.direction === 'expense' && c.archivedAt === null),
+  };
+}
+
+/** The values in force, for the card's `from`. */
+function currentValues(): CurrentValues {
+  const settings = useSettings.getState();
+  const money = useMoney.getState();
+  const scale = moneyScale({
+    pinned: money.scale,
+    empty: logIsEmpty(money.amounts, money.accounts),
+    currency: settings.currencyCode,
+  });
+  return {
+    exercises: useLibrary.getState().exercises,
+    tasks: useTasks.getState().tasks,
+    categories: money.categories,
+    settings: {
+      restSecondsBetweenSets: settings.restSecondsBetweenSets,
+      restSecondsBetweenExercises: settings.restSecondsBetweenExercises,
+      autoStartRest: settings.autoStartRest,
+      weeklyWorkoutGoal: settings.weeklyWorkoutGoal,
+    },
+    budgets: Object.fromEntries((money.budgets ?? []).map((b) => [b.categoryId, b.monthly])),
+    formatMoney: (value) => formatMoney(value, settings.currencyCode, scale),
+  };
+}
+
+/**
+ * `Apply changes` on a settings card: every change, through each store's own
+ * action, and ONE Undo that puts every touched store back as it was.
+ *
+ * Null when there is nothing to apply — the card is gone, already decided, or
+ * everything it named has been deleted since. Each change is re-checked against
+ * the store as it is NOW: an exercise deleted between the answer and the tap is
+ * skipped rather than resurrected.
+ */
+export function applyChanges(section: AiSection, messageId: string): Applied | null {
+  const message = useAi.getState().chats[section].find((m) => m.id === messageId);
+  const block =
+    message?.role === 'model' ? message.blocks.find((b) => b.type === 'changes') : undefined;
+  if (!block || block.type !== 'changes' || block.status !== 'pending') return null;
+
+  const library = useLibrary.getState();
+  const settings = useSettings.getState();
+  const tasks = useTasks.getState();
+  const money = useMoney.getState();
+  const snapshot = {
+    library: { exercises: library.exercises, routines: library.routines },
+    rest: settings.restSecondsBetweenSets,
+    restExercises: settings.restSecondsBetweenExercises,
+    autoRest: settings.autoStartRest,
+    goal: settings.weeklyWorkoutGoal,
+    tasks: tasks.tasks,
+    budgets: money.budgets ?? [],
+  };
+  /* The workout in flight carries its own copy of each exercise, and Apply
+     writes into it (`syncExercise`, `followGlobalRest`) — so the Undo has to put
+     those copies back too, or the open card keeps the change it just undid. */
+  const session = useActiveWorkout.getState().session;
+  const liveBefore = session
+    ? { localId: session.localId, exercises: session.entries.map((e) => e.exercise) }
+    : null;
+
+  /* Settings first: a new between-sets rest clears every exercise's own rest
+     (`restSync`), and an exercise rest on the same card must survive it. */
+  const ordered = [...(block.changes as AiChange[])].sort(
+    (a, b) => Number(b.target === 'setting') - Number(a.target === 'setting'),
+  );
+  let applied = 0;
+  for (const change of ordered) {
+    if (applyOne(change)) applied += 1;
+  }
+  if (applied === 0) return null;
+  useAi.getState().setChangesStatus(section, messageId, 'accepted');
+
+  return {
+    message: t('{n} changes applied', lang(), { n: applied }),
+    undo: () => {
+      useLibrary.getState().replaceLibrary(snapshot.library);
+      const live = useActiveWorkout.getState();
+      // The same session only: a workout started since never held these copies.
+      if (liveBefore && live.session?.localId === liveBefore.localId) {
+        for (const e of liveBefore.exercises) useActiveWorkout.getState().syncExercise(e.id, e);
+      }
+      const s = useSettings.getState();
+      s.setNumber('restSecondsBetweenSets', snapshot.rest);
+      s.setNumber('restSecondsBetweenExercises', snapshot.restExercises);
+      s.setFlag('autoStartRest', snapshot.autoRest);
+      s.setWeeklyWorkoutGoal(snapshot.goal);
+      useTasks.getState().restoreTaskList(snapshot.tasks);
+      const m = useMoney.getState();
+      const before = new Map(snapshot.budgets.map((b) => [b.categoryId, b]));
+      for (const budget of m.budgets ?? []) {
+        if (!before.has(budget.categoryId)) m.setBudget(budget.categoryId, 0);
+      }
+      for (const budget of snapshot.budgets) {
+        m.setBudget(budget.categoryId, budget.monthly, budget.alerts === true);
+      }
+      useAi.getState().setChangesStatus(section, messageId, 'pending');
+    },
+  };
+}
+
+/** One change, through its store. False when its target is gone. */
+function applyOne(change: AiChange): boolean {
+  if (change.target === 'exercise') {
+    const library = useLibrary.getState();
+    const exercise = library.exercises.find((e) => e.id === change.id && !e.isArchived);
+    if (!exercise) return false;
+    // Through `updateExercise`, which also re-plans the routines on a `sets` change.
+    const next = applyExerciseChange(exercise, change);
+    library.updateExercise(exercise.id, next);
+    // And on the card of a workout in flight, as an edit made by hand lands there.
+    useActiveWorkout.getState().syncExercise(next.id, next);
+    return true;
+  }
+  if (change.target === 'setting') {
+    const settings = useSettings.getState();
+    if (change.field === 'auto_rest') settings.setFlag('autoStartRest', change.value === true);
+    else if (change.field === 'weekly_goal') settings.setWeeklyWorkoutGoal(Number(change.value));
+    // The same writes the Settings rows make — `state/restSync.ts`.
+    else if (change.field === 'rest_between_sets') setRestBetweenSets(Number(change.value));
+    else setRestBetweenExercises(Number(change.value));
+    return true;
+  }
+  if (change.target === 'budget') {
+    const money = useMoney.getState();
+    if (!money.categories.some((c) => c.id === change.id && c.archivedAt === null)) return false;
+    money.setBudget(change.id, change.value);
+    return true;
+  }
+  const tasks = useTasks.getState();
+  if (change.field === 'add') {
+    return (
+      tasks.addTask({
+        name: String(change.value),
+        schedule: change.schedule ?? { kind: 'daily' },
+      }) != null
+    );
+  }
+  const task = tasks.tasks.find((x) => x.id === change.id && x.archivedAt === null);
+  if (!task) return false;
+  if (change.field === 'name') tasks.updateTask(task.id, { name: String(change.value) });
+  else if (change.field === 'schedule' && change.schedule) {
+    tasks.updateTask(task.id, { schedule: change.schedule });
+  } else if (change.field === 'target') {
+    tasks.updateTask(task.id, {
+      target:
+        change.value == null ? null : { count: Number(change.value), unit: change.unit ?? '' },
+    });
+  } else if (change.field === 'archive') tasks.archiveTask(task.id);
+  else return false;
+  return true;
+}
+
+export function discardChanges(section: AiSection, messageId: string): void {
+  useAi.getState().setChangesStatus(section, messageId, 'discarded');
 }

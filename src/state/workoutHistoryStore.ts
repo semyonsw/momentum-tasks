@@ -450,6 +450,14 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()((set, get) => ({
     const workout = get().workouts.find((w) => w.id === workoutId);
     if (!workout) return false;
     if (!workout.sets.some((row) => row.id === setId)) return false;
+    /*
+     * A non-finite number is refused, not stored: it failed the NOT NULL on the
+     * volume column (a throw into the screen), and a row that did reach disk with
+     * one would be dropped by `sanitizeSetRow` on the next launch — a correction
+     * that deletes the set it was correcting.
+     */
+    if (patch.count !== undefined && !Number.isFinite(patch.count)) return false;
+    if (patch.weightKg != null && !Number.isFinite(patch.weightKg)) return false;
 
     const sets = workout.sets.map((row) => {
       if (row.id !== setId) return row;

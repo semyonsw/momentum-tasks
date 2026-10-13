@@ -44,6 +44,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Animated, Easing, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useArrived } from '../hooks/useArrived';
+import { growInDeadline } from '../lib/growIn';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { curve, motion, palette, tint } from '../theme/tokens';
 
@@ -357,6 +358,29 @@ export function GrowIn({
     }).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [natural]);
+
+  /*
+   * The deadline (`lib/growIn.ts`): past it the row is open, whatever became of
+   * the layout event or the animation. A row the store holds is never left
+   * drawn at zero height.
+   */
+  const leavingRef = useRef(leaving);
+  leavingRef.current = leaving;
+  useEffect(() => {
+    if (!animateIn) return undefined;
+    const timer = setTimeout(
+      () => {
+        if (leavingRef.current) return;
+        fade.stopAnimation();
+        fade.setValue(1);
+        setSettled(true);
+      },
+      growInDeadline(duration, scale),
+    );
+    return () => clearTimeout(timer);
+    // Mount only: the deadline is counted from the row's arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Out: close from wherever it stands, then tell the caller. */
   useEffect(() => {

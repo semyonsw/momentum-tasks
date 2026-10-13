@@ -4,15 +4,19 @@ import {
   DEBRIEF_CAP,
   answeredCount,
   createDebrief,
+  debriefChatMessage,
   debriefForAi,
   debriefQuestions,
   debriefToOffer,
   isAnswered,
+  debriefShortPrompt,
   sanitizeDebriefs,
   toggleChoice,
   type WorkoutDebrief,
 } from './debrief';
 import type { CompletedWorkout } from './completedWorkout';
+import { seedExercises } from '../data/seed';
+import type { Exercise, Routine } from '../types/models';
 
 /**
  * The debrief. What matters: the questions fit the workout they are about, a
@@ -231,5 +235,155 @@ describe('reading one back', () => {
     expect(sanitizeDebriefs(undefined)).toEqual([]);
     expect(sanitizeDebriefs('nope')).toEqual([]);
     expect(sanitizeDebriefs({ debriefs: [createDebrief(workout())] })).toHaveLength(1);
+  });
+});
+
+describe('the message to a new chat', () => {
+  const performed = (): CompletedWorkout =>
+    workout({
+      exercises: [
+        { ...exercise('ex_bench', 'Bench press'), summary: '60 kg · 8 8 6' },
+        { ...exercise('ex_dips', 'Dips'), summary: 'BW · 10 10 8' },
+        exercise('ex_fly', 'Cable fly', 0),
+      ],
+    });
+
+  const ex = (over: Partial<Exercise>): Exercise => ({
+    ...seedExercises[0],
+    ladder: undefined,
+    countToMax: undefined,
+    countUnit: 'reps',
+    ...over,
+  });
+  const library = {
+    exercises: [
+      ex({ id: 'ex_bench', name: 'Bench press' }),
+      ex({ id: 'ex_dips', name: 'Dips', countToMax: true }),
+      ex({ id: 'ex_pull', name: 'Pull-ups', ladder: { max: 10, earned: 0 } }),
+    ],
+    routines: [
+      {
+        id: 'r_push',
+        ownerId: 'u1',
+        name: 'Push day',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        items: [
+          // Out of order on purpose: the plan reads in `order`.
+          { id: 'i2', exerciseId: 'ex_dips', order: 1, targetSets: 4 },
+          {
+            id: 'i1',
+            exerciseId: 'ex_bench',
+            order: 0,
+            targetSets: 3,
+            targetRepsMin: 8,
+            targetRepsMax: 10,
+          },
+          { id: 'i3', exerciseId: 'ex_pull', order: 2, targetSets: 5 },
+          { id: 'i4', exerciseId: 'ex_gone', order: 3, targetSets: 3 },
+        ],
+      } satisfies Routine,
+    ],
+  };
+
+  const answered = () => ({
+    ...createDebrief(performed()),
+    status: 'answered' as const,
+    answers: {
+      load: { choices: ['heavy'], note: '  left   shoulder,\non the press ' },
+      pain: { choices: ['shoulder', 'elbow'] },
+      hardest: { choices: ['ex:ex_bench'] },
+      notes: { choices: [], note: 'Slept four hours' },
+    },
+  });
+
+  it('is null when nothing was answered, so the caller can ask the short question', () => {
+    const debrief = createDebrief(performed());
+    expect(debriefChatMessage(debrief, performed(), library, 'en')).toBeNull();
+    expect(
+      debriefChatMessage(
+        { ...debrief, answers: { load: { choices: [], note: '   ' } } },
+        performed(),
+        library,
+        'en',
+      ),
+    ).toBeNull();
+    expect(debriefShortPrompt(debrief, 'en')).toBe(
+      'How did my Push workout go, and should I change anything?',
+    );
+    expect(debriefShortPrompt({ ...debrief, title: '' }, 'en')).toBe(
+      'How did my last workout go, and should I change anything?',
+    );
+  });
+
+  it('quotes every answered question, the session and the plan, in that order', () => {
+    const message = debriefChatMessage(answered(), performed(), library, 'en')!;
+    const lines = message.split('\n');
+    expect(lines[0]).toMatch(/^Analyse my workout: Push, \d+ Sep\.$/);
+    expect(lines).toContain('My answers after the workout:');
+    expect(lines).toContain(
+      '- How did the weights feel? A bit heavy — left shoulder, on the press',
+    );
+    // A multi choice joins its picks; an exercise's own name is not translated.
+    expect(lines).toContain('- Any pain or discomfort? Shoulder, Elbow');
+    expect(lines).toContain('- Which exercise was the hardest? Bench press');
+    expect(lines).toContain('- Anything else the coach should know? Slept four hours');
+    expect(lines).toContain('What I did (60 min):');
+    expect(lines).toContain('- Bench press: 60 kg · 8 8 6');
+    expect(lines).toContain('- Dips: BW · 10 10 8');
+    expect(lines).toContain('The plan in the routine "Push day":');
+    expect(lines).toContain('- Bench press: 3 × 8–10 reps');
+    expect(lines).toContain('- Dips: 4 × MAX');
+    expect(lines.some((l) => l.startsWith('- Pull-ups: ') && l.includes(' + '))).toBe(true);
+    expect(lines[lines.length - 1]).toMatch(/concrete changes/);
+
+    const at = (needle: string) => lines.indexOf(needle);
+    expect(at('My answers after the workout:')).toBeLessThan(at('What I did (60 min):'));
+    expect(at('What I did (60 min):')).toBeLessThan(at('The plan in the routine "Push day":'));
+    expect(at('- Bench press: 3 × 8–10 reps')).toBeLessThan(at('- Dips: 4 × MAX'));
+  });
+
+  it('skips unanswered questions, unperformed exercises and exercises gone from the library', () => {
+    const message = debriefChatMessage(answered(), performed(), library, 'en')!;
+    expect(message).not.toContain('How was your energy?');
+    expect(message).not.toContain('What should happen to this routine');
+    expect(message).not.toContain('Cable fly');
+    expect(message).not.toContain('ex_gone');
+  });
+
+  it('leaves the plan out when the routine was deleted, or there never was one', () => {
+    const gone = debriefChatMessage(answered(), performed(), { ...library, routines: [] }, 'en')!;
+    expect(gone).not.toContain('The plan in the routine');
+    expect(gone).toContain('What I did (60 min):');
+
+    const oneOff = workout({ routineId: undefined, title: '', exercises: performed().exercises });
+    const debrief = {
+      ...createDebrief(oneOff),
+      answers: { repeat: { choices: ['maybe'] } },
+    };
+    const message = debriefChatMessage(debrief, oneOff, library, 'en')!;
+    expect(message.split('\n')[0]).toMatch(/^Analyse my last workout, /);
+    expect(message).toContain('- Would you do this workout again? Maybe');
+    expect(message).not.toContain('The plan in the routine');
+  });
+
+  it('leaves the session out when the workout was deleted from the log', () => {
+    const message = debriefChatMessage(answered(), undefined, library, 'en')!;
+    expect(message).not.toContain('What I did');
+    // The debrief still names its routine, so the plan is still there.
+    expect(message).toContain('The plan in the routine "Push day":');
+  });
+
+  it('speaks Russian, with notes and exercise names verbatim', () => {
+    const message = debriefChatMessage(answered(), performed(), library, 'ru')!;
+    const lines = message.split('\n');
+    expect(lines[0]).toMatch(/^Разбери мою тренировку: «Push», \d+ сентября\.$/);
+    expect(lines).toContain('Мои ответы после тренировки:');
+    expect(lines).toContain('- Как ощущались веса? Тяжеловато — left shoulder, on the press');
+    expect(lines).toContain('- Была боль или дискомфорт? Плечо, Локоть');
+    expect(lines).toContain('- Какое упражнение было самым тяжёлым? Bench press');
+    expect(lines).toContain('Что сделано (60 мин):');
+    expect(lines).toContain('План в программе «Push day»:');
+    expect(message).not.toMatch(/Analyse|My answers|What I did|concrete/);
   });
 });

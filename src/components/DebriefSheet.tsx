@@ -36,6 +36,8 @@
  * The last screen says the answers were kept and what for, with the one button
  * that uses them straight away: ask the assistant about this workout. That is
  * the whole reason the questions were asked, so it is offered while it is fresh.
+ * It opens a NEW chat whose first message quotes every answer, the session and
+ * the routine's plan (`state/debriefChat.ts`, `debriefChatMessage`).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -62,6 +64,7 @@ import {
 } from '../lib/debrief';
 import { celebrate, commit, tap } from '../lib/feedback';
 import { useAi } from '../state/aiStore';
+import { startDebriefChat } from '../state/debriefChat';
 import { useDebriefs } from '../state/debriefStore';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
 import { curve, glass, motion, palette, radius, tint } from '../theme/tokens';
@@ -82,7 +85,7 @@ export function DebriefHost() {
       key={debrief.workoutId}
       debrief={debrief}
       aiReady={aiReady}
-      onAskAi={(prompt) => useDebriefs.getState().askAi(prompt)}
+      onAskAi={() => startDebriefChat(debrief.workoutId)}
     />
   );
 }
@@ -173,7 +176,8 @@ interface DebriefSheetProps {
   debrief: WorkoutDebrief;
   /** A key is connected — the last screen offers to ask about this workout. */
   aiReady: boolean;
-  onAskAi: (prompt: string) => void;
+  /** Start a new chat about this workout — `state/debriefChat.ts`. */
+  onAskAi: () => void;
 }
 
 export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
@@ -352,13 +356,7 @@ export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
               aiReady={aiReady}
               onAsk={() => {
                 useDebriefs.getState().close();
-                onAskAi(
-                  debrief.title
-                    ? t('How did my {routine} workout go, and should I change anything?', {
-                        routine: debrief.title,
-                      })
-                    : t('How did my last workout go, and should I change anything?'),
-                );
+                onAskAi();
               }}
               onClose={() => useDebriefs.getState().close()}
             />

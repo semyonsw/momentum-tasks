@@ -125,7 +125,7 @@ describe('normalising an edit', () => {
   });
 
   it('records what the routine has now, weight included', () => {
-    expect(proposal.rows[0].was).toEqual({ sets: 4, reps: 12, weightKg: 30 });
+    expect(proposal.rows[0].was).toEqual({ sets: 4, reps: 12, weightKg: 30, repsMin: 5 });
   });
 
   it('marks an unknown name as new to the library, with its muscle', () => {

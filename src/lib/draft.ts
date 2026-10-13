@@ -274,15 +274,20 @@ export function formatTarget(
   },
   lang: Language = 'en',
 ): string {
-  const { targetSets, targetRepsMin, targetRepsMax, exercise } = entry;
+  const { targetRepsMin, targetRepsMax, exercise } = entry;
   const unit = exercise.countUnit;
+  /*
+   * THE SET COUNT IS THE ROWS, not the plan, for every kind of target — not only
+   * a ladder's. `+ Add set` on a `3 × 8–10` card used to leave the line reading
+   * 3 while four rows sat under it, which read as the tap not having worked.
+   * Rungs, not every row: a warm-up is not a set of the plan and a drop set is
+   * extra work after it. No rows (a routine preview) falls back to the plan.
+   */
+  const working = entry.sets?.filter(isLadderRung).length;
+  const targetSets = working && working > 0 ? working : entry.targetSets;
 
   const ladder = entry.ladder ? ladderOf({ ...exercise, ladder: entry.ladder }) : null;
-  if (ladder) {
-    // Rungs, not every working set: a drop set is extra work after the ladder.
-    const working = entry.sets?.filter(isLadderRung).length;
-    return describeLadder(ladderTargets(ladder, working && working > 0 ? working : targetSets));
-  }
+  if (ladder) return describeLadder(ladderTargets(ladder, targetSets));
 
   if (unit === 'seconds' || unit === 'rounds') {
     const perSet = targetRepsMax ?? targetRepsMin ?? 0;

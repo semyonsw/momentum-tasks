@@ -50,6 +50,7 @@ import {
   type SummaryBlock,
   type TextBlock,
 } from '../lib/ai/aiSchema';
+import type { AiChange, ChangeRow } from '../lib/ai/aiChanges';
 import type { ProposalRow, ReviewProposal } from '../lib/ai/aiProposal';
 import type { ID } from '../types/models';
 
@@ -69,9 +70,26 @@ export interface SequenceChatBlock {
   status: ProposalStatus;
 }
 
+/**
+ * A suggested set of SETTINGS changes (`lib/ai/aiChanges.ts`), kept in the
+ * message like a loop: applied or not, whole. `rows` is the card as it read
+ * when the answer arrived — its `from` values are the ones Apply replaced.
+ */
+export interface ChangesChatBlock {
+  type: 'changes';
+  changes: AiChange[];
+  rows: ChangeRow[];
+  why: string;
+  status: ProposalStatus;
+}
+
 /** A block as the chat stores it: a proposal is a reference, not a copy. */
 export type ChatBlock =
-  TextBlock | SummaryBlock | { type: 'proposal'; proposalId: string } | SequenceChatBlock;
+  | TextBlock
+  | SummaryBlock
+  | { type: 'proposal'; proposalId: string }
+  | SequenceChatBlock
+  | ChangesChatBlock;
 
 export type AiMessage =
   | { id: string; role: 'user'; text: string; at: string }
@@ -202,9 +220,47 @@ interface AiState extends AiValue {
   importChats: (raw: unknown) => number;
   /** Mark a suggested loop applied, discarded, or (Undo) pending again. */
   setSequenceStatus: (section: AiSection, messageId: string, status: ProposalStatus) => void;
+  /** The same for a settings-changes card. */
+  setChangesStatus: (section: AiSection, messageId: string, status: ProposalStatus) => void;
 
   markRoutineAi: (routineId: ID) => void;
   markRoutineSeen: (routineId: ID) => void;
+}
+
+/**
+ * One message's loop or changes card set to `status`, in the open chat AND the
+ * archive: `Start a new chat` between Apply and Undo files the card away, and
+ * the Undo left it "accepted" there for good.
+ */
+function markBlocks(
+  state: Pick<AiValue, 'chats' | 'archive'>,
+  section: AiSection,
+  messageId: string,
+  type: 'sequence' | 'changes',
+  status: ProposalStatus,
+): Pick<AiValue, 'chats' | 'archive'> {
+  const mark = (messages: AiMessage[]) =>
+    messages.map((message) =>
+      message.id === messageId && message.role === 'model'
+        ? {
+            ...message,
+            blocks: message.blocks.map((block) =>
+              block.type === type ? { ...block, status } : block,
+            ),
+          }
+        : message,
+    );
+  return {
+    chats: { ...state.chats, [section]: mark(state.chats[section]) },
+    archive: {
+      ...state.archive,
+      [section]: state.archive[section].map((chat) =>
+        chat.messages.some((m) => m.id === messageId)
+          ? { ...chat, messages: mark(chat.messages) }
+          : chat,
+      ),
+    },
+  };
 }
 
 /** Every proposal id some message in some chat still points at. */
@@ -340,32 +396,9 @@ export const useAi = create<AiState>()(
         }),
 
       setSequenceStatus: (section, messageId, status) =>
-        set((state) => {
-          const mark = (messages: AiMessage[]) =>
-            messages.map((message) =>
-              message.id === messageId && message.role === 'model'
-                ? {
-                    ...message,
-                    blocks: message.blocks.map((block) =>
-                      block.type === 'sequence' ? { ...block, status } : block,
-                    ),
-                  }
-                : message,
-            );
-          /* The archive too: `Start a new chat` between Apply and Undo files the
-             card away, and the Undo left it "accepted" there for good. */
-          return {
-            chats: { ...state.chats, [section]: mark(state.chats[section]) },
-            archive: {
-              ...state.archive,
-              [section]: state.archive[section].map((chat) =>
-                chat.messages.some((m) => m.id === messageId)
-                  ? { ...chat, messages: mark(chat.messages) }
-                  : chat,
-              ),
-            },
-          };
-        }),
+        set((state) => markBlocks(state, section, messageId, 'sequence', status)),
+      setChangesStatus: (section, messageId, status) =>
+        set((state) => markBlocks(state, section, messageId, 'changes', status)),
       importChats: (raw) => {
         const clean = sanitizeAi(raw);
         set({ chats: clean.chats, archive: clean.archive, proposals: clean.proposals });
@@ -469,6 +502,33 @@ function sanitizeProposal(raw: unknown): StoredProposal | null {
   };
 }
 
+const CHANGE_TARGETS = new Set(['exercise', 'setting', 'task', 'budget']);
+
+/**
+ * A stored changes card out of anything. The changes were checked against the
+ * stores when the answer arrived; what is checked here is only that each is
+ * still the SHAPE `applyChanges` reads — anything else is dropped, and Apply
+ * skips an id that has gone since.
+ */
+function sanitizeChangesBlock(raw: Rec): ChangesChatBlock | null {
+  const changes = (Array.isArray(raw.changes) ? raw.changes : []).filter(
+    (c): c is AiChange =>
+      isRec(c) &&
+      typeof c.target === 'string' &&
+      CHANGE_TARGETS.has(c.target) &&
+      typeof c.field === 'string',
+  );
+  const rows = (Array.isArray(raw.rows) ? raw.rows : []).flatMap((r): ChangeRow[] =>
+    isRec(r) && typeof r.label === 'string' && typeof r.to === 'string'
+      ? [{ subject: str(r.subject) ?? '', label: r.label, from: str(r.from) ?? '', to: r.to }]
+      : [],
+  );
+  if (changes.length === 0 || rows.length === 0) return null;
+  const status: ProposalStatus =
+    raw.status === 'accepted' || raw.status === 'discarded' ? raw.status : 'pending';
+  return { type: 'changes', changes, rows, why: str(raw.why) ?? '', status };
+}
+
 function sanitizeMessage(
   raw: unknown,
   section: AiSection,
@@ -510,6 +570,11 @@ function sanitizeMessage(
         why,
         status,
       });
+      continue;
+    }
+    if (isRec(block) && block.type === 'changes') {
+      const clean = sanitizeChangesBlock(block);
+      if (clean) blocks.push(clean);
       continue;
     }
     // Text and summary blocks go through the SAME validator a live answer does.

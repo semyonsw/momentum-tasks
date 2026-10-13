@@ -61,13 +61,14 @@ import { MAX_PLAUSIBLE_REST_SECONDS } from '../lib/restHistory';
 import { clearExerciseRest, resolveRest } from '../lib/rest';
 import {
   ladderAfterTopSet,
+  ladderOf,
   ladderTargets,
   normalizeLadder,
   reshapeLadderSets,
 } from '../lib/repLadder';
 import { moveToIndex } from '../lib/reorder';
 import { hasRoundLeft, isRoundExercise } from '../lib/rounds';
-import { nextInSupersetRound } from '../lib/superset';
+import { nextInSupersetRound, nextSupersetRound } from '../lib/superset';
 import { carriesWeight, carryWeightForward, defaultWeightUpdate } from '../lib/weightCarry';
 import { cleanRir, withRir } from '../lib/effort';
 import { cleanSetType, isLadderRung, withKind, type SetKind } from '../lib/setType';
@@ -253,9 +254,12 @@ interface ActiveWorkoutState {
    * the same minute, so its rest, its name and its numbers have to land on the card
    * that is on screen rather than on the next workout.
    *
-   * Only `entry.exercise` changes. The SETS are untouched: they are what is being
-   * done today, and a new default weight is where the NEXT session starts, not a
-   * rewrite of the rows under the thumb.
+   * `entry.exercise` changes, and with it the two copies that are derived from it
+   * at build time and would otherwise disagree with it: `entry.ladder`, and the
+   * unlogged rows' COUNT when the ladder or `countToMax` was switched. Weights and
+   * logged rows are untouched: they are what is being done today, and a new
+   * default weight is where the NEXT session starts, not a rewrite of the rows
+   * under the thumb. See `withEditedShape`.
    */
   syncExercise: (exerciseId: ID, exercise: Exercise) => void;
 
@@ -551,11 +555,18 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
          */
         const partner = nextInSupersetRound({ ...session, entries }, entryId);
 
+        /*
+         * A round that just closed sends the card to whoever starts the next one
+         * (`nextSupersetRound`) — back to A after B1, not left on B for B2.
+         */
+        const nextRound = partner ? null : nextSupersetRound({ ...session, entries }, entryId);
         const advanceTo = partner
           ? partner.entryId
-          : exerciseDone
-            ? (session.entries[index + 1]?.localId ?? null)
-            : null;
+          : nextRound
+            ? nextRound.entryId
+            : exerciseDone
+              ? (session.entries[index + 1]?.localId ?? null)
+              : null;
         /*
          * The workout is over: every set of every exercise is logged, so there is
          * nothing to rest FOR. Deliberately not "this was the last exercise in the
@@ -710,7 +721,18 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
         set({
           session: mapEntry(session, entryId, (entry) => {
             // A new set inherits the last one — the near-universal intent.
-            const last = entry.sets[entry.sets.length - 1];
+            const bottom = entry.sets[entry.sets.length - 1];
+            /*
+             * ...unless the bottom row is a DROP SET. A drop is lighter on purpose
+             * and `Add set` makes a working set, so copying it would hand the user
+             * a working row at the stripped weight. The working row above the drop
+             * is the one the new set continues; with none, the drop is all there is.
+             */
+            const last =
+              bottom?.setType === 'drop'
+                ? ([...entry.sets].reverse().find((s) => !s.isWarmup && s.setType !== 'drop') ??
+                  bottom)
+                : bottom;
             /*
              * EXCEPT ON A `MAX` EXERCISE, where inheriting is the one thing that
              * must not happen: the previous set's twelve is what you managed last
@@ -775,7 +797,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
       },
 
       removeSet: (entryId, setId) => {
-        const { session, setTimer } = get();
+        const { session, setTimer, rest } = get();
         if (!session) return;
 
         const entry = session.entries.find((e) => e.localId === entryId);
@@ -801,6 +823,9 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
           // A timer with nothing left to log into is a timer that can't be
           // committed. Drop it rather than leaving an orphan running.
           setTimer: setTimer?.setId === setId ? null : setTimer,
+          // Same for a rest this row started: the pill would dim a row that is
+          // gone. `uncompleteSet` and `removeEntry` already clear it.
+          rest: rest.originSetId === setId ? NO_REST : rest,
         });
       },
 
@@ -891,7 +916,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
           changed = true;
           // The id is the session's, not the caller's: an edit can change
           // everything about an exercise except which exercise it is.
-          return { ...entry, exercise: { ...exercise, id: entry.exercise.id } };
+          return withEditedShape(entry, { ...exercise, id: entry.exercise.id });
         });
 
         if (changed) set({ session: { ...session, entries } });
@@ -1425,6 +1450,52 @@ function withLadderPlan(entry: DraftEntry): DraftEntry {
       return count == null ? set : { ...set, count };
     }),
   };
+}
+
+/**
+ * An entry after `syncExercise` handed it a new library row.
+ *
+ * `entry.ladder` is a build-time copy so that the session is not repriced by an
+ * edit made ELSEWHERE (see `DraftEntry.ladder`) — but `syncExercise` is the edit
+ * made HERE, and it already replaces `entry.exercise`. Leaving the ladder copy
+ * behind split one exercise into two answers: the rows and the header followed
+ * the old max while Finish's `ladderOutcomes`, which reads `entry.exercise`,
+ * judged the session against the new one. So the copy is re-taken exactly the
+ * way `buildDraftEntry` takes it (`ladderOf`), and `withLadderPlan` reshapes the
+ * unlogged, untouched rows — the same rows it would reshape after a ✓.
+ *
+ * `countToMax` follows `buildDraftEntry` too, but only on the SWITCH: switched
+ * on, untouched unlogged rows become the zeroed counter a max set starts from;
+ * switched off, a counter still at zero gets a number to aim at (the entry's
+ * target, then the exercise's default) instead of a working set of nothing.
+ * Logged rows, warm-ups, drop sets and hand-edited rows are never touched.
+ */
+function withEditedShape(entry: DraftEntry, exercise: Exercise): DraftEntry {
+  const ladder = ladderOf(exercise);
+  const wasMax = countsToMax(entry.exercise);
+  const isMax = countsToMax(exercise);
+
+  const { ladder: _old, ...rest } = entry;
+  let next: DraftEntry = { ...rest, exercise, ...(ladder ? { ladder } : {}) };
+
+  if (wasMax !== isMax) {
+    const fallback =
+      entry.targetRepsMax ?? entry.targetRepsMin ?? finiteCount(exercise.defaultCount) ?? 10;
+    next = {
+      ...next,
+      sets: next.sets.map((s) => {
+        if (s.isCompleted || !s.isPrefilled || !isLadderRung(s)) return s;
+        if (isMax) return s.count === 0 ? s : { ...s, count: 0 };
+        return s.count > 0 ? s : { ...s, count: fallback };
+      }),
+    };
+  }
+
+  return withLadderPlan(next);
+}
+
+function finiteCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 /* ------------------------------------------------------------------ */

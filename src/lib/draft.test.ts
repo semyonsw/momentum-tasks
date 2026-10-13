@@ -535,6 +535,51 @@ describe('formatTarget with a ladder', () => {
   });
 });
 
+/**
+ * The bug report: "+ Add set and the set number doesn't change". The card's
+ * target line was the PLAN's count, so a fourth row sat under `3 × 8–10`.
+ */
+describe('formatTarget follows the rows for an ordinary target', () => {
+  const exercise = { countUnit: 'reps' } as Exercise;
+  const row = (extra: Partial<{ isWarmup: boolean; setType: 'drop' }> = {}) => ({
+    isWarmup: false,
+    ...extra,
+  });
+
+  it('counts a set added mid-session', () => {
+    const entry = { targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, exercise };
+    expect(formatTarget(entry)).toBe('3 × 8–10 reps');
+    expect(formatTarget({ ...entry, sets: [row(), row(), row(), row()] })).toBe('4 × 8–10 reps');
+  });
+
+  it('counts a removed set too', () => {
+    const entry = { targetSets: 3, targetRepsMax: 10, exercise, sets: [row(), row()] };
+    expect(formatTarget(entry)).toBe('2 × 10 reps');
+  });
+
+  it('does not count warm-ups or drop sets as sets of the plan', () => {
+    const sets = [row({ isWarmup: true }), row(), row(), row({ setType: 'drop' })];
+    expect(formatTarget({ targetSets: 3, targetRepsMax: 10, exercise, sets })).toBe('2 × 10 reps');
+  });
+
+  it('counts the rows of a MAX and a timed exercise as well', () => {
+    const max = { countUnit: 'reps', countToMax: true } as Exercise;
+    expect(formatTarget({ targetSets: 3, exercise: max, sets: [row(), row(), row(), row()] })).toBe(
+      '4 × MAX',
+    );
+    const plank = { countUnit: 'seconds' } as Exercise;
+    expect(
+      formatTarget({ targetSets: 3, targetRepsMax: 60, exercise: plank, sets: [row()] }),
+    ).toMatch(/^1 × /);
+  });
+
+  it('falls back to the plan when there are no rows', () => {
+    expect(formatTarget({ targetSets: 3, targetRepsMax: 10, exercise, sets: [] })).toBe(
+      '3 × 10 reps',
+    );
+  });
+});
+
 /* ------------------------------------------------------------------ */
 
 /**

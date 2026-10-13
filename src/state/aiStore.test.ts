@@ -233,3 +233,132 @@ describe('the history of past chats', () => {
     });
   });
 });
+
+describe('a settings-changes card', () => {
+  const changesBlock = {
+    type: 'changes' as const,
+    changes: [
+      { target: 'exercise' as const, id: 'ex_bench', field: 'rest_seconds' as const, value: 90 },
+      { target: 'setting' as const, field: 'auto_rest' as const, value: false },
+    ],
+    rows: [
+      { subject: 'Bench press', label: 'Rest between sets', from: '2:00', to: '1:30' },
+      { subject: 'Settings', label: 'Start rest automatically', from: 'On', to: 'Off' },
+    ],
+    why: 'Shorter rests.',
+    status: 'pending' as const,
+  };
+  const answer = (id: string, extra: object = {}): AiMessage => ({
+    id,
+    role: 'model',
+    blocks: [
+      { type: 'text', text: 'Here.' },
+      { ...changesBlock, ...extra },
+    ],
+    raw: '{}',
+    at: '2026-10-01',
+  });
+  const blockOf = (message: AiMessage | undefined) =>
+    message?.role === 'model' ? message.blocks.find((b) => b.type === 'changes') : undefined;
+  const roundTrip = () => sanitizeAi(JSON.parse(JSON.stringify(useAi.getState())));
+
+  it('is marked accepted, discarded, and pending again — only on its own message', () => {
+    useAi.getState().appendMessage('Workout', answer('a1'));
+    useAi.getState().appendMessage('Workout', answer('a2'));
+    useAi.getState().setChangesStatus('Workout', 'a1', 'accepted');
+    const [a1, a2] = useAi.getState().chats.Workout;
+    expect(blockOf(a1)).toMatchObject({ status: 'accepted' });
+    expect(blockOf(a2)).toMatchObject({ status: 'pending' });
+    // The text block beside it is untouched.
+    expect(a1.role === 'model' && a1.blocks[0]).toEqual({ type: 'text', text: 'Here.' });
+    useAi.getState().setChangesStatus('Workout', 'a1', 'pending');
+    expect(blockOf(useAi.getState().chats.Workout[0])).toMatchObject({ status: 'pending' });
+  });
+
+  it('is marked in the archive too, after New chat', () => {
+    useAi.getState().appendMessage('Workout', user('q', 'Rest?'));
+    useAi.getState().appendMessage('Workout', answer('a1'));
+    useAi.getState().setChangesStatus('Workout', 'a1', 'accepted');
+    useAi.getState().clearChat('Workout');
+    // The Undo, after the chat was filed away.
+    useAi.getState().setChangesStatus('Workout', 'a1', 'pending');
+    const filed = useAi.getState().archive.Workout[0].messages.find((m) => m.id === 'a1');
+    expect(blockOf(filed)).toMatchObject({ status: 'pending' });
+  });
+
+  it('leaves a loop on the same message alone, and is left alone by one', () => {
+    const both: AiMessage = {
+      id: 'a1',
+      role: 'model',
+      blocks: [
+        { type: 'sequence', routineIds: ['r1'], next: 0, why: 'x', status: 'pending' },
+        changesBlock,
+      ],
+      raw: '{}',
+      at: '2026-10-01',
+    };
+    useAi.getState().appendMessage('Workout', both);
+    useAi.getState().setChangesStatus('Workout', 'a1', 'discarded');
+    useAi.getState().setSequenceStatus('Workout', 'a1', 'accepted');
+    const [message] = useAi.getState().chats.Workout;
+    expect(
+      message.role === 'model' && message.blocks.map((b) => 'status' in b && b.status),
+    ).toEqual(['accepted', 'discarded']);
+  });
+
+  it('survives a relaunch exactly, status and all', () => {
+    useAi.getState().appendMessage('Tasks', answer('a1'));
+    useAi.getState().setChangesStatus('Tasks', 'a1', 'accepted');
+    const back = roundTrip();
+    expect(blockOf(back.chats.Tasks[0])).toEqual({ ...changesBlock, status: 'accepted' });
+    useAi.getState().setChangesStatus('Tasks', 'a1', 'discarded');
+    expect(blockOf(roundTrip().chats.Tasks[0])).toMatchObject({ status: 'discarded' });
+  });
+
+  it('rehydrates a damaged card to what Apply can read, or drops it', () => {
+    const blob = (block: object) =>
+      sanitizeAi({
+        chats: {
+          Workout: [
+            {
+              id: 'a1',
+              role: 'model',
+              blocks: [{ type: 'text', text: 'Hi' }, block],
+              raw: '',
+              at: 'x',
+            },
+          ],
+        },
+      }).chats.Workout[0];
+    // A junk change and a junk row are dropped; a junk status is pending.
+    const mixed = blockOf(
+      blob({
+        ...changesBlock,
+        changes: [
+          ...changesBlock.changes,
+          { target: 'routine', field: 'x' },
+          { target: 'task' },
+          'x',
+        ],
+        rows: [...changesBlock.rows, { label: 3, to: 'x' }, { label: 'L', to: 'T' }],
+        why: 7,
+        status: 'applied',
+      }),
+    );
+    expect(mixed).toEqual({
+      type: 'changes',
+      changes: changesBlock.changes,
+      rows: [...changesBlock.rows, { subject: '', label: 'L', from: '', to: 'T' }],
+      why: '',
+      status: 'pending',
+    });
+    // Nothing applicable, or nothing to show: the card goes, the message stays.
+    for (const broken of [
+      { ...changesBlock, changes: [] },
+      { ...changesBlock, rows: 'x' },
+    ]) {
+      const message = blob(broken);
+      expect(message.role === 'model' && message.blocks).toEqual([{ type: 'text', text: 'Hi' }]);
+    }
+  });
+});
