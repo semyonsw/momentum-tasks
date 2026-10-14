@@ -71,6 +71,7 @@ import { LaunchScreen } from './src/components/LaunchScreen';
 import { AppShell } from './src/navigation/AppShell';
 import { LanguageChoiceScreen } from './src/screens/LanguageChoiceScreen';
 import { useSettingsHydrated } from './src/hooks/useHydrated';
+import { reportRootHeight } from './src/hooks/useKeyboard';
 import { useSettings } from './src/state/settingsStore';
 import { prepareAudio } from './src/lib/beeper';
 import { rgbChannels, themeColors } from './src/lib/theme';
@@ -215,7 +216,11 @@ export default function App() {
               so the one moment the theme changes on its own — settings hydrating
               under the launch mark — does not restart the mark.
             */}
-            <View key={themeKey} className="flex-1">
+            <View
+              key={themeKey}
+              className="flex-1"
+              onLayout={(event) => reportRootHeight(event.nativeEvent.layout.height)}
+            >
               <ErrorBoundary>
                 <Root />
               </ErrorBoundary>

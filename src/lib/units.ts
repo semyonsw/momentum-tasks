@@ -9,7 +9,7 @@ import { MONTH_NAMES_RU_OF } from './days';
 import { t, term, type Language } from './i18n';
 import type { CountUnit, LoadMode, UnitSystem } from '../types/models';
 
-export const KG_PER_LB = 0.45359237;
+const KG_PER_LB = 0.45359237;
 
 /**
  * THE ± STEPS ON EVERY WEIGHT CONTROL IN THE APP: one fine, one coarse.
@@ -28,8 +28,8 @@ export const KG_PER_LB = 0.45359237;
  */
 export const WEIGHT_STEP_FINE_KG = 0.5;
 export const WEIGHT_STEP_COARSE_KG = 2;
-export const WEIGHT_STEP_FINE_LB = 1;
-export const WEIGHT_STEP_COARSE_LB = 5;
+const WEIGHT_STEP_FINE_LB = 1;
+const WEIGHT_STEP_COARSE_LB = 5;
 
 /** The two weight steps, in the user's OWN units — kg is the storage unit only. */
 export function weightSteps(unitSystem: UnitSystem): { fine: number; coarse: number } {
@@ -39,7 +39,7 @@ export function weightSteps(unitSystem: UnitSystem): { fine: number; coarse: num
 }
 
 /** The jump an imperial lifter can actually make when nothing else says otherwise. */
-export const DEFAULT_INCREMENT_LB = 5;
+const DEFAULT_INCREMENT_LB = 5;
 
 export function kgToLb(kg: number): number {
   return kg / KG_PER_LB;
@@ -163,7 +163,7 @@ export function parseCountInput(text: string, countUnit: CountUnit): number | nu
 
 /** "3 min" / "45 sec" — a duration in the coarsest unit that stays exact. */
 export function formatDuration(seconds: number, lang: Language = 'en'): string {
-  if (seconds <= 0) return t('no rest', lang);
+  if (!(seconds > 0)) return t('no rest', lang);
   if (seconds % 60 === 0) return `${seconds / 60} ${term('unit', 'min', lang)}`;
   if (seconds < 60) return `${seconds} ${term('unit', 'sec', lang)}`;
   return formatClock(seconds);
@@ -230,7 +230,8 @@ export function effectiveLoadKg(
 
 /** "1:30" / "12:05" — used by the rest timer and session clock. */
 export function formatClock(totalSeconds: number): string {
-  const s = Math.max(0, Math.round(totalSeconds));
+  // `!(x > 0)` rather than `Math.max`, which lets NaN through as "NaN:NaN".
+  const s = totalSeconds > 0 ? Math.round(totalSeconds) : 0;
   const minutes = Math.floor(s / 60);
   const seconds = s % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
@@ -309,7 +310,7 @@ export function daysBetween(a: Date | string, b: Date | string): number {
  * two copies of a grouping rule is how two screens end up disagreeing about it.
  */
 export function formatVolumeKg(kg: number, lang: Language = 'en'): string {
-  const digits = String(Math.max(0, Math.round(kg)));
+  const digits = String(kg > 0 ? Math.round(kg) : 0);
   let grouped = '';
   for (let i = 0; i < digits.length; i += 1) {
     const fromEnd = digits.length - i;

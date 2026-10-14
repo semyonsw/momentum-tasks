@@ -440,7 +440,7 @@ function weekStreakOf(task: Task, log: TaskLog, today: string): number {
 }
 
 /** "2 / 3 this week" — a weekly row's line, and the pips under it. */
-export function describeWeek(week: WeekProgress, times: number, lang: Language = 'en'): string {
+function describeWeek(week: WeekProgress, times: number, lang: Language = 'en'): string {
   return t('{done} / {times} this week', lang, { done: week.done, times });
 }
 
@@ -923,7 +923,7 @@ export function reorderWithinVisible(
  * the only honest answer to "all time" and stops a fresh install drawing a year
  * of empty days.
  */
-export function rangeStart(tasks: readonly Task[], range: TrendRange, today: string): string {
+function rangeStart(tasks: readonly Task[], range: TrendRange, today: string): string {
   const length = rangeLength(range);
   if (length != null) return shiftDay(today, -(length - 1));
   let earliest = today;

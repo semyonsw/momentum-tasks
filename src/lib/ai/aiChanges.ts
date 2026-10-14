@@ -106,13 +106,13 @@ export interface ChangeContext {
 /** An exercise cue is one line — the editor's own cap. */
 export const CUE_MAX = 120;
 /** A task name, as the editor holds it. */
-export const TASK_NAME_MAX = 60;
+const TASK_NAME_MAX = 60;
 /** The weight increments a gym actually has. */
-export const INCREMENT_LIMITS = { min: 0.25, max: 50 } as const;
+const INCREMENT_LIMITS = { min: 0.25, max: 50 } as const;
 /** A get-ready countdown, as Settings holds it. */
-export const PREPARE_LIMITS = { min: 0, max: 60 } as const;
+const PREPARE_LIMITS = { min: 0, max: 60 } as const;
 /** A rep target someone could actually be asked for. */
-export const REP_TARGET_LIMITS = { min: 1, max: 100 } as const;
+const REP_TARGET_LIMITS = { min: 1, max: 100 } as const;
 
 const SECTION_OF: Record<AiChange['target'], AiSection> = {
   exercise: 'Workout',

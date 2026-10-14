@@ -37,6 +37,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from './Pressable';
+import { useRevealOnFocus } from './KeyboardAware';
 
 import { useT } from '../hooks/useT';
 import { tap } from '../lib/feedback';
@@ -489,6 +490,13 @@ export function DashedAdd({
  *
  * Both paths are the same 56-high box so a field never changes size or position
  * when it gains focus.
+ *
+ * Focus asks the scroll it sits in to bring it above the keyboard
+ * (`useRevealOnFocus`) — what matters when the keyboard is already up and the
+ * thumb moves to the next field, since nothing else would scroll for it. Whatever
+ * must clear the keyboard WITH the field (a sheet's Save) is the sheet's job now,
+ * by rising, not the field's: the padding trick that used to stretch this field's
+ * rect down over the button only ever existed to steer Android's `pan`.
  */
 export function FieldWell({
   value,
@@ -502,7 +510,6 @@ export function FieldWell({
   keyboardType = 'default',
   onBlur,
   onSubmitEditing,
-  keyboardReach = 0,
   lit = false,
   accessibilityLabel,
 }: {
@@ -542,22 +549,13 @@ export function FieldWell({
    */
   onSubmitEditing?: () => void;
   /**
-   * How far below the field the keyboard must clear — the Save under it. The
-   * app runs Android's `pan` mode, which scrolls the window only far enough to
-   * reveal the focused field's rect (its line plus its bottom padding), so a
-   * button under the field stayed under the keyboard. The field's bottom
-   * padding reaches that far, pulled back by a matching negative margin so it
-   * looks the same: what Android reveals is now the field AND the button. The
-   * AI composer's trick (`AiChatScreen`), here for a sheet.
-   */
-  keyboardReach?: number;
-  /**
    * The v3 sheet field: an 18 corner, a c2 edge and a 4 dp glow ring round it,
    * 17 / 500 text. For the one field a sheet exists to fill — a new task's name.
    */
   lit?: boolean;
   accessibilityLabel: string;
 }) {
+  const reveal = useRevealOnFocus();
   const box = lit
     ? 'h-row flex-row items-center rounded-[18px] border px-lg'
     : [
@@ -595,23 +593,13 @@ export function FieldWell({
           autoFocus={autoFocus}
           selectTextOnFocus={selectAllOnFocus}
           keyboardType={keyboardType}
+          onFocus={reveal}
           onBlur={onBlur}
           onSubmitEditing={onSubmitEditing}
           submitBehavior={onSubmitEditing ? 'submit' : 'blurAndSubmit'}
           accessibilityLabel={accessibilityLabel}
           returnKeyType="done"
           className={`flex-1 ${textClass}`}
-          style={
-            keyboardReach > 0
-              ? {
-                  alignSelf: 'stretch',
-                  paddingTop: 0,
-                  paddingBottom: keyboardReach,
-                  marginBottom: -keyboardReach,
-                  textAlignVertical: 'center',
-                }
-              : undefined
-          }
         />
       </View>
     );

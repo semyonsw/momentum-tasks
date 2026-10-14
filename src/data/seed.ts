@@ -506,7 +506,7 @@ export const seedRoutinePush: Routine = {
   ],
 };
 
-export const seedRoutineBoxing: Routine = {
+const seedRoutineBoxing: Routine = {
   id: 'r_boxing',
   ownerId: 'u1',
   name: 'Бокс (кардио)',
@@ -534,7 +534,7 @@ export const seedRoutineBoxing: Routine = {
  * each set starts prefilled with — and on a count-up they are a prefill and not a
  * prescription: the clock runs until DONE and logs what it read.
  */
-export const seedRoutineCalisthenics: Routine = {
+const seedRoutineCalisthenics: Routine = {
   id: 'r_calisthenics',
   ownerId: 'u1',
   name: 'Навыки калистеники',

@@ -34,6 +34,7 @@
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
+import { useRevealOnFocus } from './KeyboardAware';
 import { Sheet, SheetCancel } from './Sheet';
 import { Kicker, PrimaryButton } from './primitives';
 import { useT } from '../hooks/useT';
@@ -62,6 +63,7 @@ export function BalanceSheet({
   onDismiss,
 }: BalanceSheetProps) {
   const t = useT();
+  const reveal = useRevealOnFocus();
   /* Whole units in the field, whatever the scale: what is in a pocket is read
      off to the unit. The cents already in the balance survive a Save that did
      not change the whole part — see `save`. */
@@ -96,6 +98,7 @@ export function BalanceSheet({
           keyboardType="numeric"
           autoFocus
           selectTextOnFocus
+          onFocus={reveal}
           accessibilityLabel={t('Amount in {currency}', { currency })}
           className="flex-1 text-title-xl font-semibold tabular-nums text-ink"
         />

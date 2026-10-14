@@ -63,7 +63,7 @@ export const MIN_POINTS = 10;
 /** Money: relative difference against the comparison group. */
 export const MIN_RELATIVE = 0.2;
 /** A "busy" week for comparison 3. */
-export const BUSY_WEEK_WORKOUTS = 3;
+const BUSY_WEEK_WORKOUTS = 3;
 
 export type InsightId =
   'tasksOnTrainingDays' | 'spendOnWeekends' | 'tasksInBusyWeeks' | 'spendOnTrainingDays';

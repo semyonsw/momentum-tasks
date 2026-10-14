@@ -42,7 +42,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
 
@@ -153,8 +154,9 @@ export function CategoryDetailScreen({
       <StatusBar style="light" />
       <ScreenHeader kicker={t('Finance')} onBack={leave} bordered={false} />
 
-      <ScrollView
-        className="flex-1"
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="never"
         contentContainerStyle={{ paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
@@ -223,7 +225,7 @@ export function CategoryDetailScreen({
           onPress={() => setArchiving(true)}
           className="mx-md mt-sm"
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {archiving ? (
         <ConfirmSheet

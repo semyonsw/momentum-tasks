@@ -77,7 +77,7 @@ const HALF_LIFE_DAILY = 13;
 const MAX_WALK_DAYS = 3660;
 
 /** The sparkline's window. */
-export const STRENGTH_SERIES_DAYS = 90;
+const STRENGTH_SERIES_DAYS = 90;
 
 /** Times per day the task asks, on average. `null` for a one-day task or no days. */
 export function strengthFrequency(task: Task): number | null {

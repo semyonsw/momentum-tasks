@@ -58,7 +58,7 @@
  * counted whole drams. Anything not listed — including a label like `PTS` — is
  * whole units.
  */
-export const MINOR_UNITS: Readonly<Record<string, number>> = {
+const MINOR_UNITS: Readonly<Record<string, number>> = {
   AMD: 0,
   JPY: 0,
   KRW: 0,
@@ -77,7 +77,7 @@ export const MINOR_UNITS: Readonly<Record<string, number>> = {
 };
 
 /** The most digits a stored integer may carry after the point. */
-export const MAX_SCALE = 2;
+const MAX_SCALE = 2;
 
 /** How many digits an amount may hold in all — the keypad's `MAX_DIGITS`. */
 export const MAX_DIGITS = 12;

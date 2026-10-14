@@ -53,7 +53,7 @@ export const MAX_GYMS = 8;
 export const DEFAULT_GYM_ID = 'gym_default';
 
 /** The name a migrated or fresh single gym gets. Deliberately generic. */
-export const DEFAULT_GYM_NAME = 'My gym';
+const DEFAULT_GYM_NAME = 'My gym';
 
 /**
  * A usable plate list: positive, finite, deduplicated, heaviest first.
@@ -81,7 +81,7 @@ export function clampPlates(value: unknown): number[] {
 }
 
 /** A gym name that will render: trimmed, capped, never empty. */
-export function clampGymName(value: unknown, fallback = DEFAULT_GYM_NAME): string {
+function clampGymName(value: unknown, fallback = DEFAULT_GYM_NAME): string {
   const name = typeof value === 'string' ? value.trim().slice(0, 40) : '';
   return name === '' ? fallback : name;
 }

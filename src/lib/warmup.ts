@@ -69,7 +69,7 @@ export interface WarmupRung {
  * heavy enough to feel like the real thing. The reps come DOWN as the weight goes up
  * for the obvious reason — a warm-up must not be the set that tires you out.
  */
-export const WARMUP_SCHEME: readonly WarmupRung[] = [
+const WARMUP_SCHEME: readonly WarmupRung[] = [
   { fraction: 0.4, reps: 5 },
   { fraction: 0.6, reps: 5 },
   { fraction: 0.8, reps: 3 },

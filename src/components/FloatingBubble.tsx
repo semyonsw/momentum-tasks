@@ -80,7 +80,7 @@ const EASE_IN = Easing.in(Easing.quad);
  * whose bar is `34 + 60 + 8` = 102 tall — its 34 is the status bar, which here
  * is `insets.top` — so the same 2 dp of air is `insets.top + 70`.
  */
-export const BUBBLE_TOP = 70;
+const BUBBLE_TOP = 70;
 
 export function FloatingBubble({
   visible,

@@ -1388,7 +1388,7 @@ function sanitizeTimer(value: unknown, entryIds: Set<string>): SetTimerState | n
  * rest, and writing nothing is more honest than writing either the true eight
  * hours or a clamped thirty minutes.
  */
-export function measureRestTaken(rest: RestState, now: number): number | null {
+function measureRestTaken(rest: RestState, now: number): number | null {
   if (!isResting(rest) || rest.startedAt == null) return null;
   const seconds = Math.round((now - rest.startedAt) / 1000);
   if (seconds <= 0 || seconds > MAX_PLAUSIBLE_REST_SECONDS) return null;

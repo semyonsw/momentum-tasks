@@ -194,7 +194,7 @@ export function FocusFinish({ onPress }: { onPress: () => void }) {
  * would move the thing the thumb is aiming at. It occupies its 44 dp always; only
  * its opacity says whether it can be pressed.
  */
-export function FocusUndoRow({ onPress }: { onPress: (() => void) | null }) {
+function FocusUndoRow({ onPress }: { onPress: (() => void) | null }) {
   const t = useT();
 
   return (

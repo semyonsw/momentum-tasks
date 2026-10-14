@@ -48,7 +48,7 @@ const JSON_MIME = 'application/json';
 const CSV_MIME = 'text/csv';
 
 /** Can this platform show a folder picker at all? SAF is Android-only. */
-export function canPickFolder(): boolean {
+function canPickFolder(): boolean {
   return Platform.OS === 'android' && FileSystem.StorageAccessFramework != null;
 }
 
@@ -60,12 +60,12 @@ export function canPickFolder(): boolean {
  * no picker, and so the path can be shown to a user who wants to pull it off with
  * `adb` or a desktop file browser.
  */
-export function appFolderUri(): string | null {
+function appFolderUri(): string | null {
   return FileSystem.documentDirectory ?? null;
 }
 
 /** The name a SAF URI ends in, decoded: `...%2FDownload%2Fbackup.json` → `backup.json`. */
-export function displayName(uri: string): string {
+function displayName(uri: string): string {
   const decoded = safeDecode(uri);
   const tail = decoded.split('/').pop() ?? decoded;
   return tail;
@@ -163,7 +163,7 @@ export async function deleteFile(uri: string): Promise<boolean> {
 }
 
 /** Write into the app's own documents directory. Returns the full path. */
-export async function writeToAppFolder(
+async function writeToAppFolder(
   baseName: string,
   contents: string,
   extension = 'json',

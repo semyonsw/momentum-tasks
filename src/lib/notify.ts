@@ -63,9 +63,9 @@ import type { PlannedReminder } from './reminders';
 const CHANNEL_VERSION = 3;
 
 /** The long tone: rest is over, the bell rang, go. */
-export const CHANNEL_GO = `timer-go-v${CHANNEL_VERSION}`;
+const CHANNEL_GO = `timer-go-v${CHANNEL_VERSION}`;
 /** The tick: the last seconds before a deadline. */
-export const CHANNEL_GETSET = `timer-getset-v${CHANNEL_VERSION}`;
+const CHANNEL_GETSET = `timer-getset-v${CHANNEL_VERSION}`;
 
 /**
  * REMINDERS — a task's own time of day, and the workout schedule.
@@ -81,7 +81,7 @@ export const CHANNEL_GETSET = `timer-getset-v${CHANNEL_VERSION}`;
  * whatever the phone's own notification tone is, which is what somebody's
  * muscle memory already reads as "something wants me later".
  */
-export const CHANNEL_REMINDER = `reminders-v${CHANNEL_VERSION}`;
+const CHANNEL_REMINDER = `reminders-v${CHANNEL_VERSION}`;
 
 /** Channels from earlier versions, deleted so the system UI stays honest. */
 const RETIRED_CHANNELS = [
@@ -101,10 +101,10 @@ const RETIRED_CHANNELS = [
  * denial-of-service on their own notification shade — so the alert is a single
  * beat, five seconds out, which is one deep breath and a re-grip.
  */
-export const GETSET_LEAD_SECONDS = 5;
+const GETSET_LEAD_SECONDS = 5;
 
 /** `data.kind` on every rest / set-timer alert — see `notificationKind`. */
-export const TIMER_KIND = 'timer';
+const TIMER_KIND = 'timer';
 
 /**
  * The channels as they were last written, and the language they were written in.
@@ -281,7 +281,7 @@ export function timerSlotIds(slot: TimerSlot): string[] {
  * user had already watched the pill hit zero, and a duplicate alert for an event
  * they just saw reads as a bug.
  */
-export async function scheduleTimerAlert(alert: TimerAlert): Promise<string | null> {
+async function scheduleTimerAlert(alert: TimerAlert): Promise<string | null> {
   if (!Number.isFinite(alert.at) || alert.at - Date.now() < 1000) return null;
 
   const channelId = alert.kind === 'getset' ? CHANNEL_GETSET : CHANNEL_GO;
@@ -535,7 +535,7 @@ async function syncNow(plan: readonly PlannedReminder[], lang: Language): Promis
 }
 
 /** Drop every reminder this app scheduled, leaving the timer alerts alone. */
-export async function cancelAllReminders(): Promise<void> {
+async function cancelAllReminders(): Promise<void> {
   try {
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const entry of scheduled) {

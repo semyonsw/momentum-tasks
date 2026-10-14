@@ -40,7 +40,7 @@ export interface PauseRange {
 }
 
 /** How far either side of today a pause can be picked. */
-export const PAUSE_WINDOW_DAYS = 365;
+const PAUSE_WINDOW_DAYS = 365;
 
 /** A tap on `day`. `null` = nothing picked yet. */
 export function pickPauseDay(range: PauseRange | null, day: string): PauseRange {

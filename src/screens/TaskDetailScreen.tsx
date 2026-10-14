@@ -65,7 +65,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, ScrollView, Text, View } from 'react-native';
+import { Animated, Easing, Text, View } from 'react-native';
+import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
 
@@ -185,8 +186,9 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
       <Lamps section="Tasks" />
       <ScreenHeader kicker={t('Tasks')} onBack={onBack} bordered={false} />
 
-      <ScrollView
-        className="flex-1"
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="never"
         // Clears the floating pill, which sits at the same `bottom: 92` here as
         // in every section even though this screen has no nav pill under it —
         // the slot is a position a thumb learns, not a position relative to
@@ -419,7 +421,7 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
           onPress={() => setArchiving(true)}
           className="mx-md mt-xl"
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Ghost, not filled: this screen's point is reading the month, and
           editing is the thing you occasionally do from it. At 28 because a

@@ -33,7 +33,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { Keyboard, ScrollView, Text, TextInput, View } from 'react-native';
+import { Animated, ScrollView, Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,10 +49,12 @@ import { GlassBar, GlassSurface, Lamps, type ToastAction } from '../components/g
 import { Icon } from '../components/Icon';
 import { Stagger, pressedStyle } from '../components/motion';
 import { useAiPrompts } from '../hooks/useAiPrompts';
+import { useFollow, useKeyboardOverlap } from '../hooks/useKeyboard';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { dayKey, formatShortDay } from '../lib/days';
 import type { AiSection } from '../lib/ai/aiSchema';
 import { tap } from '../lib/feedback';
+import { liftedBottom } from '../lib/keyboard';
 import { discardChanges, discardSequence, sectionContext, sendMessage } from '../state/aiActions';
 import { useAi, type AiMessage } from '../state/aiStore';
 import { glassTier, gradientFill, motion, palette, radius } from '../theme/tokens';
@@ -60,6 +62,8 @@ import { glassTier, gradientFill, motion, palette, radius } from '../theme/token
 /** The composer's line, and how many lines it shows before it scrolls inside. */
 const COMPOSER_LINE = 22;
 const COMPOSER_MAX_LINES = 4;
+/** The composer's foot above the gesture strip — or above the keyboard. */
+const COMPOSER_GAP = 12;
 
 const META: Record<
   AiSection,
@@ -183,16 +187,25 @@ export function AiChatScreen({
   const composerHeight = 60;
   /** What the pill measures now, so the thread clears a grown composer too. */
   const [composerDrawn, setComposerDrawn] = useState(composerHeight);
-  /** From the composer's foot to the screen's — see the note on the field. */
-  const keyboardReach = insets.bottom + 12 + 8;
+
+  /*
+   * THE KEYBOARD. Android moves nothing for it (`lib/keyboard.ts`), so the
+   * composer and its chips ride it themselves: their foot sits COMPOSER_GAP
+   * above the gesture strip at rest and the same gap above the keyboard while
+   * it is up. A transform rather than `bottom`, so the bar glides with the
+   * IME's slide instead of jumping a frame after it; the resting `bottom` is
+   * unchanged. The thread's padding grows by the same lift, in layout, so its
+   * newest message ends above the raised composer and not under it.
+   */
+  const overlap = useKeyboardOverlap();
+  const restingFoot = liftedBottom(0, insets.bottom, COMPOSER_GAP);
+  const composerFoot = liftedBottom(overlap, insets.bottom, COMPOSER_GAP);
+  const lift = useFollow(restingFoot - composerFoot);
 
   /* The keyboard opening is the moment the newest answer must be in view. */
   useEffect(() => {
-    const sub = Keyboard.addListener('keyboardDidShow', () =>
-      scrollRef.current?.scrollToEnd({ animated: true }),
-    );
-    return () => sub.remove();
-  }, []);
+    if (overlap > 0) scrollRef.current?.scrollToEnd({ animated: true });
+  }, [overlap]);
   const chipsHeight = messages.length > 0 ? 44 : 0;
 
   return (
@@ -244,7 +257,7 @@ export function AiChatScreen({
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         contentContainerStyle={{
           paddingTop: insets.top + 64 + 16,
-          paddingBottom: insets.bottom + composerDrawn + chipsHeight + 36,
+          paddingBottom: composerFoot + composerDrawn + chipsHeight + 24,
           paddingHorizontal: 16,
           gap: 14,
         }}
@@ -286,8 +299,14 @@ export function AiChatScreen({
         ) : null}
       </ScrollView>
 
-      <View
-        style={{ position: 'absolute', left: 12, right: 12, bottom: insets.bottom + 12 }}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          left: 12,
+          right: 12,
+          bottom: restingFoot,
+          transform: [{ translateY: lift }],
+        }}
         pointerEvents="box-none"
       >
         {messages.length > 0 ? (
@@ -329,12 +348,11 @@ export function AiChatScreen({
           placeholder={t(meta.placeholder)}
           pending={pending}
           height={composerHeight}
-          keyboardReach={keyboardReach}
           onHeight={setComposerDrawn}
           onAsk={ask}
           clearRef={clearDraft}
         />
-      </View>
+      </Animated.View>
 
       {showingHistory ? (
         <Sheet title={t('Past chats')} onDismiss={() => setShowingHistory(false)}>
@@ -573,7 +591,6 @@ function Composer({
   placeholder,
   pending,
   height,
-  keyboardReach,
   onHeight,
   onAsk,
   clearRef,
@@ -582,7 +599,6 @@ function Composer({
   pending: boolean;
   /** One line's pill. */
   height: number;
-  keyboardReach: number;
   onHeight: (height: number) => void;
   onAsk: (text: string) => void;
   clearRef: MutableRefObject<() => void>;
@@ -600,14 +616,11 @@ function Composer({
         onLayout={(e) => onHeight(Math.round(e.nativeEvent.layout.height))}
       >
         {/*
-          THE KEYBOARD. The app runs Android's `pan` mode, which scrolls the
-          window just far enough to show the FOCUSED RECT of the field — and
-          for a text field that is its text line plus its bottom padding. With
-          no padding, the pan stopped at the text and left the bottom of the
-          pill (and its margin) under the keyboard. So the field's padding
-          reaches the foot of the screen, pulled back by a matching negative
-          margin so the pill looks the same: the rect Android reveals is now
-          the whole composer, and it sits flush on the keyboard.
+          No keyboard padding on the field: the screen lifts the whole bar
+          above the keyboard (see THE KEYBOARD in `AiChatScreen`). Under the
+          old `pan` mode this field carried a padding that reached the foot of
+          the screen, so the rect Android revealed was the whole pill and not
+          just its text line; nothing reads that rect any more.
         */}
         <TextInput
           value={draft}
@@ -624,10 +637,9 @@ function Composer({
             color: palette.ink,
             paddingHorizontal: 0,
             paddingTop: padY,
-            paddingBottom: padY + keyboardReach,
-            marginBottom: -keyboardReach,
+            paddingBottom: padY,
             // Grows with its text to four lines, then scrolls inside.
-            maxHeight: COMPOSER_LINE * COMPOSER_MAX_LINES + padY * 2 + keyboardReach,
+            maxHeight: COMPOSER_LINE * COMPOSER_MAX_LINES + padY * 2,
             textAlignVertical: 'top',
           }}
         />

@@ -881,7 +881,7 @@ export interface ToastAction {
  * slot's top (102 + 64) and 24 of air, so it clears the round action and its
  * glow. The session screen, whose pair sits at 28, passes its own.
  */
-export const TOAST_BOTTOM = floatingSlot.bottom + floatingSlot.height + 24;
+const TOAST_BOTTOM = floatingSlot.bottom + floatingSlot.height + 24;
 
 export function Toast({
   label,

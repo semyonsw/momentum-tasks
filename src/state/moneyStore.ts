@@ -394,6 +394,21 @@ function cleanGoal(
 }
 
 /**
+ * The stamp every new row's id is made from: the clock in base 36, as it always
+ * was, but never the same twice in one run. Two writes in one millisecond (an
+ * AI card adding several, a fast double tap) used to get the SAME id, and then
+ * a delete or an edit of one silently took the other with it. Bumping past the
+ * last stamp keeps ids unique and still in creation order; a relaunch starts
+ * from a later clock, so ids from earlier runs are never met again.
+ */
+let lastStamp = 0;
+function freshStamp(): string {
+  const now = Math.max(Date.now(), lastStamp + 1);
+  lastStamp = now;
+  return now.toString(36);
+}
+
+/**
  * The day an amount answers the `Track expenses` task on: its own day, clamped
  * to today; a whole-month amount, the day it was recorded. See `addAmount`.
  */
@@ -423,7 +438,7 @@ export const useMoney = create<MoneyState>()(
       addAmount: (draft) => {
         const value = Math.round(Math.abs(draft.value));
         if (!Number.isFinite(value) || value <= 0) return null;
-        const id = `amt_${Date.now().toString(36)}`;
+        const id = `amt_${freshStamp()}`;
         set((state) => ({
           amounts: [
             ...state.amounts,
@@ -444,19 +459,18 @@ export const useMoney = create<MoneyState>()(
         return id;
       },
 
+      // The same rule as `addAmount`: a zero or non-number value is refused, so
+      // one bad edit can never turn every balance into NaN.
       updateAmount: (id, draft) =>
-        set((state) => ({
-          amounts: state.amounts.map((amount) =>
-            amount.id === id
-              ? {
-                  ...amount,
-                  ...draft,
-                  value: Math.round(Math.abs(draft.value)),
-                  note: draft.note.trim(),
-                }
-              : amount,
-          ),
-        })),
+        set((state) => {
+          const value = Math.round(Math.abs(draft.value));
+          if (!Number.isFinite(value) || value <= 0) return {};
+          return {
+            amounts: state.amounts.map((amount) =>
+              amount.id === id ? { ...amount, ...draft, value, note: draft.note.trim() } : amount,
+            ),
+          };
+        }),
 
       deleteAmount: (id) =>
         set((state) => {
@@ -470,7 +484,7 @@ export const useMoney = create<MoneyState>()(
         }),
 
       addTransfer: (draft) => {
-        const stamp = Date.now().toString(36);
+        const stamp = freshStamp();
         const transferId = `trf_${stamp}`;
         const pair = transferPair(
           draft,
@@ -517,7 +531,7 @@ export const useMoney = create<MoneyState>()(
       addAccount: (name, glyph) => {
         const trimmed = name.trim();
         if (trimmed === '') return null;
-        const id = `acc_${Date.now().toString(36)}`;
+        const id = `acc_${freshStamp()}`;
         set((state) => ({
           accounts: [
             ...state.accounts,
@@ -581,7 +595,7 @@ export const useMoney = create<MoneyState>()(
       addCategory: (name, glyph, direction) => {
         const trimmed = name.trim();
         if (trimmed === '') return null;
-        const id = `cat_${Date.now().toString(36)}`;
+        const id = `cat_${freshStamp()}`;
         set((state) => ({
           categories: [
             ...state.categories,
@@ -660,7 +674,7 @@ export const useMoney = create<MoneyState>()(
       addRecurring: (draft, today = dayKey(new Date())) => {
         const clean = cleanDraft(draft, useMoney.getState().categories);
         if (!clean) return null;
-        const id = `rec_${Date.now().toString(36)}`;
+        const id = `rec_${freshStamp()}`;
         const item: RecurringPayment = {
           id,
           name: draft.name.trim(),
@@ -795,7 +809,7 @@ export const useMoney = create<MoneyState>()(
       addGoal: (draft) => {
         const clean = cleanGoal(draft, useMoney.getState().accounts);
         if (!clean) return null;
-        const id = `goal_${Date.now().toString(36)}`;
+        const id = `goal_${freshStamp()}`;
         set((state) => ({
           goals: [...(state.goals ?? []), { id, ...clean, createdAt: new Date().toISOString() }],
         }));

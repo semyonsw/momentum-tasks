@@ -154,7 +154,7 @@ export type AiBlock = TextBlock | SummaryBlock | ProposalBlock | SequenceBlock |
  * review on a phone — so these are caps, and the rest is cut rather than
  * scrolled.
  */
-export const LIMITS = {
+const LIMITS = {
   stats: 3,
   rows: 8,
   bars: 12,

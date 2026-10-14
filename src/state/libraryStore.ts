@@ -55,7 +55,7 @@ import type {
 } from '../types/models';
 
 /** Off and empty. A sequence is something the user builds, never a default. */
-export const NO_SEQUENCE: TrainingSequence = { isActive: false, routineIds: [], cursor: 0 };
+const NO_SEQUENCE: TrainingSequence = { isActive: false, routineIds: [], cursor: 0 };
 
 interface LibraryState {
   exercises: Exercise[];
@@ -217,11 +217,7 @@ function nextUntitledName(routines: readonly Routine[]): string {
  * a list you cannot scan. The base is stripped of any existing `(copy …)` first, so
  * the counter applies to the ORIGINAL name however deep the chain goes.
  */
-export function copyName(
-  name: string,
-  routines: readonly Routine[],
-  lang: Language = 'en',
-): string {
+function copyName(name: string, routines: readonly Routine[], lang: Language = 'en'): string {
   /*
    * BOTH words are stripped, whatever the app is set to now. A routine copied
    * in English and copied again in Russian is still the same routine, and a

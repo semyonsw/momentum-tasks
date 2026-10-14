@@ -580,7 +580,7 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
  * this block") and "no opinion" has to be distinguishable from it. Capped at 60 —
  * past any published maximum recoverable volume, so a number above it is a typo.
  */
-export const WEEKLY_TARGET_LIMITS = { min: 0, max: 60, step: 1 } as const;
+const WEEKLY_TARGET_LIMITS = { min: 0, max: 60, step: 1 } as const;
 
 function sanitizeWeeklyTargets(value: unknown): Partial<Record<MuscleCluster, number>> {
   if (typeof value !== 'object' || value == null) return {};

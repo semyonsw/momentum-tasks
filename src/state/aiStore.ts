@@ -666,7 +666,7 @@ export function chatsForBackup(state: Pick<AiValue, 'chats' | 'archive' | 'propo
 }
 
 /** Open chats with anything in them, plus every past chat. */
-export function countChats(state: Pick<AiValue, 'chats' | 'archive'>): number {
+function countChats(state: Pick<AiValue, 'chats' | 'archive'>): number {
   let count = 0;
   for (const section of AI_SECTIONS) {
     if (state.chats[section].length > 0) count += 1;

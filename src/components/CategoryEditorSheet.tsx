@@ -29,6 +29,7 @@
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
+import { useRevealOnFocus } from './KeyboardAware';
 import { Sheet, SheetCancel } from './Sheet';
 import { FieldWell, PrimaryButton } from './primitives';
 import { useT } from '../hooks/useT';
@@ -51,6 +52,7 @@ export function CategoryEditorSheet({
   onDismiss,
 }: CategoryEditorSheetProps) {
   const t = useT();
+  const reveal = useRevealOnFocus();
   const [name, setName] = useState(initialName);
   const [glyph, setGlyph] = useState(initialGlyph);
   const savable = name.trim() !== '';
@@ -72,6 +74,7 @@ export function CategoryEditorSheet({
             placeholderTextColor={palette.inkFaint}
             cursorColor={palette.greenBright}
             selectionColor={palette.greenBright}
+            onFocus={reveal}
             accessibilityLabel={t('Glyph')}
             className="w-full text-center text-[22px] text-ink"
           />

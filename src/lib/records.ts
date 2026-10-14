@@ -518,7 +518,7 @@ export interface SessionRecord {
 }
 
 /** How many rows the Finish sheet shows: a block, not a list. */
-export const SESSION_RECORDS_SHOWN = 3;
+const SESSION_RECORDS_SHOWN = 3;
 
 /**
  * Which exercises in the session being finished beat their previous best.

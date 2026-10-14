@@ -522,7 +522,7 @@ export function proposalTotals(proposal: ReviewProposal): {
 export type RowField = 'sets' | 'reps' | 'weightKg';
 
 /** One ± step: a set, a rep, or 2.5 kg. */
-export const STEP: Record<RowField, number> = { sets: 1, reps: 1, weightKg: 2.5 };
+const STEP: Record<RowField, number> = { sets: 1, reps: 1, weightKg: 2.5 };
 
 function clampField(field: RowField, value: number): number {
   if (field === 'weightKg') return clampWeight(value);
@@ -635,7 +635,7 @@ export function regroup(
   withAbove: readonly boolean[],
 ): RoutineItem[] {
   const groups: (string | undefined)[] = [];
-  items.forEach((item, i) => {
+  items.forEach((_item, i) => {
     if (i > 0 && withAbove[i]) {
       const group = groups[i - 1] ?? `sg_${items[i - 1].id}`;
       groups[i - 1] = group;

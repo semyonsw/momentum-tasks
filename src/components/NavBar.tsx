@@ -71,8 +71,8 @@ const LIQUID = Easing.bezier(0.34, 1.3, 0.64, 1);
 const RISE = Easing.bezier(0.34, 1.45, 0.64, 1);
 const DROP = Easing.bezier(0.5, 0, 0.75, 0);
 
-export const NAV_HEIGHT = 70;
-export const NAV_BOTTOM = 14;
+const NAV_HEIGHT = 70;
+const NAV_BOTTOM = 14;
 
 interface NavBarProps {
   active: SectionTab;

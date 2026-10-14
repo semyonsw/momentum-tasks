@@ -97,7 +97,7 @@ export interface WorkoutDebrief {
 /** How many debriefs the store keeps. A year of three-a-week is plenty. */
 export const DEBRIEF_CAP = 160;
 /** A pending debrief older than this stops being offered on Home. */
-export const DEBRIEF_OFFER_DAYS = 7;
+const DEBRIEF_OFFER_DAYS = 7;
 /** A note is a sentence or two, not an essay. */
 export const DEBRIEF_NOTE_MAX = 400;
 

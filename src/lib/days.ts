@@ -101,7 +101,7 @@ export const MONTH_NAMES = [
  * One table would make one of those two wrong on every screen that shows it, and
  * "12 Сентябрь" is the kind of wrong that reads as a machine wrote it.
  */
-export const MONTH_NAMES_RU = [
+const MONTH_NAMES_RU = [
   'Январь',
   'Февраль',
   'Март',
@@ -135,13 +135,13 @@ export const MONTH_NAMES_RU_OF = [
 /** The column headings, Monday first. */
 export const WEEKDAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
 
-export const WEEKDAY_INITIALS_RU = ['П', 'В', 'С', 'Ч', 'П', 'С', 'В'] as const;
+const WEEKDAY_INITIALS_RU = ['П', 'В', 'С', 'Ч', 'П', 'С', 'В'] as const;
 
-export const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
-export const WEEKDAY_LABELS_RU = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
+const WEEKDAY_LABELS_RU = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
 
-export const WEEKDAY_NAMES = [
+const WEEKDAY_NAMES = [
   'Monday',
   'Tuesday',
   'Wednesday',
@@ -151,7 +151,7 @@ export const WEEKDAY_NAMES = [
   'Sunday',
 ] as const;
 
-export const WEEKDAY_NAMES_RU = [
+const WEEKDAY_NAMES_RU = [
   'Понедельник',
   'Вторник',
   'Среда',

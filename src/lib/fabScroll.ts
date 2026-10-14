@@ -28,9 +28,9 @@
  */
 
 /** How far a drag must go, from its turning point, to count. */
-export const FAB_SCROLL_SLOP = 6;
+const FAB_SCROLL_SLOP = 6;
 /** Above this offset the button always stays. */
-export const FAB_SCROLL_FLOOR = 40;
+const FAB_SCROLL_FLOOR = 40;
 /** The slide, in ms, before the motion scale. */
 export const FAB_HIDE_MS = 320;
 /** How far it slides: past the slot and the nav pill, off the screen's edge. */

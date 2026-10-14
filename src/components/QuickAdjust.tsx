@@ -51,6 +51,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 
+import { useRevealOnFocus } from './KeyboardAware';
 import { tap } from '../lib/feedback';
 import type { DraftSet } from '../lib/draft';
 import type { Exercise, UnitSystem } from '../types/models';
@@ -100,6 +101,7 @@ export function QuickAdjust({
   const [typing, setTyping] = useState(false);
   const [buffer, setBuffer] = useState('');
   const inputRef = useRef<TextInput>(null);
+  const reveal = useRevealOnFocus();
 
   const isWeight = field === 'weight';
   /** A clock cell: typed as minutes, so it needs the decimal point. */
@@ -219,6 +221,7 @@ export function QuickAdjust({
             ref={inputRef}
             value={buffer}
             onChangeText={setBuffer}
+            onFocus={reveal}
             onBlur={commitTyped}
             onSubmitEditing={commitTyped}
             keyboardType={isWeight || isTimeCount ? 'decimal-pad' : 'number-pad'}

@@ -79,7 +79,7 @@ export const BUDGET_ROLLOVER = false;
 /** The ± chips' step, in stored units — see the header. */
 export const BUDGET_STEP = 5000;
 
-export const ALERT_THRESHOLDS = [80, 100] as const;
+const ALERT_THRESHOLDS = [80, 100] as const;
 export type AlertThreshold = (typeof ALERT_THRESHOLDS)[number];
 
 /** The store's validator. One budget per category, the first one wins. */

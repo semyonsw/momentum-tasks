@@ -21,7 +21,7 @@
  *    2 dp apart so nesting is visible without any corner going soft. `radius`
  *    below holds them as numbers, `tailwind.config.js` as classes.
  *  - Elevation is hairlines + surface steps. Exactly ONE real shadow exists,
- *    under the timer pill, and exactly ONE glow (`glow`), behind the two marks
+ *    under the timer pill, and exactly ONE glow (`halo`), behind the two marks
  *    that say "this is the work". Neither carries meaning on its own.
  *  - Numbers are always tabular. A weight that shifts by a pixel when it goes
  *    from 9 to 10 reps is the difference between "app" and "instrument".
@@ -64,8 +64,6 @@ let current: DerivedTheme = deriveTheme(themeColors(DEFAULT_THEME_ID, DEFAULT_CU
  */
 export function applyTheme(colors: ThemeColors): DerivedTheme {
   current = deriveTheme(colors);
-  glow = tint(0.6);
-  glowRepeating = tint(0.3);
   return current;
 }
 
@@ -255,51 +253,6 @@ export const heat = {
   empty: 'rgba(236,241,238,0.045)',
   quiet: 'rgba(236,241,238,0.02)',
 } as const;
-
-/**
- * The one GLOW, and the only thing in the app that is not a hairline or a surface
- * step doing the job of elevation.
- *
- * `green-bright` spread behind two marks and no others: the current exercise's card
- * while it is shut, and the row of the set that should happen next. Both marks are
- * complete without it — a `green-bright` border and `green-bright` numerals carry
- * the meaning — so a renderer that drops `boxShadow` loses gloss and not
- * information. That is the condition on which it is allowed to exist.
- *
- * IT USED TO BE 0.34 AND IT WAS TOO POLITE. At a third alpha the halo is something
- * you notice on a desk and not on a bench: the phone is a metre away, face-up,
- * under gym lighting, and the whole job of this value is to make one row findable
- * without reading it. 0.6 is still translucent — it never becomes a fill, and the
- * numerals under it stay legible — but it reads as a lit row rather than a slightly
- * softer edge.
- *
- * Still ONE value. The ring, the card and the numerals all use it; only the blur
- * radius differs, because a 2 dp outline and a 30 dp numeral need different spreads
- * to bloom by the same amount.
- */
-// Reassigned by `applyTheme`, so importers read the live theme.
-export let glow = tint(0.6);
-
-/**
- * THE SAME GLOW, FOR A MARK THAT REPEATS.
- *
- * `glow` is sized for exactly one card on a screen: at 0.6 and 18 dp of blur it
- * is findable from a metre away, which is the whole point on a bench. Nine done
- * tasks in a column at that value is nine halos overlapping into a green wall —
- * a row's own edge stops being a line you can see, and the list reads as lit
- * rather than as a list of which rows are lit.
- *
- * So a repeating mark gets this instead: half the alpha and half the spread, a
- * thin line of light along the border rather than a bloom around the whole row.
- * The rule for choosing is not "how important is this" but "how MANY of these
- * can be on screen at once" — one, `glow`; a column of them, this.
- *
- * Both are `boxShadow` and never `elevation`. Android's elevation draws its own
- * opaque, much wider shadow that ignores the radius asked for, which is exactly
- * how this got thick enough to need fixing.
- */
-// Reassigned by `applyTheme`, so importers read the live theme.
-export let glowRepeating = tint(0.3);
 
 /**
  * The app's ONLY shadow. It belongs to the timer pill and nothing else — the

@@ -28,9 +28,10 @@
  */
 
 import { useMemo, useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
+import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { BubblePressable } from '../components/bubbles';
 import { DashedAdd } from '../components/primitives';
 import { FloatingPair, GlassSurface, Lamps } from '../components/glass';
@@ -108,8 +109,8 @@ export function AiReviewScreen({ proposalId, onBack, onAccept, onDiscard }: AiRe
         bordered={false}
       />
 
-      <ScrollView
-        className="flex-1"
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 140 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -174,7 +175,7 @@ export function AiReviewScreen({ proposalId, onBack, onAccept, onDiscard }: AiRe
         <View className="mx-lg mt-md">
           <DashedAdd label={t('Add an exercise')} onPress={() => setPicking(true)} />
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <FloatingPair
         secondary={{ label: t('Discard'), onPress: onDiscard }}

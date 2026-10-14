@@ -32,9 +32,10 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
+import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { AiTestOverlay } from '../components/AiTestOverlay';
 import { BubblePressable } from '../components/bubbles';
 import { ConfirmSheet } from '../components/ConfirmSheet';
@@ -220,8 +221,8 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
       <Lamps section="Settings" />
       <ScreenHeader kicker={t('Settings')} onBack={onBack} bordered={false} />
 
-      <ScrollView
-        className="flex-1"
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 140 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -409,7 +410,7 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
             'Only the section you ask from: your workouts, your tasks or your amounts, summarised on the phone first. Nothing is changed until you press Add or Apply.',
           )}
         </Text>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <FloatingAction
         label={ready && typed === '' ? t('Test again') : t('Test & connect')}

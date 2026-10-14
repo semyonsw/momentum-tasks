@@ -134,8 +134,9 @@
  */
 
 import { useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
+import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { FloatingAction } from '../components/glass';
 import { useLeaveGuard } from '../navigation/leaveGuard';
@@ -497,8 +498,9 @@ export function RoutineEditorScreen({
           action={lifted ? { label: t('Drop'), onPress: drop } : undefined}
         />
 
-        <ScrollView
-          className="flex-1"
+        <KeyboardAwareScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="never"
           // Clears the floating Save.
           contentContainerStyle={{ paddingTop: 24, paddingBottom: pushedSlot.clearance }}
           showsVerticalScrollIndicator={false}
@@ -661,7 +663,7 @@ export function RoutineEditorScreen({
               />
             </View>
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </View>
 
       {/* THE COMMIT, in the floating slot like every other one (U5). It was

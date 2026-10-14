@@ -38,10 +38,19 @@
  * the whole reason the questions were asked, so it is offered while it is fresh.
  * It opens a NEW chat whose first message quotes every answer, the session and
  * the routine's plan (`state/debriefChat.ts`, `debriefChatMessage`).
+ *
+ * ── IT RIDES THE KEYBOARD, LIKE EVERY SHEET ────────────────────────────────
+ *
+ * Docked rather than `SheetFrame`'s floating pane, so it does what the frame
+ * does by hand (`lib/keyboard.ts` says why the app moves its own surfaces): it
+ * rises by what the keyboard covers past the gesture strip, its height is capped
+ * to the room left under the status bar, and the question scrolls inside that
+ * cap while `Next` stays pinned under it — so an open note leaves the box, and
+ * the button that moves on from it, above the keyboard.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, Text, TextInput, View } from 'react-native';
+import { Animated, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BubblePressable } from './bubbles';
@@ -49,7 +58,9 @@ import { CommitMark, GlassSurface } from './glass';
 import { Icon } from './Icon';
 import { Pop, pressedStyle } from './motion';
 import { useIsOverlay } from './overlay';
+import { KeyboardAwareScrollView, RidesKeyboard, useRevealOnFocus } from './KeyboardAware';
 import { PrimaryButton } from './primitives';
+import { useFollow, useKeyboardOverlap, useRootHeight } from '../hooks/useKeyboard';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
 import {
@@ -63,6 +74,7 @@ import {
   type WorkoutDebrief,
 } from '../lib/debrief';
 import { celebrate, commit, tap } from '../lib/feedback';
+import { liftedBottom, paneRoom } from '../lib/keyboard';
 import { useAi } from '../state/aiStore';
 import { startDebriefChat } from '../state/debriefChat';
 import { useDebriefs } from '../state/debriefStore';
@@ -180,9 +192,25 @@ interface DebriefSheetProps {
   onAskAi: () => void;
 }
 
-export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
+/** Air kept between the sheet's top and the status bar while the keyboard is up. */
+const TOP_GAP = 8;
+/** A scroll clips; the chips' pop and the bubble ring need this much to the side. */
+const BLEED = 8;
+
+function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
   const t = useT();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const overlap = useKeyboardOverlap();
+  const measuredRoot = useRootHeight();
+  const rootHeight = measuredRoot > 0 ? measuredRoot : windowHeight;
+  /* Its own padding already clears the gesture strip, so only what the keyboard
+     covers BEYOND the strip lifts it — the same sum `SheetFrame` does. */
+  const raise = liftedBottom(overlap, insets.bottom, 0) - liftedBottom(0, insets.bottom, 0);
+  const follow = useFollow(-raise);
+  /* Conservative by the strip (the padding under the keyboard is room too), so
+     the cap never lets the top reach the status bar. */
+  const room = paneRoom(rootHeight, overlap, insets.top, 0, TOP_GAP);
   const scale = useMotionScale();
   const { questions } = debrief;
 
@@ -236,8 +264,8 @@ export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
   // Built once: a fresh interpolation node per render (every chip tap, every
   // keystroke in a note) makes each Animated.View re-attach its native graph.
   const rise = useMemo(
-    () => enter.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }),
-    [enter],
+    () => Animated.add(enter.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }), follow),
+    [enter, follow],
   );
   const fillWidth = useMemo(
     () => fill.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
@@ -264,171 +292,189 @@ export function DebriefSheet({ debrief, aiReady, onAskAi }: DebriefSheetProps) {
   };
 
   return (
-    <View className="absolute inset-0" accessibilityViewIsModal>
-      <Animated.View
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: palette.scrim,
-          opacity: enter,
-        }}
-      >
-        <Pressable
-          style={{ flex: 1 }}
-          onPress={finished ? () => useDebriefs.getState().close() : later}
-          accessibilityRole="button"
-          accessibilityLabel={t('Later')}
-        />
-      </Animated.View>
-
-      <Animated.View
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          opacity: enter,
-          transform: [{ translateY: rise }],
-        }}
-      >
-        <View
+    <RidesKeyboard.Provider value>
+      <View className="absolute inset-0" accessibilityViewIsModal>
+        <Animated.View
           style={{
-            paddingBottom: insets.bottom + 16,
-            borderTopLeftRadius: radius.sheet,
-            borderTopRightRadius: radius.sheet,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: palette.scrim,
+            opacity: enter,
           }}
-          className="border-t border-t-hairline bg-surface px-lg pt-lg"
         >
-          <View className="mb-md h-xs w-[36px] self-center rounded-pill bg-hairline" />
+          <Pressable
+            style={{ flex: 1 }}
+            onPress={finished ? () => useDebriefs.getState().close() : later}
+            accessibilityRole="button"
+            accessibilityLabel={t('Later')}
+          />
+        </Animated.View>
 
-          {/* Kicker, and the ✕ that is `Later`. */}
-          <View className="flex-row items-center">
-            <Text
-              numberOfLines={1}
-              style={{ letterSpacing: 1.3 }}
-              className="flex-1 text-micro font-semibold uppercase text-green-bright"
-            >
-              {debrief.title
-                ? `${t('After the workout')} · ${debrief.title}`
-                : t('After the workout')}
-            </Text>
-            <Pressable
-              onPress={finished ? () => useDebriefs.getState().close() : later}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel={t('Close')}
-              style={pressedStyle}
-            >
-              <Icon name="x" size={18} color={palette.inkMuted} />
-            </Pressable>
-          </View>
+        <Animated.View
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            maxHeight: Number.isFinite(room) ? room : undefined,
+            opacity: enter,
+            transform: [{ translateY: rise }],
+          }}
+        >
+          <View
+            style={{
+              flexShrink: 1,
+              paddingBottom: insets.bottom + 16,
+              borderTopLeftRadius: radius.sheet,
+              borderTopRightRadius: radius.sheet,
+            }}
+            className="border-t border-t-hairline bg-surface px-lg pt-lg"
+          >
+            <View className="mb-md h-xs w-[36px] self-center rounded-pill bg-hairline" />
 
-          {/* The bar. */}
-          <View className="mt-md flex-row items-center">
-            <View
-              className="flex-1 overflow-hidden rounded-pill"
-              style={{ height: 6, backgroundColor: palette.greenDim }}
-            >
-              <Animated.View
-                style={{
-                  height: 6,
-                  borderRadius: radius.pill,
-                  backgroundColor: palette.greenBright,
-                  width: fillWidth,
-                }}
-              />
+            {/* Kicker, and the ✕ that is `Later`. */}
+            <View className="flex-row items-center">
+              <Text
+                numberOfLines={1}
+                style={{ letterSpacing: 1.3 }}
+                className="flex-1 text-micro font-semibold uppercase text-green-bright"
+              >
+                {debrief.title
+                  ? `${t('After the workout')} · ${debrief.title}`
+                  : t('After the workout')}
+              </Text>
+              <Pressable
+                onPress={finished ? () => useDebriefs.getState().close() : later}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={t('Close')}
+                style={pressedStyle}
+              >
+                <Icon name="x" size={18} color={palette.inkMuted} />
+              </Pressable>
             </View>
-            <Text
-              className="ml-md text-label text-ink-faint"
-              style={{ fontVariant: ['tabular-nums'] }}
-            >
-              {finished
-                ? t('Done')
-                : t('{n} of {total}', { n: index + 1, total: questions.length })}
-            </Text>
-          </View>
 
-          {finished ? (
-            <Finished
-              aiReady={aiReady}
-              onAsk={() => {
-                useDebriefs.getState().close();
-                onAskAi();
-              }}
-              onClose={() => useDebriefs.getState().close()}
-            />
-          ) : (
-            <>
-              <QuestionPane
-                key={question.id}
-                question={question}
-                answer={answer}
-                direction={direction}
-                onChange={setAnswer}
-              />
-
-              <View className="mt-xl">
-                <PrimaryButton
-                  label={last ? t('Save answers') : answeredHere ? t('Next') : t('Skip')}
-                  variant={answeredHere || last ? 'primary' : 'ghost'}
-                  onPress={advance}
+            {/* The bar. */}
+            <View className="mt-md flex-row items-center">
+              <View
+                className="flex-1 overflow-hidden rounded-pill"
+                style={{ height: 6, backgroundColor: palette.greenDim }}
+              >
+                <Animated.View
+                  style={{
+                    height: 6,
+                    borderRadius: radius.pill,
+                    backgroundColor: palette.greenBright,
+                    width: fillWidth,
+                  }}
                 />
               </View>
-              <View className="mt-xs flex-row items-center justify-between">
-                {index > 0 ? (
+              <Text
+                className="ml-md text-label text-ink-faint"
+                style={{ fontVariant: ['tabular-nums'] }}
+              >
+                {finished
+                  ? t('Done')
+                  : t('{n} of {total}', { n: index + 1, total: questions.length })}
+              </Text>
+            </View>
+
+            {/* The part that gives way when the keyboard leaves too little room.
+              Keyed per step, so every question opens at its own top. `handled`,
+              so a chip tapped with the note's keyboard up lands first time. */}
+            <KeyboardAwareScrollView
+              key={finished ? 'finished' : question.id}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={{ flexGrow: 0, flexShrink: 1, marginHorizontal: -BLEED }}
+              contentContainerStyle={{ paddingHorizontal: BLEED }}
+            >
+              {finished ? (
+                <Finished
+                  aiReady={aiReady}
+                  onAsk={() => {
+                    useDebriefs.getState().close();
+                    onAskAi();
+                  }}
+                  onClose={() => useDebriefs.getState().close()}
+                />
+              ) : (
+                <QuestionPane
+                  question={question}
+                  answer={answer}
+                  direction={direction}
+                  onChange={setAnswer}
+                />
+              )}
+            </KeyboardAwareScrollView>
+
+            {finished ? null : (
+              <>
+                <View className="mt-xl">
+                  <PrimaryButton
+                    label={last ? t('Save answers') : answeredHere ? t('Next') : t('Skip')}
+                    variant={answeredHere || last ? 'primary' : 'ghost'}
+                    onPress={advance}
+                  />
+                </View>
+                <View className="mt-xs flex-row items-center justify-between">
+                  {index > 0 ? (
+                    <Pressable
+                      onPress={() => {
+                        tap();
+                        go(-1);
+                      }}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('Back')}
+                      style={pressedStyle}
+                      className="h-[44px] flex-row items-center"
+                    >
+                      <Icon name="chevron-left" size={14} color={palette.inkMuted} />
+                      <Text className="ml-xs text-label font-medium text-ink-muted">
+                        {t('Back')}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() => {
+                        tap();
+                        useDebriefs.getState().dismiss(debrief.workoutId);
+                      }}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('Not this time')}
+                      style={pressedStyle}
+                      className="h-[44px] justify-center"
+                    >
+                      <Text className="text-label font-medium text-ink-muted">
+                        {t('Not this time')}
+                      </Text>
+                    </Pressable>
+                  )}
                   <Pressable
                     onPress={() => {
                       tap();
-                      go(-1);
+                      later();
                     }}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel={t('Back')}
-                    style={pressedStyle}
-                    className="h-[44px] flex-row items-center"
-                  >
-                    <Icon name="chevron-left" size={14} color={palette.inkMuted} />
-                    <Text className="ml-xs text-label font-medium text-ink-muted">{t('Back')}</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    onPress={() => {
-                      tap();
-                      useDebriefs.getState().dismiss(debrief.workoutId);
-                    }}
-                    hitSlop={10}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('Not this time')}
+                    accessibilityLabel={t('Later')}
                     style={pressedStyle}
                     className="h-[44px] justify-center"
                   >
-                    <Text className="text-label font-medium text-ink-muted">
-                      {t('Not this time')}
-                    </Text>
+                    <Text className="text-label font-medium text-ink-muted">{t('Later')}</Text>
                   </Pressable>
-                )}
-                <Pressable
-                  onPress={() => {
-                    tap();
-                    later();
-                  }}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('Later')}
-                  style={pressedStyle}
-                  className="h-[44px] justify-center"
-                >
-                  <Text className="text-label font-medium text-ink-muted">{t('Later')}</Text>
-                </Pressable>
-              </View>
-            </>
-          )}
-        </View>
-      </Animated.View>
-    </View>
+                </View>
+              </>
+            )}
+          </View>
+        </Animated.View>
+      </View>
+    </RidesKeyboard.Provider>
   );
 }
 
@@ -448,6 +494,7 @@ function QuestionPane({
 }) {
   const t = useT();
   const scale = useMotionScale();
+  const reveal = useRevealOnFocus();
   const [noteTapped, setNoteTapped] = useState(false);
   const [noteOpen, setNoteOpen] = useState(
     question.kind === 'text' || (answer.note ?? '').trim() !== '',
@@ -510,6 +557,7 @@ function QuestionPane({
             maxLength={DEBRIEF_NOTE_MAX}
             // Only when the user just asked for the field — never on arrival.
             autoFocus={noteTapped}
+            onFocus={reveal}
             accessibilityLabel={t('Note')}
             className="text-body text-ink"
             style={{ textAlignVertical: 'top' }}

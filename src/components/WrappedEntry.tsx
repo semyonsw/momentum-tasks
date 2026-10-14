@@ -34,7 +34,7 @@ import { palette, radius, tint } from '../theme/tokens';
 import { Icon } from './Icon';
 import { pressedStyle } from './motion';
 
-export function WrappedEntry({
+function WrappedEntry({
   period,
   onOpen,
   marginTop = 12,

@@ -61,7 +61,7 @@ export const MEASUREMENT_LIMITS_CM = { min: 10, max: 250 } as const;
 /** Per site, as `bodyweightLog`'s cap: years of weekly readings, and no more. */
 export const MAX_MEASUREMENT_ENTRIES = 500;
 
-export const CM_PER_INCH = 2.54;
+const CM_PER_INCH = 2.54;
 
 /**
  * Where the add sheet's figure starts for a site with no reading yet: a visible
@@ -80,7 +80,7 @@ export const MEASUREMENT_START_CM: Record<MeasurementKey, number> = {
 /** The ± chip step in the user's unit: half a centimetre, or half an inch. */
 export const MEASUREMENT_STEP = 0.5;
 
-export function isMeasurementKey(value: unknown): value is MeasurementKey {
+function isMeasurementKey(value: unknown): value is MeasurementKey {
   return typeof value === 'string' && (MEASUREMENTS as readonly string[]).includes(value);
 }
 

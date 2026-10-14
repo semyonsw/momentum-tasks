@@ -27,7 +27,7 @@ export const MARQUEE_PX_PER_SECOND = 28;
 export const MARQUEE_DELAY_MS = 1200;
 
 /** Never shorter than this — a four-pixel overflow still gets a readable pause. */
-export const MARQUEE_MIN_CYCLE_MS = 5000;
+const MARQUEE_MIN_CYCLE_MS = 5000;
 
 /**
  * How far the text has to travel, in dp, or 0 for a label that fits.

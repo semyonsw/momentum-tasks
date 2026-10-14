@@ -150,7 +150,7 @@ export interface ReminderInputs {
 const MIN_LEAD_MS = 30_000;
 
 /** How many days ahead a follow-up is planned: today and the next two. */
-export const FOLLOW_UP_DAYS = 3;
+const FOLLOW_UP_DAYS = 3;
 
 /**
  * The most follow-ups one task gets in one day. Every 15 minutes, that is three

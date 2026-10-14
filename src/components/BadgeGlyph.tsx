@@ -24,7 +24,7 @@ import type { Badge, BadgeTier, LogFacts } from '../lib/achievements';
 import { palette, stopTint } from '../theme/tokens';
 
 /** Theme stop per tier: bronze c3, silver c2, gold c1. */
-export function tierStop(tier: BadgeTier): 1 | 2 | 3 {
+function tierStop(tier: BadgeTier): 1 | 2 | 3 {
   return tier === 3 ? 1 : tier === 2 ? 2 : 3;
 }
 

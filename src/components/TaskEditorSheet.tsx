@@ -304,7 +304,8 @@ export function TaskEditorSheet({
   const [pendingClose, setPendingClose] = useState<(() => void) | null>(null);
   const guard: SheetGuard = (proceed) => {
     if (editorBack(dirty) === 'leave') return true;
-    // The keyboard would sit over the question's two answers.
+    // The question is answered with a tap, not typed into: left up, the
+    // keyboard would only lift it to mid-screen, over a draft nobody is editing.
     Keyboard.dismiss();
     setPendingClose(() => proceed);
     return false;

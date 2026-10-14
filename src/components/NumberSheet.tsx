@@ -21,10 +21,12 @@
  * keystroke replaces it: nobody opens this to append a digit.
  *
  * THE RETURN KEY SAVES (U8), under exactly the rule `Save` uses
- * (`lib/sheetSubmit.ts`), and the keyboard no longer covers `Save`: the field's
- * reach (see `FieldWell`'s `keyboardReach`) runs to the foot of the pane, so
- * Android's pan lifts the buttons with it. Measured rather than spelled out,
- * because the body and the two buttons are whatever height the text makes them.
+ * (`lib/sheetSubmit.ts`), and the keyboard does not cover `Save`: the frame
+ * rises until its foot clears the keyboard, so the buttons come up with the
+ * field rather than being stretched into its reach (the field used to measure
+ * its way down to them, for Android's `pan`). Everything under the title is a
+ * scroll that may shrink, so a long `body` on a short phone gives up its own
+ * room before the title is pushed off the top.
  *
  * The chrome is `SheetFrame`'s — the same floating pane, handle and animated
  * exits as every other sheet — rather than a docked copy of its own.
@@ -32,15 +34,15 @@
 
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useT } from '../hooks/useT';
+import { KeyboardAwareScrollView } from './KeyboardAware';
 import { SheetCancel, SheetFrame, SheetTitle } from './Sheet';
 import { FieldWell, PrimaryButton } from './primitives';
 import { sheetNumber } from '../lib/sheetSubmit';
 
-/** `SheetFrame`'s pane: 22 of padding under the last button, 8 off the screen's foot. */
-const PANE_FOOT = 22 + 8;
+/** The lit field's glow ring, drawn outside its box. */
+const RING = 4;
 
 interface NumberSheetProps {
   title: string;
@@ -76,15 +78,7 @@ export function NumberSheet({
   // translation and a parameter default is evaluated before the hook can run.
   const save = confirmLabel ?? t('Save');
   const keep = cancelLabel ?? t('Cancel');
-  const insets = useSafeAreaInsets();
   const [text, setText] = useState(initial == null ? '' : String(initial));
-  /** From the field's foot to the pane's last button's foot, once laid out. */
-  const [fieldFoot, setFieldFoot] = useState<number | null>(null);
-  const [buttonsFoot, setButtonsFoot] = useState<number | null>(null);
-  const keyboardReach =
-    fieldFoot !== null && buttonsFoot !== null
-      ? Math.max(0, buttonsFoot - fieldFoot) + PANE_FOOT + insets.bottom
-      : 0;
 
   const parsed = sheetNumber(text, { min, decimal });
   const valid = parsed !== null;
@@ -95,40 +89,43 @@ export function NumberSheet({
   return (
     <SheetFrame onDismiss={onCancel} dismissLabel={keep}>
       <SheetTitle>{title}</SheetTitle>
-      {body ? (
-        <Text style={{ marginTop: 10, fontSize: 15.5, lineHeight: 23, color: '#AEB9B3' }}>
-          {body}
-        </Text>
-      ) : null}
-
-      <View
-        className="mt-lg"
-        onLayout={(e) => setFieldFoot(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
+      {/* `handled`, so `Save` under the open keyboard lands on the first tap.
+          Pushed 4 dp out and padded back, because a scroll clips and the lit
+          field's glow ring is drawn 4 dp outside it. */}
+      <KeyboardAwareScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        style={{ flexGrow: 0, flexShrink: 1, marginHorizontal: -RING }}
+        contentContainerStyle={{ paddingHorizontal: RING }}
       >
-        <FieldWell
-          value={text}
-          onChangeText={setText}
-          keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
-          autoFocus
-          selectAllOnFocus
-          lit
-          placeholder={String(min)}
-          onSubmitEditing={submit}
-          keyboardReach={keyboardReach}
-          accessibilityLabel={title}
-        />
-      </View>
+        {body ? (
+          <Text style={{ marginTop: 10, fontSize: 15.5, lineHeight: 23, color: '#AEB9B3' }}>
+            {body}
+          </Text>
+        ) : null}
 
-      <View
-        className="mt-xl"
-        onLayout={(e) => setButtonsFoot(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
-      >
-        {/* Inert rather than hidden while the field holds nothing usable: a
-            button that vanishes as you delete a digit is a moving target. */}
-        <PrimaryButton label={save} variant={valid ? 'primary' : 'ghost'} onPress={submit} />
-        <View className="h-sm" />
-        <SheetCancel label={keep} onDismiss={onCancel} variant="ghost" />
-      </View>
+        <View className="mt-lg">
+          <FieldWell
+            value={text}
+            onChangeText={setText}
+            keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
+            autoFocus
+            selectAllOnFocus
+            lit
+            placeholder={String(min)}
+            onSubmitEditing={submit}
+            accessibilityLabel={title}
+          />
+        </View>
+
+        <View className="mt-xl">
+          {/* Inert rather than hidden while the field holds nothing usable: a
+              button that vanishes as you delete a digit is a moving target. */}
+          <PrimaryButton label={save} variant={valid ? 'primary' : 'ghost'} onPress={submit} />
+          <View className="h-sm" />
+          <SheetCancel label={keep} onDismiss={onCancel} variant="ghost" />
+        </View>
+      </KeyboardAwareScrollView>
     </SheetFrame>
   );
 }

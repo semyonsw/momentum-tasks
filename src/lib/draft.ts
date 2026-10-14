@@ -210,7 +210,7 @@ function finiteOrNull(value: number | undefined): number | null {
  * already there — this note is here so a future edit knows it is load-bearing
  * rather than defensive.
  */
-export function lastSessionSets(history: SetHistory[], exerciseId: ID): SetHistory[] {
+function lastSessionSets(history: SetHistory[], exerciseId: ID): SetHistory[] {
   const relevant = history.filter(
     (s) => s.exerciseId === exerciseId && s.isCompleted && !s.isWarmup,
   );
@@ -337,7 +337,7 @@ export function defaultTargetCount(exercise: Pick<Exercise, 'countUnit' | 'defau
  * plank appended to a routine planned three, so "new exercise" had no single
  * answer and the user had to correct it by hand every time.
  */
-export const DEFAULT_SETS = 4;
+const DEFAULT_SETS = 4;
 
 /**
  * How many sets a brand-new routine item plans, by count unit.

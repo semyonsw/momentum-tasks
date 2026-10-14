@@ -18,10 +18,10 @@
  * Rendering the sheets in a React Native `Modal` would put them in their own
  * window, above the pill, and it is the textbook answer. It also puts every
  * `TextInput` in `TaskEditorSheet` and `CategoryEditorSheet` into a window with
- * its own soft-input mode — and this app runs `softwareKeyboardLayoutMode: pan`,
- * chosen in `app.json` for the way the set editors behave. Swapping the window
- * under a text field to fix a paint order is a large change to make for a small
- * reason.
+ * its own soft-input mode — and this app moves its own surfaces for the
+ * keyboard (`lib/keyboard.ts`), measured against the ONE window it draws in.
+ * Swapping the window under a text field to fix a paint order is a large change
+ * to make for a small reason.
  *
  * So: a sheet says it exists, and the shell does not draw the pill while one
  * does. Which is also the honest behaviour — a sheet is modal, so a tab bar

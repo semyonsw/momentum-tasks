@@ -35,9 +35,10 @@
  */
 
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
+import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { FieldWell, Kicker, SelectChip } from '../components/primitives';
 import { useT, type Translate } from '../hooks/useT';
@@ -87,8 +88,8 @@ export function MoneySettingsScreen({ onBack }: { onBack: () => void }) {
         bordered={false}
       />
 
-      <ScrollView
-        className="flex-1"
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -177,7 +178,7 @@ export function MoneySettingsScreen({ onBack }: { onBack: () => void }) {
         <Text className="mx-lg text-label text-ink-faint">
           {t('Which range the ⟲ in the corner of the expenses opens on.')}
         </Text>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

@@ -165,7 +165,7 @@ export function isTransferCategory(id: ID): boolean {
 }
 
 /** Where a pre-direction income lands: one `Other` per direction, made on demand. */
-export const OTHER_CATEGORY: Record<Direction, ID> = {
+const OTHER_CATEGORY: Record<Direction, ID> = {
   expense: 'other_expense',
   income: 'other_income',
 };
@@ -317,7 +317,7 @@ export const INTERVAL_LABELS: Record<Interval, string> = {
 
 /** "9,020" — grouped, no unit. Tabular numerals do the aligning. */
 /** A balance is whole units, and no more digits than the amount keypad allows. */
-export const BALANCE_MAX_DIGITS = 12;
+const BALANCE_MAX_DIGITS = 12;
 
 /**
  * What the balance field holds, typed any which way: `-40 000` → -40000.

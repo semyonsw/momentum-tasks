@@ -23,6 +23,7 @@ import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
 import { BubblePressable } from './bubbles';
+import { useRevealOnFocus } from './KeyboardAware';
 import { pressedStyle } from './motion';
 import { useT } from '../hooks/useT';
 import { BUDGET_STEP } from '../lib/budgets';
@@ -51,6 +52,7 @@ export function PlanFigure({
   accessibilityLabel: string;
 }) {
   const t = useT();
+  const reveal = useRevealOnFocus();
   const [text, setText] = useState(() => shown(value, scale));
   const nudge = (direction: 1 | -1) => {
     const next = Math.max(0, value + direction * step);
@@ -83,6 +85,7 @@ export function PlanFigure({
           const typed = typedToMinor(next, scale);
           onChange(typed ?? 0);
         }}
+        onFocus={reveal}
         onBlur={() => setText(shown(value, scale))}
         placeholder="0"
         placeholderTextColor={palette.inkFaint}

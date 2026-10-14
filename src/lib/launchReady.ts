@@ -21,10 +21,10 @@
 
 export type LaunchStore = 'history' | 'tasks' | 'money';
 
-export const LAUNCH_STORES: readonly LaunchStore[] = ['history', 'tasks', 'money'];
+const LAUNCH_STORES: readonly LaunchStore[] = ['history', 'tasks', 'money'];
 
 /** The earliest moment the first, second and third store may be shown ticked. */
-export const LAUNCH_TICK_SLOTS_MS = [700, 1150, 1600] as const;
+const LAUNCH_TICK_SLOTS_MS = [700, 1150, 1600] as const;
 
 /** Below this the splash never leaves. */
 export const LAUNCH_FLOOR_MS = 2300;

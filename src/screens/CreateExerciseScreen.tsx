@@ -118,8 +118,9 @@
  */
 
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
+import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { FloatingAction } from '../components/glass';
 import { useLeaveGuard } from '../navigation/leaveGuard';
@@ -309,8 +310,9 @@ export function CreateExerciseScreen({
         onBack={handleBack}
       />
 
-      <ScrollView
-        className="flex-1"
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="never"
         // Clears the floating Save / Create.
         contentContainerStyle={{ paddingTop: 24, paddingBottom: pushedSlot.clearance }}
         showsVerticalScrollIndicator={false}
@@ -669,7 +671,7 @@ export function CreateExerciseScreen({
             .
           </Text>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* THE COMMIT, in the floating slot (U5) rather than the header's corner.
           Asleep while the name is empty — an exercise with no name is a row you

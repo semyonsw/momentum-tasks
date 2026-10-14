@@ -205,10 +205,7 @@ export function countPayload(payload: BackupPayload): BackupCounts {
   return counts;
 }
 
-export function buildBackupEnvelope(
-  payload: BackupPayload,
-  now: Date = new Date(),
-): BackupEnvelope {
+function buildBackupEnvelope(payload: BackupPayload, now: Date = new Date()): BackupEnvelope {
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,

@@ -189,7 +189,7 @@ export function toggleMaxReps(draft: ExerciseDraft, on: boolean): ExerciseDraft 
 }
 
 /** How many sets a plan may ask for — the routine editor's own range. */
-export function clampSets(value: number): number {
+function clampSets(value: number): number {
   const { min, max } = TARGET_SETS_LIMITS;
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, Math.round(value)));

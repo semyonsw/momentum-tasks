@@ -810,7 +810,7 @@ export function achievements(facts: LogFacts): Badge[] {
 }
 
 /** The gallery's line: how many are earned. */
-export function earnedCount(badges: readonly Badge[]): number {
+function earnedCount(badges: readonly Badge[]): number {
   return badges.filter((badge) => badge.earnedOn !== null).length;
 }
 

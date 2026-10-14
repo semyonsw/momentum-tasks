@@ -38,6 +38,7 @@ import { Sheet } from './Sheet';
 import { BubblePressable } from './bubbles';
 import { SpecularEdge } from './glass';
 import { Icon } from './Icon';
+import { useRevealOnFocus } from './KeyboardAware';
 import { pressedStyle } from './motion';
 import { useT } from '../hooks/useT';
 import { tap } from '../lib/feedback';
@@ -66,6 +67,7 @@ export function ColorPickerSheet({
   onDismiss: () => void;
 }) {
   const t = useT();
+  const reveal = useRevealOnFocus();
   const [hex, setHex] = useState(colors[index]);
   const [hue, setHue] = useState(() => nearestHueIndex(colors[index]));
   const [typed, setTyped] = useState(colors[index].slice(1));
@@ -221,6 +223,7 @@ export function ColorPickerSheet({
           autoComplete="off"
           spellCheck={false}
           importantForAutofill="no"
+          onFocus={reveal}
           accessibilityLabel={t('Hex colour')}
           placeholder="3DDC84"
           placeholderTextColor={palette.inkFaint}

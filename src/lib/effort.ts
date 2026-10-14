@@ -45,9 +45,9 @@ import type { CountUnit } from '../types/models';
 import { endsAtLimit, type SetType } from './setType';
 
 /** The scale's ends, and its step. */
-export const RIR_MIN = 0;
-export const RIR_MAX = 5;
-export const RIR_STEP = 0.5;
+const RIR_MIN = 0;
+const RIR_MAX = 5;
+const RIR_STEP = 0.5;
 
 /**
  * AT THE LIMIT: RIR ≤ 0.5, i.e. RPE ≥ 9.5.

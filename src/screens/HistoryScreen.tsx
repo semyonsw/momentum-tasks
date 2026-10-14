@@ -126,6 +126,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, ScrollView, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { Pressable } from '../components/Pressable';
 
 import { ConfirmSheet } from '../components/ConfirmSheet';
@@ -595,9 +596,10 @@ export function HistoryScreen({
             ) : null}
           </>
         ) : (
-          <ScrollView
+          <KeyboardAwareScrollView
             ref={scrollRef}
-            className="flex-1"
+            style={{ flex: 1 }}
+            keyboardShouldPersistTaps="never"
             contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
             showsVerticalScrollIndicator={false}
             scrollEnabled={!dimmed}
@@ -744,7 +746,7 @@ export function HistoryScreen({
             {onOpenSettings ? (
               <SettingsFootRow sectionLabel={t('Workout settings')} onPress={onOpenSettings} />
             ) : null}
-          </ScrollView>
+          </KeyboardAwareScrollView>
         )}
       </View>
 

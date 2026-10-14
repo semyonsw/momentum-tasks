@@ -149,6 +149,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
+import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { ExerciseCard } from '../components/ExerciseCard';
 import { FinishSheet, type FinishRecord } from '../components/FinishSheet';
@@ -1114,9 +1115,9 @@ export function ActiveWorkoutScreen({
         */}
         {focusOpen ? null : setTimer ? <SetTimerPill /> : <RestTimerPill />}
 
-        <ScrollView
+        <KeyboardAwareScrollView
           ref={scrollRef}
-          className="flex-1"
+          style={{ flex: 1 }}
           contentContainerStyle={{
             paddingTop: 8,
             // The floating pair is 64 tall at `PAIR_BOTTOM`; this is what keeps
@@ -1253,7 +1254,7 @@ export function ActiveWorkoutScreen({
               </Pressable>
             ) : null}
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </View>
 
       {/*

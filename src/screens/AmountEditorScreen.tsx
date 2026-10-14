@@ -772,7 +772,10 @@ export function AmountEditorScreen({
 
       {/* MULTILINE: Return is a new line, not "done" — a note can be a list of
           what was in the bag. The box grows with the text up to ~8 lines and
-          scrolls past that; `Done` is the way out. */}
+          scrolls past that; `Done` is the way out. Nothing here moves for the
+          keyboard: the sheet rises above it with the whole box and `Done` on
+          board (`components/Sheet.tsx`). Android's old `pan` revealed only the
+          caret's line, which is how half the note sat under the keys. */}
       {picking === 'note' ? (
         <Sheet title={t('Note')} onDismiss={() => setPicking(null)}>
           <View className="rounded-surface border border-hairline bg-surface-alt px-lg py-md">

@@ -57,7 +57,7 @@ import { unansweredThrough, type RecurringPayment } from './recurring';
 import type { ID } from '../types/models';
 
 export const FORECAST_MIN_DAYS = 14;
-export const FORECAST_WINDOW_DAYS = 28;
+const FORECAST_WINDOW_DAYS = 28;
 
 export interface DailySpend {
   /** Mean spend per day over the window, in the log's units (not rounded). */

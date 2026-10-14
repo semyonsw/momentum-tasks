@@ -142,12 +142,6 @@ export function yearlyWrappedOffer(today: string): WrappedPeriod | null {
   return null;
 }
 
-/** Same period? For route keys and the Landing. */
-export function samePeriod(a: WrappedPeriod, b: WrappedPeriod): boolean {
-  if (a.kind === 'year' || b.kind === 'year') return a.kind === b.kind && a.year === b.year;
-  return a.year === b.year && a.month === b.month;
-}
-
 /* ------------------------------------------------------------------ */
 /* The stats                                                           */
 /* ------------------------------------------------------------------ */
@@ -437,7 +431,7 @@ export interface WrappedWords {
 }
 
 /** "September 2026" / "2026". */
-export function periodLabel(period: WrappedPeriod, lang: Language): string {
+function periodLabel(period: WrappedPeriod, lang: Language): string {
   return period.kind === 'year'
     ? String(period.year)
     : formatMonth(period.year, period.month, lang);

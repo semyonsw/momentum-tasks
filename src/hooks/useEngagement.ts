@@ -27,7 +27,7 @@ export function useEngagementView(): EngagementView {
 }
 
 /** Every series the badges read, or null while the switch is off. */
-export function useLogFacts(): LogFacts | null {
+function useLogFacts(): LogFacts | null {
   const on = useSettings((s) => engagementOn(s));
   const today = useToday();
   const workouts = useWorkoutHistory((s) => s.workouts);
