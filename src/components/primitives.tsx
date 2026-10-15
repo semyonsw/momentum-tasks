@@ -256,7 +256,7 @@ export function SettingRow({
       /*
        * `min-h` rather than a fixed 56, and both halves clamped.
        *
-       * `Back up automatically` against `Every 7 days · Downloads` is the worst
+       * `Back up automatically` against `After every change · Downloads` is the worst
        * case and it used to break the label mid-word and then clip it: the label
        * had `flex-1` and the value had nothing, so a long value took whatever it
        * wanted and the label wrapped into a box that could not grow. The value is
@@ -270,7 +270,7 @@ export function SettingRow({
         </Text>
         {value ? (
           /* The value RUNS inside its half of the row rather than ellipsising:
-             `Every 7 days · Downloads/Backups` is two facts, and the second one is
+             `After every change · Downloads/Backups` is two facts, and the second one is
              the half that gets cut. */
           <RunningText
             text={value}

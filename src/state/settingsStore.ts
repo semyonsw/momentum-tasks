@@ -33,7 +33,7 @@ import {
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { AUTO_BACKUP_INTERVAL_LIMITS, rotateBackups } from '../lib/autoBackup';
+import { usableBackupFile, type BackupFileRecord } from '../lib/autoBackup';
 import {
   clampBodyweightKg,
   recordBodyweight,
@@ -264,11 +264,16 @@ export interface Settings {
 
   /* --- automatic backup: see `lib/autoBackup.ts` --------------------- */
   /**
-   * Write a backup without being asked.
+   * Rewrite the backup file after every change, without being asked.
    *
    * ON by default, and inert until a folder is granted — see `autoBackupFolderUri`.
    * The default is on because the alternative default is a year of training
    * protected by the user remembering a menu item.
+   *
+   * There used to be an `autoBackupIntervalDays` beside it (a weekly copy, taken
+   * on launch). It is gone, not renamed: an old blob or an old backup file that
+   * still carries it is read without complaint and the key is simply dropped by
+   * `sanitizeSettings`, which builds its result from the known keys only.
    */
   autoBackupEnabled: boolean;
   /**
@@ -280,8 +285,6 @@ export interface Settings {
    * events a backup exists to survive.
    */
   autoBackupFolderUri?: string;
-  /** How often, in days. */
-  autoBackupIntervalDays: number;
   /** When the last backup — automatic or manual — actually landed. */
   lastBackupAt?: string;
   /**
@@ -294,13 +297,16 @@ export interface Settings {
    */
   shareToHealthConnect: boolean;
   /**
-   * The copies written so far, newest first, so the oldest can be deleted.
+   * The day's backup file — its URI and the day it belongs to — so the next write
+   * that day overwrites it in place and the first write of a new day knows which
+   * file to retire. SAF reaches files by URI only, so the name alone is not enough.
+   * See `lib/autoBackup.ts`. Absent until the first write into the folder.
    *
-   * SAF cannot overwrite a file, so without this an unattended weekly write leaves
-   * fifty files a year in the user's Download folder. `rotateBackups` decides which
-   * ones go.
+   * It replaced `autoBackupUris`, the rotation list of the weekly
+   * `workout-tracker-auto-*` copies; an old blob's list is dropped, and those
+   * files are deliberately left where they are.
    */
-  autoBackupUris: string[];
+  autoBackupFile?: BackupFileRecord;
 
   /* --- the assistant's entry card (U2) ------------------------------- */
   /**
@@ -416,10 +422,9 @@ export const DEFAULT_SETTINGS: Settings = {
   moneyTrendRange: 'month',
   autoBackupEnabled: true,
   autoBackupFolderUri: undefined,
-  autoBackupIntervalDays: 7,
   shareToHealthConnect: false,
   lastBackupAt: undefined,
-  autoBackupUris: [],
+  autoBackupFile: undefined,
   // Declared so the key set is complete; absent on disk means "no card closed".
   aiCardsDismissed: undefined,
   weeklyReviewDismissed: undefined,
@@ -442,7 +447,6 @@ export const SETTING_LIMITS = {
   prepareSeconds: { min: 0, max: 60, step: 1 },
   beepSeconds: { min: 0, max: 30, step: 1 },
   adjustStepSeconds: { min: 5, max: 60, step: 5 },
-  autoBackupIntervalDays: AUTO_BACKUP_INTERVAL_LIMITS,
 } as const satisfies Record<string, { min: number; max: number; step: number }>;
 
 export type NumericSetting = keyof typeof SETTING_LIMITS;
@@ -556,12 +560,11 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     moneyTrendRange: usableRange(raw.moneyTrendRange),
     autoBackupEnabled: raw.autoBackupEnabled !== false,
     autoBackupFolderUri: usableFolderUri(raw.autoBackupFolderUri),
-    autoBackupIntervalDays: clampSetting('autoBackupIntervalDays', raw.autoBackupIntervalDays),
     // `=== true`, not `!== false`: this one defaults OFF, so a device upgrading
     // from a build without the key must not wake up sharing its training data.
     shareToHealthConnect: raw.shareToHealthConnect === true,
     lastBackupAt: usableInstant(raw.lastBackupAt),
-    autoBackupUris: usableUriList(raw.autoBackupUris),
+    autoBackupFile: usableBackupFile(raw.autoBackupFile),
     aiCardsDismissed: usableSections(raw.aiCardsDismissed),
     weeklyReviewDismissed: usableMonday(raw.weeklyReviewDismissed),
     bodyMeasurements: sanitizeMeasurements(raw.bodyMeasurements),
@@ -683,11 +686,6 @@ function usableMonday(value: unknown): string | undefined {
 }
 
 /** The rotation list: strings only, and capped so a corrupt blob cannot grow. */
-function usableUriList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((uri): uri is string => typeof uri === 'string' && uri !== '').slice(0, 16);
-}
-
 interface SettingsState extends Settings {
   setNumber: (key: NumericSetting, value: number) => void;
   /** Relative nudge, for the ± controls on the settings rows. */
@@ -761,14 +759,15 @@ interface SettingsState extends Settings {
   /** Remember the granted folder. `undefined` forgets it, which turns backup off. */
   setAutoBackupFolder: (folderUri: string | undefined) => void;
   /**
-   * Record that a backup landed, and rotate the copies.
+   * Record that a backup landed, and which file it is now in.
    *
-   * Called by BOTH paths — the automatic write and the manual `Export data` — so
-   * "last backup" means the last time the log actually left the phone, whoever
-   * asked for it. The manual export passes no URI because it goes wherever the user
-   * pointed the picker, which is not a folder this app rotates.
+   * Called by every write — the automatic one, `Back up now` and `Export
+   * everything` all go through `runBackupNow` — so "last backup" means the last
+   * time the data actually left the phone, whoever asked for it. Neither field is
+   * watched by the automatic backup (`lib/backupWatch.ts`), which is what stops a
+   * write recording itself from asking for another write.
    */
-  recordBackup: (at: string, uri?: string) => { drop: string[] };
+  recordBackup: (at: string, file?: BackupFileRecord) => void;
 
   /** Hide one section's assistant card for good (U2). */
   dismissAiCard: (section: AiSection) => void;
@@ -924,23 +923,26 @@ export const useSettings = create<SettingsState>()(
 
       setShareToHealthConnect: (shareToHealthConnect) => set({ shareToHealthConnect }),
 
-      setAutoBackupFolder: (folderUri) =>
-        set({
-          autoBackupFolderUri: usableFolderUri(folderUri),
-          // The rotation list belongs to a folder. Pointing somewhere else makes
-          // those URIs somebody else's files, and deleting them would be wrong.
-          autoBackupUris: [],
-        }),
+      setAutoBackupFolder: (folderUri) => {
+        const next = usableFolderUri(folderUri);
+        /*
+         * The day's file belongs to a folder. Pointing somewhere else makes that
+         * URI a file in the old folder, and overwriting or deleting it would be
+         * wrong — the new folder gets its own file on the next write. Re-granting
+         * the SAME folder (access was lost and the user picked it again) keeps it,
+         * so the next write overwrites that file rather than creating a twin.
+         */
+        set(
+          next === get().autoBackupFolderUri
+            ? { autoBackupFolderUri: next }
+            : { autoBackupFolderUri: next, autoBackupFile: undefined },
+        );
+      },
 
-      recordBackup: (at, uri) => {
+      recordBackup: (at, file) => {
         const stamp = usableInstant(at) ?? new Date().toISOString();
-        if (!uri) {
-          set({ lastBackupAt: stamp });
-          return { drop: [] };
-        }
-        const { keep, drop } = rotateBackups(get().autoBackupUris, uri);
-        set({ lastBackupAt: stamp, autoBackupUris: keep });
-        return { drop };
+        const record = usableBackupFile(file);
+        set(record ? { lastBackupAt: stamp, autoBackupFile: record } : { lastBackupAt: stamp });
       },
 
       dismissAiCard: (section) =>
@@ -1001,7 +1003,7 @@ export const useSettings = create<SettingsState>()(
           activeGymId: get().activeGymId,
           autoBackupFolderUri: get().autoBackupFolderUri,
           lastBackupAt: get().lastBackupAt,
-          autoBackupUris: get().autoBackupUris,
+          autoBackupFile: get().autoBackupFile,
           // A card the user closed is not a duration or a switch; resetting the
           // timers is no reason for it to come back.
           aiCardsDismissed: get().aiCardsDismissed,

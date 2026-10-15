@@ -864,3 +864,72 @@ describe('the weekly training goal (W8)', () => {
     expect(useSettings.getState().excusedWeeks).toBeUndefined();
   });
 });
+
+/*
+ * THE WEEKLY BACKUP'S KEYS. Every file a 2.5.x phone wrote carries
+ * `autoBackupIntervalDays` and `autoBackupUris` in its settings. The interval is
+ * gone and the rotation list is replaced by the day's file, and neither may stop
+ * that file restoring ("Never break import of an old backup").
+ */
+describe('a backup from the weekly auto-backup era', () => {
+  const v25 = (settings: Record<string, unknown>) =>
+    JSON.stringify({
+      format: 'workout-tracker-backup',
+      version: 2,
+      settings,
+      exercises: [],
+      routines: [],
+      workouts: [],
+    });
+
+  it('imports, keeps its real settings and drops the retired keys', () => {
+    const parsed = parseBackup(
+      v25({
+        restSecondsBetweenSets: 105,
+        autoBackupEnabled: false,
+        autoBackupFolderUri: 'content://tree/other-phone',
+        autoBackupIntervalDays: 14,
+        autoBackupUris: ['content://tree/other-phone/workout-tracker-auto-2026-09-01.json'],
+        lastBackupAt: '2026-09-01T10:00:00.000Z',
+      }),
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    const applied = applyBackup(parsed.envelope);
+
+    expect(applied.settingsApplied).toBe(true);
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(105);
+    const state = useSettings.getState() as unknown as Record<string, unknown>;
+    expect(state.autoBackupIntervalDays).toBeUndefined();
+    expect(state.autoBackupUris).toBeUndefined();
+  });
+
+  it('keeps THIS phone’s folder, day file and switch, not the file’s', () => {
+    useSettings.getState().setAutoBackupFolder('content://tree/this-phone');
+    const file = {
+      uri: 'content://tree/this-phone/momentum-backup-2026-10-15.json',
+      day: '2026-10-15',
+    };
+    useSettings.getState().recordBackup('2026-10-15T10:00:00.000Z', file);
+
+    const parsed = parseBackup(
+      v25({
+        autoBackupEnabled: false,
+        autoBackupFolderUri: 'content://tree/other-phone',
+        autoBackupIntervalDays: 3,
+        autoBackupFile: { uri: 'content://tree/other-phone/x.json', day: '2026-01-01' },
+      }),
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    applyBackup(parsed.envelope);
+
+    expect(useSettings.getState().autoBackupFolderUri).toBe('content://tree/this-phone');
+    expect(useSettings.getState().autoBackupFile).toEqual(file);
+    expect(useSettings.getState().autoBackupEnabled).toBe(DEFAULT_SETTINGS.autoBackupEnabled);
+  });
+
+  it('writes no retired key into a new backup', () => {
+    const text = exportBackupText();
+    expect(text).not.toContain('autoBackupIntervalDays');
+    expect(text).not.toContain('autoBackupUris');
+  });
+});

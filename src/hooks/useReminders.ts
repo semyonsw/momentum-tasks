@@ -1,10 +1,9 @@
 /**
  * Keep Android's notification queue matching the tasks.
  *
- * Mounted once, at the top of the app, beside `useAutoBackup` and for the same
- * reason it gives: launch is the only moment a sideloaded app can reliably run
- * anything, so the work that has to happen whether or not the user opens a
- * particular screen happens here.
+ * Mounted once, at the top of the app, beside `useAutoBackup`: launch is the only
+ * moment a sideloaded app can reliably run anything, so the work that has to
+ * happen whether or not the user opens a particular screen happens here.
  *
  * ── WHAT IT WATCHES, AND WHY IT IS EVERY INPUT ───────────────────────────
  *

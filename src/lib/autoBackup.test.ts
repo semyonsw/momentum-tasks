@@ -1,79 +1,33 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  AUTO_BACKUP_KEEP,
-  autoBackupBaseName,
+  BACKUP_FILE_PREFIX,
+  backupFileBaseName,
+  backupFilesToRetire,
+  classifyBackupError,
   daysSince,
   describeBackupAge,
-  isAutoBackupName,
-  rotateBackups,
-  shouldBackUpNow,
-  staleAutoBackups,
-  type AutoBackupState,
+  failureNeedsFolder,
+  isBackupFileName,
+  padToCover,
+  planBackupWrite,
+  usableBackupFile,
+  utf8ByteLength,
+  type BackupFailure,
 } from './autoBackup';
 
 /**
- * When to write a backup nobody asked for.
+ * The backup file's decisions: which file a write goes to, what is deleted after
+ * it, and that an overwrite can never leave a file that does not parse.
  *
- * `lib/backup.ts` calls a backup "the only thing standing between a year of training
- * and a factory reset" and then made it a button. These are the rules that make it
- * happen on its own instead — and the one that matters most is the last group: a
- * clock that has gone backwards must not turn the app into something that writes a
- * file on every launch.
+ * The groups that matter most are the sweep — whatever it matches is DELETED, so
+ * it must match this mechanism's files and nothing else, least of all the
+ * `workout-tracker-*` files older builds left — and the padding, which is the
+ * difference between a backup and a file of JSON with garbage after it.
  */
 
 const NOW = new Date('2026-09-02T12:00:00.000Z');
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000).toISOString();
-
-const state = (over: Partial<AutoBackupState> = {}): AutoBackupState => ({
-  enabled: true,
-  folderUri: 'content://tree/primary%3ADownload',
-  lastAt: daysAgo(3),
-  intervalDays: 7,
-  ...over,
-});
-
-describe('whether a backup is due', () => {
-  it('is due once the interval has passed', () => {
-    expect(shouldBackUpNow(state({ lastAt: daysAgo(6) }), NOW)).toBe(false);
-    expect(shouldBackUpNow(state({ lastAt: daysAgo(7) }), NOW)).toBe(true);
-    expect(shouldBackUpNow(state({ lastAt: daysAgo(40) }), NOW)).toBe(true);
-  });
-
-  it('is due immediately when nothing has ever been backed up', () => {
-    // The case with the most to lose and the least excuse.
-    expect(shouldBackUpNow(state({ lastAt: undefined }), NOW)).toBe(true);
-  });
-
-  it('is never due while switched off', () => {
-    expect(shouldBackUpNow(state({ enabled: false, lastAt: undefined }), NOW)).toBe(false);
-  });
-
-  it('is never due with nowhere to write', () => {
-    /*
-     * Android's only durable destination is a folder the user granted; the app's own
-     * sandbox dies with the app, which is one of the events a backup exists to
-     * survive. So no folder means the feature is inert, however keen the setting is.
-     */
-    expect(shouldBackUpNow(state({ folderUri: undefined, lastAt: undefined }), NOW)).toBe(false);
-  });
-
-  it('treats a stamp from the future as not due, rather than as overdue', () => {
-    // A timezone change or a hand-edited blob can produce one. A negative interval
-    // would otherwise write a file on every launch, forever.
-    const future = new Date(NOW.getTime() + 5 * 86_400_000).toISOString();
-    expect(shouldBackUpNow(state({ lastAt: future }), NOW)).toBe(false);
-  });
-
-  it('refuses an interval below one day, however it reached the settings', () => {
-    expect(shouldBackUpNow(state({ intervalDays: 0, lastAt: daysAgo(0) }), NOW)).toBe(false);
-    expect(shouldBackUpNow(state({ intervalDays: -5, lastAt: daysAgo(0) }), NOW)).toBe(false);
-  });
-
-  it('ignores an unparseable stamp by treating it as never', () => {
-    expect(shouldBackUpNow(state({ lastAt: 'yesterday-ish' }), NOW)).toBe(true);
-  });
-});
 
 describe('the age of the last backup', () => {
   it('counts calendar days, not 24-hour periods', () => {
@@ -86,10 +40,9 @@ describe('the age of the last backup', () => {
     expect(daysSince(undefined, NOW)).toBeNull();
   });
 
-  it('makes a one-day interval due the next morning', () => {
-    const evening = new Date(2026, 8, 1, 20, 0).toISOString();
-    const morning = new Date(2026, 8, 2, 8, 0);
-    expect(shouldBackUpNow(state({ lastAt: evening, intervalDays: 1 }), morning)).toBe(true);
+  it('reads a clock that went backwards as today, not as a negative age', () => {
+    expect(daysSince(new Date(NOW.getTime() + 3 * 86_400_000).toISOString(), NOW)).toBe(0);
+    expect(daysSince('yesterday-ish', NOW)).toBeNull();
   });
 
   it('says it in words, because the row only answers "recent enough"', () => {
@@ -100,71 +53,168 @@ describe('the age of the last backup', () => {
   });
 });
 
-describe('rotation', () => {
-  it('keeps the newest few and hands back the rest to delete', () => {
-    const { keep, drop } = rotateBackups(['c', 'b', 'a'], 'd', 3);
-    expect(keep).toEqual(['d', 'c', 'b']);
-    expect(drop).toEqual(['a']);
+describe('the file name', () => {
+  it('is the prefix and the LOCAL date', () => {
+    expect(backupFileBaseName(new Date(2026, 8, 2, 23, 59))).toBe('momentum-backup-2026-09-02');
+    expect(backupFileBaseName(new Date(2026, 0, 5, 0, 1))).toBe('momentum-backup-2026-01-05');
+    expect(backupFileBaseName(new Date(2026, 0, 5)).startsWith(BACKUP_FILE_PREFIX)).toBe(true);
   });
 
-  it('keeps exactly one copy by default, the newest', () => {
-    const existing = Array.from({ length: 10 }, (_, i) => `uri-${i}`);
-    const { keep, drop } = rotateBackups(existing, 'new');
-    expect(AUTO_BACKUP_KEEP).toBe(1);
-    expect(keep).toEqual(['new']);
-    expect(drop).toEqual(existing);
-  });
-
-  it('drops nothing on the very first write', () => {
-    expect(rotateBackups([], 'first')).toEqual({ keep: ['first'], drop: [] });
-  });
-
-  it('does not list the same URI twice after a retried write', () => {
-    const { keep, drop } = rotateBackups(['b', 'a'], 'a', 3);
-    expect(keep).toEqual(['a', 'b']);
-    expect(drop).toEqual([]);
-  });
-
-  it('always keeps at least one, however small the cap gets', () => {
-    expect(rotateBackups(['a'], 'b', 0).keep).toEqual(['b']);
+  it('recognises exactly what SAF makes of it', () => {
+    const base = backupFileBaseName(new Date(2026, 9, 15));
+    expect(isBackupFileName(`${base}.json`)).toBe(true);
+    // SAF's answer to a same-named create.
+    expect(isBackupFileName(`${base} (1).json`)).toBe(true);
+    // No extension is not a file SAF wrote.
+    expect(isBackupFileName(base)).toBe(false);
   });
 });
 
-describe('sweeping the folder down to one automatic copy', () => {
-  const file = (name: string) => ({ uri: `content://tree/Download/${name}`, name });
+describe('overwrite or create', () => {
+  const today = '2026-10-15';
 
-  it('finds every older automatic copy by name, the URI list notwithstanding', () => {
-    const newest = file('workout-tracker-auto-2026-10-04.json');
-    const files = [
-      file('workout-tracker-auto-2026-09-27.json'),
-      file('workout-tracker-auto-2026-09-20.json'),
-      file('workout-tracker-auto-2026-10-04 (1).json'),
-      newest,
-    ];
-    expect(staleAutoBackups(files, newest.uri)).toEqual([files[0].uri, files[1].uri, files[2].uri]);
+  it('overwrites today’s file in place', () => {
+    expect(planBackupWrite({ uri: 'content://a', day: today }, today)).toEqual({
+      kind: 'overwrite',
+      uri: 'content://a',
+    });
   });
 
-  it('never touches manual exports or files the user named', () => {
-    const newest = file('workout-tracker-auto-2026-10-04.json');
+  it('creates a new file on a new day, replacing yesterday’s', () => {
+    // Rewriting yesterday's file with today's data would make its name lie.
+    expect(planBackupWrite({ uri: 'content://a', day: '2026-10-14' }, today)).toEqual({
+      kind: 'create',
+      replaces: 'content://a',
+    });
+  });
+
+  it('creates one when there is no file yet', () => {
+    expect(planBackupWrite(undefined, today)).toEqual({ kind: 'create' });
+  });
+});
+
+describe('retiring the old files once the new one exists', () => {
+  const file = (name: string) => ({ uri: `content://tree/Download/${name}`, name });
+
+  it('deletes the replaced file and every other momentum-backup, keeping the new one', () => {
+    const newest = file('momentum-backup-2026-10-15.json');
     const files = [
+      file('momentum-backup-2026-10-14.json'),
+      file('momentum-backup-2026-10-15 (1).json'),
+      newest,
+    ];
+    expect(backupFilesToRetire(files, newest.uri, files[0].uri)).toEqual([
+      files[0].uri,
+      files[1].uri,
+    ]);
+  });
+
+  it('deletes the replaced file even when the listing could not be read', () => {
+    // `listFolder` is empty on failure; the stored URI still goes.
+    expect(backupFilesToRetire([], 'content://new', 'content://old')).toEqual(['content://old']);
+  });
+
+  it('never deletes the file just written, even if it was the one "replaced"', () => {
+    expect(backupFilesToRetire([], 'content://same', 'content://same')).toEqual([]);
+  });
+
+  it('leaves older builds’ files and anything the user named alone', () => {
+    const newest = file('momentum-backup-2026-10-15.json');
+    const files = [
+      file('workout-tracker-auto-2026-10-01.json'),
       file('workout-tracker-backup-2026-10-01-0900.json'),
-      file('workout-tracker-auto-mine.json'),
-      file('workout-tracker-auto-2026-09-27.json.bak'),
+      file('momentum-amounts-2026-10-01-0900.csv'),
+      file('momentum-backup-mine.json'),
+      file('momentum-backup-2026-10-01.json.bak'),
       file('photo.jpg'),
       newest,
     ];
-    expect(staleAutoBackups(files, newest.uri)).toEqual([]);
-  });
-
-  it('recognises exactly the names autoBackupBaseName writes', () => {
-    expect(isAutoBackupName(`${autoBackupBaseName(new Date(2026, 9, 4))}.json`)).toBe(true);
-    expect(isAutoBackupName(autoBackupBaseName(new Date(2026, 9, 4)))).toBe(false);
+    expect(backupFilesToRetire(files, newest.uri)).toEqual([]);
   });
 });
 
-describe('the file name', () => {
-  it('is dated, sortable, and obviously automatic', () => {
-    expect(autoBackupBaseName(new Date(2026, 8, 2))).toBe('workout-tracker-auto-2026-09-02');
-    expect(autoBackupBaseName(new Date(2026, 0, 5))).toBe('workout-tracker-auto-2026-01-05');
+describe('the stored file record', () => {
+  it('keeps a usable one', () => {
+    expect(usableBackupFile({ uri: 'content://a', day: '2026-10-15' })).toEqual({
+      uri: 'content://a',
+      day: '2026-10-15',
+    });
+  });
+
+  it('drops anything else rather than overwriting the wrong file', () => {
+    for (const bad of [
+      undefined,
+      null,
+      'content://a',
+      ['content://a'],
+      { uri: '', day: '2026-10-15' },
+      { uri: 'content://a' },
+      { uri: 'content://a', day: 'yesterday' },
+      { uri: 42, day: '2026-10-15' },
+    ]) {
+      expect(usableBackupFile(bad)).toBeUndefined();
+    }
+  });
+});
+
+describe('overwriting without truncation', () => {
+  it('counts UTF-8 bytes, not UTF-16 units', () => {
+    expect(utf8ByteLength('abc')).toBe(3);
+    // Cyrillic is two bytes a letter: most of this user's data.
+    expect(utf8ByteLength('Жим')).toBe(6);
+    expect(utf8ByteLength('—')).toBe(3);
+    // A surrogate pair is one four-byte character.
+    expect(utf8ByteLength('💪')).toBe(4);
+    expect(utf8ByteLength('')).toBe(0);
+  });
+
+  it('pads a shorter backup to cover every byte of the old one', () => {
+    const padded = padToCover('{"a":1}\n', 20);
+    expect(utf8ByteLength(padded)).toBe(20);
+    expect(padded.startsWith('{"a":1}\n')).toBe(true);
+  });
+
+  it('leaves a backup that is already long enough alone', () => {
+    expect(padToCover('{"a":1}\n', 3)).toBe('{"a":1}\n');
+    expect(padToCover('{"a":1}\n', 8)).toBe('{"a":1}\n');
+  });
+
+  it('still parses, whatever was underneath — the property the padding is for', () => {
+    const old = JSON.stringify({ chats: ['Жим лёжа — 5×5'.repeat(20)] }, null, 2) + '\n';
+    const next = JSON.stringify({ chats: [] }, null, 2) + '\n';
+    const written = padToCover(next, utf8ByteLength(old));
+
+    // What a provider that does NOT truncate leaves on disk: the new bytes over
+    // the old ones, and the old ones' tail after them.
+    const disk = Buffer.from(old, 'utf8');
+    Buffer.from(written, 'utf8').copy(disk, 0);
+    expect(JSON.parse(disk.toString('utf8'))).toEqual({ chats: [] });
+
+    // Without the padding the same disk would not parse.
+    const unpadded = Buffer.from(old, 'utf8');
+    Buffer.from(next, 'utf8').copy(unpadded, 0);
+    expect(() => JSON.parse(unpadded.toString('utf8'))).toThrow();
+  });
+});
+
+describe('why a write did not happen', () => {
+  it('asks for a folder only when a folder would fix it', () => {
+    const all: BackupFailure[] = [
+      'no-folder',
+      'access',
+      'off',
+      'not-ready',
+      'unreadable-log',
+      'write',
+    ];
+    expect(all.filter(failureNeedsFolder)).toEqual(['no-folder', 'access']);
+  });
+
+  it('tells a lost folder from an unreadable log from everything else', () => {
+    const named = (name: string) => Object.assign(new Error('x'), { name });
+    expect(classifyBackupError(named('FolderAccessError'))).toBe('access');
+    expect(classifyBackupError(named('UnreadableLogError'))).toBe('unreadable-log');
+    expect(classifyBackupError(new Error('disk full'))).toBe('write');
+    expect(classifyBackupError('a string')).toBe('write');
   });
 });

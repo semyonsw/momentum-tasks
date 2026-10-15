@@ -179,15 +179,15 @@ export function applyBackup(payload: BackupPayload): AppliedCounts {
     /*
      * The file's settings, except what belongs to THIS PHONE: the backup folder
      * is a grant this phone holds (another phone's URI is a folder it has no
-     * permission for, and every auto-backup after the restore failed), its
-     * rotation list and last-backup time describe this phone's own files, and
+     * permission for, and every auto-backup after the restore failed), the
+     * day's file and last-backup time describe this phone's own files, and
      * Health Connect is a permission granted here or not at all.
      */
     const here = useSettings.getState();
     const local = {
       autoBackupEnabled: here.autoBackupEnabled,
       autoBackupFolderUri: here.autoBackupFolderUri,
-      autoBackupUris: here.autoBackupUris,
+      autoBackupFile: here.autoBackupFile,
       lastBackupAt: here.lastBackupAt,
       shareToHealthConnect: here.shareToHealthConnect,
     };

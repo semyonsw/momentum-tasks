@@ -1,21 +1,29 @@
 /**
- * When to write a backup nobody asked for.
+ * The unattended backup's decisions: which file, overwrite or create, what to
+ * delete afterwards, and how old the last copy is.
  *
- *   last backup 8 days ago  ·  interval 7  ─────►  write one, now
- *   last backup 2 days ago  ·  interval 7  ─────►  nothing
- *   never backed up         ·  any         ─────►  write one, now
+ *   a change lands ──► same day as the file?  ── yes ──► overwrite it in place
+ *                                             └─ no ───► create today's file,
+ *                                                        then delete yesterday's
  *
  * `lib/backup.ts` opens with the reason this exists: everything the user owns lives
- * in three AsyncStorage keys on one phone, and "a backup is the only thing standing
- * between a year of training and a factory reset". It then made that backup a
- * BUTTON — which means the protection is only ever as good as the user's memory of
- * a screen they have no other reason to open. A log worth a year is not defended by
- * a menu item.
+ * on one phone, and "a backup is the only thing standing between a year of
+ * training and a factory reset". It then made that backup a BUTTON — which means
+ * the protection is only ever as good as the user's memory of a screen they have
+ * no other reason to open. A log worth a year is not defended by a menu item.
  *
- * So the write is automatic, and this file is the decision: nothing here touches the
- * file system, the store or the clock. It takes the last time a backup landed and
- * says whether another one is due, which makes "is the backup stale" a testable
- * question rather than a side effect.
+ * ── WHY AFTER EVERY CHANGE, AND NOT WEEKLY ON LAUNCH ──────────────────────
+ *
+ * It used to be "on launch, if the last copy is N days old". That meant the copy
+ * was, by design, up to a week behind — a phone dropped on Sunday lost the week's
+ * training, the expenses and every chat since Monday. The folder is granted once
+ * and writing one JSON file costs milliseconds, so there is no reason for the copy
+ * to be behind the phone at all: every persisted change rewrites it, debounced so
+ * a burst is one write (`lib/backupScheduler.ts`), and `hooks/useAutoBackup.ts`
+ * watches the stores (`lib/backupWatch.ts` says which changes count).
+ *
+ * Nothing here touches the file system, the store or the clock, which makes "which
+ * file does this write go to" a testable question rather than a side effect.
  *
  * ── WHY IT IS A FOLDER THE USER PICKS, AND WHY THAT IS NOT OPTIONAL ────────
  *
@@ -24,21 +32,23 @@
  * it is deleted with the app, which is one of the exact events a backup exists to
  * survive — so the only destination that means anything is the granted folder. That
  * grant is persistable, so it is asked for once and remembered
- * (`Settings.autoBackupFolderUri`).
+ * (`Settings.autoBackupFolderUri`), and asked for again only when Android says the
+ * access is actually gone.
  *
- * Which means automatic backup CANNOT be silently on by default: without a folder
- * there is nowhere to write, and an app claiming to back up into a directory that
- * dies with it is worse than one that admits it is not backing up. The setting is
- * therefore two facts — enabled, and where — and the screen states the second one.
+ * ── ONE FILE, NAMED BY THE DAY ─────────────────────────────────────────────
  *
- * ── ROTATION ───────────────────────────────────────────────────────────────
+ * `momentum-backup-2026-10-15.json`. ONE such file in the folder: within a day it
+ * is overwritten in place (its URI is remembered, because SAF finds files by URI,
+ * not by name), and the first write of a new day creates the new day's file and
+ * then deletes the old one — create first, so the folder never holds zero. The
+ * date in the name is what lets somebody looking at the folder see, without
+ * opening anything, that the copy is current.
  *
- * SAF cannot overwrite: `createFileAsync` appends ` (1)` rather than replacing, so
- * an unattended weekly write would leave fifty files a year in somebody's Download
- * folder. `KEEP` newest copies (one) are kept and the rest are deleted by URI, so the
- * folder holds the latest copy instead of a pile. Copies the URI list does not know
- * about — written before a folder change, or by a build that kept four — are found
- * by name (`staleAutoBackups`) and go too.
+ * The files earlier builds wrote — `workout-tracker-auto-…` and the manual
+ * `workout-tracker-backup-…` exports — are left alone. Those names belong to a
+ * mechanism that no longer runs, and a cleanup that deletes a user's files on the
+ * strength of a naming convention they may have been relying on is not one this
+ * app gets to make.
  */
 
 import { dayKey, daysBetween } from './days';
@@ -46,20 +56,6 @@ import { plural, t, type Language } from './i18n';
 
 /** ISO-8601 instants, as everywhere else in the app. */
 export type ISOInstant = string;
-
-/**
- * How many automatic copies to keep in the folder: one.
- *
- * It was four — a month of history at the weekly default — and the folder read as
- * a pile to the person who owns it, next to a manual export that already keeps
- * only one (`staleExports` in `lib/backup.ts`). One file that is always the newest
- * is what was asked for. The new copy is written BEFORE the old one is deleted, so
- * the folder never holds zero.
- */
-export const AUTO_BACKUP_KEEP = 1;
-
-/** The cadence range. */
-export const AUTO_BACKUP_INTERVAL_LIMITS = { min: 1, max: 30, step: 1 } as const;
 
 /** A finite, positive instant, or null. */
 function instant(at: ISOInstant | null | undefined): number | null {
@@ -72,10 +68,8 @@ function instant(at: ISOInstant | null | undefined): number | null {
  * CALENDAR days between two instants, on the phone's own clock. Negative clock
  * skew reads as 0.
  *
- * It used to floor elapsed 24-hour periods, which is a different question: a
- * backup from 23:00 read `Today` at 08:00 the next morning, and a one-day
- * interval stamped at 20:00 was not due on a morning launch — so the app opened
- * every training day and wrote nothing until the evening.
+ * Calendar days rather than elapsed 24-hour periods: a backup from 23:00 should
+ * read `Yesterday` at 08:00 the next morning, not `Today`.
  */
 export function daysSince(
   at: ISOInstant | null | undefined,
@@ -84,31 +78,6 @@ export function daysSince(
   const then = instant(at);
   if (then == null) return null;
   return Math.max(0, daysBetween(dayKey(new Date(then)), dayKey(now)));
-}
-
-export interface AutoBackupState {
-  enabled: boolean;
-  /** The granted folder. Absent = nowhere to write, so nothing can happen. */
-  folderUri?: string;
-  /** When the last automatic OR manual backup landed. */
-  lastAt?: ISOInstant;
-  intervalDays: number;
-}
-
-/**
- * Is a backup due?
- *
- * A never-backed-up log is due immediately — that is the case with the most to lose
- * and the least excuse. Clock skew (a `lastAt` in the future, which a timezone
- * change or a hand-edited blob can produce) reads as zero days and therefore as not
- * due, rather than as a negative interval that would write on every launch.
- */
-export function shouldBackUpNow(state: AutoBackupState, now: Date = new Date()): boolean {
-  if (!state.enabled) return false;
-  if (!state.folderUri) return false;
-  const days = daysSince(state.lastAt, now);
-  if (days == null) return true;
-  return days >= Math.max(AUTO_BACKUP_INTERVAL_LIMITS.min, Math.round(state.intervalDays));
 }
 
 /**
@@ -132,51 +101,178 @@ export function describeBackupAge(
   });
 }
 
+/* ------------------------------------------------------------------ */
+/* The file                                                            */
+/* ------------------------------------------------------------------ */
+
+/** Every file this mechanism writes starts with this, and nothing else does. */
+export const BACKUP_FILE_PREFIX = 'momentum-backup-';
+
+/** `momentum-backup-2026-10-15` — the LOCAL date, because that is the user's day. */
+export function backupFileBaseName(now: Date = new Date()): string {
+  return `${BACKUP_FILE_PREFIX}${dayKey(now)}`;
+}
+
 /**
- * The URIs to keep and the URIs to delete, newest first.
+ * A file name `backupFileBaseName` produced, as SAF wrote it: `.json` appended,
+ * and ` (1)` when the create landed beside a same-named file (the overwrite
+ * fallback below). Exact, because whatever matches is DELETED.
+ */
+const BACKUP_FILE_NAME = /^momentum-backup-\d{4}-\d{2}-\d{2}( \(\d+\))?\.json$/;
+
+export function isBackupFileName(name: string): boolean {
+  return BACKUP_FILE_NAME.test(name.trim());
+}
+
+/**
+ * The file the backup currently lives in: its SAF URI, and the local day it
+ * belongs to. Stored in settings (`Settings.autoBackupFile`) because SAF can only
+ * reach a file by URI, so "overwrite today's file" needs the URI kept somewhere.
+ */
+export interface BackupFileRecord {
+  uri: string;
+  /** `YYYY-MM-DD`, local. */
+  day: string;
+}
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A usable record, or undefined — from a persisted blob, so anything can arrive. */
+export function usableBackupFile(value: unknown): BackupFileRecord | undefined {
+  if (typeof value !== 'object' || value == null) return undefined;
+  const { uri, day } = value as Record<string, unknown>;
+  if (typeof uri !== 'string' || uri.trim() === '') return undefined;
+  if (typeof day !== 'string' || !DAY.test(day)) return undefined;
+  return { uri, day };
+}
+
+export type BackupWritePlan =
+  /** Same day: rewrite the remembered file, keeping its name. */
+  | { kind: 'overwrite'; uri: string }
+  /** A new day, or no file yet: create one. `replaces` is deleted once it exists. */
+  | { kind: 'create'; replaces?: string };
+
+/**
+ * Overwrite or create.
  *
- * Pure so the rotation is testable without a file system: the caller writes the new
- * file, prepends its URI, and deletes whatever comes back in `drop`. A delete that
- * fails is not an error worth surfacing — the copy stays, and the next rotation
- * tries again — so this returns a plan rather than performing one.
+ * Overwrite only when the remembered file is TODAY's — the name carries the date,
+ * so rewriting yesterday's file with today's data would make the name lie. Any
+ * other remembered file is the one this write replaces.
  */
-export function rotateBackups(
-  existing: readonly string[],
-  newest: string,
-  keep = AUTO_BACKUP_KEEP,
-): { keep: string[]; drop: string[] } {
-  // Deduplicated because SAF hands back a fresh URI per file, but a retried write
-  // after a partial failure can produce the same one twice.
-  const all = [newest, ...existing.filter((uri) => uri !== newest)];
-  return { keep: all.slice(0, Math.max(1, keep)), drop: all.slice(Math.max(1, keep)) };
+export function planBackupWrite(
+  current: BackupFileRecord | undefined,
+  today: string,
+): BackupWritePlan {
+  if (current && current.day === today) return { kind: 'overwrite', uri: current.uri };
+  return current ? { kind: 'create', replaces: current.uri } : { kind: 'create' };
 }
 
 /**
- * An automatic copy's file name as SAF wrote it: `.json` appended, and ` (1)` when
- * a second write landed on the same day. Exact, because whatever matches is deleted.
+ * What to delete once a new file exists: the file it replaces, plus every other
+ * `momentum-backup-*` in the folder — the sweep that makes "one file" true even
+ * for copies the stored URI never saw (a crash between create and delete, a
+ * settings restore, the overwrite fallback's ` (1)`).
+ *
+ * Only `momentum-backup-*` names: `workout-tracker-auto-*` and
+ * `workout-tracker-backup-*` are older builds' files and are not touched.
  */
-const AUTO_BACKUP_NAME = /^workout-tracker-auto-\d{4}-\d{2}-\d{2}( \(\d+\))?\.json$/;
-
-export function isAutoBackupName(name: string): boolean {
-  return AUTO_BACKUP_NAME.test(name.trim());
-}
-
-/**
- * Every automatic copy in the folder except the one just written — the sweep that
- * makes "one file" true even for copies the URI list never saw.
- */
-export function staleAutoBackups(
+export function backupFilesToRetire(
   files: readonly { uri: string; name: string }[],
   justWritten: string,
+  replaces?: string,
 ): string[] {
-  return files
-    .filter((file) => file.uri !== justWritten && isAutoBackupName(file.name))
-    .map((file) => file.uri);
+  const out = new Set<string>();
+  if (replaces && replaces !== justWritten) out.add(replaces);
+  for (const file of files) {
+    if (file.uri !== justWritten && isBackupFileName(file.name)) out.add(file.uri);
+  }
+  return [...out];
 }
 
-/** The file name for an automatic copy: dated, sortable, and obviously automatic. */
-export function autoBackupBaseName(now: Date = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  return `workout-tracker-auto-${stamp}`;
+/* ------------------------------------------------------------------ */
+/* Overwriting through SAF                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * UTF-8 byte length, which is what is on disk. `string.length` counts UTF-16 code
+ * units and undercounts every Cyrillic letter by half — and the user's data is
+ * mostly Cyrillic.
+ */
+export function utf8ByteLength(text: string): number {
+  let bytes = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        i += 1;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+/**
+ * The text to write over a file that is `previousBytes` long, padded with
+ * trailing spaces so it covers every old byte.
+ *
+ * ── WHY THE PADDING ────────────────────────────────────────────────────────
+ *
+ * `expo-file-system/legacy`'s `writeAsStringAsync` opens a SAF file with
+ * `contentResolver.openOutputStream(uri)`, which is mode `"w"`, and on Android 10+
+ * the external-storage provider does not reliably TRUNCATE in `"w"` — the
+ * truncating mode is `"wt"`, and the legacy API offers no way to ask for it. So
+ * writing a backup that is shorter than the one already in the file (a deleted
+ * chat, a removed expense) would leave the old file's tail after the new JSON:
+ * a file that does not parse, which is the one thing a backup must never be.
+ *
+ * Trailing whitespace is valid JSON. Padding to the old length means every old
+ * byte is overwritten whether or not the provider truncates, and the result
+ * parses either way. The file can only grow within a day; each day starts a fresh
+ * file, so the padding never outlives the day it was written.
+ */
+export function padToCover(text: string, previousBytes: number): string {
+  const missing = previousBytes - utf8ByteLength(text);
+  return missing > 0 ? text + ' '.repeat(missing) : text;
+}
+
+/* ------------------------------------------------------------------ */
+/* Why a write did not happen                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every reason a backup run can end without a file, kept apart because they call
+ * for different things:
+ *
+ *   no-folder       nothing granted yet           → the picker
+ *   access          Android says the grant is gone → the picker, again
+ *   off             automatic and switched off     → nothing (a manual run ignores it)
+ *   not-ready       a store is still loading       → try again in a moment
+ *   unreadable-log  the history could not be read  → NOT a backup: restart the app
+ *   write           anything else on the way out   → say what it was
+ *
+ * `Back up now` used to open the picker on ANY failure, so a launch that had not
+ * finished loading asked the user for a folder the app already had.
+ */
+export type BackupFailure =
+  'no-folder' | 'access' | 'off' | 'not-ready' | 'unreadable-log' | 'write';
+
+/** Only these two are fixed by picking a folder; nothing else is. */
+export function failureNeedsFolder(reason: BackupFailure): boolean {
+  return reason === 'no-folder' || reason === 'access';
+}
+
+/**
+ * A thrown error, as a reason. By `name` rather than `instanceof` so this file
+ * stays free of the modules that define them (`FolderAccessError` in
+ * `lib/backupFile.ts`, `UnreadableLogError` in `state/dataTransfer.ts`).
+ */
+export function classifyBackupError(error: unknown): BackupFailure {
+  const name = error instanceof Error ? error.name : '';
+  if (name === 'FolderAccessError') return 'access';
+  if (name === 'UnreadableLogError') return 'unreadable-log';
+  return 'write';
 }

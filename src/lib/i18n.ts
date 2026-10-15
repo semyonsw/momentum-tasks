@@ -615,7 +615,6 @@ const RU: Record<string, string> = {
   'Automatic backups will go to that folder from now on.':
     'Автоматические копии теперь будут сохраняться в эту папку.',
   'Backed up {name} to {folder} — {counts}.': 'Копия {name} сохранена в {folder} — {counts}.',
-  'Backup every': 'Копировать каждые',
   'Balance over the same range': 'Баланс за тот же период',
   Best: 'Лучшее',
   Brutal: 'Жёстко',
@@ -677,7 +676,6 @@ const RU: Record<string, string> = {
   'Every set in this workout moves with it': 'Все подходы этой тренировки переедут вместе с ней',
   'Every setting is back to its default.': 'Все настройки вернулись к исходным.',
   'Every workout you have logged': 'Все записанные тренировки',
-  'Every {days} days': 'Каждые {days} дн.',
   'Exercise name': 'Название упражнения',
   'Exercise since deleted': 'Упражнение удалено',
   Expense: 'Расход',
@@ -746,6 +744,9 @@ const RU: Record<string, string> = {
   Muscles: 'Мышцы',
   Name: 'Название',
   'Needs a folder': 'Нужна папка',
+  'After every change': 'После каждого изменения',
+  'Your data is still loading. Try again in a moment.':
+    'Данные ещё загружаются. Попробуйте через минуту.',
   'New best': 'Новый рекорд',
   'New {noun}': 'Новый {noun}',
   'No amounts yet': 'Пока нет сумм',
@@ -806,7 +807,6 @@ const RU: Record<string, string> = {
   Rounds: 'Круги',
   'Same {held} for {days} days · {sessions} sessions':
     'Одно и то же ({held}) уже {days} дн · тренировок: {sessions}',
-  'Saved {name} to {where} — {counts}.': '{name} сохранён в {where} — {counts}.',
   'Session complete': 'Тренировка завершена',
   Sessions: 'Тренировки',
   'Set inputs': 'Поля подхода',
@@ -1021,7 +1021,6 @@ const RU: Record<string, string> = {
   '{count} {workouts}': '{workouts}: {count}',
   '{date} · {count} sets. This is the record of a workout you did — deleting it also removes those sets from what the overload suggestions read.':
     '{date} · подходов: {count}. Это запись о проведённой тренировке — удаление уберёт эти подходы и из того, что читают подсказки о прогрессии.',
-  '{days} days': '{days} дн.',
   '{delta} since {date}': '{delta} с {date}',
   '{done} of {total} sets': 'подходов: {done} из {total}',
   '{file} holds {counts}.': 'В файле {file}: {counts}.',

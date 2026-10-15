@@ -104,7 +104,6 @@ import {
   DangerFootAction,
   Kicker,
   Separator,
-  StepperRow,
   SwitchRow,
   TextButton,
   Toggle,
@@ -114,40 +113,30 @@ import { describeGallery } from '../lib/achievements';
 import { engagementOn, engagementView } from '../lib/engagement';
 import { SparkleCircle } from '../components/AiEntryCard';
 import { useAi } from '../state/aiStore';
-import { runBackupNow } from '../hooks/useAutoBackup';
-import { describeBackupAge } from '../lib/autoBackup';
+import { requestBackup, runBackupNow, type BackupRun } from '../hooks/useAutoBackup';
+import { describeBackupAge, failureNeedsFolder } from '../lib/autoBackup';
 import {
-  backupBaseName,
   countPayload,
   describeCounts,
   parseBackup,
-  staleExports,
   type BackupCounts,
   type BackupEnvelope,
 } from '../lib/backup';
 import {
-  deleteFile,
   describeError,
   folderLabel,
-  listFolder,
   pickFolder,
   pickJsonFile,
   readTextFile,
   saveCsvFile,
-  saveJsonFile,
 } from '../lib/backupFile';
 import { csvBaseName } from '../lib/csv';
 import { useLanguage, useT } from '../hooks/useT';
 import { commit, tap } from '../lib/feedback';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_NAMES, type Language } from '../lib/i18n';
-import {
-  applyBackup,
-  currentSnapshot,
-  exportBackupText,
-  exportCsvText,
-} from '../state/dataTransfer';
+import { applyBackup, currentSnapshot, exportCsvText } from '../state/dataTransfer';
 import { SuccessPopup } from '../components/SuccessPopup';
-import { SETTING_LIMITS, useSettings } from '../state/settingsStore';
+import { useSettings } from '../state/settingsStore';
 import { THEME_PRESETS, themeColors, themeName, type ThemePreset } from '../lib/theme';
 import { ai, gradientBar, palette, radius, tint } from '../theme/tokens';
 
@@ -219,66 +208,114 @@ export function SettingsHomeScreen({
   const [busy, setBusy] = useState(false);
 
   /**
-   * EXPORT — write everything to one JSON file, in a folder the user picks.
+   * EXPORT and `Back up now` — the same write, into the folder granted ONCE.
    *
-   * The folder picker rather than a silent write: a file the user cannot find is
-   * not a backup, and app-private storage is exactly where Android hides files
-   * from its own file manager. What comes back is stated by name, so the next step
-   * ("move it off the phone") is something the user can actually do.
+   * Both used to be different: the export opened the folder picker on every tap
+   * and wrote a new timestamped file each time. Now there is one backup file
+   * (`momentum-backup-<day>.json`, `lib/autoBackup.ts`) and one place it goes, so
+   * both buttons write that file straight away through `runBackupNow`, the path
+   * the automatic backup uses.
+   *
+   * THE PICKER OPENS ONLY WHEN IT CAN FIX SOMETHING: no folder has been granted
+   * yet, or Android says the grant is gone (`failureNeedsFolder`). A launch still
+   * loading its data, or a history that could not be read, is not fixed by a
+   * folder, and asking for one the app already has is the app not paying
+   * attention. A folder picked here becomes the automatic backup's folder; the
+   * switch is left as the user set it.
    */
-  const exportEverything = async () => {
+  const saveBackup = async (successTitle: string) => {
     if (busy) return;
     tap();
     setBusy(true);
     setStatus(null);
     try {
-      const outcome = await saveJsonFile(backupBaseName(), exportBackupText(), language);
-      if (!outcome.saved) {
-        setStatus({ tone: 'quiet', text: t('No folder picked, so nothing was saved.') });
+      let result: BackupRun = await runBackupNow(true);
+      let adopted = false;
+      if (!result.ok && failureNeedsFolder(result.reason)) {
+        const picked = await pickFolder();
+        if (!picked) {
+          setStatus({
+            tone: 'quiet',
+            text:
+              result.reason === 'access'
+                ? t('Could not write to that folder. Pick it again to re-grant access.')
+                : t('No folder picked, so nothing was saved.'),
+          });
+          return;
+        }
+        adopted = useSettings.getState().autoBackupFolderUri == null;
+        useSettings.getState().setAutoBackupFolder(picked);
+        result = await runBackupNow(true);
+      }
+      if (!result.ok) {
+        setStatus({ tone: 'quiet', text: describeFailure(result) });
         return;
       }
       commit();
-      /*
-       * ONE EXPORT IN THE FOLDER, not one per tap: the earlier exports go once the
-       * new file exists. Best-effort and after the write, so a delete that fails
-       * leaves an extra copy and never no copy at all.
-       */
-      if (outcome.folderUri && outcome.uri) {
-        const justWritten = outcome.uri;
-        for (const old of staleExports(await listFolder(outcome.folderUri), justWritten)) {
-          await deleteFile(old);
-        }
-      }
-      /*
-       * A MANUAL EXPORT COUNTS AS A BACKUP, and it also teaches the automatic one
-       * where to write. Both matter: without the first, "last backup 40 days ago"
-       * would be a lie told to somebody who exported this morning; without the
-       * second, the app would ask for a folder permission it was just handed.
-       */
-      settings.recordBackup(new Date().toISOString());
-      const adopted = outcome.folderUri != null && settings.autoBackupFolderUri == null;
-      if (adopted) settings.setAutoBackupFolder(outcome.folderUri);
-
+      const automatic = adopted && useSettings.getState().autoBackupEnabled;
       succeed(
-        t('Export successful'),
-        `${t('Saved {name} to {where} — {counts}.', {
-          name: outcome.name,
-          where: outcome.where,
+        successTitle,
+        `${t('Backed up {name} to {folder} — {counts}.', {
+          name: result.name,
+          folder: folderLabel(result.folderUri, language),
           counts: describeCounts(onThisPhone(), language),
-        })}${adopted ? ` ${t('Automatic backups will go to that folder from now on.')}` : ''}`,
+        })}${automatic ? ` ${t('Automatic backups will go to that folder from now on.')}` : ''}`,
       );
-    } catch (error) {
-      setStatus({ tone: 'quiet', text: describeError(error, language) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** A failed run, as the one sentence that says what would fix it. */
+  const describeFailure = (result: Extract<BackupRun, { ok: false }>): string => {
+    switch (result.reason) {
+      case 'not-ready':
+        return t('Your data is still loading. Try again in a moment.');
+      case 'access':
+        return t('Could not write to that folder. Pick it again to re-grant access.');
+      case 'no-folder':
+        return t('No folder picked, so nothing was saved.');
+      default:
+        // `unreadable-log` carries its own sentence (`UnreadableLogError`).
+        return describeError(result.error, language);
+    }
+  };
+
+  /**
+   * The switch. Turned ON with no folder, it asks for one right then — the single
+   * moment the app asks for access, so turning it on is never a promise with
+   * nowhere to keep it. Turned on with a folder, it writes soon, so the file
+   * exists from that moment rather than from the next change.
+   */
+  const setAutomatic = async (next: boolean) => {
+    tap();
+    settings.setAutoBackupEnabled(next);
+    if (!next) return;
+    if (useSettings.getState().autoBackupFolderUri) {
+      requestBackup();
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      const picked = await pickFolder();
+      if (!picked) {
+        setStatus({ tone: 'quiet', text: t('No folder picked, so nothing was saved.') });
+        return;
+      }
+      useSettings.getState().setAutoBackupFolder(picked);
+      requestBackup();
     } finally {
       setBusy(false);
     }
   };
 
   /**
-   * A SPREADSHEET — one log as CSV (`lib/csv.ts`), through the same folder picker.
+   * A SPREADSHEET — one log as CSV (`lib/csv.ts`), through the folder picker.
    *
-   * Not a backup, so none of the backup's bookkeeping: no rotation of earlier
-   * files, no `lastBackupAt`, no adopting the folder for automatic copies. Saying
+   * Not a backup, so none of the backup's bookkeeping: the picker every time
+   * rather than the granted folder, no replacing earlier files, no `lastBackupAt`, no adopting the folder for automatic copies. Saying
    * "backed up" over a file that cannot be restored would be the one lie this
    * screen must not tell.
    */
@@ -360,70 +397,6 @@ export function SettingsHomeScreen({
         ? t('Restored {counts}, and your settings.', { counts: describeCounts(applied, language) })
         : t('Restored {counts}.', { counts: describeCounts(applied, language) }),
     );
-  };
-
-  /**
-   * `Back up now`, and `Choose a folder` when there isn't one.
-   *
-   * The same write path the unattended one uses (`runBackupNow`), so the rotation
-   * and the stamp cannot disagree between the two. Where no folder has been granted
-   * this asks for one first, because that grant is the whole difference between a
-   * backup that survives an uninstall and one that dies with it.
-   */
-  const backUpNow = async () => {
-    if (busy) return;
-    tap();
-    setBusy(true);
-    setStatus(null);
-    try {
-      let folder = settings.autoBackupFolderUri;
-      if (!folder) {
-        const picked = await pickFolder();
-        if (!picked) {
-          setStatus({ tone: 'quiet', text: t('No folder picked, so nothing was saved.') });
-          return;
-        }
-        settings.setAutoBackupFolder(picked);
-        folder = picked;
-      }
-
-      let result = await runBackupNow(true);
-      /*
-       * A FOLDER THAT STOPPED WORKING IS RE-PICKED HERE. The message used to say
-       * "pick it again", and nothing on the screen could: the picker only ever
-       * opened when there was no folder at all. Now the failed write asks for one
-       * — the same folder re-grants access, a new one replaces it — and tries once
-       * more.
-       */
-      if (!result.wrote) {
-        const picked = await pickFolder();
-        if (picked) {
-          settings.setAutoBackupFolder(picked);
-          folder = picked;
-          result = await runBackupNow(true);
-        }
-      }
-      if (!result.wrote) {
-        setStatus({
-          tone: 'quiet',
-          text: t('Could not write to that folder. Pick it again to re-grant access.'),
-        });
-        return;
-      }
-      commit();
-      succeed(
-        t('Backup saved'),
-        t('Backed up {name} to {folder} — {counts}.', {
-          name: result.name ?? '',
-          folder: folderLabel(folder, language),
-          counts: describeCounts(onThisPhone(), language),
-        }),
-      );
-    } catch (error) {
-      setStatus({ tone: 'quiet', text: describeError(error, language) });
-    } finally {
-      setBusy(false);
-    }
   };
 
   const asking = pending != null || confirmingReset || picking != null || choosingCsv;
@@ -564,10 +537,12 @@ export function SettingsHomeScreen({
               `lib/backup.ts` says a backup is "the only thing standing between a
               year of training and a factory reset", and then made it a button:
               protection only as good as the user's memory of a screen they have no
-              other reason to open. So it happens on its own, and this row is the
-              receipt — the AGE of the last copy, in words, because "is it recent
-              enough" is the only question it answers and a date makes the reader do
-              the arithmetic.
+              other reason to open. So it happens on its own — the day's file is
+              rewritten after every change (`hooks/useAutoBackup.ts`) — and this row
+              is the receipt: the AGE of the last copy, in words, because "is it
+              recent enough" is the only question it answers and a date makes the
+              reader do the arithmetic. There is no interval to set any more; a copy
+              that is never behind the phone has nothing to tune.
 
               It cannot be on without a folder: Android's only durable destination
               is a granted directory, and the app's own sandbox dies with the app —
@@ -597,9 +572,11 @@ export function SettingsHomeScreen({
                 {describeBackupAge(settings.lastBackupAt, undefined, language)}
               </Text>
               <Text className="mt-[2px] text-label font-medium text-ink-muted">
-                {settings.autoBackupEnabled
-                  ? t('Every {days} days', { days: settings.autoBackupIntervalDays })
-                  : t('Automatic backups are off')}
+                {!settings.autoBackupEnabled
+                  ? t('Automatic backups are off')
+                  : settings.autoBackupFolderUri == null
+                    ? t('Needs a folder')
+                    : t('After every change')}
               </Text>
             </View>
           </GlassSurface>
@@ -624,46 +601,20 @@ export function SettingsHomeScreen({
                     ? t('Off')
                     : settings.autoBackupFolderUri == null
                       ? t('Needs a folder')
-                      : `${t('Every {days} days', { days: settings.autoBackupIntervalDays })} · ${folderLabel(settings.autoBackupFolderUri, language)}`}
+                      : `${t('After every change')} · ${folderLabel(settings.autoBackupFolderUri, language)}`}
                 </Text>
               </View>
               <Toggle
                 value={settings.autoBackupEnabled}
                 accessibilityLabel={t('Back up automatically')}
-                onChange={(next) => {
-                  tap();
-                  settings.setAutoBackupEnabled(next);
-                }}
+                onChange={(next) => void setAutomatic(next)}
               />
             </View>
-            {settings.autoBackupEnabled ? (
-              <>
-                <Separator inset={0} />
-                <StepperRow
-                  label={t('Backup every')}
-                  value={t('{days} days', { days: settings.autoBackupIntervalDays })}
-                  onDecrease={() => {
-                    tap();
-                    settings.bumpNumber(
-                      'autoBackupIntervalDays',
-                      -SETTING_LIMITS.autoBackupIntervalDays.step,
-                    );
-                  }}
-                  onIncrease={() => {
-                    tap();
-                    settings.bumpNumber(
-                      'autoBackupIntervalDays',
-                      SETTING_LIMITS.autoBackupIntervalDays.step,
-                    );
-                  }}
-                />
-              </>
-            ) : null}
             <Separator inset={0} />
             <TextButton
               label={t('Export everything')}
               tone="green"
-              onPress={() => void exportEverything()}
+              onPress={() => void saveBackup(t('Export successful'))}
             />
             <Separator inset={0} />
             <TextButton
@@ -735,7 +686,7 @@ export function SettingsHomeScreen({
           round
           variant="ghost"
           symbol="cloud_upload"
-          onPress={() => void backUpNow()}
+          onPress={() => void saveBackup(t('Backup saved'))}
         />
       )}
 

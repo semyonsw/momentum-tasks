@@ -1,130 +1,114 @@
 /**
  * The unattended backup: the one side effect behind `lib/autoBackup.ts`.
  *
- *   app opens ──► stores hydrated? ──► is one due? ──► write ──► rotate ──► stamp
- *                                          │
- *                                          └─ no ──► nothing at all
+ *   a backed-up store changes ──► 2 s quiet ──► write the day's file ──► stamp
+ *   the app leaves the screen  ──► write now, if a write was waiting
  *
- * ── WHY ON LAUNCH AND NOT ON A SCHEDULE ────────────────────────────────────
+ * ── WHY AFTER EVERY CHANGE ─────────────────────────────────────────────────
  *
- * Android does not let a sideloaded app reliably run code at a wall-clock instant
- * unless it is a notification (`lib/notify.ts` has that argument in full). A
- * `WorkManager` job would be the textbook answer and it is not reachable from this
- * codebase without a native module — and it would buy nothing: a backup exists to
- * be no more than a week or so behind, and the app is opened every training day.
- * Checking on launch is therefore both the simplest mechanism and an accurate one.
+ * It used to run once, on launch, if the last copy was a week old — so the copy
+ * was by design up to a week behind the phone. The folder is granted once and
+ * writing the file is cheap, so now every PERSISTED change rewrites it:
+ * `state/backupWatch.ts` watches the seven stores a backup carries and reports a
+ * change only when a field the file holds moved (`lib/backupWatch.ts`), and
+ * `lib/backupScheduler.ts` turns a burst into one write and never runs two at
+ * once. When the app goes to the background a waiting write is flushed straight
+ * away, because Android may kill a background process at any moment and the
+ * change the user just made is the one they would miss.
  *
- * ── AND WHY IT NEVER BLOCKS, NEVER RETRIES, AND NEVER SPEAKS ───────────────
+ * ── AND WHY IT NEVER BLOCKS AND NEVER SPEAKS ──────────────────────────────
  *
- * It runs after a delay, off the first render, so the home screen is never waiting
- * on a file write. Every failure is swallowed: a revoked folder permission, a full
- * disk, a provider that has gone away. That is not sloppiness — a backup that
- * cannot write must not become a modal in front of a user who came here to train,
- * and the *visible* consequence is already correct without any error handling at
- * all: `lastBackupAt` does not move and the Settings row keeps saying how old the
- * last copy is — `Yesterday` turning into `12 days ago` is the failure reporting
- * itself, in the one place that is honest about it. (There was once a second
- * report, on the Finish sheet, and this used to cite it; it is not in the app and
- * the helper behind it has been deleted rather than left waiting for a caller.)
- *
- * A failed write also does NOT stamp the clock, so the next launch tries again.
+ * Every failure of an AUTOMATIC write is swallowed: a revoked folder permission,
+ * a full disk, a provider that has gone away. A backup that cannot write must not
+ * become a modal in front of a user who came here to train, and the visible
+ * consequence is already correct without any error handling at all:
+ * `lastBackupAt` does not move, and the Settings hero keeps saying how old the
+ * last copy is. The next change tries again. `Back up now` and `Export
+ * everything` run the same path and DO report — with the reason kept apart, so
+ * only a genuinely lost folder asks for the folder again.
  */
 
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 
-import { autoBackupBaseName, shouldBackUpNow, staleAutoBackups } from '../lib/autoBackup';
-import { deleteFile, listFolder, writeToFolder } from '../lib/backupFile';
-import { useAi } from '../state/aiStore';
+import { classifyBackupError, type BackupFailure } from '../lib/autoBackup';
+import { writeDailyBackup } from '../lib/backupFile';
+import { BackupScheduler, serialized } from '../lib/backupScheduler';
+import { storesHydrated, watchBackedUpStores } from '../state/backupWatch';
 import { exportBackupText } from '../state/dataTransfer';
-import { useDebriefs } from '../state/debriefStore';
-import { useLibrary } from '../state/libraryStore';
-import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
-import { useTasks } from '../state/tasksStore';
+
+export type BackupRun =
+  | { ok: true; name: string; folderUri: string }
+  | { ok: false; reason: BackupFailure; error?: unknown };
 
 /**
- * Have the AsyncStorage stores finished reading from disk?
+ * Write the day's backup file now. Returns what happened; never throws.
  *
- * The delay below is the expectation and this is the check. A backup written
- * before hydration is a file of seeds and empties that then gets stamped as the
- * newest copy and rotates the oldest good one out — so a slow launch skips the
- * write (and the stamp) rather than risk it. History is not in the list: it is
- * read synchronously from SQLite before the first render.
- */
-function storesHydrated(): boolean {
-  // The AI chats and the debriefs too: the file carries both, and a copy taken
-  // before they had loaded restored as "no chats, no answers" over real ones.
-  return [useSettings, useLibrary, useTasks, useMoney, useAi, useDebriefs].every((store) =>
-    store.persist.hasHydrated(),
-  );
-}
-
-/**
- * How long after launch to consider writing, in ms.
+ * `manual` is a tap (`Back up now`, `Export everything`): it writes even with the
+ * automatic switch off. Exported so the Settings screen runs the SAME path — a
+ * second implementation of "overwrite or create, retire, stamp" is a second thing
+ * that can be wrong about which file to delete.
  *
- * Long enough that the stores have rehydrated and the first screen has painted —
- * `exportBackupText` reads all three of them, and reading them mid-hydration would
- * write a backup of an empty library, which is the worst possible file to keep.
+ * Serialized: an automatic write and a tap can never be writing the same file at
+ * once.
  */
-const DELAY_MS = 4000;
-
-/** Ran the check already this launch. A ref would reset on remount; this does not. */
-let attemptedThisLaunch = false;
-
-/**
- * Write a backup if one is due. Safe to call at any time; returns what happened.
- *
- * Exported because the Settings screen's `Back up now` runs the same path, and a
- * second implementation of "write, rotate, stamp" is a second thing that can be
- * wrong about which files to delete.
- */
-export async function runBackupNow(force = false): Promise<{ wrote: boolean; name?: string }> {
+export const runBackupNow = serialized(async (manual = false): Promise<BackupRun> => {
   const settings = useSettings.getState();
   const folderUri = settings.autoBackupFolderUri;
-  if (!folderUri) return { wrote: false };
-  /*
-   * Mapped rather than passed whole: `AutoBackupState` names four facts and the
-   * store's key names are longer, so the decision function stays readable without
-   * knowing anything about a Zustand store.
-   */
-  const due = shouldBackUpNow({
-    enabled: settings.autoBackupEnabled,
-    folderUri,
-    lastAt: settings.lastBackupAt,
-    intervalDays: settings.autoBackupIntervalDays,
-  });
-  if (!force && !due) return { wrote: false };
-  if (!storesHydrated()) return { wrote: false };
+  if (!folderUri) return { ok: false, reason: 'no-folder' };
+  if (!manual && !settings.autoBackupEnabled) return { ok: false, reason: 'off' };
+  if (!storesHydrated()) return { ok: false, reason: 'not-ready' };
 
   try {
-    const text = exportBackupText();
-    const { name, uri } = await writeToFolder(folderUri, autoBackupBaseName(), text);
+    const now = new Date();
+    const text = exportBackupText(now);
+    const { name, file } = await writeDailyBackup(folderUri, settings.autoBackupFile, text, now);
     /*
-     * Stamped only after the write resolved. The store hands back the copies that
-     * have aged out; deleting them is best-effort, because a copy that will not
-     * delete is a tidiness problem and losing the stamp over it would mean writing
-     * a fresh backup on every single launch.
+     * Stamped only after the write resolved. And only if the folder is still the
+     * one written into: a re-pick while this write was in flight makes `file` a
+     * URI in the OLD folder, which the next write must not try to overwrite.
      */
-    const { drop } = useSettings.getState().recordBackup(new Date().toISOString(), uri);
-    const swept = staleAutoBackups(await listFolder(folderUri), uri);
-    for (const old of new Set([...drop, ...swept])) await deleteFile(old);
-    return { wrote: true, name };
-  } catch {
-    return { wrote: false };
+    if (useSettings.getState().autoBackupFolderUri === folderUri) {
+      useSettings.getState().recordBackup(now.toISOString(), file);
+    }
+    return { ok: true, name, folderUri };
+  } catch (error) {
+    return { ok: false, reason: classifyBackupError(error), error };
   }
+});
+
+/** One per JS process: a remount must not double the subscriptions. */
+const scheduler = new BackupScheduler(() => runBackupNow());
+
+/**
+ * Ask for an automatic write soon — the toggle being switched on uses this, so the
+ * file exists from that moment rather than from the next change.
+ */
+export function requestBackup(): void {
+  scheduler.request();
 }
 
 /**
- * Mount once, high in the tree. Does nothing on any render but the first.
+ * Mount once, high in the tree.
  */
 export function useAutoBackup(): void {
   useEffect(() => {
-    if (attemptedThisLaunch) return;
-    attemptedThisLaunch = true;
-
-    const timer = setTimeout(() => {
-      void runBackupNow();
-    }, DELAY_MS);
-    return () => clearTimeout(timer);
+    const stopWatching = watchBackedUpStores(() => {
+      // Cheap gate: with nowhere to write, or switched off, a change asks nothing.
+      const { autoBackupEnabled, autoBackupFolderUri } = useSettings.getState();
+      if (autoBackupEnabled && autoBackupFolderUri) scheduler.request();
+    });
+    const sub = AppState.addEventListener('change', (next) => {
+      if ((next === 'background' || next === 'inactive') && scheduler.pending) {
+        void scheduler.flush();
+      }
+    });
+    return () => {
+      stopWatching();
+      sub.remove();
+      // Unmounting is not the user leaving: whatever was waiting goes now.
+      void scheduler.flush();
+    };
   }, []);
 }

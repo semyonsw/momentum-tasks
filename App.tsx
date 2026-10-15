@@ -35,12 +35,13 @@
  *     screen, and also silent: a reminder that cannot be armed — no permission,
  *     exact alarms refused — must not become a dialog in front of somebody who
  *     opened the app to train, and the settings screen reports it instead.
- *   • the AUTOMATIC BACKUP, which writes the whole log into a folder the user has
- *     granted, if the last copy is old enough. Here because launch is the only
- *     moment a sideloaded app can reliably run anything (see `lib/notify.ts` on
- *     why), and silent because a backup that cannot write must not become a modal
- *     in front of somebody who opened the app to train — the Settings row and the
- *     Finish sheet report the age instead. `hooks/useAutoBackup.ts` has the rest.
+ *   • the AUTOMATIC BACKUP, which rewrites the day's backup file in the folder the
+ *     user granted once, two seconds after any change to the data it carries (and
+ *     at once when the app goes to the background with a write still waiting).
+ *     Here because it must watch the stores whichever screen is open, and silent
+ *     because a backup that cannot write must not become a modal in front of
+ *     somebody who opened the app to train — the Settings hero reports the age of
+ *     the last copy instead. `hooks/useAutoBackup.ts` has the rest.
  *
  * None of them are load-bearing: the on-screen pill derives from a stored
  * deadline and is correct whether or not any of this works, and the log already on
@@ -149,8 +150,9 @@ export default function App() {
   }, []);
 
   /*
-   * Mounted here, at the top, rather than inside a screen: it must run on the
-   * launches where the user never opens Settings, which is all of them.
+   * Mounted here, at the top, rather than inside a screen: it watches the stores
+   * for the whole session, on the days the user never opens Settings, which is
+   * all of them.
    */
   useAutoBackup();
 

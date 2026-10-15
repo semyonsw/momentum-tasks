@@ -1,9 +1,10 @@
 /**
  * Getting a backup off the phone, and back on again.
  *
- *   EXPORT  → the system folder picker → the file is written into the folder the
- *             user chose (Download, Drive, an SD card), where a file manager can
- *             see it and a cable or an upload can move it.
+ *   EXPORT  → the system folder picker, ONCE → the folder is remembered, and the
+ *             day's backup file is written (and rewritten) there, where a file
+ *             manager can see it and a cable or an upload can move it. The
+ *             picker comes back only if Android says the access is gone.
  *   IMPORT  → the system FILE browser → the user finds that JSON and picks it.
  *
  * Two different Android pickers, because they are two different intents:
@@ -31,6 +32,15 @@ import { Platform } from 'react-native';
  */
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
+import {
+  backupFileBaseName,
+  backupFilesToRetire,
+  padToCover,
+  planBackupWrite,
+  utf8ByteLength,
+  type BackupFileRecord,
+} from './autoBackup';
+import { dayKey } from './days';
 import { t, type Language } from './i18n';
 
 /**
@@ -107,11 +117,28 @@ export async function pickFolder(): Promise<string | null> {
 }
 
 /**
- * Write the backup into a folder the user picked. Returns the file's name.
+ * The folder could not be reached: the grant is gone, or the folder is.
+ *
+ * Its own class because it is the ONE failure the user can fix, and only by
+ * picking the folder again — so it is the only failure that may open the picker.
+ * Everything else (a full disk, a provider hiccup) would come back the same after
+ * a re-pick, and asking for a folder the app already has is the app not paying
+ * attention. Raised where the FOLDER is touched (creating a file in it); a single
+ * file that has gone missing is not this — it is recreated.
+ */
+export class FolderAccessError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'FolderAccessError';
+  }
+}
+
+/**
+ * Write a new file into a folder the user picked. Returns its name and URI.
  *
  * SAF creates the file from a base name and a MIME type — it appends the extension
- * itself, and it never overwrites: a second export in the same minute becomes
- * `name (1).json`. Both behaviours are what you want from a backup.
+ * itself, and it never overwrites: a second file with the same name becomes
+ * `name (1).json`. Overwriting is `overwriteFile`, by URI.
  */
 export async function writeToFolder(
   folderUri: string,
@@ -119,35 +146,94 @@ export async function writeToFolder(
   contents: string,
   mimeType: string = JSON_MIME,
 ): Promise<{ name: string; uri: string }> {
-  const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-    folderUri,
-    baseName,
-    mimeType,
-  );
+  let fileUri: string;
+  try {
+    fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+      folderUri,
+      baseName,
+      mimeType,
+    );
+  } catch (error) {
+    // The folder refused a new file: the grant was revoked or the folder is gone.
+    throw new FolderAccessError(error);
+  }
   try {
     await FileSystem.writeAsStringAsync(fileUri, contents);
   } catch (error) {
     // The file exists by now and is empty. Left behind, it sorts as the newest
-    // backup — the one somebody in trouble reaches for — and is never rotated.
+    // backup — the one somebody in trouble reaches for.
     await deleteFile(fileUri);
     throw error;
   }
-  /*
-   * The URI as well as the name, because the automatic backup has to be able to
-   * DELETE this file later: SAF cannot overwrite (a second write becomes
-   * `name (1).json`), so an unattended weekly copy is only sustainable if the old
-   * ones can be rotated out, and a URI is the only handle SAF accepts.
-   */
   return { name: displayName(fileUri), uri: fileUri };
+}
+
+/**
+ * Rewrite an existing SAF file in place, and prove it took.
+ *
+ * Throws when the file cannot be read (deleted by the user, access gone) or when
+ * what is on disk afterwards is not exactly what was written — the caller then
+ * creates a fresh file instead, so a write that went wrong is never left as the
+ * backup.
+ *
+ * The padding is the reason this is safe at all: the legacy module opens SAF
+ * files in mode `"w"`, which Android's external-storage provider does not
+ * reliably truncate, so a shorter backup over a longer one would leave the old
+ * tail behind. `padToCover` (in `lib/autoBackup.ts`, with the full argument) makes
+ * the new text at least as long as the old in bytes, with trailing spaces, which
+ * JSON ignores. The read-back then checks byte-for-byte that nothing survived.
+ */
+export async function overwriteFile(uri: string, contents: string): Promise<void> {
+  const before = await FileSystem.readAsStringAsync(uri);
+  const text = padToCover(contents, utf8ByteLength(before));
+  await FileSystem.writeAsStringAsync(uri, text);
+  const after = await FileSystem.readAsStringAsync(uri);
+  if (after !== text) throw new Error('The backup file did not read back as written.');
+}
+
+/**
+ * Write the day's backup into the granted folder: overwrite today's file, or
+ * create today's and retire the old one. Decisions in `lib/autoBackup.ts`.
+ *
+ *   overwrite ok                 → done, same URI
+ *   overwrite fails (file gone,  → create a new file, then delete the old URI
+ *     or it did not verify)
+ *   create fails                 → FolderAccessError: the folder itself is gone
+ *
+ * Deleting is best-effort and AFTER the new file exists, so a failure anywhere
+ * leaves two files, never zero.
+ */
+export async function writeDailyBackup(
+  folderUri: string,
+  current: BackupFileRecord | undefined,
+  contents: string,
+  now: Date = new Date(),
+): Promise<{ name: string; file: BackupFileRecord }> {
+  const today = dayKey(now);
+  const plan = planBackupWrite(current, today);
+  if (plan.kind === 'overwrite') {
+    try {
+      await overwriteFile(plan.uri, contents);
+      return { name: displayName(plan.uri), file: { uri: plan.uri, day: today } };
+    } catch {
+      // Fall through: a new file, and the one that failed is retired below.
+    }
+  }
+  const replaces = plan.kind === 'overwrite' ? plan.uri : plan.replaces;
+  const { name, uri } = await writeToFolder(folderUri, backupFileBaseName(now), contents);
+  for (const old of backupFilesToRetire(await listFolder(folderUri), uri, replaces)) {
+    await deleteFile(old);
+  }
+  return { name, file: { uri, day: today } };
 }
 
 /**
  * Delete one file by URI. Best-effort: a `false` is not worth reporting.
  *
- * Used only by the backup rotation, and only on URIs this app wrote itself. A
- * delete that fails leaves one extra copy in a folder, which is the mildest
- * possible failure — so it is swallowed rather than surfaced, and the next
- * rotation will try the same file again.
+ * Used only by the backup's daily replacement, and only on `momentum-backup-*`
+ * files this app wrote itself. A delete that fails leaves one extra copy in a
+ * folder, which is the mildest possible failure — so it is swallowed rather than
+ * surfaced, and the next day's sweep will try the same file again.
  */
 export async function deleteFile(uri: string): Promise<boolean> {
   try {
@@ -178,39 +264,24 @@ async function writeToAppFolder(
 }
 
 /**
- * What `saveJsonFile` did. `cancelled` is a user decision, not a failure.
+ * What `saveCsvFile` did. `cancelled` is a user decision, not a failure.
  *
  * `folderUri` is present only when the file went into a folder the user granted —
- * i.e. not on the sandbox fallback. It is carried back so the AUTOMATIC backup can
- * adopt that grant: the moment somebody exports by hand, the app knows a durable
- * place to write, and asking a second time for the same permission on a settings
- * row would be the app not paying attention. See `lib/autoBackup.ts`.
+ * i.e. not on the sandbox fallback.
  */
 export type SaveOutcome =
   | { saved: true; name: string; where: string; folderUri?: string; uri?: string }
   | { saved: false; cancelled: true };
 
 /**
- * Write the file somewhere the user picked and can find again.
+ * A spreadsheet, somewhere the user picked and can find again: the folder picker,
+ * else (no picker on this platform) the app's own documents directory, stated as
+ * a path so it is at least reachable over a cable.
  *
- * The folder picker first, because that is the only destination that survives an
- * uninstall. Where there is no picker at all, the app's own documents directory —
- * stated as a path, so it is at least reachable over a cable.
- */
-export async function saveJsonFile(
-  baseName: string,
-  contents: string,
-  lang: Language = 'en',
-): Promise<SaveOutcome> {
-  return saveTextFile(baseName, contents, JSON_MIME, 'json', lang);
-}
-
-/**
- * The same flow for a spreadsheet: the folder picker, else the app folder.
- *
- * No rotation afterwards, unlike the JSON export: a CSV is a snapshot somebody
- * takes to a spreadsheet, not the phone's one restorable copy, so two of them in
- * a folder is two files the user asked for.
+ * Always the picker, unlike the backup: a CSV is a snapshot somebody takes to a
+ * spreadsheet, not the phone's one restorable copy, so where it goes is asked
+ * each time and nothing is rotated — two of them in a folder is two files the
+ * user asked for.
  */
 export async function saveCsvFile(
   baseName: string,
@@ -242,10 +313,9 @@ async function saveTextFile(
 /**
  * The files in a granted folder, by URI and name. Empty on any failure.
  *
- * Exists so a manual export can REPLACE the previous one (`staleExports` in
- * `lib/backup.ts` picks which): the picker hands back a folder, not a file, so the
- * earlier exports have to be found by name. Failing quietly is right here — a
- * listing that cannot be read just means the old copies stay, as they always did.
+ * Exists so a new day's backup can retire the old ones by name
+ * (`backupFilesToRetire` in `lib/autoBackup.ts`). Failing quietly is right here —
+ * a listing that cannot be read just means the old copy stays a day longer.
  */
 export async function listFolder(folderUri: string): Promise<{ uri: string; name: string }[]> {
   if (!canPickFolder()) return [];

@@ -18,7 +18,7 @@ optional AI assistant:
 | **Tasks** | Daily / weekdays / once schedules, done vs. missed-on-purpose vs. unanswered, honest streaks (excused days kept), reminders with follow-ups, auto-tick from workout and money, month grid and trend |
 | **Money** | Accounts (Cash / Online) with opening balances, separate expense and income categories, day or whole-month amounts, transfers, balance, trends with top-5 categories |
 | **AI** | Gemini with the user's own key in the keystore. Per-section chats; routine proposals and edits rendered as editable cards that apply only on tap; reads debriefs and notes |
-| **Platform** | One JSON export/import, weekly auto-backup to a folder, 8 themes plus a custom one, haptics, bubbles |
+| **Platform** | One JSON export/import, auto-backup to a folder after every change (one dated file, granted once), 8 themes plus a custom one, haptics, bubbles |
 
 **Design philosophy the code enforces.** Every proposal below is checked against it:
 

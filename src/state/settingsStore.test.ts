@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { BODYWEIGHT_LIMITS, clampBodyweightKg } from '../lib/bodyweightLog';
@@ -330,45 +331,88 @@ describe('gyms', () => {
 /* ------------------------------------------------------------------ */
 
 /**
- * AUTOMATIC BACKUP, from the store's side. The decision itself is tested in
- * `lib/autoBackup.test.ts`; these are the two facts the store has to keep straight.
+ * AUTOMATIC BACKUP, from the store's side. The decisions are tested in
+ * `lib/autoBackup.test.ts`; these are the facts the store has to keep straight.
  */
 describe('the backup stamp', () => {
-  it('records a manual backup with no URI to rotate', () => {
-    const { drop } = useSettings.getState().recordBackup('2026-09-02T10:00:00.000Z');
-    expect(drop).toEqual([]);
+  const file = { uri: 'content://f/momentum-backup-2026-09-02.json', day: '2026-09-02' };
+
+  it('records when a backup landed and which file it is in', () => {
+    useSettings.getState().recordBackup('2026-09-02T10:00:00.000Z', file);
     expect(useSettings.getState().lastBackupAt).toBe('2026-09-02T10:00:00.000Z');
+    expect(useSettings.getState().autoBackupFile).toEqual(file);
   });
 
-  it('rotates the automatic copies, keeping only the newest one', () => {
-    const store = useSettings.getState;
-    expect(store().recordBackup('2026-01-01T10:00:00.000Z', 'uri-1').drop).toEqual([]);
-    expect(store().autoBackupUris).toEqual(['uri-1']);
-
-    for (const n of [2, 3, 4, 5]) {
-      const { drop } = store().recordBackup(`2026-0${n}-01T10:00:00.000Z`, `uri-${n}`);
-      expect(drop).toEqual([`uri-${n - 1}`]);
-      expect(store().autoBackupUris).toEqual([`uri-${n}`]);
-    }
+  it('keeps the file when a stamp comes without one', () => {
+    useSettings.getState().recordBackup('2026-09-02T10:00:00.000Z', file);
+    useSettings.getState().recordBackup('2026-09-03T10:00:00.000Z');
+    expect(useSettings.getState().autoBackupFile).toEqual(file);
   });
 
-  it('drops a four-copy list from an older build down to one on the next write', () => {
-    useSettings.setState({ autoBackupUris: ['uri-4', 'uri-3', 'uri-2', 'uri-1'] });
-    const { drop } = useSettings.getState().recordBackup('2026-05-01T10:00:00.000Z', 'uri-5');
-    expect(drop).toEqual(['uri-4', 'uri-3', 'uri-2', 'uri-1']);
-    expect(useSettings.getState().autoBackupUris).toEqual(['uri-5']);
-  });
-
-  it('forgets the rotation list when the folder changes', () => {
-    // Those URIs are somebody else's files now, and deleting them would be wrong.
-    useSettings.getState().recordBackup('2026-09-02T10:00:00.000Z', 'uri-1');
+  it('forgets the file when the folder changes, and keeps it when the same one is re-granted', () => {
+    useSettings.getState().setAutoBackupFolder('content://tree/here');
+    useSettings.getState().recordBackup('2026-09-02T10:00:00.000Z', file);
+    // Access was lost and the user picked the same folder: overwrite, not a twin.
+    useSettings.getState().setAutoBackupFolder('content://tree/here');
+    expect(useSettings.getState().autoBackupFile).toEqual(file);
+    // A different folder: that URI is a file somewhere else now.
     useSettings.getState().setAutoBackupFolder('content://tree/elsewhere');
-    expect(useSettings.getState().autoBackupUris).toEqual([]);
+    expect(useSettings.getState().autoBackupFile).toBeUndefined();
   });
 
   it('refuses an unparseable stamp rather than storing NaN', () => {
     useSettings.getState().recordBackup('not a date');
     expect(Number.isFinite(Date.parse(useSettings.getState().lastBackupAt ?? ''))).toBe(true);
+  });
+
+  it('survives Reset, like the folder', () => {
+    useSettings.getState().setAutoBackupFolder('content://tree/here');
+    useSettings.getState().recordBackup('2026-09-02T10:00:00.000Z', file);
+    useSettings.getState().resetToDefaults();
+    expect(useSettings.getState().autoBackupFile).toEqual(file);
+  });
+});
+
+/*
+ * THE RETIRED INTERVAL. Every phone that ran 2.5.x has `autoBackupIntervalDays`
+ * and `autoBackupUris` in its settings blob, and so does every backup file it
+ * wrote. Neither may break hydration or an import — the key is read past and
+ * dropped, and the switch and the folder beside it survive.
+ */
+describe('settings from a build with the weekly backup', () => {
+  const old = {
+    ...DEFAULT_SETTINGS,
+    autoBackupEnabled: true,
+    autoBackupFolderUri: 'content://tree/primary%3ADownload',
+    autoBackupIntervalDays: 7,
+    autoBackupUris: ['content://tree/primary%3ADownload/workout-tracker-auto-2026-09-01.json'],
+    lastBackupAt: '2026-09-01T10:00:00.000Z',
+  } as unknown as Partial<Settings>;
+
+  it('sanitizes to the current shape, dropping the retired keys', () => {
+    const clean = sanitizeSettings(old) as unknown as Record<string, unknown>;
+    expect(clean).not.toHaveProperty('autoBackupIntervalDays');
+    expect(clean).not.toHaveProperty('autoBackupUris');
+    expect(clean.autoBackupEnabled).toBe(true);
+    expect(clean.autoBackupFolderUri).toBe('content://tree/primary%3ADownload');
+    expect(clean.lastBackupAt).toBe('2026-09-01T10:00:00.000Z');
+    expect(clean.autoBackupFile).toBeUndefined();
+  });
+
+  it('hydrates from the old blob on disk', async () => {
+    await AsyncStorage.setItem('settings', JSON.stringify({ state: old, version: 1 }));
+    await useSettings.persist.rehydrate();
+    const state = useSettings.getState() as unknown as Record<string, unknown>;
+    expect(state.autoBackupFolderUri).toBe('content://tree/primary%3ADownload');
+    expect(state.autoBackupIntervalDays).toBeUndefined();
+    expect(useSettings.persist.hasHydrated()).toBe(true);
+  });
+
+  it('imports through importSettings without a throw', () => {
+    useSettings.getState().importSettings(old);
+    expect(useSettings.getState().restSecondsBetweenSets).toBe(
+      DEFAULT_SETTINGS.restSecondsBetweenSets,
+    );
   });
 });
 

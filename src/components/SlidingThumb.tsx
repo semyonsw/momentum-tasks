@@ -21,7 +21,10 @@
  *
  * Absolutely positioned inside the caller's track: the track owns the padding
  * and the segments; this owns only the pane. Equal widths by default; the balance
- * bubble passes measured `offsets` because its pills are as wide as their names.
+ * bubble passes `offsets` because its cells are laid out as a GRID — an offset
+ * that carries a `y` and `height` puts the pane on that row, and a switch between
+ * rows travels in both directions at once. Without them the pane fills the
+ * track's height as it always has, so every row-of-choices caller is unchanged.
  */
 
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
@@ -51,8 +54,11 @@ export function SlidingThumb({
   inset?: number;
   /** Space between segments. */
   gap?: number;
-  /** Measured `{ x, width }` per segment, for segments that are not equal. */
-  offsets?: readonly { x: number; width: number }[];
+  /**
+   * `{ x, width }` per segment, for segments that are not equal — plus `y` and
+   * `height` when they are not all on one row.
+   */
+  offsets?: readonly { x: number; width: number; y?: number; height?: number }[];
   duration?: number;
   bezier?: readonly [number, number, number, number];
   style?: StyleProp<ViewStyle>;
@@ -70,9 +76,11 @@ export function SlidingThumb({
   const target = offsets?.[index ?? 0];
   const x = target ? target.x : (index ?? 0) * (equalWidth + gap);
   const width = target ? target.width : equalWidth;
+  const y = target?.y;
 
   const left = useRef(new Animated.Value(x)).current;
   const size = useRef(new Animated.Value(width)).current;
+  const top = useRef(new Animated.Value(y ?? 0)).current;
   const shown = useRef(new Animated.Value(index == null ? 0 : 1)).current;
   const measured = useRef(false);
 
@@ -83,6 +91,7 @@ export function SlidingThumb({
       measured.current = true;
       left.setValue(x);
       size.setValue(width);
+      top.setValue(y ?? 0);
       return;
     }
     const easing = curve(bezier);
@@ -102,12 +111,18 @@ export function SlidingThumb({
           easing,
           useNativeDriver: false,
         }),
+        Animated.timing(top, {
+          toValue: y ?? 0,
+          duration: duration * scale,
+          easing,
+          useNativeDriver: false,
+        }),
       );
     }
     Animated.parallel(moves).start();
     // `bezier` is a module constant at every call site.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [x, width, duration, scale, trackWidth]);
+  }, [x, y, width, duration, scale, trackWidth]);
 
   useEffect(() => {
     Animated.timing(shown, {
@@ -119,6 +134,7 @@ export function SlidingThumb({
   // Built once per inset, above the early return: a fresh `add` node per render
   // makes the pane detach and re-attach its native animation graph.
   const insetLeft = useMemo(() => Animated.add(left, inset), [inset, left]);
+  const insetTop = useMemo(() => Animated.add(top, inset), [inset, top]);
 
   if (trackWidth <= 0) return null;
 
@@ -136,14 +152,23 @@ export function SlidingThumb({
               opacity: shown,
               transform: [{ translateX: left }],
             }
-          : {
-              position: 'absolute',
-              top: inset,
-              bottom: inset,
-              left: insetLeft,
-              width: size,
-              opacity: shown,
-            },
+          : y != null
+            ? {
+                position: 'absolute',
+                top: insetTop,
+                height: target?.height,
+                left: insetLeft,
+                width: size,
+                opacity: shown,
+              }
+            : {
+                position: 'absolute',
+                top: inset,
+                bottom: inset,
+                left: insetLeft,
+                width: size,
+                opacity: shown,
+              },
         style,
       ]}
     >

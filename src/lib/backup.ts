@@ -225,54 +225,14 @@ export function serializeBackup(payload: BackupPayload, now?: Date): string {
   return `${JSON.stringify(buildBackupEnvelope(payload, now), null, 2)}\n`;
 }
 
-/**
- * `workout-tracker-backup-2026-08-19-0912` — sortable, and it says what it is.
- *
- * Date FIRST after the name so a folder of these sorts chronologically by name, and
- * the minute is in there because "I exported before trying that" happens twice in
- * one evening. No extension: the SAF file creator appends one from the MIME type.
+/*
+ * The FILE NAME is not decided here any more. Exports used to be
+ * `workout-tracker-backup-<day>-<minute>.json`, one per tap, with the earlier
+ * ones deleted by name; now there is one backup file per day, written after every
+ * change and by both buttons, and `lib/autoBackup.ts` names it
+ * (`momentum-backup-<day>.json`). The old exports are left where they are — this
+ * module never deletes a file it no longer names.
  */
-export function backupBaseName(now: Date = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const time = `${pad(now.getHours())}${pad(now.getMinutes())}`;
-  return `${BACKUP_FORMAT}-${date}-${time}`;
-}
-
-/**
- * A file name `backupBaseName` produced, as SAF wrote it: the `.json` it appended,
- * and the ` (1)` it appends instead of overwriting.
- *
- * Exact, not a prefix match, because whatever matches is DELETED. The automatic
- * copies (`workout-tracker-auto-…`) do not match — they have their own rotation —
- * and neither does anything the user named themselves.
- */
-const MANUAL_EXPORT_NAME = new RegExp(
-  `^${BACKUP_FORMAT}-\\d{4}-\\d{2}-\\d{2}-\\d{4}( \\(\\d+\\))?\\.json$`,
-);
-
-export function isManualExportName(name: string): boolean {
-  return MANUAL_EXPORT_NAME.test(name.trim());
-}
-
-/**
- * The earlier exports to delete once a new one has landed, so the folder holds ONE
- * export rather than one per tap.
- *
- * SAF cannot overwrite a file, so "replace the last export" is write-then-delete:
- * the new file first, and only once it exists the old ones go. In that order a
- * failure anywhere leaves two files, never zero. Every earlier export goes, not just
- * the previous one, so a folder that piled up before this existed is cleaned on the
- * first export after it.
- */
-export function staleExports(
-  files: readonly { uri: string; name: string }[],
-  justWritten: string,
-): string[] {
-  return files
-    .filter((file) => file.uri !== justWritten && isManualExportName(file.name))
-    .map((file) => file.uri);
-}
 
 /* ------------------------------------------------------------------ */
 /* Read                                                                */

@@ -278,9 +278,9 @@ export function workoutsToCsv(
  * `momentum-amounts-2026-10-09-0912` — sortable, and it says what it is.
  *
  * A different stem from the JSON backup's on purpose: a folder holding both must
- * not leave anybody guessing which one restores, and the backup rotation matches
- * its own names exactly (`isManualExportName`), so it can never delete one of
- * these. No extension: SAF appends `.csv` from the MIME type.
+ * not leave anybody guessing which one restores, and the backup's daily sweep
+ * matches its own names exactly (`isBackupFileName` in `lib/autoBackup.ts`), so
+ * it can never delete one of these. No extension: SAF appends `.csv` from the MIME type.
  */
 export function csvBaseName(kind: 'amounts' | 'workouts', now: Date = new Date()): string {
   const time = `${pad(now.getHours())}${pad(now.getMinutes())}`;
