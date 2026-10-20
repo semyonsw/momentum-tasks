@@ -101,7 +101,8 @@ import { InsightsScreen } from '../screens/InsightsScreen';
 import { AmountEditorScreen } from '../screens/AmountEditorScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { MoneyScreen, type MoneyWindow } from '../screens/MoneyScreen';
-import { MoneyHistoryScreen } from '../screens/MoneyHistoryScreen';
+import { MoneyHistoryScreen, type MoneyHistoryView } from '../screens/MoneyHistoryScreen';
+import { DEFAULT_CATEGORY_FILTER, type CategoryFilter } from '../lib/moneyFilter';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TasksScreen } from '../screens/TasksScreen';
 import { TasksHistoryScreen } from '../screens/TasksHistoryScreen';
@@ -196,7 +197,14 @@ type Route =
      and the only thing they share is where the tap came from. */
   | { name: 'workoutHistory' }
   | { name: 'tasksHistory' }
-  | { name: 'moneyHistory'; accountId: ID; day: string }
+  | {
+      name: 'moneyHistory';
+      accountId: ID;
+      day: string;
+      /* Absent = the defaults (`Day`, every category this month): the ⟲ opens clean. */
+      view?: MoneyHistoryView;
+      filter?: CategoryFilter;
+    }
   /* X1: a month or a year across the three logs, pushed from the Landing card
      or from the foot of any of the three histories above. */
   | { name: 'wrapped'; period: WrappedPeriod }
@@ -1941,7 +1949,12 @@ export function AppShell() {
             day={top.day}
             /* On the route rather than in the screen, so a trip into the editor and
              back returns to the day the list had stepped to. */
-            onChangeDay={(day) => replaceTop({ ...top, day })}
+            onChangeDay={(day, view) => replaceTop({ ...top, day, view: view ?? top.view })}
+            /* The tab and the categories filter, on the route for the same reason. */
+            view={top.view ?? 'day'}
+            onChangeView={(view) => replaceTop({ ...top, view })}
+            filter={top.filter ?? DEFAULT_CATEGORY_FILTER}
+            onChangeFilter={(filter) => replaceTop({ ...top, filter })}
             onBack={pop}
             /* A row of the day list is an amount, and the editor is where an amount
              is read and corrected — the same route the category screen pushes. */

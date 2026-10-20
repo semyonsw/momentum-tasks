@@ -2169,6 +2169,29 @@ const RU: Record<string, string> = {
   'Ask the coach for a summary': 'Попросить ИИ-тренера подвести итоги',
   'Asking the coach…': 'Спрашиваю ИИ-тренера…',
   'Coach · from these figures only': 'ИИ-тренер · только по этим цифрам',
+  // 2.7.0 · incomes on the money calendar, the categories view of the history
+  '{total} received': 'Получено {total}',
+  '{day} · nothing received': '{day} · ничего не получено',
+  '{day}, {amount} received': '{day}, получено {amount}',
+  '{day}, nothing received': '{day}, ничего не получено',
+  'Record an income and its day fills in here, darker the more came in.':
+    'Запишите доход — день закрасится, тем темнее, чем больше пришло.',
+  'Incomes only: transfers between your accounts are not income. The biggest day of the month is the darkest; every other day is shaded against it.':
+    'Только доходы: переводы между счетами — это не доход. Самый крупный день месяца — самый тёмный, остальные закрашены относительно него.',
+  Categories: 'Категории',
+  'The day, the calendar or the categories': 'День, календарь или категории',
+  Period: 'Период',
+  Starts: 'Начало',
+  Ends: 'Конец',
+  Received: 'Получено',
+  'By category': 'По категориям',
+  'Show {n} more': 'Показать ещё {n}',
+  'Tick at least one category to see its amounts.':
+    'Отметьте хотя бы одну категорию, чтобы увидеть её суммы.',
+  'Nothing in the ticked categories over this period.':
+    'В отмеченных категориях за этот период ничего нет.',
+  'Transfers between your accounts are neither spending nor income, so they are not here. A whole-month amount counts only when the period covers its whole month.':
+    'Переводы между счетами — не расходы и не доходы, поэтому их здесь нет. Сумма за весь месяц учитывается, только если период охватывает весь этот месяц.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

@@ -16,15 +16,16 @@
  * with — WHICH days were the expensive ones — and a month of squares is the
  * shape that does, the same way the task month is.
  *
- * ── EXPENSES ONLY ─────────────────────────────────────────────────────────
+ * ── ONE DIRECTION AT A TIME ───────────────────────────────────────────────
  *
  * A calendar of "money moved" would put a salary day and a rent day at the same
  * darkness, and a heat scale that cannot tell in from out is not saying
- * anything. This is a calendar of spending, so incomes are not on it at all —
- * not netted against a day (a day you were paid would look like a day you spent
- * nothing) and not drawn in a second colour (one hue at four alphas is the
- * whole visual language of the app's grids). Incomes stay where they are read
- * today: the day list and the trend.
+ * anything. So a month is EITHER spending or income — `direction`, spending by
+ * default, switched above the grid — never both: not netted against a day (a
+ * day you were paid would look like a day you spent nothing) and not drawn in a
+ * second colour (one hue at four alphas is the whole visual language of the
+ * app's grids). The income month follows every rule below the same way; only
+ * the words change.
  *
  * ── TRANSFERS ARE NOT SPENDING ────────────────────────────────────────────
  *
@@ -81,7 +82,7 @@
 
 import { dayKey, formatMonth, formatShortDay, weekdayIndex } from './days';
 import { plural, t, type Language } from './i18n';
-import { formatMoney, isTransferCategory, type Amount } from './money';
+import { formatMoney, isTransferCategory, type Amount, type Direction } from './money';
 import type { ID } from '../types/models';
 
 /** 0 = nothing spent, 1–4 = the four heat steps (`greenSteps()` 24/42/60/82%). */
@@ -130,7 +131,19 @@ export interface SpendMonth {
 
 /** Is this amount spending, in this account? The three exclusions, in one place. */
 export function isSpending(amount: Amount, accountId: ID | null = null): boolean {
-  if (amount.direction !== 'expense') return false;
+  return countsAs(amount, 'expense', accountId);
+}
+
+/**
+ * Is this amount money out (or in) of this account? A transfer half is neither:
+ * moving money between your own pockets is not spending and not income.
+ */
+export function countsAs(
+  amount: Amount,
+  direction: Direction,
+  accountId: ID | null = null,
+): boolean {
+  if (amount.direction !== direction) return false;
   if (amount.transferId !== undefined || isTransferCategory(amount.categoryId)) return false;
   return accountId === null || amount.accountId === accountId;
 }
@@ -146,8 +159,9 @@ export function spendLevel(total: number, peak: number): SpendLevel {
 }
 
 /**
- * The month of spending. `accountId` null = every account; `today` decides
- * `isToday` / `isFuture` only — an amount written on a future day is still drawn.
+ * The month of spending — or of income, with `direction`. `accountId` null =
+ * every account; `today` decides `isToday` / `isFuture` only — an amount
+ * written on a future day is still drawn.
  */
 export function moneyMonth(
   amounts: readonly Amount[],
@@ -156,6 +170,7 @@ export function moneyMonth(
   today: string,
   accountId: ID | null = null,
   lang: Language = 'en',
+  direction: Direction = 'expense',
 ): SpendMonth {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const totals = new Array<number>(daysInMonth + 1).fill(0);
@@ -168,7 +183,7 @@ export function moneyMonth(
   const last = dayKey(new Date(year, month, daysInMonth));
 
   for (const amount of amounts) {
-    if (!isSpending(amount, accountId)) continue;
+    if (!countsAs(amount, direction, accountId)) continue;
     if (amount.when.kind === 'month') {
       if (amount.when.year !== year || amount.when.month !== month) continue;
       wholeTotal += amount.value;
@@ -289,9 +304,9 @@ export function compactMoney(value: number, scale = 0): string {
 
 /**
  * The line under the grid for a tapped day: the date, the exact sum, and how
- * many amounts — or that nothing was spent. `topName` is the dearest
- * category's name when the day had more than one amount, so a 152k day says
- * where it went without opening it.
+ * many amounts — or that nothing was spent (received, on the income month).
+ * `topName` is the dearest category's name when the day had more than one
+ * amount, so a 152k day says where it went without opening it.
  */
 export function describeSpendDay(
   cell: SpendDay,
@@ -299,10 +314,15 @@ export function describeSpendDay(
   scale: number,
   lang: Language = 'en',
   topName: string | null = null,
+  direction: Direction = 'expense',
 ): string {
   if (cell.date === null) return '';
   const day = formatShortDay(cell.date, lang);
-  if (cell.total <= 0) return t('{day} · nothing spent', lang, { day });
+  if (cell.total <= 0) {
+    return direction === 'expense'
+      ? t('{day} · nothing spent', lang, { day })
+      : t('{day} · nothing received', lang, { day });
+  }
   const count = t('{count} {amounts}', lang, {
     count: cell.count,
     amounts: plural(cell.count, lang, {

@@ -125,3 +125,30 @@ describe('the catalogue itself', () => {
     }
   });
 });
+
+describe('2.7.0 strings', () => {
+  it('every new string of the income calendar and the categories view is in Russian', () => {
+    const keys = [
+      '{total} received',
+      '{day} · nothing received',
+      '{day}, {amount} received',
+      '{day}, nothing received',
+      'Record an income and its day fills in here, darker the more came in.',
+      'Incomes only: transfers between your accounts are not income. The biggest day of the month is the darkest; every other day is shaded against it.',
+      'Categories',
+      'The day, the calendar or the categories',
+      'Period',
+      'Custom',
+      'Starts',
+      'Ends',
+      'Spent',
+      'Received',
+      'By category',
+      'Show {n} more',
+      'Tick at least one category to see its amounts.',
+      'Nothing in the ticked categories over this period.',
+      'Transfers between your accounts are neither spending nor income, so they are not here. A whole-month amount counts only when the period covers its whole month.',
+    ];
+    for (const key of keys) expect(translatedKeys()).toContain(key);
+  });
+});

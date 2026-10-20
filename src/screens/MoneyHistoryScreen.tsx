@@ -59,15 +59,24 @@
  * from is a property of the line, and reaching back to the tiles on the previous
  * screen to change it would be the one control that stayed behind.
  *
- * ── DAY | CALENDAR (M4) ────────────────────────────────────────────────────
+ * ── DAY | CALENDAR (M4) | CATEGORIES ───────────────────────────────────────
  *
  * The header switch is the task history's (Month | Year | Trend): the same
- * place, the same control. `Calendar` is a month of spending as squares
- * (`components/MoneyCalendar`), for the same subsection, and its `Open this
- * day` lands back on `Day` at the day tapped — the day list is the one place a
- * day's amounts are read in full, so the calendar points at it rather than
- * growing a second one. Local state, like the task history's view: it opens on
- * `Day`, which is what the ⟲ has always opened.
+ * place, the same control. `Calendar` is a month of spending — or of income,
+ * by its own chips — as squares (`components/MoneyCalendar`), for the same
+ * subsection, and its `Open this day` lands back on `Day` at the day tapped —
+ * the day list is the one place a day's amounts are read in full, so the
+ * calendar points at it rather than growing a second one.
+ *
+ * `Categories` is the hand-picked question: tick any categories, expense or
+ * income, pick a period (the chart's presets or two days of your own) and read
+ * what went out and came in, per category and amount by amount. Every rule is
+ * `lib/moneyFilter.ts`; this draws it.
+ *
+ * The view and the filter are held ON THE ROUTE, like the day: a row of the
+ * categories list opens the amount editor too, and coming back to the Day tab
+ * with every tick reset would undo the question the user had just built. It
+ * opens on `Day`, which is what the ⟲ has always opened.
  */
 
 import { useMemo, useState } from 'react';
@@ -84,6 +93,7 @@ import type { WrappedPeriod } from '../lib/wrapped';
 import { TrendChart } from '../components/TrendChart';
 import { pressedStyle } from '../components/motion';
 import { MoneyCalendar } from '../components/MoneyCalendar';
+import { DayPicker } from '../components/DayPicker';
 import {
   GlassCard,
   Kicker,
@@ -92,7 +102,7 @@ import {
   Separator,
   TextButton,
 } from '../components/primitives';
-import { dayKey, formatLongDay, shiftDay } from '../lib/days';
+import { dayKey, formatLongDay, formatMonth, formatShortDay, shiftDay } from '../lib/days';
 import { tap } from '../lib/feedback';
 import {
   categoryShares,
@@ -103,6 +113,7 @@ import {
 import { TREND_RANGES, TREND_RANGE_LABELS, type TrendRange } from '../lib/trends';
 import {
   amountsOnDay,
+  describeCount,
   formatMoney,
   formatValue,
   inAccount,
@@ -111,6 +122,17 @@ import {
   type MoneyAccount,
   type MoneyCategory,
 } from '../lib/money';
+import {
+  defaultCustomPeriod,
+  FILTER_PERIOD_KINDS,
+  filterableCategories,
+  filterAmounts,
+  isTicked,
+  periodBounds,
+  summarizeFiltered,
+  toggleTicks,
+  type CategoryFilter,
+} from '../lib/moneyFilter';
 import { useMoney } from '../state/moneyStore';
 import { moneyTone, palette } from '../theme/tokens';
 import { noteFolds } from '../lib/noteFold';
@@ -131,10 +153,13 @@ function directions(t: Translate) {
   ];
 }
 
+export type MoneyHistoryView = 'day' | 'calendar' | 'categories';
+
 function views(t: Translate) {
   return [
     { value: 'day' as const, label: t('Day') },
     { value: 'calendar' as const, label: t('Calendar') },
+    { value: 'categories' as const, label: t('Categories') },
   ];
 }
 
@@ -142,6 +167,10 @@ export function MoneyHistoryScreen({
   account,
   day,
   onChangeDay,
+  view,
+  onChangeView,
+  filter,
+  onChangeFilter,
   onBack,
   onOpenAmount,
   onOpenSettings,
@@ -162,8 +191,18 @@ export function MoneyHistoryScreen({
    * a pushed route replaces this screen — so coming back re-mounted it and
    * re-seeded the day from the ⟲. You stepped to Tuesday, fixed a typo in
    * Tuesday's taxi, and landed back on the day you opened with.
+   *
+   * `view` moves the tab in the SAME route write: the calendar's `Open this day`
+   * changes both, and two writes from one render would each start from the old
+   * route, so the second would put the day back.
    */
-  onChangeDay: (day: string) => void;
+  onChangeDay: (day: string, view?: MoneyHistoryView) => void;
+  /** Day | Calendar | Categories — on the route, for the reason `day` is. */
+  view: MoneyHistoryView;
+  onChangeView: (view: MoneyHistoryView) => void;
+  /** The categories view's ticks and period — on the route, the same way. */
+  filter: CategoryFilter;
+  onChangeFilter: (filter: CategoryFilter) => void;
   onBack: () => void;
   /** A row of the day list, opened in the editor it was written in. */
   onOpenAmount: (amountId: ID) => void;
@@ -192,7 +231,6 @@ export function MoneyHistoryScreen({
   const [direction, setDirection] = useState<Direction>(
     () => useSettings.getState().moneyDefaultDirection,
   );
-  const [view, setView] = useState<'day' | 'calendar'>('day');
 
   const today = dayKey(new Date());
   /*
@@ -245,8 +283,8 @@ export function MoneyHistoryScreen({
           <Segmented
             options={views(t)}
             value={view}
-            onChange={setView}
-            accessibilityLabel={t('The day or the calendar')}
+            onChange={onChangeView}
+            accessibilityLabel={t('The day, the calendar or the categories')}
           />
         </View>
       </ScreenHeader>
@@ -267,9 +305,18 @@ export function MoneyHistoryScreen({
             day={day}
             onOpenDay={(picked) => {
               tap();
-              onChangeDay(picked);
-              setView('day');
+              onChangeDay(picked, 'day');
             }}
+          />
+        ) : view === 'categories' ? (
+          <CategoriesView
+            amounts={amounts}
+            categories={categories}
+            currency={currency}
+            today={today}
+            filter={filter}
+            onChangeFilter={onChangeFilter}
+            onOpenAmount={onOpenAmount}
           />
         ) : (
           <>
@@ -515,6 +562,7 @@ function DayRow({
   amount,
   category,
   currency,
+  dated = false,
   onPress,
 }: {
   amount: Amount;
@@ -522,9 +570,15 @@ function DayRow({
   category: MoneyCategory | null;
   /** Passed down rather than read here: the lib formats, the screen decides. */
   currency: string;
+  /**
+   * Print the amount's day (or its month) above the note. The day list does not
+   * need it — every row is that day — but the categories list spans weeks.
+   */
+  dated?: boolean;
   onPress: () => void;
 }) {
   const t = useT();
+  const lang = useLanguage();
   const scale = useMoneyScale();
   const [open, setOpen] = useState(false);
   const note = amount.note.trim();
@@ -556,6 +610,13 @@ function DayRow({
         </Text>
         <Icon name="chevron-right" size={16} color={palette.inkFaint} />
       </View>
+      {dated ? (
+        <Text className="ml-[22px] mt-[2px] text-label tabular-nums text-ink-faint">
+          {amount.when.kind === 'day'
+            ? formatShortDay(amount.when.date, lang)
+            : `${formatMonth(amount.when.year, amount.when.month, lang)} · ${t('whole month')}`}
+        </Text>
+      ) : null}
       <View className="ml-[22px] mt-[2px] flex-row items-start">
         <Text
           numberOfLines={open ? undefined : 1}
@@ -635,5 +696,340 @@ function ShareRow({
         />
       </View>
     </View>
+  );
+}
+
+/** How many amounts the categories list draws before asking to show more. */
+const LIST_PAGE = 100;
+
+/**
+ * THE CATEGORIES VIEW — tick categories, pick a period, read the result.
+ *
+ * Top to bottom in the order the question is asked: WHEN (the chart's chips and
+ * `Custom`), WHICH (a checkbox per category, expenses and incomes in two groups,
+ * each group's header ticking or unticking all of it), then the ANSWER — out
+ * and in apart, a line per category, and every amount, newest first, opening in
+ * the editor like the day list's rows.
+ *
+ * The list draws a hundred at a time: `All time` with everything ticked is the
+ * whole log, and a ScrollView of thousands of rows is a frozen screen.
+ */
+function CategoriesView({
+  amounts,
+  categories,
+  currency,
+  today,
+  filter,
+  onChangeFilter,
+  onOpenAmount,
+}: {
+  /** This subsection's amounts — the lib does not filter by account. */
+  amounts: readonly Amount[];
+  categories: readonly MoneyCategory[];
+  currency: string;
+  today: string;
+  filter: CategoryFilter;
+  onChangeFilter: (filter: CategoryFilter) => void;
+  onOpenAmount: (amountId: ID) => void;
+}) {
+  const t = useT();
+  const lang = useLanguage();
+  const scale = useMoneyScale();
+  const [editing, setEditing] = useState<'from' | 'to' | null>(null);
+  const [shown, setShown] = useState(LIST_PAGE);
+
+  const groups = useMemo(() => filterableCategories(categories, amounts), [categories, amounts]);
+  const every = useMemo(
+    () => [...groups.expense, ...groups.income].map((category) => category.id),
+    [groups],
+  );
+  const byId = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
+    [categories],
+  );
+  const { from, to } = useMemo(
+    () => periodBounds(amounts, filter.period, today),
+    [amounts, filter.period, today],
+  );
+  const rows = useMemo(
+    () => filterAmounts(amounts, filter.selected, from, to),
+    [amounts, filter.selected, from, to],
+  );
+  const summary = useMemo(() => summarizeFiltered(rows), [rows]);
+  const money = (value: number) => formatMoney(value, currency, scale);
+  const nothingTicked = filter.selected !== null && filter.selected.length === 0;
+
+  const toggle = (ids: readonly ID[]) => {
+    tap();
+    setShown(LIST_PAGE);
+    onChangeFilter({ ...filter, selected: toggleTicks(filter.selected, ids, every) });
+  };
+  const periodKind = filter.period.kind === 'custom' ? 'custom' : filter.period.range;
+
+  return (
+    <>
+      <Kicker className="mx-lg mb-sm">{t('Period')}</Kicker>
+      <View className="mx-lg flex-row flex-wrap">
+        {FILTER_PERIOD_KINDS.map((option) => (
+          <SelectChip
+            key={option}
+            label={option === 'custom' ? t('Custom') : t(TREND_RANGE_LABELS[option])}
+            selected={option === periodKind}
+            onPress={() => {
+              tap();
+              setShown(LIST_PAGE);
+              setEditing(null);
+              onChangeFilter({
+                ...filter,
+                period:
+                  option === 'custom'
+                    ? filter.period.kind === 'custom'
+                      ? filter.period
+                      : defaultCustomPeriod(today)
+                    : { kind: 'range', range: option },
+              });
+            }}
+          />
+        ))}
+      </View>
+
+      {filter.period.kind === 'custom' ? (
+        <GlassCard className="mx-lg mt-xs">
+          {(['from', 'to'] as const).map((end, index) => {
+            const period = filter.period as { kind: 'custom'; from: string; to: string };
+            const value = period[end];
+            return (
+              <View key={end}>
+                {index > 0 ? <Separator /> : null}
+                <Pressable
+                  onPress={() => {
+                    tap();
+                    setEditing((was) => (was === end ? null : end));
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: editing === end }}
+                  accessibilityLabel={`${end === 'from' ? t('Starts') : t('Ends')} ${formatLongDay(value, lang)}`}
+                  style={pressedStyle}
+                  className="h-row-lg flex-row items-center px-lg"
+                >
+                  <Text className="w-[56px] text-label text-ink-muted">
+                    {end === 'from' ? t('Starts') : t('Ends')}
+                  </Text>
+                  <Text className="flex-1 text-body font-medium tabular-nums text-ink">
+                    {formatLongDay(value, lang)}
+                  </Text>
+                  <View style={{ transform: [{ rotate: editing === end ? '180deg' : '0deg' }] }}>
+                    <Icon name="chevron-down" size={16} color={palette.inkMuted} />
+                  </View>
+                </Pressable>
+                {editing === end ? (
+                  <View className="px-md pb-md">
+                    <DayPicker
+                      value={value}
+                      onChange={(picked) => {
+                        setShown(LIST_PAGE);
+                        setEditing(null);
+                        onChangeFilter({ ...filter, period: { ...period, [end]: picked } });
+                      }}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </GlassCard>
+      ) : null}
+
+      <Kicker className="mx-lg mb-sm mt-xl">{t('Categories')}</Kicker>
+      {(['expense', 'income'] as const).map((direction) => {
+        const group = groups[direction];
+        if (group.length === 0) return null;
+        const ids = group.map((category) => category.id);
+        const on = ids.filter((id) => isTicked(filter.selected, id)).length;
+        const label = direction === 'expense' ? t('Expenses') : t('Incomes');
+        return (
+          <GlassCard key={direction} className="mx-lg mb-md">
+            <CheckRow
+              label={label}
+              state={on === ids.length ? 'on' : on === 0 ? 'off' : 'some'}
+              strong
+              trailing={`${on}/${ids.length}`}
+              onPress={() => toggle(ids)}
+            />
+            {group.map((category) => (
+              <View key={category.id}>
+                <Separator />
+                <CheckRow
+                  label={`${category.glyph} ${category.name}${
+                    category.archivedAt !== null ? ` · ${t('Archived')}` : ''
+                  }`}
+                  state={isTicked(filter.selected, category.id) ? 'on' : 'off'}
+                  onPress={() => toggle([category.id])}
+                />
+              </View>
+            ))}
+          </GlassCard>
+        );
+      })}
+
+      <Kicker className="mx-lg mb-sm mt-lg">
+        {from === to
+          ? formatLongDay(from, lang)
+          : `${formatLongDay(from, lang)} – ${formatLongDay(to, lang)}`}
+      </Kicker>
+      {nothingTicked ? (
+        <Text className="mx-lg text-label text-ink-faint">
+          {t('Tick at least one category to see its amounts.')}
+        </Text>
+      ) : rows.length === 0 ? (
+        <Text className="mx-lg text-label text-ink-faint">
+          {t('Nothing in the ticked categories over this period.')}
+        </Text>
+      ) : (
+        <>
+          <GlassCard className="mx-lg flex-row px-lg py-md">
+            <View className="flex-1">
+              <Kicker>{t('Spent')}</Kicker>
+              <Text
+                className="mt-xs text-title font-semibold tabular-nums"
+                style={{ color: moneyTone.expense }}
+              >
+                {money(summary.spent)}
+              </Text>
+            </View>
+            <View className="flex-1">
+              <Kicker>{t('Received')}</Kicker>
+              <Text
+                className="mt-xs text-title font-semibold tabular-nums"
+                style={{ color: moneyTone.income }}
+              >
+                {money(summary.received)}
+              </Text>
+            </View>
+          </GlassCard>
+
+          <Kicker className="mx-lg mb-sm mt-xl">{t('By category')}</Kicker>
+          <GlassCard className="mx-lg">
+            {summary.byCategory.map((line, index) => {
+              const category = byId.get(line.categoryId);
+              const income = line.direction === 'income';
+              return (
+                <View key={line.categoryId}>
+                  {index > 0 ? <Separator /> : null}
+                  <View className="h-row-lg flex-row items-center px-lg">
+                    <Text className="mr-sm text-label">{category?.glyph ?? '•'}</Text>
+                    <View className="flex-1">
+                      <Text numberOfLines={1} className="text-body text-ink">
+                        {category?.name ?? t('Archived')}
+                      </Text>
+                      <Text className="text-label tabular-nums text-ink-faint">
+                        {describeCount(line.count, lang)}
+                      </Text>
+                    </View>
+                    <Text
+                      className="ml-md text-body font-semibold tabular-nums"
+                      style={{ color: income ? moneyTone.income : moneyTone.expense }}
+                    >
+                      {income ? '+' : '−'}
+                      {money(line.total)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </GlassCard>
+
+          <Kicker className="mx-lg mb-sm mt-xl">{describeCount(rows.length, lang)}</Kicker>
+          <GlassCard className="mx-lg">
+            {rows.slice(0, shown).map((row, index) => (
+              <View key={row.id}>
+                {index > 0 ? <Separator /> : null}
+                <DayRow
+                  amount={row}
+                  category={byId.get(row.categoryId) ?? null}
+                  currency={currency}
+                  dated
+                  onPress={() => onOpenAmount(row.id)}
+                />
+              </View>
+            ))}
+          </GlassCard>
+          {rows.length > shown ? (
+            <View className="mx-lg">
+              <TextButton
+                label={t('Show {n} more', { n: Math.min(LIST_PAGE, rows.length - shown) })}
+                onPress={() => {
+                  tap();
+                  setShown((was) => was + LIST_PAGE);
+                }}
+              />
+            </View>
+          ) : null}
+        </>
+      )}
+
+      <Text className="mx-lg mt-md text-label text-ink-faint">
+        {t(
+          'Transfers between your accounts are neither spending nor income, so they are not here. A whole-month amount counts only when the period covers its whole month.',
+        )}
+      </Text>
+    </>
+  );
+}
+
+/**
+ * One checkbox row: the box, then the label. `some` is a group header with part
+ * of its group ticked — a bar in the box, the mail-client convention — and a
+ * tap on it ticks the rest (`toggleTicks`).
+ */
+function CheckRow({
+  label,
+  state,
+  strong = false,
+  trailing,
+  onPress,
+}: {
+  label: string;
+  state: 'on' | 'off' | 'some';
+  /** A group header: the label in semibold. */
+  strong?: boolean;
+  /** Faint text at the right edge — the header's `3/7`. */
+  trailing?: string;
+  onPress: () => void;
+}) {
+  const filled = state !== 'off';
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: state === 'some' ? 'mixed' : state === 'on' }}
+      accessibilityLabel={label}
+      style={pressedStyle}
+      className="min-h-[48px] flex-row items-center px-lg"
+    >
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 7,
+          borderWidth: 1.5,
+          borderColor: filled ? palette.c2 : palette.inkFaint,
+          backgroundColor: filled ? palette.c2 : 'transparent',
+        }}
+        className="items-center justify-center"
+      >
+        {state === 'on' ? <Icon name="check" size={14} color={palette.onAcc} /> : null}
+        {state === 'some' ? <Icon name="minus" size={14} color={palette.onAcc} /> : null}
+      </View>
+      <Text
+        numberOfLines={1}
+        className={`ml-md flex-1 text-body text-ink ${strong ? 'font-semibold' : ''}`}
+      >
+        {label}
+      </Text>
+      {trailing ? (
+        <Text className="ml-sm text-label tabular-nums text-ink-faint">{trailing}</Text>
+      ) : null}
+    </Pressable>
   );
 }

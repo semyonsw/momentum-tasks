@@ -1,7 +1,8 @@
 /**
- * MoneyCalendar — a month of spending as squares, the second view of the
- * finance history (M4).
+ * MoneyCalendar — a month of spending (or of income) as squares, the second
+ * view of the finance history (M4).
  *
+ *   (Expenses)(Incomes)
  *   ‹      September 2026      ›
  *        171,400 AMD spent
  *   ┌ WHOLE MONTH · NOT ON ANY DAY ───────────┐
@@ -24,6 +25,10 @@
  * totals in a row is the common case, and leaving the grid on every tap would
  * make it three round trips.
  *
+ * The (Expenses)(Incomes) chips are the trend's: the same words for the same
+ * choice on the same screen. Local state, opening on expenses — the calendar
+ * is a calendar of spending first, and switching it is a look, not a setting.
+ *
  * Rejected: a per-square sheet (a sheet over a grid hides the grid you are
  * comparing against) and colouring the whole-month strip on the same scale
  * (rent would be the darkest thing on screen every month, which is the problem
@@ -36,11 +41,17 @@ import { Text, View } from 'react-native';
 import { Icon } from './Icon';
 import { Pressable } from './Pressable';
 import { pressedStyle } from './motion';
-import { GlassCard, Kicker, TextButton } from './primitives';
+import { GlassCard, Kicker, SelectChip, TextButton } from './primitives';
 import { useLanguage, useT } from '../hooks/useT';
 import { parseDay, weekdayInitials } from '../lib/days';
 import { tap } from '../lib/feedback';
-import { formatMoney, formatValue, type Amount, type MoneyCategory } from '../lib/money';
+import {
+  formatMoney,
+  formatValue,
+  type Amount,
+  type Direction,
+  type MoneyCategory,
+} from '../lib/money';
 import {
   compactMoney,
   describeSpendDay,
@@ -81,10 +92,12 @@ export function MoneyCalendar({
     return { year: at.getFullYear(), month: at.getMonth() };
   });
   const [picked, setPicked] = useState<string | null>(null);
+  const [direction, setDirection] = useState<Direction>('expense');
+  const income = direction === 'income';
 
   const cal = useMemo(
-    () => moneyMonth(amounts, cursor.year, cursor.month, today, accountId, lang),
-    [amounts, cursor, today, accountId, lang],
+    () => moneyMonth(amounts, cursor.year, cursor.month, today, accountId, lang, direction),
+    [amounts, cursor, today, accountId, lang, direction],
   );
   const byId = useMemo(
     () => new Map(categories.map((category) => [category.id, category])),
@@ -111,11 +124,31 @@ export function MoneyCalendar({
         pickedCell.topCategoryId
           ? (byId.get(pickedCell.topCategoryId)?.name ?? t('Archived'))
           : null,
+        direction,
       )
     : t('Tap a day for its amounts.');
 
   return (
     <>
+      <View className="mx-lg flex-row flex-wrap">
+        {(
+          [
+            { value: 'expense', label: t('Expenses') },
+            { value: 'income', label: t('Incomes') },
+          ] as const
+        ).map((option) => (
+          <SelectChip
+            key={option.value}
+            label={option.label}
+            selected={option.value === direction}
+            onPress={() => {
+              tap();
+              setDirection(option.value);
+            }}
+          />
+        ))}
+      </View>
+
       <View className="mx-lg flex-row items-center">
         <Pressable
           onPress={() => step(-1)}
@@ -130,7 +163,9 @@ export function MoneyCalendar({
         <View className="flex-1 items-center">
           <Text className="text-title font-semibold tabular-nums text-ink">{cal.label}</Text>
           <Text className="text-label tabular-nums text-ink-muted">
-            {t('{total} spent', { total: formatMoney(cal.total, currency, scale) })}
+            {income
+              ? t('{total} received', { total: formatMoney(cal.total, currency, scale) })
+              : t('{total} spent', { total: formatMoney(cal.total, currency, scale) })}
           </Text>
         </View>
         <Pressable
@@ -188,6 +223,7 @@ export function MoneyCalendar({
                 cell={cell}
                 currency={currency}
                 scale={scale}
+                direction={direction}
                 selected={cell.date !== null && cell.date === picked}
                 onPress={() => {
                   if (!cell.date) return;
@@ -218,7 +254,9 @@ export function MoneyCalendar({
 
       {cal.total === 0 ? (
         <Text className="mx-lg mt-md text-label text-ink-muted">
-          {t('Record an amount and its day fills in here, darker the more it cost.')}
+          {income
+            ? t('Record an income and its day fills in here, darker the more came in.')
+            : t('Record an amount and its day fills in here, darker the more it cost.')}
         </Text>
       ) : null}
 
@@ -233,9 +271,13 @@ export function MoneyCalendar({
       </View>
 
       <Text className="mx-lg mt-md text-label text-ink-faint">
-        {t(
-          'Expenses only: incomes, and transfers between your accounts, are not spending. The dearest day of the month is the darkest; every other day is shaded against it.',
-        )}
+        {income
+          ? t(
+              'Incomes only: transfers between your accounts are not income. The biggest day of the month is the darkest; every other day is shaded against it.',
+            )
+          : t(
+              'Expenses only: incomes, and transfers between your accounts, are not spending. The dearest day of the month is the darkest; every other day is shaded against it.',
+            )}
       </Text>
     </>
   );
@@ -254,12 +296,14 @@ function SpendCell({
   cell,
   currency,
   scale,
+  direction,
   selected,
   onPress,
 }: {
   cell: SpendDay;
   currency: string;
   scale: number;
+  direction: Direction;
   selected: boolean;
   onPress: () => void;
 }) {
@@ -274,12 +318,19 @@ function SpendCell({
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={
-        cell.total > 0
-          ? t('{day}, {amount} spent', {
-              day: cell.day,
-              amount: formatMoney(cell.total, currency, scale),
-            })
-          : t('{day}, nothing spent', { day: cell.day })
+        direction === 'income'
+          ? cell.total > 0
+            ? t('{day}, {amount} received', {
+                day: cell.day,
+                amount: formatMoney(cell.total, currency, scale),
+              })
+            : t('{day}, nothing received', { day: cell.day })
+          : cell.total > 0
+            ? t('{day}, {amount} spent', {
+                day: cell.day,
+                amount: formatMoney(cell.total, currency, scale),
+              })
+            : t('{day}, nothing spent', { day: cell.day })
       }
       style={pressedStyle}
       className="flex-1 p-[2px]"

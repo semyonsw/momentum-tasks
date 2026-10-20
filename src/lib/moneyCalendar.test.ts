@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { transferPair, type Amount } from './money';
 import {
   compactMoney,
+  countsAs,
   describeSpendDay,
   isSpending,
   moneyMonth,
@@ -275,5 +276,83 @@ describe('the line under the grid', () => {
   it('respects the scale', () => {
     const usd = moneyMonth([spent('2026-09-02', 1250)], 2026, 8, TODAY);
     expect(describeSpendDay(on(usd, 2), 'USD', 2)).toBe('2 September · 12.50 USD · 1 amount');
+  });
+});
+
+describe('the income month', () => {
+  const income = (date: string, value: number, over: Partial<Amount> = {}) =>
+    spent(date, value, { direction: 'income', categoryId: 'salary', ...over });
+
+  const log: Amount[] = [
+    spent('2026-09-05', 2000),
+    income('2026-09-05', 300000),
+    income('2026-09-12', 20000, { categoryId: 'gift' }),
+    income('2026-09-12', 5000),
+    spent('2026-01-01', 7000, {
+      direction: 'income',
+      categoryId: 'salary',
+      when: { kind: 'month', year: 2026, month: 8 },
+    }),
+  ];
+
+  it('opens on spending, as it always has', () => {
+    expect(moneyMonth(log, 2026, 8, TODAY).total).toBe(2000);
+    expect(moneyMonth(log, 2026, 8, TODAY, null, 'en', 'expense').total).toBe(2000);
+  });
+
+  it('draws incomes and leaves the spending out', () => {
+    const cal = moneyMonth(log, 2026, 8, TODAY, null, 'en', 'income');
+    expect(on(cal, 5)).toMatchObject({ total: 300000, count: 1, level: 4 });
+    expect(on(cal, 12)).toMatchObject({ total: 25000, count: 2, level: 1, topCategoryId: 'gift' });
+    expect(cal.peak).toBe(300000);
+    expect(cal.wholeTotal).toBe(7000);
+    expect(cal.whole).toEqual([{ categoryId: 'salary', total: 7000, count: 1 }]);
+    expect(cal.total).toBe(332000);
+  });
+
+  it('a transfer in is not income, by id or by category', () => {
+    const pair = transferPair(
+      { fromAccountId: 'card', toAccountId: 'cash', value: 50000, date: '2026-09-07' },
+      { transferId: 'tr9', outId: 'o9', inId: 'i9' },
+      '2026-09-07T10:00:00.000Z',
+    );
+    if (!pair) throw new Error('no pair');
+    const orphan = income('2026-09-08', 900, { categoryId: 'transfer_in' });
+    const cal = moneyMonth([...pair, orphan], 2026, 8, TODAY, 'cash', 'en', 'income');
+    expect(cal.total).toBe(0);
+    expect(countsAs(pair[1], 'income')).toBe(false);
+    expect(countsAs(orphan, 'income')).toBe(false);
+  });
+
+  it('keeps to one account', () => {
+    const cal = moneyMonth(
+      [income('2026-09-05', 100), income('2026-09-05', 900, { accountId: 'card' })],
+      2026,
+      8,
+      TODAY,
+      'card',
+      'en',
+      'income',
+    );
+    expect(on(cal, 5).total).toBe(900);
+  });
+
+  it('says a quiet day received nothing, in both languages', () => {
+    const cal = moneyMonth(log, 2026, 8, TODAY, null, 'en', 'income');
+    expect(describeSpendDay(on(cal, 13), 'AMD', 0, 'en', null, 'income')).toBe(
+      '13 September · nothing received',
+    );
+    expect(describeSpendDay(on(cal, 13), 'AMD', 0, 'ru', null, 'income')).toBe(
+      '13 сентября · ничего не получено',
+    );
+    expect(describeSpendDay(on(cal, 12), 'AMD', 0, 'en', 'Gifts', 'income')).toBe(
+      '12 September · 25,000 AMD · 2 amounts · mostly Gifts',
+    );
+  });
+
+  it('isSpending is still exactly the expense rule', () => {
+    for (const amount of log) {
+      expect(isSpending(amount)).toBe(countsAs(amount, 'expense'));
+    }
   });
 });
