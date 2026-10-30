@@ -227,20 +227,6 @@ export function visibleBudgets(
     .filter((budget): budget is Budget => budget !== undefined);
 }
 
-/** Every visible budget's status for the month, in the grid's order. */
-export function budgetStatuses(params: {
-  budgets: readonly Budget[];
-  categories: readonly MoneyCategory[];
-  amounts: readonly Amount[];
-  year: number;
-  month: number;
-  today: string;
-}): BudgetStatus[] {
-  return visibleBudgets(params.budgets, params.categories).map((budget) =>
-    budgetStatus(budget, params.amounts, params.year, params.month, params.today),
-  );
-}
-
 /** The figure in a budget's corner: `65,800 AMD left`, `8,000 AMD over budget`, `ahead of the month`. */
 export function budgetNote(
   status: BudgetStatus,
@@ -282,11 +268,6 @@ export function describeBudgetMonth(
   const day = Math.round(monthElapsed(year, month, today) * total);
   const name = formatMonth(year, month, lang).replace(/ \d+$/, '');
   return t('{month} · day {day} of {total}.', lang, { month: name, day, total });
-}
-
-/** A budget nudged by one chip: never below zero (zero = no budget). */
-export function stepBudget(value: number, direction: 1 | -1): number {
-  return Math.max(0, Math.round(value) + direction * BUDGET_STEP);
 }
 
 /* ------------------------------------------------------------------ */

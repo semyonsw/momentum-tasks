@@ -241,9 +241,9 @@ describe('nextInSupersetRound', () => {
     expect(nextInSupersetRound(null, 'anything')).toBeNull();
   });
 
-  it('counts a warm-up as a trip to the bar', () => {
-    // The two exercises alternate physically whether or not the set counts
-    // towards volume, so a logged warm-up moves the round on like any other set.
+  it('keeps you on the exercise after a warm-up — the superset starts with the work', () => {
+    // A marked warm-up now returns every session; counting it as a round paired A's
+    // warm-up with B's first working set and left A's last set alone at the end.
     let s = session([
       [dips, 3, 'sg_a'],
       [rows, 3, 'sg_a'],
@@ -262,6 +262,19 @@ describe('nextInSupersetRound', () => {
       ),
     };
 
+    expect(nextInSupersetRound(s, id(s, 0))).toBeNull();
+    // ...and the first WORKING set of A hands over to B as before.
+    s = {
+      ...s,
+      entries: s.entries.map((entry, i) =>
+        i === 0
+          ? {
+              ...entry,
+              sets: entry.sets.map((set, j) => (j === 1 ? { ...set, isCompleted: true } : set)),
+            }
+          : entry,
+      ),
+    };
     expect(nextInSupersetRound(s, id(s, 0))?.entryId).toBe(id(s, 1));
   });
 });

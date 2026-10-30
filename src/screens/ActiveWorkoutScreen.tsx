@@ -221,6 +221,7 @@ interface CardHandlers {
   onToggleSet: (setId: ID) => void;
   onPatchSet: (setId: ID, patch: Partial<DraftSet>) => void;
   onOpenSetMarks: (setId: ID) => void;
+  onToggleWarmup: (setId: ID) => void;
   onAddWarmup: () => void;
   onAddSet: () => void;
   onRemoveSet: (setId: ID) => void;
@@ -327,9 +328,13 @@ export function ActiveWorkoutScreen({
   /** The one card in session edit mode, or none. See `ExerciseCard`. */
   const [editingEntryId, setEditingEntryId] = useState<ID | null>(null);
   /** What the last removal said, and the Undo that goes with it. */
-  const [toast, setToast] = useState<{ text: string; action?: ToastAction; key: number } | null>(
-    null,
-  );
+  const [toast, setToast] = useState<{
+    text: string;
+    action?: ToastAction;
+    key: number;
+    /** The warm-up question's toast, which leaves when the question does. */
+    warmup?: boolean;
+  } | null>(null);
   useEffect(() => {
     if (!toast) return undefined;
     const timer = setTimeout(() => setToast(null), toast.action ? UNDO_TOAST_MS : 1900);
@@ -836,6 +841,42 @@ export function ActiveWorkoutScreen({
     [insertSet, t],
   );
 
+  /*
+   * "WAS THAT A WARM-UP?" — the store raises it on a ✓ that looks like an
+   * unmarked warm-up (`lib/warmupOffer.ts`), and it rides the same toast as the
+   * Undo: a sentence and one button, gone in a few seconds if it was a lighter
+   * day after all. The offer itself outlives the toast until the next ✓, so the
+   * set's own sheet can still answer it.
+   */
+  const warmupOffer = useActiveWorkout((s) => s.warmupOffer);
+  const acceptWarmupOffer = useActiveWorkout((s) => s.acceptWarmupOffer);
+  useEffect(() => {
+    if (!warmupOffer) {
+      // Answered from the sheet, withdrawn by an un-tick, replaced by the next ✓.
+      setToast((current) => (current?.warmup ? null : current));
+      return;
+    }
+    const entry = useActiveWorkout
+      .getState()
+      .session?.entries.find((e) => e.localId === warmupOffer.entryId);
+    if (!entry) return;
+    const kg = (w: number) =>
+      `${formatWeight(w, unitSystem, entry.exercise.loadMode)} ${unitLabel(unitSystem, lang)}`;
+    setToast({
+      text: t('Was {weight} a warm-up?', { weight: kg(warmupOffer.carriedKg) }),
+      key: Date.now(),
+      warmup: true,
+      action: {
+        label: t('Yes, keep {weight}', { weight: kg(warmupOffer.keepKg) }),
+        onPress: () => {
+          tap();
+          acceptWarmupOffer();
+          setToast(null);
+        },
+      },
+    });
+  }, [warmupOffer, acceptWarmupOffer, unitSystem, lang, t]);
+
   const openFocus = useCallback(() => setFocusOpen(true), []);
 
   /*
@@ -885,6 +926,10 @@ export function ActiveWorkoutScreen({
       },
       onPatchSet: (setId, patch) => patchSet(entryId, setId, patch),
       onOpenSetMarks: (setId) => setMarking({ entryId, setId }),
+      onToggleWarmup: (setId) => {
+        const target = entryNow()?.sets.find((set) => set.localId === setId);
+        if (target) markSet(entryId, setId, { kind: target.isWarmup ? 'working' : 'warmup' });
+      },
       onAddWarmup: () => {
         const plan = live.current.warmupPlans[entryId];
         if (plan) addWarmupSets(entryId, plan.sets);
@@ -1202,6 +1247,7 @@ export function ActiveWorkoutScreen({
                       onToggleSet={handlers.onToggleSet}
                       onPatchSet={handlers.onPatchSet}
                       onOpenSetMarks={handlers.onOpenSetMarks}
+                      onToggleWarmup={handlers.onToggleWarmup}
                       /*
                       WARM-UP. Decided here rather than in the card because it
                       needs the gym's plates and `lib/warmup.ts` — the card renders

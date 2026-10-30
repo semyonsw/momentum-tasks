@@ -473,9 +473,29 @@ describe('warming up before the working sets', () => {
     expect(saved!.exercises[0].totalCount).toBe(30);
 
     open(r());
-    // The light rungs are not last session's working weight.
-    expect(entryOf(BENCH.id).sets.map((s) => s.weightKg)).toEqual([60, 60, 60]);
-    expect(entryOf(BENCH.id).sets.every((s) => !s.isWarmup)).toBe(true);
+    // The light rungs are not last session's working weight...
+    const next = entryOf(BENCH.id).sets;
+    expect(next.filter((s) => !s.isWarmup).map((s) => s.weightKg)).toEqual([60, 60, 60]);
+    // ...they come back as what they were: warm-ups, ahead of the work, ghosted.
+    expect(next.filter((s) => s.isWarmup).map((s) => s.weightKg)).toEqual([40, 60, 80]);
+    expect(next.slice(0, 3).every((s) => s.isWarmup && s.isPrefilled && !s.isCompleted)).toBe(true);
+  });
+
+  it('ticking a returning warm-up at its own weight leaves the working rows alone', () => {
+    open(r());
+    addRamp();
+    logAll(BENCH.id);
+    finishAndSave();
+
+    open(r());
+    const bench = entryOf(BENCH.id);
+    act().completeSet(bench.localId, bench.sets[0].localId);
+    expect(
+      entryOf(BENCH.id)
+        .sets.filter((s) => !s.isWarmup)
+        .map((s) => s.weightKg),
+    ).toEqual([60, 60, 60]);
+    expect(act().warmupOffer).toBeNull();
   });
 
   it('“Update the plan” does not count warm-ups as sets', () => {

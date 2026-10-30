@@ -56,12 +56,16 @@ export function supersetMembers(
  *
  * Completed rather than "index of the set that was just ticked", because a set
  * completed out of order still moves the count and the count is what pairs the
- * members up. Warm-ups count here, deliberately: a warm-up is still a trip to the
- * bar, and the two exercises alternate physically whether or not the set counts
- * towards anything.
+ * members up.
+ *
+ * WORKING SETS ONLY. Warm-ups used to count — "a trip to the bar is a trip" — which
+ * was harmless while a warm-up was a row somebody added by hand. Since 2.8 a marked
+ * warm-up comes back every session (`lib/draft.ts`), so A's warm-up would pair
+ * with B's first working set and leave A's last set alone at the end. A warm-up is
+ * done before the superset starts: its ✓ keeps you on the same exercise.
  */
 function loggedCount(entry: DraftEntry): number {
-  return entry.sets.filter((s) => s.isCompleted).length;
+  return entry.sets.filter((s) => s.isCompleted && !s.isWarmup).length;
 }
 
 /** The first unlogged set of an entry, or null when it has none left. */

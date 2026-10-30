@@ -45,5 +45,12 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts'],
+    /*
+     * The guard tests (`theme`, `destructive`, `appGuide`) read every file in
+     * `src/`, and from WSL the repo is on the Windows mount: under a full parallel
+     * run that read alone can pass the default 5 s. The assertions are cheap; it
+     * is the disk that is slow, so the budget is raised rather than the checks cut.
+     */
+    testTimeout: 20000,
   },
 });

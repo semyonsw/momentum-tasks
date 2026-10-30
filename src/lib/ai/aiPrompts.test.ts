@@ -37,12 +37,20 @@ describe('the suggested prompts', () => {
       'How is my Bench press going?',
       'Suggest a new routine',
       'Improve my Push routine',
+      'What can this app do, and where do I find each thing?',
     ]);
   });
 
   it('leave out a question about a lift nobody trains', () => {
     const keys = suggestedPrompts('Workout', {}, 'en', september).map((p) => p.key);
-    expect(keys).toEqual(['w-sum', 'w-new']);
+    expect(keys).toEqual(['w-sum', 'w-new', 'help']);
+  });
+
+  it('end every section with the app guide', () => {
+    for (const section of ['Workout', 'Tasks', 'Expenses'] as const) {
+      const prompts = suggestedPrompts(section, {}, 'ru', september);
+      expect(prompts[prompts.length - 1]).toMatchObject({ key: 'help', chip: 'Гид по приложению' });
+    }
   });
 
   it('name the months, in the sentence’s own case', () => {

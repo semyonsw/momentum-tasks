@@ -299,11 +299,32 @@ export const responseSchema = {
                 items: {
                   type: 'object',
                   properties: {
-                    target: { type: 'string', enum: ['exercise', 'setting', 'task', 'budget'] },
+                    target: {
+                      type: 'string',
+                      enum: [
+                        'exercise',
+                        'setting',
+                        'task',
+                        'budget',
+                        'amount',
+                        'bodyweight',
+                        'workout_set',
+                      ],
+                    },
                     id: {
                       type: 'string',
                       description:
-                        'exerciseId, taskId or categoryId from CONTEXT; omit for setting and for a new task.',
+                        'exerciseId, taskId, categoryId or workout id from CONTEXT; omit for setting, a new task and bodyweight.',
+                    },
+                    exerciseId: {
+                      type: 'string',
+                      description: 'For workout_set: the exercise id inside that workout.',
+                    },
+                    day: { type: 'string', description: 'A date, YYYY-MM-DD; omit for today.' },
+                    account: {
+                      type: 'string',
+                      description:
+                        'For amount: an account id from CONTEXT.accounts, only when named.',
                     },
                     field: { type: 'string' },
                     number: { type: 'number' },

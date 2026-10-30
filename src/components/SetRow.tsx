@@ -168,6 +168,11 @@ interface SetRowProps {
   onRemove?: () => void;
   /** Open the set's annotations sheet (`SetMarksSheet`) — the `RIR` chip's tap. */
   onOpenMarks?: () => void;
+  /**
+   * Flip this row between warm-up and working — the `W` checkbox. Present only
+   * where the answer can still be yes (`warmupToggleRows`); absent hides it.
+   */
+  onToggleWarmup?: () => void;
 }
 
 function SetRowComponent({
@@ -186,6 +191,7 @@ function SetRowComponent({
   onPressTimer,
   onRemove,
   onOpenMarks,
+  onToggleWarmup,
 }: SetRowProps) {
   const t = useT();
   const lang = useLanguage();
@@ -316,9 +322,13 @@ function SetRowComponent({
         onPress={onOpenMarks}
       />
 
+      {/* The `W` checkbox: say "warm-up" before the ✓, so its weight is never
+          carried down over the working sets (`lib/warmupOffer.ts`). */}
+      {onToggleWarmup ? <WarmupCheck on={set.isWarmup} onPress={onToggleWarmup} /> : null}
+
       {exercise.requiresWeight ? (
         <>
-          <View className={chip ? 'shrink-0' : 'min-w-[96px]'}>
+          <View className={chip || onToggleWarmup ? 'shrink-0' : 'min-w-[96px]'}>
             <ValueCell
               width="w-full"
               value={formatWeight(set.weightKg, unitSystem, exercise.loadMode)}
@@ -581,6 +591,63 @@ function SetLabel({
     <View accessible accessibilityLabel={label} style={{ width: 26, justifyContent: 'center' }}>
       {face}
     </View>
+  );
+}
+
+/**
+ * `[✓] W` — a real checkbox with its letter beside it, because the request was
+ * "a check box for the warm-up" and the bare badge had proved invisible. Muted
+ * like the `W` badge when off; green when on, the same green as every ✓.
+ */
+function WarmupCheck({ on, onPress }: { on: boolean; onPress: () => void }) {
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      hitSlop={{ top: 9, bottom: 9, left: 2, right: 2 }}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: on }}
+      accessibilityLabel={
+        on ? t('Warm-up set, tap to make it a working set') : t('Mark as warm-up')
+      }
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 26,
+        marginLeft: 6,
+        marginRight: 6,
+        paddingHorizontal: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: on ? tint(0.4) : palette.hairline,
+        backgroundColor: on ? tint(0.14) : 'transparent',
+      }}
+    >
+      <View
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: 3,
+          borderWidth: 1.5,
+          borderColor: on ? palette.acc : palette.inkFaint,
+          backgroundColor: on ? palette.acc : 'transparent',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {on ? <Icon name="check" size={9} color={palette.onAcc} /> : null}
+      </View>
+      <Text
+        maxFontSizeMultiplier={1.3}
+        className={on ? 'text-acc' : 'text-ink-faint'}
+        style={{ fontSize: 13, fontWeight: '700', marginLeft: 4 }}
+      >
+        W
+      </Text>
+    </Pressable>
   );
 }
 

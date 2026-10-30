@@ -84,6 +84,9 @@ import type {
   UnitSystem,
 } from '../../types/models';
 
+/** How many of the newest sessions carry their id — see `sessionRows`. */
+export const ID_SESSIONS = 30;
+
 /**
  * The size every context is held under, in characters of JSON.
  *
@@ -538,8 +541,12 @@ export function buildWorkoutContext(input: WorkoutContextInput): WorkoutContext 
   const allSessions = [...workouts].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   let gradedAny = false;
   let typedAny = false;
-  const sessionRows = allSessions.map((w) => {
+  const sessionRows = allSessions.map((w, i) => {
     const row: Record<string, unknown> = { date: dayKey(w.startedAt) };
+    /* The id, on the newest sessions only: it is what a set correction ("that
+       first set on Monday was a warm-up") names, and nobody corrects a set from
+       last year — so the older rows do not pay for it. */
+    if (i < ID_SESSIONS) row.id = w.id;
     if (numbers[w.id] != null) row.n = numbers[w.id];
     row.routine = w.title;
     if (w.routineId) row.routineId = w.routineId;
@@ -1151,16 +1158,22 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
         const budget = budgetOf.get(c.id);
         return { id: c.id, name: c.name, ...(budget != null ? { monthlyBudget: budget } : {}) };
       }),
-    income: live.filter((c) => c.direction === 'income').map((c) => c.name),
+    // With ids now, so a logged salary can name its category the way an expense does.
+    income: live.filter((c) => c.direction === 'income').map((c) => ({ id: c.id, name: c.name })),
   };
+  // Ids too, so "paid by card" can file an amount under the right account.
+  const accountList = accounts
+    .filter((a) => a.archivedAt === null)
+    .map((a) => ({ id: a.id, name: a.name }));
 
   const base = {
     today,
     language: LANGUAGE_NAME[lang],
     currency,
     ...valueUnit(currency, input.scale),
-    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; expense and income categories are separate lists (categories.expense with each id and monthlyBudget when one is set, in the same units as every amount; categories.income) and an amount is only ever in a category of its own direction; a "(transfer)" amount is one half of money moved between two accounts — an expense from one and an income into the other, same value, same day; amounts lists every amount, newest first, as "date direction category value [account]: note" — the note, when present, is what the user wrote on it',
+    note: 'whole-month amounts count towards their month, never towards a single day; balances are per account and never summed; expense and income categories are separate lists (categories.expense with each id and monthlyBudget when one is set, in the same units as every amount; categories.income with each id) and an amount is only ever in a category of its own direction; a "(transfer)" amount is one half of money moved between two accounts — an expense from one and an income into the other, same value, same day; amounts lists every amount, newest first, as "date direction category value [account]: note" — the note, when present, is what the user wrote on it',
     categories: categoryLists,
+    ...(accountList.length > 1 ? { accounts: accountList } : {}),
     months: monthRows,
     topCategories,
     balances,

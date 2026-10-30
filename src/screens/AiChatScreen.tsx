@@ -9,7 +9,7 @@
  *   [ LAST 4 WEEKS · 11 WORKOUTS  214 sets · 38.4 t … ]
  *   ─────────────────────────────────────────────────
  *   [Last 4 weeks] [Squat trend] [Suggest a routine] →
- *   ( Ask about your workouts…                    ➤ )
+ *   ( Ask, or say what to change…                    ➤ )
  *
  * ── ONE CHAT PER SECTION, AND IT SAYS WHICH ────────────────────────────────
  *
@@ -73,22 +73,22 @@ const META: Record<
     kicker: 'AI · Workout',
     line: 'Gemini · reads your training log on this phone',
     title: 'Ask about your training',
-    body: 'Answers come from your own log on this phone. Suggested routines and edits wait for your OK before anything changes.',
-    placeholder: 'Ask about your workouts…',
+    body: 'Answers come from your own log on this phone. It can also log your weight, fix a set that was really a warm-up, or show where anything is in the app. Nothing changes until you tap Apply. To talk instead of type, tap the mic on your keyboard.',
+    placeholder: 'Ask, or say what to change…',
   },
   Tasks: {
     kicker: 'AI · Daily tasks',
     line: 'Gemini · reads your task answers on this phone',
     title: 'Ask about your habits',
-    body: 'Reads your daily tasks and how each day was answered, including the days you excused on purpose.',
-    placeholder: 'Ask about your tasks…',
+    body: 'Reads your daily tasks and how each day was answered, including the days you excused on purpose. Tell it what you did and it will tick the day for you once you tap Apply. The mic on your keyboard works here too.',
+    placeholder: 'Ask, or say what you did…',
   },
   Expenses: {
     kicker: 'AI · Expenses',
     line: 'Gemini · reads your amounts on this phone',
     title: 'Ask about your money',
-    body: 'Reads your amounts by day and month, with categories. Whole-month amounts like rent are counted per month, never per day.',
-    placeholder: 'Ask about your expenses…',
+    body: 'Reads your amounts by day and month, with categories. Whole-month amounts like rent are counted per month, never per day. Say what you spent or earned and it will log it once you tap Apply. The mic on your keyboard works here too.',
+    placeholder: 'Ask, or say what you spent…',
   },
 };
 

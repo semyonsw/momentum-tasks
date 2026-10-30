@@ -1193,6 +1193,18 @@ const RU: Record<string, string> = {
   'Remove this set': 'Удалить этот подход',
   'Removed {name}': 'Удалено: {name}',
   'Removed a logged set from {name}': 'Удалён выполненный подход: {name}',
+  'Was {weight} a warm-up?': '{weight} — это была разминка?',
+  'Yes, keep {weight}': 'Да, оставить {weight}',
+  Excused: 'Пропуск по причине',
+  'New expense': 'Новый расход',
+  'New income': 'Новый доход',
+  'Body weight': 'Вес тела',
+  'What can this app do, and where do I find each thing?':
+    'Что умеет это приложение и где что найти?',
+  'App guide': 'Гид по приложению',
+  help: 'помощь',
+  'Mark as warm-up': 'Отметить как разминку',
+  'Warm-up set, tap to make it a working set': 'Разминочный подход, нажмите, чтобы сделать рабочим',
   'Removed a set': 'Подход удалён',
   'Discard your changes?': 'Отменить изменения?',
   'Discard changes?': 'Отменить изменения?',
@@ -1317,15 +1329,15 @@ const RU: Record<string, string> = {
   'Gemini · reads your task answers on this phone':
     'Gemini · читает ответы по задачам на этом телефоне',
   'Gemini · reads your amounts on this phone': 'Gemini · читает суммы на этом телефоне',
-  'Answers come from your own log on this phone. Suggested routines and edits wait for your OK before anything changes.':
-    'Ответы строятся по вашему журналу на этом телефоне. Предложенные программы и правки ждут вашего согласия — сами ничего не меняют.',
-  'Reads your daily tasks and how each day was answered, including the days you excused on purpose.':
-    'Читает ваши ежедневные задачи и ответы по каждому дню, включая дни, пропущенные намеренно.',
-  'Reads your amounts by day and month, with categories. Whole-month amounts like rent are counted per month, never per day.':
-    'Читает суммы по дням и месяцам, с категориями. Суммы на весь месяц, вроде аренды, считаются за месяц, а не за день.',
-  'Ask about your workouts…': 'Спросите о тренировках…',
-  'Ask about your tasks…': 'Спросите о задачах…',
-  'Ask about your expenses…': 'Спросите о расходах…',
+  'Answers come from your own log on this phone. It can also log your weight, fix a set that was really a warm-up, or show where anything is in the app. Nothing changes until you tap Apply. To talk instead of type, tap the mic on your keyboard.':
+    'Ответы — из вашего журнала на этом телефоне. Ассистент также может записать ваш вес, исправить подход, который на самом деле был разминкой, или подсказать, где что находится в приложении. Ничего не меняется, пока вы не нажмёте «Применить». Чтобы говорить, а не печатать, нажмите микрофон на клавиатуре.',
+  'Reads your daily tasks and how each day was answered, including the days you excused on purpose. Tell it what you did and it will tick the day for you once you tap Apply. The mic on your keyboard works here too.':
+    'Читает ваши ежедневные задачи и ответы по дням, включая дни, пропущенные по причине. Скажите, что вы сделали, — и после «Применить» день будет отмечен. Микрофон на клавиатуре тоже работает.',
+  'Reads your amounts by day and month, with categories. Whole-month amounts like rent are counted per month, never per day. Say what you spent or earned and it will log it once you tap Apply. The mic on your keyboard works here too.':
+    'Читает ваши суммы по дням и месяцам, с категориями. Суммы за весь месяц, как аренда, считаются по месяцу, а не по дню. Скажите, что потратили или получили, — и после «Применить» сумма будет записана. Микрофон на клавиатуре тоже работает.',
+  'Ask, or say what to change…': 'Спросите или скажите, что изменить…',
+  'Ask, or say what you did…': 'Спросите или скажите, что сделали…',
+  'Ask, or say what you spent…': 'Спросите или скажите, что потратили…',
   'Reading {count} {noun}…': 'Читаю: {count} {noun}…',
   'Reading {count} {noun} of tasks…': 'Читаю задачи: {count} {noun}…',
   'Reading {count} {noun} of amounts…': 'Читаю суммы: {count} {noun}…',

@@ -225,6 +225,22 @@ function lastSessionSets(history: SetHistory[], exerciseId: ID): SetHistory[] {
 }
 
 /**
+ * The WARM-UPS of the session `lastSessionSets` read, in set order — so a warm-up
+ * marked once comes back as a warm-up row next time instead of vanishing.
+ *
+ * Without this, marking the 60 kg first set `W` fixed today and nothing after:
+ * the next session was built from working sets only, the warm-up row was gone,
+ * and the lifter warming up at 60 again either added a row by hand or ticked the
+ * top 80 at 60 — which carried 60 down over the session, the original bug.
+ */
+function lastSessionWarmups(history: SetHistory[], sessionId: ID | undefined): SetHistory[] {
+  if (!sessionId) return [];
+  return history
+    .filter((s) => s.sessionId === sessionId && s.isCompleted && s.isWarmup)
+    .sort((a, b) => a.setIndex - b.setIndex);
+}
+
+/**
  * The one line of history worth showing mid-workout.
  *
  *   reps    "+25 kg · 12 12 12"              · every set's reps, they all fit
@@ -559,6 +575,25 @@ export function buildDraftEntry(params: BuildEntryParams): DraftEntry {
     };
   });
 
+  /*
+   * Last session's warm-ups, ahead of the work — weighted movements only, and only
+   * for a routine-built entry: one added mid-workout starts at one row by contract.
+   * They are prefills like any row (ghosted, one ✓ to repeat), and every reader
+   * that skips `isWarmup` — the ladder, the carry, the nudge — skips them.
+   */
+  const warmups: DraftSet[] =
+    exercise.requiresWeight && params.plannedSetCount == null
+      ? lastSessionWarmups(history, previous[0]?.sessionId).map((w) => ({
+          localId: uid('set'),
+          weightKg: w.weightKg,
+          count: w.count,
+          isWarmup: true,
+          isCompleted: false,
+          completedAt: null,
+          isPrefilled: true,
+        }))
+      : [];
+
   return {
     localId: uid('entry'),
     exercise,
@@ -569,7 +604,7 @@ export function buildDraftEntry(params: BuildEntryParams): DraftEntry {
     restSeconds,
     transitionRestSeconds,
     ...(params.supersetGroup ? { supersetGroup: params.supersetGroup } : {}),
-    sets,
+    sets: warmups.length > 0 ? [...warmups, ...sets] : sets,
     overload,
     overloadAccepted: false,
     lastSessionSummary: summarizeLastSession(previous, exercise, 'full', lang),

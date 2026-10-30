@@ -8,7 +8,6 @@ import {
   budgetLimit,
   budgetNote,
   budgetStatus,
-  budgetStatuses,
   describeBudgetAlert,
   describeBudgetMonth,
   monthElapsed,
@@ -16,7 +15,6 @@ import {
   sanitizeBudgets,
   sanitizeFired,
   spentInMonth,
-  stepBudget,
   tileBudgetLine,
   visibleBudgets,
   type Budget,
@@ -165,15 +163,6 @@ describe('archived categories', () => {
 
   it('are not shown', () => {
     expect(visibleBudgets(budgets, categories).map((b) => b.categoryId)).toEqual(['food']);
-    const statuses = budgetStatuses({
-      budgets,
-      categories,
-      amounts: [spent('2026-10-02', 50000, { categoryId: 'gifts' })],
-      year: 2026,
-      month: 9,
-      today: TODAY,
-    });
-    expect(statuses.map((s) => s.categoryId)).toEqual(['food']);
   });
 
   it('are not alerted', () => {
@@ -263,9 +252,6 @@ describe('the scale', () => {
 
   it('steps by 5,000 stored units: 5,000 AMD, or 50.00 in a log in cents', () => {
     expect(BUDGET_STEP).toBe(5000);
-    expect(stepBudget(80000, 1)).toBe(85000);
-    expect(stepBudget(80000, -1)).toBe(75000);
-    expect(stepBudget(3000, -1)).toBe(0);
   });
 });
 

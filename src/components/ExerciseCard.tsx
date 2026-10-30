@@ -119,6 +119,7 @@ import { DragHandle, Icon } from './Icon';
 import { useLanguage, useT } from '../hooks/useT';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { GrowIn, Pop, Stagger, usePressScale } from './motion';
+import { warmupToggleRows } from '../lib/warmupOffer';
 import { OverloadNudge } from './OverloadNudge';
 import { Pressable } from './Pressable';
 import { QuickAdjust } from './QuickAdjust';
@@ -183,6 +184,8 @@ interface ExerciseCardProps {
    * is drawn over the whole screen, not inside a card. Absent = no chip taps.
    */
   onOpenSetMarks?: (setId: ID) => void;
+  /** Flip a row between warm-up and working — the rows' `W` checkbox. */
+  onToggleWarmup?: (setId: ID) => void;
   onAddSet: () => void;
   /**
    * Take one row out of the STORE. Called after the row's exit animation, never
@@ -279,6 +282,7 @@ function ExerciseCardComponent({
   onToggleSet,
   onPatchSet,
   onOpenSetMarks,
+  onToggleWarmup,
   onAddSet,
   onRemoveSet,
   isEditing = false,
@@ -337,6 +341,7 @@ function ExerciseCardComponent({
    * a state machine in it.
    */
   const setLabels = workingSetLabels(entry.sets);
+  const warmupToggles = warmupToggleRows(entry.sets);
   const nudgeWaiting = entry.overload.shouldNudge && !entry.overloadAccepted;
   const isRounds = entry.exercise.countUnit === 'rounds';
   const isTimed = isTimedExercise(entry.exercise);
@@ -363,8 +368,8 @@ function ExerciseCardComponent({
    * per row per render meant every row of the open card repainted on every ✓
    * and every ± chip, plate line and all.
    */
-  const live = useRef({ removeRow, onPressTimer, onToggleSet, onOpenSetMarks });
-  live.current = { removeRow, onPressTimer, onToggleSet, onOpenSetMarks };
+  const live = useRef({ removeRow, onPressTimer, onToggleSet, onOpenSetMarks, onToggleWarmup });
+  live.current = { removeRow, onPressTimer, onToggleSet, onOpenSetMarks, onToggleWarmup };
   const rowHandlers = useRef(new Map<ID, RowHandlers>()).current;
   const handlersFor = (setId: ID): RowHandlers => {
     const known = rowHandlers.get(setId);
@@ -385,6 +390,7 @@ function ExerciseCardComponent({
         live.current.onToggleSet(setId);
       },
       onOpenMarks: () => live.current.onOpenSetMarks?.(setId),
+      onToggleWarmup: () => live.current.onToggleWarmup?.(setId),
     };
     rowHandlers.set(setId, handlers);
     return handlers;
@@ -697,6 +703,11 @@ function ExerciseCardComponent({
                   onFocusField={handlersFor(set.localId).onFocusField}
                   onToggleComplete={handlersFor(set.localId).onToggleComplete}
                   onOpenMarks={onOpenSetMarks ? handlersFor(set.localId).onOpenMarks : undefined}
+                  onToggleWarmup={
+                    onToggleWarmup && warmupToggles[index] && entry.exercise.requiresWeight
+                      ? handlersFor(set.localId).onToggleWarmup
+                      : undefined
+                  }
                 />
               </View>
 
@@ -883,6 +894,7 @@ interface RowHandlers {
   onFocusField: (field: SetField) => void;
   onToggleComplete: () => void;
   onOpenMarks: () => void;
+  onToggleWarmup: () => void;
 }
 
 /** Hoisted: `RollingNumber` is memoized, and an inline object is a new prop. */

@@ -29,3 +29,16 @@ import type { ID } from '../types/models';
 export function rememberDefaultWeight(exerciseId: ID, weightKg: number): void {
   useLibrary.getState().setExerciseDefaultWeight(exerciseId, weightKg);
 }
+
+/**
+ * Take back a starting weight a ✓ just taught the library — the warm-up offer's
+ * undo, for a movement that had no starting weight before. Only while the row
+ * still says `weightKg`: anything else is a newer decision.
+ */
+export function forgetDefaultWeight(exerciseId: ID, weightKg: number): void {
+  const library = useLibrary.getState();
+  const exercise = library.exercises.find((e) => e.id === exerciseId);
+  if (!exercise || exercise.defaultWeightKg !== weightKg) return;
+  const { defaultWeightKg: _taught, ...rest } = exercise;
+  library.updateExercise(exerciseId, rest);
+}

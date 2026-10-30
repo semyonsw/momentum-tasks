@@ -31,6 +31,15 @@
  * budgets from the Expenses chat. The context of a chat carries the ids of its
  * own section only, so a cross-section change would be a guess.
  *
+ * ── AND THE THINGS THE USER LOGS, NOT ONLY THE THINGS THEY TUNE ───────────
+ *
+ * "I spent 12 on lunch", "mark stretching done for yesterday", "I weigh 81 today",
+ * "that first bench set on Monday was a warm-up". Each is a thing the user does by
+ * hand in a screen, so the chat can draft it too — as a card, through the same
+ * Apply and the same Undo, never written behind the user's back. A logged amount,
+ * a ticked day and a weigh-in add a row; a past set's kind is a correction of a
+ * saved workout, which is how a warm-up that went unmarked stops counting.
+ *
  * Pure, like everything in `lib/`: the stores are read by the caller and passed
  * in, and the writes happen in `state/aiActions.ts`.
  */
@@ -50,6 +59,7 @@ import {
 } from '../tasks';
 import { t, type Language } from '../i18n';
 import type { AiSection } from './aiSchema';
+import { kindName, setKindOf, type SetKind, type SetType } from '../setType';
 import type { Exercise, ID } from '../../types/models';
 
 /* ------------------------------------------------------------------ */
@@ -69,7 +79,19 @@ export type ExerciseField =
 export type SettingField =
   'rest_between_sets' | 'rest_between_exercises' | 'auto_rest' | 'weekly_goal';
 
-export type TaskField = 'add' | 'name' | 'schedule' | 'target' | 'archive';
+export type TaskField =
+  | 'add'
+  | 'name'
+  | 'schedule'
+  | 'target'
+  | 'archive'
+  /** A DAY's answer, not the task's shape — `day` says which. */
+  | 'done'
+  | 'excused'
+  | 'clear';
+
+/** The fields that answer one day rather than change the task. */
+export const TASK_DAY_FIELDS: readonly TaskField[] = ['done', 'excused', 'clear'];
 
 /**
  * One change, already checked. `value` is the new value in the field's own
@@ -91,8 +113,40 @@ export type AiChange =
       schedule?: TaskSchedule;
       /** For `target`: what is counted ("glasses"). */
       unit?: string;
+      /** For `done` / `excused` / `clear`: the day answered, `YYYY-MM-DD`. */
+      day?: string;
     }
-  | { target: 'budget'; id: ID; field: 'monthly'; value: number };
+  | { target: 'budget'; id: ID; field: 'monthly'; value: number }
+  /** A new amount, in the log's own units, on a day. */
+  | {
+      target: 'amount';
+      field: 'add';
+      /** The category; its direction is the amount's. */
+      id: ID;
+      direction: 'expense' | 'income';
+      value: number;
+      day: string;
+      note: string;
+      /** Absent = the first live account, as the editor opens on. */
+      accountId?: ID;
+    }
+  /** Today's weigh-in, kg. */
+  | { target: 'bodyweight'; field: 'log'; value: number }
+  /** A saved set's kind — `that first set was a warm-up`. */
+  | {
+      target: 'workout_set';
+      field: 'kind';
+      /** The workout. */
+      id: ID;
+      exerciseId: ID;
+      setId: ID;
+      /** What the set was, for the card's `from`. */
+      from: SetKind;
+      value: SetKind;
+      /** For the card: the workout's day and the set's place, `Bench · 27 Oct · set 1`. */
+      day: string;
+      position: number;
+    };
 
 /** What the validator needs to know about the stores. */
 export interface ChangeContext {
@@ -101,6 +155,24 @@ export interface ChangeContext {
   tasks: readonly Pick<Task, 'id' | 'name' | 'schedule' | 'target' | 'archivedAt'>[];
   /** EXPENSE categories only — a budget on income means nothing. */
   categories: readonly { id: ID; name: string }[];
+  /** Today, `YYYY-MM-DD` — what a missing `day` means, and the latest one allowed. */
+  today?: string;
+  /** Every live money category, both directions — what an amount may be filed under. */
+  moneyCategories?: readonly { id: ID; name: string; direction: 'expense' | 'income' }[];
+  /** Live accounts, in the editor's order. */
+  accounts?: readonly { id: ID; name: string }[];
+  /** Saved workouts, for a set correction. */
+  workouts?: readonly {
+    id: ID;
+    startedAt: string;
+    sets: readonly {
+      id: ID;
+      exerciseId: ID;
+      setIndex: number;
+      isWarmup: boolean;
+      setType?: SetType;
+    }[];
+  }[];
 }
 
 /** An exercise cue is one line — the editor's own cap. */
@@ -119,6 +191,9 @@ const SECTION_OF: Record<AiChange['target'], AiSection> = {
   setting: 'Workout',
   task: 'Tasks',
   budget: 'Expenses',
+  amount: 'Expenses',
+  bodyweight: 'Workout',
+  workout_set: 'Workout',
 };
 
 /* ------------------------------------------------------------------ */
@@ -206,7 +281,53 @@ const TASK_ALIASES: Record<string, TaskField> = {
   target: 'target',
   archive: 'archive',
   stop: 'archive',
+  done: 'done',
+  tick: 'done',
+  check: 'done',
+  complete: 'done',
+  excused: 'excused',
+  excuse: 'excused',
+  skip: 'excused',
+  clear: 'clear',
+  untick: 'clear',
 };
+
+/**
+ * A day the model named, or today when it named none — null for a malformed date
+ * or one after today. Nothing is logged into the future: an amount not spent yet
+ * and a task not yet asked are both things that have not happened.
+ */
+export function readDay(value: unknown, today: string): string | null {
+  if (value == null || value === '') return today;
+  if (typeof value !== 'string') return null;
+  const day = value.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const [y, m, d] = day.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) {
+    return null;
+  }
+  return day > today ? null : day;
+}
+
+/** The kind names a model writes for a set — the app's own first. */
+const KIND_ALIASES: Record<string, SetKind> = {
+  warmup: 'warmup',
+  warm_up: 'warmup',
+  working: 'working',
+  work: 'working',
+  normal: 'working',
+  drop: 'drop',
+  drop_set: 'drop',
+  failure: 'failure',
+  to_failure: 'failure',
+  amrap: 'amrap',
+};
+
+/** A sensible body weight, kg — the profile editor's own bounds. */
+export const BODYWEIGHT_LIMITS = { min: 20, max: 400 } as const;
+/** A note on an amount, as the editor holds it. */
+const NOTE_MAX = 120;
 
 /**
  * A task schedule from the item: `days` (0 = Monday) makes it those weekdays,
@@ -339,6 +460,11 @@ function validateTaskItem(item: Rec, ctx: ChangeContext): AiChange | null {
   const id = typeof item.id === 'string' ? item.id.trim() : '';
   const task = ctx.tasks.find((candidate) => candidate.id === id && !candidate.archivedAt);
   if (!task) return null;
+  if (TASK_DAY_FIELDS.includes(field)) {
+    if (!ctx.today) return null;
+    const day = readDay(item.day, ctx.today);
+    return day ? { target: 'task', id, field, value: null, day } : null;
+  }
   if (field === 'name') {
     const name = str(item.text, TASK_NAME_MAX);
     return name && name !== task.name ? { target: 'task', id, field, value: name } : null;
@@ -372,6 +498,68 @@ function validateBudgetItem(item: Rec, ctx: ChangeContext): AiChange | null {
   return { target: 'budget', id, field: 'monthly', value: Math.round(n) };
 }
 
+function validateAmountItem(item: Rec, ctx: ChangeContext): AiChange | null {
+  if (!['add', 'log', 'new'].includes(fieldKey(item.field)) || !ctx.today) return null;
+  const id = typeof item.id === 'string' ? item.id.trim() : '';
+  const category = ctx.moneyCategories?.find((c) => c.id === id);
+  if (!category) return null;
+  const n = num(item.number);
+  if (n == null || n <= 0) return null;
+  const day = readDay(item.day, ctx.today);
+  if (!day) return null;
+  const accountId = typeof item.account === 'string' ? item.account.trim() : '';
+  const account = ctx.accounts?.find((a) => a.id === accountId);
+  return {
+    target: 'amount',
+    field: 'add',
+    id,
+    direction: category.direction,
+    value: Math.round(n),
+    day,
+    note: str(item.text, NOTE_MAX) ?? '',
+    ...(account ? { accountId: account.id } : {}),
+  };
+}
+
+function validateBodyweightItem(item: Rec): AiChange | null {
+  const n = num(item.number);
+  if (n == null || n < BODYWEIGHT_LIMITS.min || n > BODYWEIGHT_LIMITS.max) return null;
+  return { target: 'bodyweight', field: 'log', value: Math.round(n * 10) / 10 };
+}
+
+/**
+ * `number` is the set's place among the exercise's WORKING sets in that workout —
+ * the order `sessions[].ex` lists them, which never shows a warm-up. So "set 1"
+ * is the first number the user sees in the log, and an already-warm-up set is
+ * out of reach (it is not on the page to point at).
+ */
+function validateWorkoutSetItem(item: Rec, ctx: ChangeContext): AiChange | null {
+  const kind = KIND_ALIASES[fieldKey(item.text)];
+  if (!kind) return null;
+  const id = typeof item.id === 'string' ? item.id.trim() : '';
+  const workout = ctx.workouts?.find((w) => w.id === id);
+  if (!workout) return null;
+  const exerciseId = typeof item.exerciseId === 'string' ? item.exerciseId.trim() : '';
+  const position = num(item.number);
+  if (position == null || !Number.isInteger(position) || position < 1) return null;
+  const working = workout.sets
+    .filter((s) => s.exerciseId === exerciseId && !s.isWarmup)
+    .sort((a, b) => a.setIndex - b.setIndex);
+  const set = working[position - 1];
+  if (!set || setKindOf(set) === kind) return null;
+  return {
+    target: 'workout_set',
+    field: 'kind',
+    id,
+    exerciseId,
+    setId: set.id,
+    from: setKindOf(set),
+    value: kind,
+    day: workout.startedAt.slice(0, 10),
+    position,
+  };
+}
+
 /** Same thing changed twice in one card — the later one is what the model settled on. */
 function identity(change: AiChange): string {
   if (change.target === 'setting') return `setting:${change.field}`;
@@ -380,6 +568,11 @@ function identity(change: AiChange): string {
   if (change.target === 'task' && change.field === 'add') {
     return `task:add:${String(change.value).toLowerCase()}`;
   }
+  // A day's answer is per day: done Monday and done Tuesday are two changes.
+  if (change.target === 'task' && change.day) return `task:${change.id}:day:${change.day}`;
+
+  if (change.target === 'bodyweight') return 'bodyweight';
+  if (change.target === 'workout_set') return `workout_set:${change.setId}`;
   return `${change.target}:${change.id ?? ''}:${change.field}`;
 }
 
@@ -391,6 +584,7 @@ function identity(change: AiChange): string {
 export function validateChanges(items: readonly unknown[], ctx: ChangeContext): AiChange[] {
   const byExercise = new Map(ctx.exercises.filter((e) => !e.isArchived).map((e) => [e.id, e]));
   const out = new Map<string, AiChange>();
+  let amounts = 0;
   for (const raw of items) {
     if (!isRec(raw)) continue;
     const target = fieldKey(raw.target);
@@ -404,9 +598,16 @@ export function validateChanges(items: readonly unknown[], ctx: ChangeContext): 
       change = validateTaskItem(raw, ctx);
     } else if (target === 'budget') {
       change = validateBudgetItem(raw, ctx);
+    } else if (target === 'amount' || target === 'expense' || target === 'income') {
+      change = validateAmountItem(raw, ctx);
+    } else if (target === 'bodyweight' || target === 'weight') {
+      change = validateBodyweightItem(raw);
+    } else if (target === 'workout_set' || target === 'set') {
+      change = validateWorkoutSetItem(raw, ctx);
     }
     if (!change || SECTION_OF[change.target] !== ctx.section) continue;
-    const key = identity(change);
+    // Every amount is its own row: two identical lunches are still two lunches.
+    const key = change.target === 'amount' ? `amount:${(amounts += 1)}` : identity(change);
     out.delete(key);
     out.set(key, change);
   }
@@ -432,6 +633,12 @@ export interface CurrentValues {
   budgets: Readonly<Record<ID, number>>;
   /** How a money figure is printed — the caller knows the currency and scale. */
   formatMoney: (value: number) => string;
+  /** Both directions' categories, for an amount's row. Absent: amount rows are skipped. */
+  moneyCategories?: readonly { id: ID; name: string }[];
+  /** Today's weight, for the weigh-in row's `from`. */
+  bodyweightKg?: number;
+  /** A day as the card prints it — `27 Oct`. Absent: the ISO date. */
+  formatDay?: (day: string) => string;
 }
 
 /** One line of the card: `Bench press · Rest  2:00 → 1:30`. */
@@ -588,6 +795,50 @@ export function describeChanges(
         from: before != null ? now.formatMoney(before) : '',
         to: change.value > 0 ? now.formatMoney(change.value) : tr('None'),
       });
+      continue;
+    }
+    const dayText = (day: string) => (now.formatDay ? now.formatDay(day) : day);
+    if (change.target === 'amount') {
+      const name = now.moneyCategories?.find((c) => c.id === change.id)?.name;
+      if (!name) continue;
+      rows.push({
+        subject: change.note ? `${name} · ${change.note}` : name,
+        label: `${change.direction === 'income' ? tr('New income') : tr('New expense')} · ${dayText(change.day)}`,
+        from: '',
+        to: now.formatMoney(change.value),
+      });
+      continue;
+    }
+    if (change.target === 'bodyweight') {
+      rows.push({
+        subject: tr('Body weight'),
+        label: tr('Today'),
+        from: now.bodyweightKg != null ? `${now.bodyweightKg} ${tr('kg')}` : '',
+        to: `${change.value} ${tr('kg')}`,
+      });
+      continue;
+    }
+    if (change.target === 'workout_set') {
+      const name = exercises.get(change.exerciseId)?.name ?? '';
+      rows.push({
+        subject: `${name} · ${dayText(change.day)}`,
+        label: t('Set {n}', lang, { n: change.position }),
+        from: kindName(change.from, lang),
+        to: kindName(change.value, lang),
+      });
+      continue;
+    }
+    if (change.target !== 'task') continue;
+    if (change.day) {
+      const task = change.id ? tasks.get(change.id) : undefined;
+      if (!task) continue;
+      const to =
+        change.field === 'done'
+          ? tr('Done')
+          : change.field === 'excused'
+            ? tr('Excused')
+            : tr('Not answered');
+      rows.push({ subject: task.name, label: dayText(change.day), from: '', to });
       continue;
     }
     if (change.field === 'add') {

@@ -65,8 +65,11 @@ import {
 import { clearKey, getKey, setKey } from '../lib/ai/secureKey';
 import { send } from '../lib/ai/transport';
 import { workoutNumbers } from '../lib/completedWorkout';
-import { formatMoney } from '../lib/money';
-import { dayKey } from '../lib/days';
+import { formatMoney, isTransferCategory } from '../lib/money';
+import { dayKey, monthNames } from '../lib/days';
+import type { CompletedWorkout } from '../lib/completedWorkout';
+import type { TaskEntry } from '../lib/tasks';
+import type { ID } from '../types/models';
 import { t } from '../lib/i18n';
 import { seedUser } from '../data/seed';
 import { useActiveWorkout } from './activeWorkoutStore';
@@ -604,14 +607,28 @@ export function discardSequence(section: AiSection, messageId: string): void {
 
 /** What `validateChanges` checks ids against — this section's own things. */
 function changeContext(section: AiSection): ChangeContext {
+  const money = useMoney.getState();
+  const live = money.categories.filter((c) => c.archivedAt === null && !isTransferCategory(c.id));
   return {
     section,
     exercises: useLibrary.getState().exercises,
     tasks: useTasks.getState().tasks,
-    categories: useMoney
-      .getState()
-      .categories.filter((c) => c.direction === 'expense' && c.archivedAt === null),
+    categories: live.filter((c) => c.direction === 'expense'),
+    today: dayKey(new Date()),
+    moneyCategories: live.map((c) => ({ id: c.id, name: c.name, direction: c.direction })),
+    accounts: money.accounts
+      .filter((a) => a.archivedAt === null)
+      .sort((a, b) => a.order - b.order)
+      .map((a) => ({ id: a.id, name: a.name })),
+    workouts: useWorkoutHistory.getState().workouts,
   };
+}
+
+/** `2026-10-27` → `27 Oct`, the card's date. */
+function formatDay(day: string): string {
+  const [, m, d] = day.split('-').map(Number);
+  const month = monthNames(lang())[m - 1] ?? '';
+  return `${d} ${month.slice(0, 3)}`;
 }
 
 /** The values in force, for the card's `from`. */
@@ -635,6 +652,9 @@ function currentValues(): CurrentValues {
     },
     budgets: Object.fromEntries((money.budgets ?? []).map((b) => [b.categoryId, b.monthly])),
     formatMoney: (value) => formatMoney(value, settings.currencyCode, scale),
+    moneyCategories: money.categories,
+    bodyweightKg: settings.bodyweightKg,
+    formatDay,
   };
 }
 
@@ -665,7 +685,12 @@ export function applyChanges(section: AiSection, messageId: string): Applied | n
     goal: settings.weeklyWorkoutGoal,
     tasks: tasks.tasks,
     budgets: money.budgets ?? [],
+    bodyweightKg: settings.bodyweightKg,
+    bodyweightLog: settings.bodyweightLog,
   };
+  /* What the LOGGING changes wrote, filled in as they apply, so the Undo removes
+     exactly those rows and puts back exactly those days and workouts. */
+  const written: Written = { amounts: [], taskDays: [], workouts: new Map() };
   /* The workout in flight carries its own copy of each exercise, and Apply
      writes into it (`syncExercise`, `followGlobalRest`) — so the Undo has to put
      those copies back too, or the open card keeps the change it just undid. */
@@ -681,7 +706,7 @@ export function applyChanges(section: AiSection, messageId: string): Applied | n
   );
   let applied = 0;
   for (const change of ordered) {
-    if (applyOne(change)) applied += 1;
+    if (applyOne(change, written)) applied += 1;
   }
   if (applied === 0) return null;
   useAi.getState().setChangesStatus(section, messageId, 'accepted');
@@ -709,13 +734,80 @@ export function applyChanges(section: AiSection, messageId: string): Applied | n
       for (const budget of snapshot.budgets) {
         m.setBudget(budget.categoryId, budget.monthly, budget.alerts === true);
       }
+      // Only a card that weighed in puts the weight back: a weigh-in made by hand
+      // since an Expenses card was applied is not this Undo's to take.
+      // And FIRST, because restoring a workout reprices it at the weight in force.
+      if (ordered.some((c) => c.target === 'bodyweight')) {
+        useSettings.setState({
+          bodyweightKg: snapshot.bodyweightKg,
+          bodyweightLog: snapshot.bodyweightLog,
+        });
+      }
+      for (const id of written.amounts) useMoney.getState().deleteAmount(id);
+      // Newest first, so a day written twice ends on what it said before either.
+      for (const { id, day, before } of [...written.taskDays].reverse()) {
+        useTasks.getState().restoreEntry(id, day, before ?? { mark: null, note: '' });
+      }
+      for (const workout of written.workouts.values()) {
+        useWorkoutHistory.getState().restoreWorkout(workout);
+      }
       useAi.getState().setChangesStatus(section, messageId, 'pending');
     },
   };
 }
 
+/** What the logging changes wrote, for the Undo. */
+interface Written {
+  amounts: ID[];
+  taskDays: { id: ID; day: string; before: TaskEntry | undefined }[];
+  /** The workout as it was before its FIRST correction on this card. */
+  workouts: Map<ID, CompletedWorkout>;
+}
+
 /** One change, through its store. False when its target is gone. */
-function applyOne(change: AiChange): boolean {
+function applyOne(change: AiChange, written: Written): boolean {
+  if (change.target === 'amount') {
+    const money = useMoney.getState();
+    const category = money.categories.find((c) => c.id === change.id && c.archivedAt === null);
+    const accounts = money.accounts
+      .filter((a) => a.archivedAt === null)
+      .sort((a, b) => a.order - b.order);
+    const account = accounts.find((a) => a.id === change.accountId) ?? accounts[0];
+    if (!category || !account) return false;
+    /* `addAmount` also ticks the `Track expenses` task on that day — so the Undo
+       has to know what that day said before, or it leaves a tick for an amount
+       that no longer exists. */
+    const tasks = useTasks.getState();
+    for (const task of tasks.tasks) {
+      if (task.auto !== 'money' || task.archivedAt !== null) continue;
+      written.taskDays.push({
+        id: task.id,
+        day: change.day,
+        before: tasks.log[task.id]?.[change.day],
+      });
+    }
+    const id = money.addAmount({
+      categoryId: category.id,
+      accountId: account.id,
+      direction: category.direction,
+      value: change.value,
+      when: { kind: 'day', date: change.day },
+      note: change.note,
+    });
+    if (id) written.amounts.push(id);
+    return id != null;
+  }
+  if (change.target === 'bodyweight') {
+    useSettings.getState().setBodyweightKg(change.value);
+    return true;
+  }
+  if (change.target === 'workout_set') {
+    const history = useWorkoutHistory.getState();
+    const workout = history.workouts.find((w) => w.id === change.id);
+    if (!workout) return false;
+    if (!written.workouts.has(workout.id)) written.workouts.set(workout.id, workout);
+    return history.updateWorkoutSet(workout.id, change.setId, { kind: change.value });
+  }
   if (change.target === 'exercise') {
     const library = useLibrary.getState();
     const exercise = library.exercises.find((e) => e.id === change.id && !e.isArchived);
@@ -742,7 +834,26 @@ function applyOne(change: AiChange): boolean {
     money.setBudget(change.id, change.value);
     return true;
   }
+  if (change.target !== 'task') return false;
   const tasks = useTasks.getState();
+  if (change.day) {
+    const task = tasks.tasks.find((x) => x.id === change.id && x.archivedAt === null);
+    if (!task) return false;
+    written.taskDays.push({
+      id: task.id,
+      day: change.day,
+      before: tasks.log[task.id]?.[change.day],
+    });
+    if (change.field === 'excused') tasks.setMark(task.id, change.day, 'missed');
+    else if (change.field === 'clear') {
+      if (task.target) tasks.setCount(task.id, change.day, 0);
+      tasks.setMark(task.id, change.day, null);
+    }
+    // A counted task is done when its count reaches the target — as its row does it.
+    else if (task.target) tasks.setCount(task.id, change.day, task.target.count);
+    else tasks.setMark(task.id, change.day, 'done');
+    return true;
+  }
   if (change.field === 'add') {
     return (
       tasks.addTask({

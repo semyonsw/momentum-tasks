@@ -70,13 +70,24 @@ import { moveToIndex } from '../lib/reorder';
 import { hasRoundLeft, isRoundExercise } from '../lib/rounds';
 import { nextInSupersetRound, nextSupersetRound } from '../lib/superset';
 import { carriesWeight, carryWeightForward, defaultWeightUpdate } from '../lib/weightCarry';
+import {
+  acceptWarmupOffer,
+  undoWarmupCarry,
+  warmupOfferFor,
+  type WarmupOffer,
+} from '../lib/warmupOffer';
 import { cleanRir, withRir } from '../lib/effort';
 import { cleanSetType, isLadderRung, withKind, type SetKind } from '../lib/setType';
 import { currentSettings } from './settingsStore';
-import { rememberDefaultWeight } from './weightSync';
+import { forgetDefaultWeight, rememberDefaultWeight } from './weightSync';
 import type { Exercise, ID, SessionEffort } from '../types/models';
 
 export type RestSource = 'set' | 'transition' | 'manual';
+
+/** The offer, plus what the library's starting weight was before the ✓ moved it. */
+export interface PendingWarmupOffer extends WarmupOffer {
+  previousDefaultKg: number | null;
+}
 
 export interface RestState {
   /**
@@ -124,6 +135,12 @@ interface ActiveWorkoutState {
    * that records "the user said stop".
    */
   roundsAuto: ID | null;
+  /**
+   * "Was that a warm-up?" — set by a ✓ that looks like an unmarked warm-up
+   * (`lib/warmupOffer.ts`), cleared by the next ✓, an undo, or an answer. Not
+   * persisted: it is a question about the last ten seconds.
+   */
+  warmupOffer: PendingWarmupOffer | null;
 
   /* --- lifecycle --- */
   startSession: (params: BuildDraftParams) => void;
@@ -180,6 +197,9 @@ interface ActiveWorkoutState {
    * a graded row stays exactly as overwritable as it was.
    */
   markSet: (entryId: ID, setId: ID, marks: SetMarks) => void;
+  /** Take the offer: the set becomes a warm-up and the planned weights come back. */
+  acceptWarmupOffer: () => void;
+  dismissWarmupOffer: () => void;
   addSet: (entryId: ID) => void;
   /**
    * Put generated warm-up rows at the TOP of an exercise.
@@ -300,6 +320,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
       rest: NO_REST,
       setTimer: null,
       roundsAuto: null,
+      warmupOffer: null,
 
       /* ---------------------------------------------------------- */
 
@@ -311,6 +332,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
           rest: NO_REST,
           setTimer: null,
           roundsAuto: null,
+          warmupOffer: null,
         });
       },
 
@@ -321,6 +343,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
           rest: NO_REST,
           setTimer: null,
           roundsAuto: null,
+          warmupOffer: null,
         }),
 
       finishSession: () => {
@@ -331,6 +354,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
           rest: NO_REST,
           setTimer: null,
           roundsAuto: null,
+          warmupOffer: null,
         });
         return session;
       },
@@ -381,6 +405,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
               : activeEntryId,
           setTimer: setTimer?.entryId === entryId ? null : setTimer,
           rest: rest.originSetId && removedSetIds.has(rest.originSetId) ? NO_REST : rest,
+          warmupOffer: get().warmupOffer?.entryId === entryId ? null : get().warmupOffer,
           // A chain pointing at an exercise that is gone would start a round on the
           // next entry's rows the moment rest ran out. Same rule as the cursor.
           roundsAuto: get().roundsAuto === entryId ? null : get().roundsAuto,
@@ -517,6 +542,10 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
          */
         const justLogged = logged.find((s) => s.localId === setId);
         const carried = carriesWeight(target.exercise) ? carryWeightForward(logged, setId) : logged;
+        // Asked against the rows BEFORE the carry, so the undo has the plan to restore.
+        const offer = carriesWeight(target.exercise)
+          ? warmupOfferFor(logged, entryId, setId)
+          : null;
         /*
          * A WARM-UP TEACHES THE LIBRARY NOTHING. It is a fraction of the working
          * weight by construction, so writing 40 kg onto an exercise because the
@@ -659,6 +688,9 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
            * and the cursor moved off the card the user had walked on to.
            */
           setTimer: get().setTimer?.setId === setId ? null : get().setTimer,
+          warmupOffer: offer
+            ? { ...offer, previousDefaultKg: target.exercise.defaultWeightKg ?? null }
+            : null,
         });
       },
 
@@ -670,12 +702,17 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
           // The measured rest goes with the ✓ it was measured for: `completeSet`
           // only writes one when a rest is on screen, so a set ticked again later
           // with no rest running would otherwise log a rest that never happened.
-          session: mapSet(session, entryId, setId, ({ restTakenSeconds: _rest, ...s }) => ({
-            ...s,
-            isCompleted: false,
-            completedAt: null,
-          })),
+          session: withCarryUndone(
+            mapSet(session, entryId, setId, ({ restTakenSeconds: _rest, ...s }) => ({
+              ...s,
+              isCompleted: false,
+              completedAt: null,
+            })),
+            get().warmupOffer,
+            setId,
+          ),
           rest: rest.originSetId === setId ? NO_REST : rest,
+          warmupOffer: get().warmupOffer?.setId === setId ? null : get().warmupOffer,
         });
       },
 
@@ -702,6 +739,16 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
       },
 
       markSet: (entryId, setId, marks) => {
+        const { warmupOffer } = get();
+        /*
+         * Marking the offered set a warm-up through its sheet is the same answer
+         * as the chip, so it gets the same weights back.
+         */
+        if (warmupOffer?.setId === setId && marks.kind !== undefined) {
+          if (marks.kind === 'warmup') get().acceptWarmupOffer();
+          else set({ warmupOffer: null });
+        }
+        // Read after the offer, which may have just rewritten this entry.
         const { session } = get();
         if (!session) return;
         set({
@@ -713,6 +760,42 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
           ),
         });
       },
+
+      acceptWarmupOffer: () => {
+        const { session, warmupOffer: offer } = get();
+        if (!session || !offer) return;
+        const entry = session.entries.find((e) => e.localId === offer.entryId);
+        if (!entry) {
+          set({ warmupOffer: null });
+          return;
+        }
+        /*
+         * The ✓ also taught the library the warm-up's weight as the movement's
+         * starting point (`defaultWeightUpdate`). Put the old one back, but only
+         * if nothing has moved it since.
+         */
+        const taught = entry.exercise.defaultWeightKg === offer.carriedKg;
+        const restoreDefault = taught ? offer.previousDefaultKg : null;
+        if (restoreDefault != null) rememberDefaultWeight(entry.exercise.id, restoreDefault);
+        // No starting weight before the ✓: the warm-up's must not become one.
+        else if (taught) forgetDefaultWeight(entry.exercise.id, offer.carriedKg);
+        set({
+          session: mapEntry(session, offer.entryId, (e) =>
+            withLadderPlan({
+              ...e,
+              exercise: !taught
+                ? e.exercise
+                : restoreDefault != null
+                  ? { ...e.exercise, defaultWeightKg: restoreDefault }
+                  : withoutDefaultWeight(e.exercise),
+              sets: acceptWarmupOffer(e.sets, offer),
+            }),
+          ),
+          warmupOffer: null,
+        });
+      },
+
+      dismissWarmupOffer: () => set({ warmupOffer: null }),
 
       addSet: (entryId) => {
         const { session } = get();
@@ -826,6 +909,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
           // Same for a rest this row started: the pill would dim a row that is
           // gone. `uncompleteSet` and `removeEntry` already clear it.
           rest: rest.originSetId === setId ? NO_REST : rest,
+          warmupOffer: get().warmupOffer?.setId === setId ? null : get().warmupOffer,
         });
       },
 
@@ -1503,6 +1587,28 @@ function finiteCount(value: unknown): number | null {
 /* ------------------------------------------------------------------ */
 
 /** What `markSet` may change on a set. An absent key means "leave it". */
+/**
+ * Un-ticking the set the warm-up offer is about takes its carry back with it.
+ * Otherwise a ✓ undone and re-done as a `W` left the working rows at the
+ * warm-up's weight — the original bug by another door.
+ */
+function withCarryUndone(
+  session: DraftSession,
+  offer: WarmupOffer | null,
+  setId: ID,
+): DraftSession {
+  if (!offer || offer.setId !== setId) return session;
+  return mapEntry(session, offer.entryId, (entry) => ({
+    ...entry,
+    sets: undoWarmupCarry(entry.sets, offer),
+  }));
+}
+
+function withoutDefaultWeight(exercise: Exercise): Exercise {
+  const { defaultWeightKg: _taught, ...rest } = exercise;
+  return rest;
+}
+
 export interface SetMarks {
   rir?: number | null;
   /** Warm-up, working, drop, failure, AMRAP — both kind fields at once. */
