@@ -50,7 +50,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Pressable } from './Pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BubblePressable } from './bubbles';
@@ -129,7 +130,7 @@ export function DebriefCard() {
           answered,
           total: offer.questions.length,
         })
-      : t('{total} quick questions for the assistant', { total: offer.questions.length });
+      : t('{total} quick questions for the AI coach', { total: offer.questions.length });
 
   return (
     <GlassSurface tier="lit" radius={radius.card} shadow="e1" flat className="mx-lg mt-lg">
@@ -676,12 +677,12 @@ function Finished({
       </Pop>
       <Text className="mt-lg text-title font-medium text-ink">{t('Thanks — noted')}</Text>
       <Text className="mt-sm text-center text-body text-ink-muted">
-        {t('The assistant reads these answers whenever you ask about your training or a routine.')}
+        {t('The AI coach reads these answers whenever you ask about your training or a routine.')}
       </Text>
       <View className="mt-xl w-full">
         {aiReady ? (
           <>
-            <PrimaryButton label={t('Ask the assistant about it')} onPress={onAsk} />
+            <PrimaryButton label={t('Ask the AI coach about it')} onPress={onAsk} />
             <View className="h-sm" />
             <PrimaryButton label={t('Close')} variant="ghost" onPress={onClose} />
           </>

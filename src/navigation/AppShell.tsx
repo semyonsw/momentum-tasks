@@ -149,8 +149,10 @@ import { useToday } from '../hooks/useToday';
 import { isTransferCategory, type Direction, type Interval } from '../lib/money';
 import { SECTIONS, backAction, type SectionTab, type ShellRoute } from '../lib/sectionNav';
 import { seedUser } from '../data/seed';
+import { emptyWorkoutRoutine } from '../lib/workoutHome';
 import type { CompletedWorkout } from '../lib/completedWorkout';
 import type { Exercise, ID, MuscleGroup, SetHistory, UnitSystem } from '../types/models';
+import type { RandomSpec } from '../lib/randomRoutine';
 
 /** Screens pushed on top of a tab. `session` is pushed and owns the screen. */
 type Route =
@@ -163,6 +165,8 @@ type Route =
        * putting anything in it should not leave it behind. See `handleLeaveEditor`.
        */
       isNew?: boolean;
+      /** `Random…` from `Add routine`: the editor rolls this on arrival (#16). */
+      random?: RandomSpec;
     }
   | {
       name: 'addExercise';
@@ -195,7 +199,9 @@ type Route =
   /* Each section's own past, pushed by the ⟲ in its corner. Three routes and not
      one with a parameter: they render different screens over different stores,
      and the only thing they share is where the tap came from. */
-  | { name: 'workoutHistory' }
+  /* `view` opens it on Graphs (or Calendar) directly — the Workout section's
+     Progress card (2.9, #11). Absent = the Log, as the ⟲ opens it. */
+  | { name: 'workoutHistory'; view?: WorkoutHistoryView }
   | { name: 'tasksHistory' }
   | {
       name: 'moneyHistory';
@@ -265,6 +271,8 @@ const DEBRIEF_DELAY_MS = 1500;
 
 /** How long a toast with an Undo stays: long enough to read and reach. */
 const UNDO_TOAST_MS = 4500;
+/** The one-time "workout still running" tip (redesign #7): a sentence and a door. */
+const LEAVE_RUNNING_TIP_MS = 6000;
 
 /**
  * The expenses window as entering the section puts it: today, in the default
@@ -305,6 +313,8 @@ export function AppShell() {
     text: string;
     key: number;
     action?: ToastAction;
+    /** How long it stays, when not the default (the leave-running tip's 6 s). */
+    ms?: number;
   } | null>(null);
   /* Keyed, so a second toast with the same words still replays its entrance. */
   const setToast = useCallback(
@@ -313,7 +323,10 @@ export function AppShell() {
   );
   useEffect(() => {
     if (toast == null) return undefined;
-    const timer = setTimeout(() => setToastState(null), toast.action ? UNDO_TOAST_MS : 1900);
+    const timer = setTimeout(
+      () => setToastState(null),
+      toast.ms ?? (toast.action ? UNDO_TOAST_MS : 1900),
+    );
     return () => clearTimeout(timer);
   }, [toast]);
   /**
@@ -706,9 +719,37 @@ export function AppShell() {
    * on the way out — that is what makes "get in, look, get out" leave no trace.
    */
   const leaveSession = useCallback(() => {
-    if (!useActiveWorkout.getState().session?.startedAt) discardSession();
+    const running = useActiveWorkout.getState().session?.startedAt != null;
+    if (!running) discardSession();
     pop();
-  }, [discardSession, pop]);
+    /*
+     * THE FIRST TIME a running workout is left (redesign #7), say where it went:
+     * ~6 s over the screen the user lands on, with the way back in it. Once,
+     * persisted — after that the Home card is the answer and a toast on every
+     * Back would be noise. Here rather than in the session screen because that
+     * screen is gone by the time the toast has to be read.
+     */
+    const settings = useSettings.getState();
+    // Only when Back lands on a section root: the shell draws its toast there and
+    // nowhere else, and a tip marked seen on a screen that cannot show it (the
+    // session opened from Routines) would be spent without ever being read.
+    const landsOnRoot = stack.length === 1;
+    if (running && landsOnRoot && !settings.seenLeaveRunningTip) {
+      settings.setFlag('seenLeaveRunningTip', true);
+      setToastState({
+        text: t('Workout still running — resume it from Home'),
+        key: Date.now(),
+        ms: LEAVE_RUNNING_TIP_MS,
+        action: {
+          label: t('Resume'),
+          onPress: () => {
+            setToastState(null);
+            push({ name: 'session' });
+          },
+        },
+      });
+    }
+  }, [discardSession, pop, push, stack.length, t]);
 
   const toggleExpanded = useCallback((key: string) => {
     setExpanded((current) => {
@@ -1041,6 +1082,41 @@ export function AppShell() {
     const routine = createRoutine();
     push({ name: 'routineEditor', routineId: routine.id, isNew: true });
   }, [createRoutine, push]);
+  /**
+   * `Start an empty workout` (2.9, #18): a session built from a routine with no
+   * items and no id (`lib/workoutHome.emptyWorkoutRoutine` says why `''` is safe
+   * everywhere `routineId` is read). The claim effect pushes the session as for
+   * any other, and its own empty state offers `Add an exercise`. Never over a
+   * STARTED session — the empty state does not offer it while one runs, and this
+   * refuses too, so a stale tap cannot discard logged sets.
+   */
+  const handleStartEmpty = useCallback(() => {
+    if (useActiveWorkout.getState().session?.startedAt != null) {
+      push({ name: 'session' });
+      return;
+    }
+    const settings = useSettings.getState();
+    startSession({
+      routine: emptyWorkoutRoutine({ name: t('Workout'), ownerId: seedUser.id, now: new Date() }),
+      exercisesById,
+      historyByExerciseId: historyById,
+      policy: seedUser.overloadPolicy,
+      unitSystem: settings.unitSystem,
+      defaultRestSeconds: settings.restSecondsBetweenSets,
+      defaultTransitionRestSeconds: settings.restSecondsBetweenExercises,
+      lang,
+    });
+  }, [exercisesById, historyById, lang, push, startSession, t]);
+  /* The same, carrying the random sheet's answer for the editor to roll. A
+     separate callback so `onPress={handleAddRoutine}` can never pass an event
+     in where a spec belongs. */
+  const handleAddRandomRoutine = useCallback(
+    (random: RandomSpec) => {
+      const routine = createRoutine();
+      push({ name: 'routineEditor', routineId: routine.id, isNew: true, random });
+    },
+    [createRoutine, push],
+  );
 
   /**
    * Leaving the routine editor.
@@ -1484,6 +1560,10 @@ export function AppShell() {
           library={exercises}
           defaultRestSeconds={restSecondsBetweenSets}
           isNew={route.isNew}
+          initialRoll={route.random}
+          onInitialRoll={() =>
+            replaceTop({ name: 'routineEditor', routineId: route.routineId, isNew: route.isNew })
+          }
           /*
            * The rest row on a routine item edits the EXERCISE, so it writes to the
            * library here rather than into the routine draft — there is nothing about
@@ -1633,6 +1713,24 @@ export function AppShell() {
           mode="edit"
           settingsRestSeconds={restSecondsBetweenSets}
           onBack={pop}
+          /*
+           * The editor's Danger zone (#17). Off the stack with it go the screens
+           * about this exercise underneath — its history is what `Edit exercise`
+           * is usually opened from, and landing on "It is gone" would be the
+           * delete reporting itself as a fault.
+           */
+          routineUses={routineUsageCount(routines, exercise.id)}
+          onDelete={() => {
+            deleteExercise(exercise.id);
+            setStack((s) => {
+              let next = s.slice(0, -1);
+              for (let below = next.at(-1); below; below = next.at(-1)) {
+                if (!('exerciseId' in below) || below.exerciseId !== exercise.id) break;
+                next = next.slice(0, -1);
+              }
+              return next;
+            });
+          }}
           onSubmit={(draft) => {
             // In place, keeping the id: every set ever logged points at it, so the
             // history follows the rename instead of being orphaned by it.
@@ -1720,6 +1818,8 @@ export function AppShell() {
           onOpen={(routineId) => push({ name: 'routineEditor', routineId })}
           onStartWorkout={handleOpenWorkout}
           onCreate={handleAddRoutine}
+          onCreateRandom={handleAddRandomRoutine}
+          library={exercises}
           onOpenSequence={() => push({ name: 'sequence' })}
           onBack={pop}
           switcher={
@@ -1885,6 +1985,7 @@ export function AppShell() {
     if (top?.name === 'workoutHistory') {
       return (
         <WorkoutHistory
+          initialView={top.view}
           workouts={workouts}
           loadFailed={loadFailed}
           numbers={numbers}
@@ -1916,6 +2017,9 @@ export function AppShell() {
           onOpenBody={() => push({ name: 'body' })}
           onOpenMuscles={() => push({ name: 'muscles' })}
           onOpenInsights={() => push({ name: 'insights' })}
+          /* A calendar day's `Open ›` (redesign #12): the same door Home's recent
+             rows use, so the Log opens with that workout expanded. */
+          onOpenWorkout={setFocusWorkoutId}
         />
       );
     }
@@ -1989,7 +2093,7 @@ export function AppShell() {
         <LandingScreen
           nextWorkoutNumber={nextWorkoutNumber}
           nextWorkout={landingNext}
-          runningSince={inProgress?.startedAt ?? null}
+          running={inProgress}
           moneyAccountId={moneyWindow.accountId}
           onOpen={(section, from) => navigate(section, { from })}
           /* The quick-action row lands IN the section, under the screen it opens,
@@ -2031,6 +2135,11 @@ export function AppShell() {
           onOpenHistory={() => push({ name: 'workoutHistory' })}
           onOpenRoutines={() => push({ name: 'routines' })}
           onNewRoutine={handleAddRoutine}
+          onOpenGraphs={() => push({ name: 'workoutHistory', view: 'graphs' })}
+          onOpenMuscles={() => push({ name: 'muscles' })}
+          onOpenBody={() => push({ name: 'body' })}
+          onOpenExerciseHistory={(exerciseId) => push({ name: 'exerciseHistory', exerciseId })}
+          onStartEmpty={handleStartEmpty}
           aiReady={aiReady}
           onOpenAi={(prompt) => openAi('Workout', prompt)}
           justSaved={justSaved}
@@ -2188,6 +2297,7 @@ export function AppShell() {
  * survive switching between them, and none of them should know the others exist.
  */
 function WorkoutHistory({
+  initialView = 'log',
   workouts,
   loadFailed,
   numbers,
@@ -2211,7 +2321,10 @@ function WorkoutHistory({
   onOpenBody,
   onOpenMuscles,
   onOpenInsights,
+  onOpenWorkout,
 }: {
+  /** The view it opens on — Graphs, from the Progress card. */
+  initialView?: WorkoutHistoryView;
   workouts: CompletedWorkout[];
   loadFailed: boolean;
   numbers: Record<ID, number>;
@@ -2235,9 +2348,11 @@ function WorkoutHistory({
   onOpenBody: () => void;
   onOpenMuscles: () => void;
   onOpenInsights: () => void;
+  /** Open one workout in the Log — a calendar day's preview row. */
+  onOpenWorkout: (workoutId: ID) => void;
 }) {
   const t = useT();
-  const [view, setView] = useState<'log' | 'graphs' | 'calendar'>('log');
+  const [view, setView] = useState<WorkoutHistoryView>(initialView);
 
   /*
    * A workout tapped ANYWHERE ELSE in the app lands on this tab expecting the log
@@ -2276,7 +2391,14 @@ function WorkoutHistory({
   }
 
   if (view === 'calendar') {
-    return <CalendarScreen workouts={workouts} toolbar={toolbar} onBack={onBack} />;
+    return (
+      <CalendarScreen
+        workouts={workouts}
+        toolbar={toolbar}
+        onBack={onBack}
+        onOpenWorkout={onOpenWorkout}
+      />
+    );
   }
 
   return (
@@ -2309,16 +2431,19 @@ function WorkoutHistory({
 }
 
 /*
- * Three views of one log: the sessions, the lines, and the days. `Cal` rather than
- * `Calendar` because three labels have to fit a 360 dp segmented control, and the
- * screen it opens says the word in full.
+ * Three views of one log: the sessions, the lines, and the days. `Calendar` in
+ * full (redesign #12): `Cal` saved four letters and cost the word — it is the
+ * one name the Tasks and Finance calendars already use, and three labels at 15
+ * px still fit a 360 dp segmented control.
  */
 // English keys, translated where they are rendered: `Segmented` prints labels as
 // given, so these reached a Russian phone in English.
+type WorkoutHistoryView = 'log' | 'graphs' | 'calendar';
+
 const VIEWS = [
   { value: 'log' as const, label: 'Log' },
   { value: 'graphs' as const, label: 'Graphs' },
-  { value: 'calendar' as const, label: 'Cal' },
+  { value: 'calendar' as const, label: 'Calendar' },
 ];
 
 type LibraryProps = React.ComponentProps<typeof ExerciseLibraryScreen>;

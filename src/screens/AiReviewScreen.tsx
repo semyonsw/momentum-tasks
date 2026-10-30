@@ -440,7 +440,10 @@ function Stepper({
           label={t('Less {label}', { label })}
           onPress={() => onStep(-1)}
         />
+        {/* A TAP types the exact value too: the hold had no visible twin, and a
+            number between two steppers is where a thumb goes to type one. */}
         <BubblePressable
+          onPress={locked ? undefined : onType}
           onLongPress={locked ? undefined : onType}
           disabled={locked}
           accessibilityRole="adjustable"

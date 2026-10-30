@@ -36,12 +36,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  Pressable,
   Text,
   View,
   useWindowDimensions,
   type GestureResponderEvent,
 } from 'react-native';
+import { Pressable } from '../components/Pressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

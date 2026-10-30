@@ -300,7 +300,7 @@ const RU: Record<string, string> = {
   'Skipped on purpose. The streak keeps.': 'Пропущено осознанно. Серия сохранена.',
   'Hold for more: skip today, pause, move':
     'Удерживайте для действий: пропустить, пауза, переставить',
-  'Hide the assistant card': 'Скрыть карточку ассистента',
+  'Hide the AI coach card': 'Скрыть карточку ИИ-тренера',
   'The sparkle at the top stays the way in': 'Звёздочка вверху остаётся входом',
   'The day before': 'Предыдущий день',
   'The day after': 'Следующий день',
@@ -391,13 +391,13 @@ const RU: Record<string, string> = {
   'No income categories yet. Add one on the Incomes tab.':
     'Категорий доходов пока нет. Добавьте на вкладке «Доходы».',
   'Pick a category first': 'Сначала выберите категорию',
-  'Move money between subsections': 'Перевести деньги между разделами',
+  'Move money between accounts': 'Перевести деньги между счетами',
   Transfer: 'Перевод',
   transfer: 'перевод',
   From: 'Откуда',
   To: 'Куда',
   'Swap From and To': 'Поменять «Откуда» и «Куда»',
-  'Pick two different subsections': 'Выберите два разных раздела',
+  'Pick two different accounts': 'Выберите два разных счёта',
   'Counted as an expense from the first and an income into the second. Editing or deleting either half changes both.':
     'Считается расходом из первого и доходом во второй. Изменение или удаление одной половины меняет обе.',
   '{from} → {to} · {amount} moved': '{from} → {to} · переведено {amount}',
@@ -420,14 +420,13 @@ const RU: Record<string, string> = {
      `Cash` and `Online` themselves are NOT here: an account's name is user data
      the moment it can be renamed, exactly like a category's, and a catalogue
      entry for one would rename it back on every render. */
-  Subsection: 'Раздел',
-  'Add subsection': 'Добавить раздел',
-  'Edit subsection': 'Изменить раздел',
+  Account: 'Счёт',
+  'Edit account': 'Изменить счёт',
   'Its name and its glyph': 'Название и значок',
-  'Archive this subsection': 'Убрать этот раздел в архив',
+  'Archive this account': 'Убрать этот счёт в архив',
   'It leaves the row. Everything recorded in it stays recorded.':
     'Он исчезнет из строки. Всё, что в нём записано, останется записанным.',
-  'Long press to edit the subsection': 'Долгое нажатие — изменить раздел',
+  'Long press to edit the account': 'Долгое нажатие — изменить счёт',
   'Set what you have here.': 'Указать, сколько здесь денег.',
   'What you have': 'Сколько у вас есть',
   'This sets the balance directly. Nothing is recorded as an income, and no month, category or chart moves.':
@@ -582,8 +581,8 @@ const RU: Record<string, string> = {
   'Keep my history': 'Оставить историю',
   workout: 'тренировка',
   workouts: 'тренировок',
-  'Everything on this screen is about training. The daily tasks and the expenses have settings screens of their own, and the backup that carries all three is one row in the general section.':
-    'Всё на этом экране — про тренировки. У ежедневных задач и расходов есть свои экраны настроек, а резервная копия, которая хранит всё сразу, — одна строка в общем разделе.',
+  'Everything on this screen is about training. Daily tasks and Finance have settings screens of their own, and the backup that carries all three is one row in the general section.':
+    'Всё на этом экране — про тренировки. У ежедневных задач и финансов есть свои экраны настроек, а резервная копия, которая хранит всё сразу, — одна строка в общем разделе.',
 
   /* --- the workout, the library, the log and the sheets ------------ */
   'A day': 'День',
@@ -1125,10 +1124,10 @@ const RU: Record<string, string> = {
   'A label, not a conversion. Every amount is stored as a plain number, so changing this changes what is printed after each figure and nothing else — no rate, no rewriting of what you already recorded. Up to four characters; points and tokens are as valid here as a currency.':
     'Это подпись, а не пересчёт. Каждая сумма хранится обычным числом, поэтому меняется только то, что печатается после цифры, — ни курса, ни переписывания записанного. До четырёх символов; баллы и токены здесь так же уместны, как валюта.',
   'Opens on': 'Открывается на',
-  'The window and the direction the expenses section starts at. Both still change on that screen; this is only where it begins.':
-    'Период и направление, с которых открывается раздел расходов. И то и другое по-прежнему меняется на самом экране; здесь — только начало.',
-  'Which range the ⟲ in the corner of the expenses opens on.':
-    'На каком диапазоне открывается ⟲ в углу расходов.',
+  'The window and the direction the Finance section starts at. Both still change on that screen; this is only where it begins.':
+    'Период и направление, с которых открывается раздел «Финансы». И то и другое по-прежнему меняется на самом экране; здесь — только начало.',
+  'Which range the ⟲ in the corner of Finance opens on.':
+    'На каком диапазоне открывается ⟲ в углу «Финансов».',
   'There are no routines to put in a sequence yet. Make one in Routines, at the foot of the workout screen, first.':
     'Пока нет программ, которые можно поставить в последовательность. Сначала создайте программу в разделе «Программы», внизу экрана тренировки.',
   'Nothing recorded this month': 'В этом месяце ничего не записано',
@@ -1203,6 +1202,120 @@ const RU: Record<string, string> = {
     'Что умеет это приложение и где что найти?',
   'App guide': 'Гид по приложению',
   help: 'помощь',
+  // --- 2.9 redesign: shared ---
+  Archive: 'Архивировать',
+  Delete: 'Удалить',
+  'Danger zone': 'Опасная зона',
+  'Hide it. History stays.': 'Скрыть. История останется.',
+  'Gone, with all its history.': 'Удалить вместе со всей историей.',
+  // --- 2.9 redesign: A (set row, QuickAdjust, set-type sheet) ---
+  'setType:Normal': 'Обычный',
+  'Normal set': 'Обычный подход',
+  'As many as possible': 'Сколько сможете',
+  'Counts toward your volume': 'Идёт в объём',
+  'Light set, not counted': 'Лёгкий подход, не считается',
+  'Lower the weight, keep going': 'Снизьте вес и продолжайте',
+  'Until no clean rep is left': 'Пока не кончатся чистые повторы',
+  'Max reps at this weight': 'Максимум повторов с этим весом',
+  'W warm-up · D drop set · F to failure · A as many as possible':
+    'W разминка · D дроп-сет · F до отказа · A сколько сможете',
+  'Tap a set number to change it.': 'Нажмите на номер подхода, чтобы изменить его.',
+  'Got it': 'Понятно',
+  'Set {n} · Set type & reps left': 'Подход {n} · Тип и повторы в запасе',
+  'Reps left (RIR)': 'Повторов в запасе (RIR)',
+  'Log set': 'Записать подход',
+  'Mark set {n} as warm-up': 'Отметить подход {n} как разминку',
+  'Reorder this set': 'Переместить этот подход',
+  'Not said': 'Не указано',
+  // --- 2.9 redesign: B (session, exercise card, finish) ---
+  '{sets} · target {what}': '{sets} · цель {what}',
+  'Editing · tap ⋮⋮ to move a set': 'Редактирование · нажмите ⋮⋮, чтобы переставить подход',
+  'Now tap ⋮⋮ where it should go': 'Теперь нажмите ⋮⋮ там, куда его поставить',
+  Editing: 'Редактирование',
+  'Set {n} is lifted. Tap to put it back': 'Подход {n} поднят. Нажмите, чтобы вернуть',
+  'Move the lifted set here, to place {n}': 'Поставить поднятый подход сюда, на место {n}',
+  'Move set {n}': 'Переставить подход {n}',
+  'Move up': 'Выше',
+  'Move down': 'Ниже',
+  'Change the rest: {what}': 'Изменить отдых: {what}',
+  Options: 'Опции',
+  'Auto-start rest': 'Автостарт отдыха',
+  'Rest timer starts when you log a set': 'Таймер отдыха запускается, когда вы отмечаете подход',
+  'Back, workout keeps running': 'Назад, тренировка продолжается',
+  'Workout still running — resume it from Home':
+    'Тренировка продолжается — вернуться к ней можно с Главной',
+  Volume: 'Объём',
+  'Keep training': 'Продолжить тренировку',
+  'Changed from the plan': 'Отличается от плана',
+  'Save and make {sets} the plan for {exercise}': 'Сохранить: {sets} — новый план для «{exercise}»',
+  'Save and update {count} exercises in the plan':
+    'Сохранить и обновить упражнений в плане: {count}',
+  'Next {routine} starts with {shape}.': 'В следующий раз «{routine}» начнётся с {shape}.',
+  'Other exercises stay as planned.': 'Остальные упражнения остаются по плану.',
+  // --- 2.9 redesign: C (workout section, nav, top bars, weekly goal) ---
+  'AI coach': 'ИИ-тренер',
+  '{name} · running': '{name} · идёт',
+  '{time} · {exercise}, set {set} of {of}': '{time} · {exercise}, подход {set} из {of}',
+  '{time} · {exercise}, warm-up': '{time} · {exercise}, разминка',
+  Resume: 'Продолжить',
+  'Resume {name}': 'Продолжить «{name}»',
+  Progress: 'Прогресс',
+  'Open the graphs': 'Открыть графики',
+  'Last session': 'Последняя тренировка',
+  '{name}: open its history': '{name}: открыть историю',
+  '{done} of {goal} this week': '{done} из {goal} на этой неделе',
+  'Weekly workout goal: {line}. Opens the goal.':
+    'Цель тренировок на неделю: {line}. Открывает цель.',
+  'Shown on the Workout section': 'Показывается в разделе «Тренировка»',
+  '{n} a week': '{n} в неделю',
+  'Create a routine': 'Создать программу',
+  'Set up a training order': 'Настроить порядок тренировок',
+  'Start an empty workout': 'Начать пустую тренировку',
+  // --- 2.9 redesign: D (history, calendar, body) ---
+  'A dot means you trained that day. Tap it to open the workout.':
+    'Точка значит, что в этот день была тренировка. Нажмите на неё, чтобы открыть тренировку.',
+  'Shows the workout under the month': 'Показывает тренировку под месяцем',
+  '{date}, {minutes} min. Move to another day': '{date}, {minutes} мин. Перенести на другой день',
+  'Tap a set to correct it': 'Нажмите на подход, чтобы исправить его',
+  'Correct the sets of {name}': 'Исправить подходы — {name}',
+  'Edit the name, start and length of {title}':
+    'Изменить название, начало и длительность — {title}',
+  'Edit name, start and length': 'Изменить название, начало и длительность',
+  'Move to another day': 'Перенести на другой день',
+  'Move here': 'Перенести сюда',
+  'Log weight': 'Записать вес',
+  'Nothing logged yet': 'Пока ничего не записано',
+  'Opens the keypad': 'Открывает клавиатуру',
+  // --- 2.9 redesign: E (routines, library, exercise editor, sequence) ---
+  Empty: 'Пустая',
+  'Start blank and add exercises yourself': 'Начать с нуля и добавить упражнения самому',
+  'Random…': 'Случайная…',
+  'Pick muscles and length, Momentum fills it in': 'Выберите мышцы и длину — Momentum заполнит её',
+  Manage: 'Управление',
+  'Plates or machine': 'Блины или тренажёр',
+  'e.g. barbell squat, leg press, cable row': 'напр. присед со штангой, жим ногами, тяга блока',
+  'Bodyweight + extra': 'Свой вес + отягощение',
+  'e.g. pull-up with a belt, weighted dip': 'напр. подтягивания с поясом, брусья с весом',
+  'e.g. band or machine pull-up — less is harder':
+    'напр. подтягивания с резинкой или в гравитроне — меньше значит тяжелее',
+  'Shown on the exercise card while you do it': 'Видна на карточке упражнения, пока вы его делаете',
+  Advanced: 'Дополнительно',
+  'Make next': 'Сделать следующей',
+  'Make {name} the next step': 'Сделать «{name}» следующим шагом',
+  'Reorder {name}': 'Переставить «{name}»',
+  'Step {position}': 'Шаг {position}',
+  'Opens the routine': 'Открывает программу',
+  // --- 2.9 redesign: F (tasks, finance) ---
+  'Same menu as press-and-hold': 'То же меню, что и по долгому нажатию',
+  'An excused day — your streak stays': 'Пропуск по причине — серия сохранится',
+  'Skipped on purpose': 'Пропущено осознанно',
+  'Tap the circle to tick a task off. ⋯ or hold for more. “On purpose” means an excused day — it doesn’t break your streak.':
+    'Нажмите на кружок, чтобы отметить задачу. ⋯ или долгое нажатие — остальное. «Осознанно» — это пропуск по причине: серия не прерывается.',
+  'Tap a category to add an amount. › opens it.':
+    'Нажмите на категорию, чтобы добавить сумму. › открывает её.',
+  Accounts: 'Счета',
+  'Add account': 'Добавить счёт',
+  // --- 2.9 redesign: G (vocabulary) ---
   'Mark as warm-up': 'Отметить как разминку',
   'Warm-up set, tap to make it a working set': 'Разминочный подход, нажмите, чтобы сделать рабочим',
   'Removed a set': 'Подход удалён',
@@ -1229,7 +1342,7 @@ const RU: Record<string, string> = {
   'new machine': 'другой тренажёр',
   'Back to the top': 'Наверх',
   'Back to the dial': 'Назад к циферблату',
-  'Switch to this subsection': 'Перейти в этот раздел',
+  'Switch to this account': 'Перейти на этот счёт',
   '{category} · {amount} saved': '{category} · {amount} сохранено',
   'Back to {name}': 'Назад: {name}',
   'Loading your training log': 'Загрузка журнала тренировок',
@@ -1237,8 +1350,8 @@ const RU: Record<string, string> = {
   Open: 'Открыть',
   Last: 'Последняя',
   '{percent} percent': '{percent} процентов',
-  account: 'раздел',
-  accounts: 'разделов',
+  account: 'счёт',
+  accounts: 'счетов',
   'Train · tick · count': 'Тренируйся · отмечай · считай',
 
   /* ── The AI assistant ────────────────────────────────────────────────
@@ -1246,12 +1359,11 @@ const RU: Record<string, string> = {
      suggestions and their review screen. Gemini answers in the app's own
      language (`lib/ai/aiPrompts.ts`); these are the words around it. */
   AI: 'ИИ',
-  'AI assistant': 'ИИ-помощник',
-  'Open the AI assistant': 'Открыть ИИ-помощника',
+  'Open the AI coach': 'Открыть ИИ-тренера',
   'Ask about your training': 'Спросите о тренировках',
   'Ask about your habits': 'Спросите о привычках',
   'Ask about your money': 'Спросите о деньгах',
-  'Gemini · summaries, trends, suggestions': 'Gemini · сводки, динамика, советы',
+  'AI coach · summaries, trends, suggestions': 'ИИ-тренер · сводки, динамика, советы',
   'Connect a Google AI key to start': 'Подключите ключ Google AI, чтобы начать',
   'Not connected': 'Не подключено',
   'Google Gemini · ready': 'Google Gemini · готов',
@@ -1260,8 +1372,8 @@ const RU: Record<string, string> = {
     'Подключите ключ Google AI, чтобы пользоваться ИИ в тренировках.',
   'Connect a Google AI key to use AI in your daily tasks.':
     'Подключите ключ Google AI, чтобы пользоваться ИИ в ежедневных задачах.',
-  'Connect a Google AI key to use AI in your expenses.':
-    'Подключите ключ Google AI, чтобы пользоваться ИИ в расходах.',
+  'Connect a Google AI key to use AI in your finances.':
+    'Подключите ключ Google AI, чтобы пользоваться ИИ в финансах.',
   Connected: 'Подключено',
   'tested {time}': 'проверено в {time}',
   '{s} s': '{s} с',
@@ -1295,13 +1407,13 @@ const RU: Record<string, string> = {
   'Reaching Google': 'Связываюсь с Google',
   'Checking your key': 'Проверяю ключ',
   'Asking {model} to say hello': 'Прошу {model} поздороваться',
-  'Gemini answered in {s} s': 'Gemini ответил за {s} с',
+  'The AI coach answered in {s} s': 'ИИ-тренер ответил за {s} с',
   'Your AI is ready.': 'ИИ готов.',
-  'Workout, Tasks and Expenses each have their own chat now. Look for the sparkle in the corner.':
-    'У тренировок, задач и расходов теперь свой чат. Ищите звёздочку в углу.',
+  'Workout, Tasks and Finance each have their own chat now. Look for the sparkle in the corner.':
+    'У тренировок, задач и финансов теперь свой чат. Ищите звёздочку в углу.',
   'Try it on your workouts': 'Попробовать на тренировках',
-  'Open Tasks AI': 'Открыть ИИ задач',
-  'Open Expenses AI': 'Открыть ИИ расходов',
+  'Open the Tasks AI coach': 'Открыть ИИ-тренера задач',
+  'Open the Finance AI coach': 'Открыть ИИ-тренера финансов',
   'Paste a Google AI key first.': 'Сначала вставьте ключ Google AI.',
   'Google keys start with "AIza". Check that the whole key was copied.':
     'Ключи Google начинаются с «AIza». Проверьте, что ключ скопирован целиком.',
@@ -1315,22 +1427,20 @@ const RU: Record<string, string> = {
   'Google took too long to answer. Try again.': 'Google слишком долго отвечал. Попробуйте ещё раз.',
   'Could not reach Google. Check your connection.':
     'Не удалось связаться с Google. Проверьте подключение.',
-  'Gemini declined to answer that.': 'Gemini отказался отвечать на это.',
+  'The AI coach declined to answer that.': 'ИИ-тренер отказался отвечать на это.',
   'The answer came back in a shape I could not read. Try asking again.':
     'Ответ пришёл в виде, который не получилось прочитать. Спросите ещё раз.',
   'The key works, but this phone could not store it.':
     'Ключ рабочий, но телефон не смог его сохранить.',
   'Connect a Google AI key in Settings first.': 'Сначала подключите ключ Google AI в настройках.',
-  'AI · Workout': 'ИИ · Тренировки',
-  'AI · Daily tasks': 'ИИ · Ежедневные задачи',
-  'AI · Expenses': 'ИИ · Расходы',
-  'Gemini · reads your training log on this phone':
-    'Gemini · читает журнал тренировок на этом телефоне',
-  'Gemini · reads your task answers on this phone':
-    'Gemini · читает ответы по задачам на этом телефоне',
-  'Gemini · reads your amounts on this phone': 'Gemini · читает суммы на этом телефоне',
+  'AI coach · Workout': 'ИИ-тренер · Тренировки',
+  'AI coach · Tasks': 'ИИ-тренер · Задачи',
+  'AI coach · Finance': 'ИИ-тренер · Финансы',
+  'Reads your training log on this phone': 'Читает журнал тренировок на этом телефоне',
+  'Reads your task answers on this phone': 'Читает ответы по задачам на этом телефоне',
+  'Reads your amounts on this phone': 'Читает суммы на этом телефоне',
   'Answers come from your own log on this phone. It can also log your weight, fix a set that was really a warm-up, or show where anything is in the app. Nothing changes until you tap Apply. To talk instead of type, tap the mic on your keyboard.':
-    'Ответы — из вашего журнала на этом телефоне. Ассистент также может записать ваш вес, исправить подход, который на самом деле был разминкой, или подсказать, где что находится в приложении. Ничего не меняется, пока вы не нажмёте «Применить». Чтобы говорить, а не печатать, нажмите микрофон на клавиатуре.',
+    'Ответы — из вашего журнала на этом телефоне. ИИ-тренер также может записать ваш вес, исправить подход, который на самом деле был разминкой, или подсказать, где что находится в приложении. Ничего не меняется, пока вы не нажмёте «Применить». Чтобы говорить, а не печатать, нажмите микрофон на клавиатуре.',
   'Reads your daily tasks and how each day was answered, including the days you excused on purpose. Tell it what you did and it will tick the day for you once you tap Apply. The mic on your keyboard works here too.':
     'Читает ваши ежедневные задачи и ответы по дням, включая дни, пропущенные по причине. Скажите, что вы сделали, — и после «Применить» день будет отмечен. Микрофон на клавиатуре тоже работает.',
   'Reads your amounts by day and month, with categories. Whole-month amounts like rent are counted per month, never per day. Say what you spent or earned and it will log it once you tap Apply. The mic on your keyboard works here too.':
@@ -1433,7 +1543,7 @@ const RU: Record<string, string> = {
   Yes: 'Да',
   Maybe: 'Возможно',
   No: 'Нет',
-  'Anything else the coach should know?': 'Что ещё стоит знать тренеру?',
+  'Anything else the AI coach should know?': 'Что ещё стоит знать ИИ-тренеру?',
   'After the workout': 'После тренировки',
   '{n} of {total}': '{n} из {total}',
   'Pick all that apply': 'Можно выбрать несколько',
@@ -1444,9 +1554,9 @@ const RU: Record<string, string> = {
   Next: 'Далее',
   'Not this time': 'Не сейчас',
   'Thanks — noted': 'Спасибо, записано',
-  'The assistant reads these answers whenever you ask about your training or a routine.':
+  'The AI coach reads these answers whenever you ask about your training or a routine.':
     'Ассистент учитывает эти ответы, когда вы спрашиваете о тренировках или программе.',
-  'Ask the assistant about it': 'Спросить ассистента',
+  'Ask the AI coach about it': 'Спросить ИИ-тренера',
   'How did my {routine} workout go, and should I change anything?':
     'Как прошла тренировка «{routine}» и стоит ли что-то изменить?',
   'How did my last workout go, and should I change anything?':
@@ -1463,14 +1573,14 @@ const RU: Record<string, string> = {
   'How did the workout go?': 'Как прошла тренировка?',
   '{answered} of {total} answered · pick up where you left off':
     'Отвечено {answered} из {total} · продолжить',
-  '{total} quick questions for the assistant': 'Вопросов для ассистента: {total}',
+  '{total} quick questions for the AI coach': 'Вопросов для ИИ-тренера: {total}',
   'Questions after a workout': 'Вопросы после тренировки',
-  'A few taps on how it went, so the assistant knows more than the numbers':
-    'Пара касаний о том, как всё прошло, — чтобы ассистент знал больше, чем цифры',
+  'A few taps on how it went, so the AI coach knows more than the numbers':
+    'Пара касаний о том, как всё прошло, — чтобы ИИ-тренер знал больше, чем цифры',
 
   'Google is busy — asking again…': 'Google занят — спрашиваю ещё раз…',
-  'Gemini is overloaded right now. Try again in a minute.':
-    'Gemini сейчас перегружен. Попробуйте через минуту.',
+  'The AI coach is overloaded right now. Try again in a minute.':
+    'ИИ-тренер сейчас перегружен. Попробуйте через минуту.',
 
   'Past chats': 'Прошлые чаты',
   'Your AI chats and past chats travel with it too; the AI key never does.':
@@ -1592,8 +1702,8 @@ const RU: Record<string, string> = {
   'Routines & exercises': 'Программы и упражнения',
   'Routines or exercises': 'Программы или упражнения',
   'Options for {name}': 'Действия для «{name}»',
-  'Long press or tap the dots to edit the subsection':
-    'Удерживайте или нажмите на точки, чтобы изменить раздел',
+  'Long press or tap the dots to edit the account':
+    'Удерживайте или нажмите на точки, чтобы изменить счёт',
   'Random routine options': 'Настройки случайной программы',
   'Editing the library': 'Правка базы',
   'Can’t be undone': 'Нельзя отменить',
@@ -1842,8 +1952,8 @@ const RU: Record<string, string> = {
   'Tell me at 80% and 100%': 'Сообщить при 80% и 100%',
   'One notification each, once a month. Off unless you turn it on.':
     'По одному уведомлению, раз в месяц. Выключено, пока вы не включите.',
-  'Budgets count every subsection, so food bought by card is still food. Each month starts at its own figure: what is left over does not carry into the next.':
-    'Бюджет считает все подразделы: еда, купленная картой, — всё равно еда. Каждый месяц начинается со своей суммы: остаток на следующий не переносится.',
+  'Budgets count every account, so food bought by card is still food. Each month starts at its own figure: what is left over does not carry into the next.':
+    'Бюджет считает все счета: еда, купленная картой, — всё равно еда. Каждый месяц начинается со своей суммы: остаток на следующий не переносится.',
   '{n} over': 'превышено: {n}',
   '{n} set': 'задано: {n}',
   'A monthly figure per category': 'Сумма на месяц для категории',
@@ -1897,7 +2007,7 @@ const RU: Record<string, string> = {
   // M5 · savings goals (design copy goals.per)
   'Savings goals': 'Накопления',
   'Savings goal': 'Цель накоплений',
-  'A target for a subsection': 'Цель для подраздела',
+  'A target for an account': 'Цель для счёта',
   Reached: 'Достигнуто',
   'by {date}': 'к {date}',
   '{saved} of {target}': '{saved} из {target}',
@@ -1913,13 +2023,13 @@ const RU: Record<string, string> = {
   By: 'К',
   'Delete this goal': 'Удалить эту цель',
   'The money stays where it is.': 'Деньги останутся на месте.',
-  'A goal reads one subsection’s balance. Move money into it with a transfer on Finance, and the goal fills.':
-    'Цель смотрит на баланс одного подраздела. Переведите туда деньги в Финансах — и цель заполнится.',
+  'A goal reads one account’s balance. Move money into it with a transfer on Finance, and the goal fills.':
+    'Цель смотрит на баланс одного счёта. Переведите туда деньги в Финансах — и цель заполнится.',
   'Opens the goal': 'Открывает цель',
   'Shares {name} with another goal.': '«{name}» общий с другой целью.',
   'Add a goal': 'Добавить цель',
-  'Only the goal goes. The money stays in its subsection.':
-    'Удалится только цель. Деньги останутся в своём подразделе.',
+  'Only the goal goes. The money stays in its account.':
+    'Удалится только цель. Деньги останутся на своём счёте.',
   // W9 · body measurements (design 16)
   'unit:cm': 'см',
   'unit:in': 'дюйм',
@@ -2131,8 +2241,7 @@ const RU: Record<string, string> = {
   'Twelve whole months inside every budget you have set.':
     'Двенадцать целых месяцев в рамках всех заданных бюджетов.',
   'Goal reached': 'Цель достигнута',
-  'A savings goal’s subsection reaches its target.':
-    'Подраздел цели накопления достигает целевой суммы.',
+  'A savings goal’s account reaches its target.': 'Счёт цели накопления достигает целевой суммы.',
   // E2 · XP and levels (design 20)
   'Log a working set': 'Рабочий подход',
   'Finish a workout': 'Завершённая тренировка',
@@ -2178,9 +2287,9 @@ const RU: Record<string, string> = {
   // X4 · AI weekly summary
   'Summarize my last week in a few sentences.':
     'Подведи итоги моей прошлой недели в нескольких предложениях.',
-  'Ask the coach for a summary': 'Попросить ИИ-тренера подвести итоги',
-  'Asking the coach…': 'Спрашиваю ИИ-тренера…',
-  'Coach · from these figures only': 'ИИ-тренер · только по этим цифрам',
+  'Ask the AI coach for a summary': 'Попросить ИИ-тренера подвести итоги',
+  'Asking the AI coach…': 'Спрашиваю ИИ-тренера…',
+  'AI coach · from these figures only': 'ИИ-тренер · только по этим цифрам',
   // 2.7.0 · incomes on the money calendar, the categories view of the history
   '{total} received': 'Получено {total}',
   '{day} · nothing received': '{day} · ничего не получено',

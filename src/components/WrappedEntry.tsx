@@ -17,7 +17,8 @@
  * rather than added to the symbol set for one use.
  */
 
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Pressable } from './Pressable';
 import Svg, { Path } from 'react-native-svg';
 
 import { useWrapped } from '../hooks/useWrapped';

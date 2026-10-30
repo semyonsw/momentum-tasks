@@ -80,7 +80,8 @@
  */
 
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
+import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -1042,7 +1043,7 @@ function AiSettingsRow({ onPress }: { onPress: () => void }) {
       <BubblePressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${t('AI assistant')}. ${line}`}
+        accessibilityLabel={`${t('AI coach')}. ${line}`}
         style={(state) => [
           pressedStyle(state),
           {
@@ -1062,7 +1063,7 @@ function AiSettingsRow({ onPress }: { onPress: () => void }) {
             style={{ fontSize: 17, lineHeight: 22 }}
             className="font-medium text-ink"
           >
-            {t('AI assistant')}
+            {t('AI coach')}
           </Text>
           <View className="mt-[2px] flex-row items-center">
             {ready ? (
