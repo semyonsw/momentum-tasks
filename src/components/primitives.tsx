@@ -720,7 +720,7 @@ export function Segmented<T extends string>({
   const cellWidth = width > 0 ? (width - 8) / options.length - 8 : 0;
   return (
     <View
-      accessibilityRole="radiogroup"
+      accessibilityRole="tablist"
       accessibilityLabel={accessibilityLabel}
       onLayout={(event) => setWidth(event.nativeEvent.layout.width - 2)}
       style={{
@@ -752,7 +752,7 @@ export function Segmented<T extends string>({
             key={option.value}
             onPress={() => onChange(option.value)}
             radius={14}
-            accessibilityRole="radio"
+            accessibilityRole="tab"
             accessibilityState={{ selected }}
             accessibilityLabel={option.label}
             style={pressedStyle}
@@ -1119,5 +1119,341 @@ export function DangerFootAction({
         </Text>
       ) : null}
     </BubblePressable>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Findability (the 2.9 redesign)                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE WELL — the one look of "a value you can tap to change" (redesign §1). A
+ * number drawn plain is a fact; a number in a well is a control, and the
+ * difference used to be invisible: the set number, the weight and the reps were
+ * all bare text, and two of the three did something.
+ *
+ * 40 dp, a sunken fill, a 1 dp hairline, radius 11. `lit` is the open editor's
+ * well (the accent outline); `emphasis` is the up-next row's, one step brighter.
+ * The hit area reaches 44 dp through `hitSlop`, so the row stays 56.
+ */
+export function ValueWell({
+  children,
+  onPress,
+  lit = false,
+  emphasis = false,
+  width,
+  accessibilityLabel,
+  accessibilityHint,
+  style,
+}: {
+  children: ReactNode;
+  onPress?: () => void;
+  lit?: boolean;
+  emphasis?: boolean;
+  /** A fixed width (the set well's 44); absent, the well takes `flex: 1`. */
+  width?: number;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  style?: object;
+}) {
+  const box = {
+    height: 40,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: lit ? tint(0.45) : emphasis ? tint(0.22) : palette.hairline,
+    backgroundColor: emphasis ? glass.raised : glass.sunken,
+    paddingHorizontal: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    ...(width != null ? { width } : { flex: 1, minWidth: 0 }),
+    ...style,
+  };
+  if (!onPress) return <View style={box}>{children}</View>;
+  return (
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      style={(state) => [pressedStyle(state), box]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+/**
+ * A 46 dp icon circle WITH ITS NAME under it (redesign §1, #9): every icon that
+ * goes somewhere says where. The caption is micro and muted; the spoken label is
+ * the caption unless the caller says more.
+ */
+export function CaptionedIconButton({
+  icon,
+  caption,
+  onPress,
+  accessibilityLabel,
+  lit = false,
+}: {
+  /** The glyph, already sized and coloured — an `Icon`, an orb, a symbol. */
+  icon: ReactNode;
+  caption: string;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  lit?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? caption}
+      style={(state) => [pressedStyle(state), { alignItems: 'center', minWidth: 52 }]}
+    >
+      <View
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 23,
+          borderWidth: 1,
+          borderColor: lit ? tint(0.45) : glass.raisedEdge,
+          backgroundColor: lit ? tint(0.14) : glass.raised,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {icon}
+      </View>
+      <Text
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={1}
+        className="mt-[3px] text-micro font-semibold text-ink-muted"
+        style={{ letterSpacing: 0 }}
+      >
+        {caption}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * `⋯` — 44 dp, the visible twin of a long-press menu (redesign §1, #19). Every
+ * hold in the app opens the same thing this opens, so a user who never holds
+ * anything loses nothing.
+ */
+export function MoreButton({
+  onPress,
+  accessibilityLabel,
+}: {
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={(state) => [
+        pressedStyle(state),
+        { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+      ]}
+    >
+      <Icon name="more-horizontal" size={20} color={palette.inkMuted} />
+    </Pressable>
+  );
+}
+
+/**
+ * A full-width button in the danger style — `Remove exercise` at the foot of an
+ * exercise in edit mode (redesign #3). The hue lives HERE so screens never import
+ * it (`lib/destructive.ts` holds the rest of the app to that).
+ */
+export function DangerButton({
+  label,
+  onPress,
+  accessibilityHint,
+}: {
+  label: string;
+  onPress: () => void;
+  accessibilityHint?: string;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      style={(state) => [
+        pressedStyle(state),
+        {
+          minHeight: 48,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: dangerTint.outline,
+          backgroundColor: dangerTint.wash,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 16,
+        },
+      ]}
+    >
+      <Text maxFontSizeMultiplier={1.3} style={{ color: danger, fontSize: 15, fontWeight: '600' }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * The `−` that removes ONE set row in edit mode: a 44 dp danger-soft circle
+ * (redesign #3). Here for the same reason `DangerButton` is.
+ */
+export function RemoveRowButton({
+  onPress,
+  accessibilityLabel,
+}: {
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={(state) => [
+        pressedStyle(state),
+        {
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          borderWidth: 1,
+          borderColor: dangerTint.outline,
+          backgroundColor: dangerTint.wash,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+      ]}
+    >
+      <Icon name="minus" size={18} color={danger} />
+    </Pressable>
+  );
+}
+
+/**
+ * DANGER ZONE — the same block, in the same place, on every item's own screen
+ * (redesign §6): the exercise editor, the task detail, an account. Last on the
+ * page, under its label, in a group with a danger-tinted hairline.
+ *
+ *   Archive  Hide it. History stays.
+ *   Delete   Gone, with all its history.     ← red
+ *
+ * Either row may be absent (a thing that cannot be archived simply has no
+ * Archive). Both still open the screen's own `ConfirmSheet tone="danger"` — the
+ * block is the way IN to the last-chance question, not a replacement for it.
+ */
+export function DangerZone({
+  onArchive,
+  onDelete,
+  archiveLabel,
+  deleteLabel,
+  archiveHint,
+  deleteHint,
+}: {
+  onArchive?: () => void;
+  onDelete?: () => void;
+  /** Defaults to "Archive" / "Delete". */
+  archiveLabel?: string;
+  deleteLabel?: string;
+  /**
+   * The line under each, when the default is not TRUE for this thing: deleting an
+   * exercise keeps the sets already logged, and the hint must not say otherwise.
+   */
+  archiveHint?: string;
+  deleteHint?: string;
+}) {
+  const t = useT();
+  const rows: { key: string; label: string; hint: string; red: boolean; onPress: () => void }[] =
+    [];
+  if (onArchive) {
+    rows.push({
+      key: 'archive',
+      label: archiveLabel ?? t('Archive'),
+      hint: archiveHint ?? t('Hide it. History stays.'),
+      red: false,
+      onPress: onArchive,
+    });
+  }
+  if (onDelete) {
+    rows.push({
+      key: 'delete',
+      label: deleteLabel ?? t('Delete'),
+      hint: deleteHint ?? t('Gone, with all its history.'),
+      red: true,
+      onPress: onDelete,
+    });
+  }
+  if (rows.length === 0) return null;
+  return (
+    <View>
+      <Kicker tone="faint">{t('Danger zone')}</Kicker>
+      <View
+        style={{
+          marginTop: 8,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: dangerTint.edge,
+          overflow: 'hidden',
+        }}
+      >
+        {rows.map((row, i) => (
+          <Pressable
+            key={row.key}
+            onPress={() => {
+              tap();
+              row.onPress();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={row.label}
+            accessibilityHint={row.hint}
+            style={(state) => [
+              pressedStyle(state),
+              {
+                minHeight: 56,
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                justifyContent: 'center',
+                borderTopWidth: i > 0 ? 1 : 0,
+                borderTopColor: dangerTint.edge,
+              },
+            ]}
+          >
+            <Text
+              maxFontSizeMultiplier={1.3}
+              style={{ fontSize: 15, fontWeight: '600', color: row.red ? danger : palette.ink }}
+            >
+              {row.label}
+            </Text>
+            <Text maxFontSizeMultiplier={1.3} className="mt-[2px] text-micro text-ink-faint">
+              {row.hint}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
   );
 }

@@ -240,6 +240,14 @@ export interface Settings {
    * and somebody who wants the row to mean "I said so" can have that.
    */
   autoTickTasks: boolean;
+  /**
+   * One-time tips, each shown until it is answered once (redesign #1, #7): the
+   * set-type legend above the first set rows, and "the workout keeps running"
+   * after the first Back out of a session. A tip that comes back every time is a
+   * banner, and banners stop being read.
+   */
+  seenSetTypeTip: boolean;
+  seenLeaveRunningTip: boolean;
   /** Which range the task history opens on. A default, not a lock. */
   tasksTrendRange: TrendRange;
 
@@ -406,6 +414,8 @@ export const DEFAULT_SETTINGS: Settings = {
   workoutReminderDays: [0, 2, 4],
   workoutReminderTime: '18:00',
   autoTickTasks: true,
+  seenSetTypeTip: false,
+  seenLeaveRunningTip: false,
   tasksTrendRange: 'month',
   currencyCode: 'AMD',
   /*
@@ -551,6 +561,8 @@ export function sanitizeSettings(input: Partial<Settings> | undefined | null): S
     workoutReminderDays: sanitizeWeekdays(raw.workoutReminderDays),
     workoutReminderTime: usableClockTime(raw.workoutReminderTime),
     autoTickTasks: raw.autoTickTasks !== false,
+    seenSetTypeTip: raw.seenSetTypeTip === true,
+    seenLeaveRunningTip: raw.seenLeaveRunningTip === true,
     tasksTrendRange: usableRange(raw.tasksTrendRange),
     currencyCode: usableCurrency(raw.currencyCode),
     moneyDefaultInterval: INTERVALS.includes(raw.moneyDefaultInterval as Interval)
@@ -699,7 +711,9 @@ interface SettingsState extends Settings {
       | 'notifyOnTimerEnd'
       | 'askAfterWorkout'
       | 'ladderAllExercises'
-      | 'autoTickTasks',
+      | 'autoTickTasks'
+      | 'seenSetTypeTip'
+      | 'seenLeaveRunningTip',
     value: boolean,
   ) => void;
   setUnitSystem: (unitSystem: UnitSystem) => void;

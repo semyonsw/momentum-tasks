@@ -108,7 +108,20 @@ export type IconName =
    * notch at each end of the upright, so it reads as frost and not as an
    * asterisk at 13 px beside the flame.
    */
-  | 'snowflake';
+  | 'snowflake'
+  /**
+   * FOCUS — a viewfinder: four corner brackets and a small centre circle (the
+   * redesign's #5). It used to be `center_focus_strong` on the dock and ▶ on the
+   * card chip; ▶ now means start/play and nothing else.
+   */
+  | 'focus'
+  /** A stopwatch, for the rest chip — a clock that is counting, not a log. */
+  | 'timer'
+  | 'calendar'
+  /** ⋮⋮ — the reorder grip, the visible twin of a drag-to-reorder hold. */
+  | 'grip'
+  /** A wallet: the Finance top bar's "Accounts". */
+  | 'accounts';
 
 interface IconProps {
   name: IconName;
@@ -143,6 +156,11 @@ const STROKE: Record<IconName, number> = {
   'more-horizontal': 2,
   ban: 2.5,
   snowflake: 2,
+  focus: 2,
+  timer: 2,
+  calendar: 2,
+  grip: 2,
+  accounts: 2,
 };
 
 /**
@@ -170,9 +188,36 @@ const DOTS: Partial<Record<IconName, readonly [number, number][]>> = {
     [12, 12],
     [18.5, 12],
   ],
+  grip: [
+    [9, 6],
+    [15, 6],
+    [9, 12],
+    [15, 12],
+    [9, 18],
+    [15, 18],
+  ],
 };
 
 const PATHS: Record<IconName, string[]> = {
+  focus: [
+    'M4 8.5V5.5A1.5 1.5 0 015.5 4h3',
+    'M15.5 4h3A1.5 1.5 0 0120 5.5v3',
+    'M20 15.5v3a1.5 1.5 0 01-1.5 1.5h-3',
+    'M8.5 20h-3A1.5 1.5 0 014 18.5v-3',
+    'M12 9.6a2.4 2.4 0 110 4.8 2.4 2.4 0 010-4.8z',
+  ],
+  timer: ['M12 21a8 8 0 100-16 8 8 0 000 16z', 'M12 9v4l2.5 1.5', 'M10 2.5h4', 'M12 2.5V5'],
+  calendar: [
+    'M5.5 5h13A1.5 1.5 0 0120 6.5v12a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 18.5v-12A1.5 1.5 0 015.5 5z',
+    'M4 10h16',
+    'M8.5 3v4M15.5 3v4',
+  ],
+  grip: [],
+  accounts: [
+    'M4 7.5A2 2 0 016 5.5h11.5v3',
+    'M4 7.5v10a2 2 0 002 2h14v-11H6a2 2 0 01-2-2z',
+    'M16.5 14h.01',
+  ],
   check: ['M20 6L9 17l-5-5'],
   plus: ['M12 5v14M5 12h14'],
   minus: ['M5 12h14'],
