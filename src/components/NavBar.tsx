@@ -14,6 +14,24 @@
  * are the same four as the Home tiles, which is what makes them learnable: you
  * have already tapped the big version of each one.
  *
+ * ── EVERY ITEM IS NAMED (2.9, redesign #10) ───────────────────────────────
+ *
+ *            ╭──────╮
+ *   ╭────────│  ⌂   │────────────╮
+ *   │  🏋     ✓ ╰──────╯  ▣     ⚙  │
+ *   │ Workout Tasks Home Finance Settings │
+ *   ╰─────────────────────────────╯
+ *
+ * Each glyph has its section's name under it, 12.5 px, and the active one is
+ * `acc` — the word and the glyph together, so the lit item is said twice and
+ * the others are still legible. "Learnable from the Home tiles" held for a user
+ * who had been to Home; a user who has not yet is guessing between a wallet and
+ * a box. The label replaced the small dot that used to mark the active item: the
+ * blob and the lit word already say which one, and a third mark is noise. The
+ * raised Home circle lifted 4 dp so its own `Home` fits under it on the same line
+ * as the others. Rejected: labels only on the active item (the inactive four are
+ * the ones a newcomer needs named).
+ *
  * ── THE BLOB IS LIQUID ────────────────────────────────────────────────────
  *
  * The lit pane under the active icon does not slide as a rectangle. Its LEADING
@@ -31,7 +49,7 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 import Animated, {
   Easing,
   runOnJS,
@@ -59,7 +77,7 @@ const GLYPH: Record<SectionTab, SymbolName> = {
   Settings: 'settings',
 };
 
-/** What a screen reader says — the section's own name, Expenses as Finance. */
+/** The section's own name — printed under the glyph and spoken. Expenses as Finance. */
 const LABEL: Record<SectionTab, string> = {
   Workout: 'Workout',
   Tasks: 'Tasks',
@@ -73,6 +91,9 @@ const DROP = Easing.bezier(0.5, 0, 0.75, 0);
 
 const NAV_HEIGHT = 70;
 const NAV_BOTTOM = 14;
+/** Each item's label line sits this far above the bar's bottom edge. */
+const LABEL_BOTTOM = 8;
+const LABEL_LINE = 16;
 
 interface NavBarProps {
   active: SectionTab;
@@ -215,6 +236,7 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarP
           ))
         : null}
 
+      <HomeLabel label={t('Home')} />
       <HomeButton label={t('Home')} onPress={onHome} />
     </Animated.View>
   );
@@ -250,7 +272,6 @@ const NavItem = memo(function NavItem({
   const iconStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -on.value }, { scale: 1 + 0.1 * on.value }],
   }));
-  const dotStyle = useAnimatedStyle(() => ({ width: 4 + 14 * Math.min(1, Math.max(0, on.value)) }));
 
   return (
     <BubblePressable
@@ -267,31 +288,50 @@ const NavItem = memo(function NavItem({
         height: NAV_HEIGHT,
         borderRadius: 22,
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'flex-end',
+        paddingBottom: LABEL_BOTTOM,
       }}
     >
       <Animated.View style={iconStyle}>
         <MaterialSymbol
           name={glyph}
-          size={27}
+          size={25}
           color={active ? palette.acc : palette.inkMuted}
           filled={active}
         />
       </Animated.View>
-      <Animated.View
-        style={[
-          {
-            marginTop: 5,
-            height: 4,
-            borderRadius: 999,
-            backgroundColor: active ? palette.acc : palette.hairline,
-          },
-          dotStyle,
-        ]}
-      />
+      <NavLabel label={label} active={active} />
     </BubblePressable>
   );
 });
+
+/**
+ * The name under a glyph. Wider than the 64 dp item (the Russian `Тренировка`
+ * is ~70 dp at 12.5) and centred on it: the slots are 66 apart and their
+ * neighbours' words are short, so a long one may spill into the gap without
+ * touching the next. Not clipped, not shrunk — 12.5 is the floor.
+ */
+function NavLabel({ label, active }: { label: string; active: boolean }) {
+  return (
+    <Text
+      numberOfLines={1}
+      maxFontSizeMultiplier={1.15}
+      importantForAccessibility="no"
+      accessibilityElementsHidden
+      style={{
+        marginTop: 3,
+        width: 84,
+        textAlign: 'center',
+        fontSize: 12.5,
+        lineHeight: LABEL_LINE,
+        fontWeight: '600',
+        color: active ? palette.acc : palette.inkMuted,
+      }}
+    >
+      {label}
+    </Text>
+  );
+}
 
 /**
  * The raised 66 dp gradient circle. A 6 dp ring of the bar's own near-black
@@ -305,7 +345,7 @@ function HomeButton({ label, onPress }: { label: string; onPress: () => void }) 
     <View
       style={{
         position: 'absolute',
-        top: -24,
+        top: -28,
         left: '50%',
         marginLeft: -33,
         width: 66,
@@ -351,6 +391,29 @@ function HomeButton({ label, onPress }: { label: string; onPress: () => void }) 
         </Animated.View>
         <MaterialSymbol name="home" size={32} color={palette.onAcc} filled />
       </BubblePressable>
+    </View>
+  );
+}
+
+/**
+ * `Home`, under the raised circle, on the same line as the four section names.
+ * Never lit: the bar is hidden on Home, so whenever it is on screen Home is the
+ * one place you are NOT. Not a target of its own — the circle above is.
+ */
+function HomeLabel({ label }: { label: string }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        bottom: LABEL_BOTTOM,
+        left: '50%',
+        marginLeft: -42,
+        width: 84,
+        alignItems: 'center',
+      }}
+    >
+      <NavLabel label={label} active={false} />
     </View>
   );
 }

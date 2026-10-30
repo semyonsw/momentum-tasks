@@ -43,8 +43,12 @@
  * plan nobody needs a ring for. Stored only when the user set it
  * (`settings.weeklyWorkoutGoal`), so a phone that never touched it reads 3.
  *
- * Opt-in like all of Wave 3: nothing here shows unless the engagement switch is
- * on (`weeklyGoalVisible`).
+ * ALWAYS SHOWN since 2.9 (redesign #13). It was opt-in with the rest of Wave 3,
+ * behind the engagement switch, and that put a plain training target behind a
+ * switch called "Achievements and levels" — a goal for the week is not a game
+ * mechanic, and nobody looking for one would think to turn on levels to find it.
+ * The card is on the Workout section and its number is a row in Workout
+ * settings, whatever that switch says.
  */
 
 import type { CompletedWorkout } from './completedWorkout';
@@ -55,15 +59,6 @@ export const WEEKLY_GOAL_LIMITS = { min: 1, max: 7, default: 3 } as const;
 
 /** Enough for five years of excused weeks; a corrupt blob cannot grow past it. */
 const EXCUSED_CAP = 260;
-
-/**
- * Whether the ring is on screen at all. Only when the engagement switch is on —
- * the single input, so a later rule (say, "not before the first workout") has
- * one place to go.
- */
-export function weeklyGoalVisible(engagementOn: boolean): boolean {
-  return engagementOn === true;
-}
 
 /**
  * The stored goal, or undefined. A whole number clamped into 1–7; anything that

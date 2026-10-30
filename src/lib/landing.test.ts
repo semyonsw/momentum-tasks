@@ -123,33 +123,18 @@ describe('nextUnansweredTask', () => {
 
 describe('quickActions', () => {
   it('has no + Expense without a live account to write it into', () => {
-    expect(quickActions({ hasAccount: false, hasNextTask: true, sessionLive: false })).toEqual([
-      'task',
-    ]);
+    expect(quickActions({ hasAccount: false, hasNextTask: true })).toEqual(['task']);
   });
 
   it('always offers + Expense, first', () => {
-    expect(quickActions({ hasAccount: true, hasNextTask: false, sessionLive: false })).toEqual([
-      'expense',
-    ]);
+    expect(quickActions({ hasAccount: true, hasNextTask: false })).toEqual(['expense']);
   });
 
   it('shows the task only while one is waiting', () => {
-    expect(quickActions({ hasAccount: true, hasNextTask: true, sessionLive: false })).toEqual([
-      'expense',
-      'task',
-    ]);
+    expect(quickActions({ hasAccount: true, hasNextTask: true })).toEqual(['expense', 'task']);
   });
 
-  it('shows Resume only with a live session', () => {
-    expect(quickActions({ hasAccount: true, hasNextTask: false, sessionLive: true })).toEqual([
-      'expense',
-      'resume',
-    ]);
-    expect(quickActions({ hasAccount: true, hasNextTask: true, sessionLive: true })).toEqual([
-      'expense',
-      'task',
-      'resume',
-    ]);
+  it('never offers Resume — a running workout is its own card now (2.9, #7)', () => {
+    expect(quickActions({ hasAccount: true, hasNextTask: true })).not.toContain('resume');
   });
 });

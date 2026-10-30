@@ -33,9 +33,11 @@
  * `+ Expense` whenever there is a live account to write it into — which the
  * money store guarantees, so in practice always: it is the landing's one action
  * that never runs out.
- * The task only while one is waiting today. `Resume workout` only while a
- * STARTED session exists — the same rule as the workout section's resume card;
- * an unstarted session is a routine somebody opened to read.
+ * The task only while one is waiting today.
+ *
+ * `Resume workout` was the third chip, while a STARTED session existed. Since 2.9
+ * a running workout is a card of its own above the row (`LandingScreen`'s
+ * `RunningCard`, redesign #7), so the row is the two everyday verbs only.
  */
 
 import { entryOf, isCounted, tasksOn, weekProgress, type Task, type TaskLog } from './tasks';
@@ -68,17 +70,12 @@ export function nextUnansweredTask(
   return null;
 }
 
-export type QuickAction = 'expense' | 'task' | 'resume';
+export type QuickAction = 'expense' | 'task';
 
 /** The chips in the row, in the row's order. */
-export function quickActions(input: {
-  hasAccount: boolean;
-  hasNextTask: boolean;
-  sessionLive: boolean;
-}): QuickAction[] {
+export function quickActions(input: { hasAccount: boolean; hasNextTask: boolean }): QuickAction[] {
   const row: QuickAction[] = [];
   if (input.hasAccount) row.push('expense');
   if (input.hasNextTask) row.push('task');
-  if (input.sessionLive) row.push('resume');
   return row;
 }

@@ -4,7 +4,12 @@
  *   MONDAY · 5 OCT
  *   Good afternoon                       [mark]
  *   4 of 9 tasks done · Pull is up next
- *   (+ Expense) (○ 10 000 steps) (▶ Resume workout · 42:10)
+ *   ╭───────────────────────────────────╮
+ *   │ (🏋) Push · running                │   only while a session runs (2.9, #7)
+ *   │     28:40 · Bench press, set 3 of 4│
+ *   │ [ ▶ Resume                       ] │
+ *   ╰───────────────────────────────────╯
+ *   (+ Expense) (○ 10 000 steps)
  *
  *   ╭──────────╮ ╭──────────╮
  *   │ 🏋   #100 │ │ ✓    ◔44%│      150 dp
@@ -36,9 +41,19 @@
  * row of 48 dp chips under the greeting is the landing's own verbs — `+ Expense`
  * opens the keypad the money FAB opens, on the same account and category; the
  * next unanswered task ticks with its ✓ (an Undo toast, because the chip moves
- * on to the next task and the tick would otherwise be out of reach); `Resume
- * workout` exists only while a session runs. Which task and which chips is
- * `lib/landing.ts`. The tiles came down to 150 dp to pay for the row, Finance
+ * on to the next task and the tick would otherwise be out of reach). Which task
+ * and which chips is `lib/landing.ts`.
+ *
+ * ── A RUNNING WORKOUT GETS A CARD, NOT A CHIP (2.9, #7) ────────────────────
+ *
+ * The session's back arrow leaves a workout RUNNING now, and its toast says
+ * "resume it from Home" — so Home has to make that the most obvious thing on it.
+ * The `▶ Resume workout · 42:10` chip was one of three equal chips; it is a card
+ * above them: `Push · running`, the clock and the set you are up to
+ * (`lib/workoutHome.runningSet`, the same set the session glows), and a full-width
+ * `▶ Resume`. The whole card resumes, as the workout section's in-progress card
+ * does. Rejected: keeping the chip and adding the card (two ways to say one thing,
+ * side by side). The tiles came down to 150 dp to pay for the row, Finance
  * became a wide row because a balance is the one figure that wants width, and
  * Settings — not a log — became a slim row at the foot. Rejected: a FAB here
  * (one verb, and the landing has three) and a horizontally scrolling chip strip
@@ -59,7 +74,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable } from '../components/Pressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -89,6 +105,8 @@ import { dayProgress } from '../lib/tasks';
 import { figureFontSize } from '../lib/stepperFont';
 import { themeName } from '../lib/theme';
 import { formatElapsed } from '../lib/units';
+import { describeRunningSet, runningSet } from '../lib/workoutHome';
+import { useActiveWorkout } from '../state/activeWorkoutStore';
 import {
   describeWeeklyReview,
   reviewKicker,
@@ -120,8 +138,8 @@ interface LandingScreenProps {
   nextWorkoutNumber: number;
   /** The routine whose turn it is (or the workout running), and its focus line. */
   nextWorkout: { name: string; focus: string | null } | null;
-  /** When the running session was STARTED, or null: the Resume chip's clock. */
-  runningSince: string | null;
+  /** The STARTED session, or null: the running card's name and clock. */
+  running: { title: string; startedAt: string } | null;
   /** The account the money section last read, if one was chosen this session. */
   moneyAccountId: string | null;
   onOpen: (section: SectionTab, from: TileRect | null) => void;
@@ -149,7 +167,7 @@ const TILE_IN = curve([0.2, 0.8, 0.2, 1]);
 export function LandingScreen({
   nextWorkoutNumber,
   nextWorkout,
-  runningSince,
+  running,
   moneyAccountId,
   onOpen,
   onAddExpense,
@@ -243,7 +261,7 @@ export function LandingScreen({
   const themeId = useSettings((s) => s.themeId);
   const lastBackupAt = useSettings((s) => s.lastBackupAt);
 
-  const workoutInProgress = runningSince != null;
+  const workoutInProgress = running != null;
   const date = parseDay(today) ?? new Date();
   const kicker = `${weekdayNames(lang)[weekdayIndex(date)]} · ${date.getDate()} ${monthNames(lang)[
     date.getMonth()
@@ -263,7 +281,6 @@ export function LandingScreen({
   const chips = quickActions({
     hasAccount: account != null,
     hasNextTask: nextTask != null,
-    sessionLive: workoutInProgress,
   });
 
   const addExpense = () => {
@@ -346,6 +363,10 @@ export function LandingScreen({
             </Text>
           </View>
 
+          {running ? (
+            <RunningCard title={running.title} startedAt={running.startedAt} onPress={onResume} />
+          ) : null}
+
           {chips.length > 0 ? (
             <View style={{ marginTop: 18, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {chips.map((chip) =>
@@ -390,8 +411,6 @@ export function LandingScreen({
                     labelColor={palette.ink}
                     regular
                   />
-                ) : chip === 'resume' && runningSince ? (
-                  <ResumeChip key={chip} startedAt={runningSince} onPress={onResume} />
                 ) : null,
               )}
             </View>
@@ -483,10 +502,10 @@ export function LandingScreen({
                 ? {
                     state: coachNow,
                     onAsk: () => askCoach(review),
-                    askLabel: t('Ask the coach for a summary'),
-                    askingLabel: t('Asking the coach…'),
+                    askLabel: t('Ask the AI coach for a summary'),
+                    askingLabel: t('Asking the AI coach…'),
                     retryLabel: t('Try again'),
-                    caption: t('Coach · from these figures only'),
+                    caption: t('AI coach · from these figures only'),
                   }
                 : undefined
             }
@@ -808,9 +827,23 @@ function QuickChip({
   );
 }
 
-/** `▶ Resume workout · 42:10` — its own component, so only it ticks each second. */
-function ResumeChip({ startedAt, onPress }: { startedAt: string; onPress: () => void }) {
+/**
+ * The running workout (#7): name, clock, the set it is up to, and `▶ Resume`.
+ * Its own component, so only it ticks each second and only it re-renders on a ✓.
+ */
+function RunningCard({
+  title,
+  startedAt,
+  onPress,
+}: {
+  title: string;
+  startedAt: string;
+  onPress: () => void;
+}) {
   const t = useT();
+  const lang = useLanguage();
+  const session = useActiveWorkout((s) => s.session);
+  const where = useMemo(() => runningSet(session), [session]);
   const startMs = useMemo(() => new Date(startedAt).getTime(), [startedAt]);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -818,15 +851,87 @@ function ResumeChip({ startedAt, onPress }: { startedAt: string; onPress: () => 
     return () => clearInterval(interval);
   }, []);
   const time = formatElapsed(Number.isFinite(startMs) ? now - startMs : 0);
+  const heading = t('{name} · running', { name: title });
+  const line = describeRunningSet(where, time, lang);
+  const press = usePressScale(0.98);
+
   return (
-    <QuickChip
-      lit
-      onPress={onPress}
-      accessibilityLabel={t('Resume workout · {time}', { time })}
-      lead={<Icon name="play" size={16} color={palette.acc} />}
-      label={t('Resume workout · {time}', { time })}
-      labelColor={palette.ink}
-    />
+    <Animated.View style={{ marginTop: 18, transform: press.style.transform }}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        accessibilityRole="button"
+        accessibilityLabel={`${heading}. ${line}. ${t('Resume')}`}
+        style={{
+          padding: 16,
+          gap: 12,
+          borderRadius: radius.hero,
+          borderWidth: 1,
+          borderColor: glass.greenEdge,
+          backgroundColor: glass.raised,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: radius.pill,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: glass.greenEdge,
+              backgroundColor: glass.green,
+            }}
+          >
+            <MaterialSymbol name="fitness_center" size={22} color={palette.acc} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <RunningText
+              text={heading}
+              fadeColor={FADE_ON.card}
+              maxFontSizeMultiplier={1.3}
+              style={{ fontSize: 16, lineHeight: 21 }}
+              className="font-semibold text-ink"
+            />
+            <RunningText
+              text={line}
+              fadeColor={FADE_ON.card}
+              maxFontSizeMultiplier={1.3}
+              style={{ fontSize: 13.5, lineHeight: 18 }}
+              className="tabular-nums text-ink-muted"
+            />
+          </View>
+        </View>
+        <View
+          // The card is the target; this is its label, drawn as the primary.
+          pointerEvents="none"
+          style={{
+            height: 48,
+            borderRadius: radius.pill,
+            overflow: 'hidden',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+        >
+          <LinearGradient
+            {...gradientFill()}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+          <Icon name="play" size={16} color={palette.onAcc} />
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 16, color: palette.onAcc }}
+            className="font-semibold"
+          >
+            {t('Resume')}
+          </Text>
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 

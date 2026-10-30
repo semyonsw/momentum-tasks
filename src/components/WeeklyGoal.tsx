@@ -1,10 +1,11 @@
 /**
- * WeeklyGoal — the weekly training goal's ring on the Workout home (W8), and the
- * small sheet a tap on it opens.
+ * WeeklyGoal — the weekly workout goal's card on the Workout section (W8, and
+ * the 2.9 redesign's #11 / #13), and the small sheet a tap on it opens.
  *
  *   ╭──────────────────────────────────────────╮
- *   │ (◔)  THIS WEEK                         › │   raised glass, under the hero
- *   │      2 of 3 workouts this week           │
+ *   │ WEEKLY WORKOUT GOAL                    › │   raised glass, under the hero
+ *   │ 2 of 4 this week                         │
+ *   │ ▬▬▬▬  ▬▬▬▬  ────  ────                   │   one pip per workout of the goal
  *   ╰──────────────────────────────────────────╯
  *
  *   WEEKLY GOAL
@@ -13,24 +14,27 @@
  *   Excuse last week                        (   )
  *   A week runs Monday to Sunday and starts empty. No streaks.
  *
- * A RING AND A SENTENCE, NOTHING ELSE. The design's slot held a bar of pips and
- * "6 weeks in a row at 3+"; the streak half is not built (see `lib/weeklyGoal.ts`),
- * and the pips became the app's own `ProgressRing`, which already says "a share
- * of something" everywhere else. An excused week draws its ring in the track
- * colour alone and its sentence says "excused" — it is not a week short.
+ * PIPS AND A SENTENCE, NOTHING ELSE. It was a ring (the app's `ProgressRing`);
+ * 2.9 went back to the original design's pips, because a goal of four is four
+ * workouts and four marks count them where a ring only shows a share. The
+ * "6 weeks in a row at 3+" half of that design is still not built (see
+ * `lib/weeklyGoal.ts`). An excused week dims its pips and its sentence says
+ * "excused" — it is not a week short.
  *
  * Its own card rather than a fourth stat inside the hero: the hero only exists
  * while a training sequence is on, and a goal for the week is not about which
- * routine is next. Opt-in with the rest of Wave 3 — `weeklyGoalVisible`.
+ * routine is next. ALWAYS SHOWN since 2.9 — it used to sit behind the
+ * "Achievements and levels" switch, which is no place to look for a target.
  *
- * The goal is set where it is read. Rejected: a row in Workout settings — a
- * number that only means something next to the ring belongs one tap from it.
+ * Set in two places that open the same sheet: a tap on this card, and the
+ * `Weekly workout goal` row in Workout settings (#13). The row is where somebody
+ * looking for the setting looks; the card is where somebody looking at the
+ * number wants to change it.
  */
 
 import { Text, View } from 'react-native';
 
 import { Icon } from './Icon';
-import { ProgressRing } from './ProgressRing';
 import { Sheet } from './Sheet';
 import { BubblePressable } from './bubbles';
 import { pressedStyle } from './motion';
@@ -38,8 +42,8 @@ import { Kicker, StepperRow, SwitchRow } from './primitives';
 import { useToday } from '../hooks/useToday';
 import { useLanguage, useT } from '../hooks/useT';
 import { shiftDay } from '../lib/days';
-import { engagementOn } from '../lib/engagement';
-import { describeWeekGoal, weekGoalStatus, weeklyGoalVisible } from '../lib/weeklyGoal';
+import { weekGoalStatus } from '../lib/weeklyGoal';
+import { describeGoalShort, goalPips } from '../lib/workoutHome';
 import { useSettings } from '../state/settingsStore';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
 import { glass, palette, radius } from '../theme/tokens';
@@ -57,18 +61,16 @@ export function WeeklyGoalCard({ onPress }: { onPress: () => void }) {
   const lang = useLanguage();
   const today = useToday();
   const status = useWeekGoal(today);
-  // The Wave 3 switch, off by default: nothing here shows unless it is on.
-  const engagement = useSettings(engagementOn);
-  if (!weeklyGoalVisible(engagement)) return null;
 
-  const line = describeWeekGoal(status, lang);
+  const line = describeGoalShort(status, lang);
+  const pips = goalPips(status.done, status.goal);
   return (
     <View className="mx-lg mt-md">
       <BubblePressable
         onPress={onPress}
         radius={radius.row}
         accessibilityRole="button"
-        accessibilityLabel={t('Weekly goal: {line}. Opens the goal.', { line })}
+        accessibilityLabel={t('Weekly workout goal: {line}. Opens the goal.', { line })}
         style={(state) => [
           pressedStyle(state),
           {
@@ -85,29 +87,29 @@ export function WeeklyGoalCard({ onPress }: { onPress: () => void }) {
           },
         ]}
       >
-        <ProgressRing
-          fraction={status.excused ? 0 : status.fraction}
-          size={40}
-          stroke={4}
-          color={palette.acc}
-        >
-          <Text
-            maxFontSizeMultiplier={1.2}
-            style={{ fontSize: 13 }}
-            className="font-semibold tabular-nums text-ink"
-          >
-            {status.done}
-          </Text>
-        </ProgressRing>
         <View className="flex-1">
-          <Kicker>{t('This week')}</Kicker>
+          <Kicker>{t('Weekly workout goal')}</Kicker>
           <Text
-            numberOfLines={2}
+            numberOfLines={1}
             maxFontSizeMultiplier={1.3}
-            className="mt-[2px] text-body font-medium text-ink"
+            className="mt-[2px] text-body font-medium tabular-nums text-ink"
           >
             {line}
           </Text>
+          <View className="mt-sm flex-row" style={{ gap: 6, opacity: status.excused ? 0.45 : 1 }}>
+            {pips.map((lit, i) => (
+              <View
+                key={i}
+                style={{
+                  flex: 1,
+                  maxWidth: 48,
+                  height: 6,
+                  borderRadius: radius.pill,
+                  backgroundColor: lit ? palette.acc : palette.hairline,
+                }}
+              />
+            ))}
+          </View>
         </View>
         <Icon name="chevron-right" size={16} color={palette.inkFaint} />
       </BubblePressable>

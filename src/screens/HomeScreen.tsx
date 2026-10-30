@@ -52,6 +52,28 @@
  * a count of facts, not a nag: it tells you a weight has gone stale before you
  * are standing under the bar deciding what to load.
  *
+ * ── 2.9: FINDABILITY (redesign #8 #9 #11 #18) ─────────────────────────────
+ *
+ *   • THE HERO IS A BUTTON NOW, and says so. The whole `Today · Push` card opens
+ *     the routine, and it carries a labelled `▶ Open Push` — the floating ▶ was
+ *     the only way in, and a card that looks like the answer and does nothing
+ *     when pressed is the thing people press. The ▶ stays in the slot as well.
+ *   • THE ▶ HAS WORDS AT THE TOP. `▶ Open Push` as an extended pill while the list
+ *     is at rest, folding to the round ▶ as soon as it moves
+ *     (`lib/workoutHome.nextFabExtended`): there is room for the words before
+ *     there are rows under them to cover.
+ *   • THE CORNER IS CAPTIONED: `AI coach`, `Routines`, `History`.
+ *   • PROGRESS IS ONE TAP, not four. A `Progress` card whose header opens Graphs
+ *     directly, with a sparkline of recent volume, and `Muscle map` and `Body`
+ *     under it — all three used to live behind ⟲ → Graphs → a row.
+ *   • THE LAST SESSION'S EXERCISES ARE LINKS, each to that exercise's own
+ *     history: "what did I bench last time" is the question this screen is asked
+ *     most, and the answer used to be ⟲ → the workout → a row → the library.
+ *   • THE WEEKLY GOAL IS ALWAYS HERE (`components/WeeklyGoal.tsx`), no longer
+ *     behind the achievements switch.
+ *   • NOTHING TO OPEN offers the three ways forward: `Create a routine`,
+ *     `Set up a training order`, `Start an empty workout`.
+ *
  * ── THE MOTION PASS ───────────────────────────────────────────────────────
  *
  *   • A SKELETON, while the log has not been read (`workoutHistoryStore.ready`):
@@ -72,7 +94,8 @@
  *     `components/FloatingBubble.tsx` is the shell all three sections share.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { Animated, Easing, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -94,7 +117,8 @@ import {
   useBarInsets,
 } from '../components/glass';
 import { GrowIn, Reveal, Stagger, pressedStyle, usePressScale } from '../components/motion';
-import { Kicker, PrimaryButton } from '../components/primitives';
+import { Kicker, PrimaryButton, TextButton } from '../components/primitives';
+import { Sparkline } from '../components/Sparkline';
 import { Pressable } from '../components/Pressable';
 import { RollingNumber, RollingPhrase } from '../components/RollingNumber';
 import { FADE_ON, RunningText } from '../components/RunningText';
@@ -103,11 +127,13 @@ import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { formatElapsed, formatShortDate, formatVolumeKg } from '../lib/units';
+import { lastSession, nextFabExtended, progressSpark } from '../lib/workoutHome';
 import { isResting, useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStore';
 import { useWorkoutHistory } from '../state/workoutHistoryStore';
 import {
   curve,
   focalType,
+  glass,
   gradientFill,
   motion,
   palette,
@@ -215,6 +241,19 @@ interface HomeScreenProps {
    * (U12), the same create the Routines list's `Add routine` does.
    */
   onNewRoutine: () => void;
+  /** The Progress card's header: training history, opened on its Graphs view. */
+  onOpenGraphs: () => void;
+  /** The Progress card's `Muscle map` chip. */
+  onOpenMuscles: () => void;
+  /** The Progress card's `Body` chip — the tape-measure log. */
+  onOpenBody: () => void;
+  /** An exercise name on the last-session card: that exercise's history. */
+  onOpenExerciseHistory: (exerciseId: ID) => void;
+  /**
+   * `Start an empty workout`, from the empty state (#18): a session with no
+   * routine behind it, filled from the picker. See `lib/workoutHome.ts`.
+   */
+  onStartEmpty: () => void;
   /** A key has passed its test: the sparkle is lit. See `components/AiEntryCard.tsx`. */
   aiReady: boolean;
   /** The training chat, asking `prompt` if a chip was tapped. */
@@ -241,6 +280,11 @@ export function HomeScreen({
   onOpenHistory,
   onOpenRoutines,
   onNewRoutine,
+  onOpenGraphs,
+  onOpenMuscles,
+  onOpenBody,
+  onOpenExerciseHistory,
+  onStartEmpty,
   aiReady,
   onOpenAi,
   justSaved = null,
@@ -302,6 +346,23 @@ export function HomeScreen({
   } = useBubbleOnScroll(300, 250);
   const heroRecede = useHeroRecede(bubbleUp);
 
+  /*
+   * THE ▶'S WORDS (#8): extended at rest, round once the list moves. Rides the
+   * same `onScroll` as the bubble, and sets state only when the answer flips.
+   */
+  const [fabExtended, setFabExtended] = useState(true);
+  const fabExtendedRef = useRef(true);
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      onScroll(event);
+      const next = nextFabExtended(fabExtendedRef.current, event.nativeEvent.contentOffset.y);
+      if (next === fabExtendedRef.current) return;
+      fabExtendedRef.current = next;
+      setFabExtended(next);
+    },
+    [onScroll],
+  );
+
   /* The weekly goal's sheet (W8), opened from its ring. */
   const [goalOpen, setGoalOpen] = useState(false);
 
@@ -355,12 +416,23 @@ export function HomeScreen({
 
           {next ? (
             <Animated.View style={heroRecede}>
-              <Hero plan={next} number={nextNumber} plural={plural} />
+              <Hero
+                plan={next}
+                number={nextNumber}
+                plural={plural}
+                onOpen={() => onOpen(next.routineId)}
+              />
             </Animated.View>
           ) : null}
 
-          {/* W8: off unless the Wave 3 switch is on — see `lib/weeklyGoal.ts`. */}
+          {/* Always shown since 2.9 (#13) — see `lib/weeklyGoal.ts`. */}
           <WeeklyGoalCard onPress={() => setGoalOpen(true)} />
+
+          <ProgressCard
+            onOpenGraphs={onOpenGraphs}
+            onOpenMuscles={onOpenMuscles}
+            onOpenBody={onOpenBody}
+          />
 
           <DebriefCard />
 
@@ -385,9 +457,12 @@ export function HomeScreen({
             <Empty
               first={choices.length === 0}
               onNewRoutine={onNewRoutine}
-              onOpenRoutines={onOpenRoutines}
+              onOpenSequence={onOpenSequence}
+              onStartEmpty={inProgress ? null : onStartEmpty}
             />
           ) : null}
+
+          <LastSessionCard onOpenExercise={onOpenExerciseHistory} />
 
           {recent.length > 0 ? (
             <>
@@ -430,10 +505,14 @@ export function HomeScreen({
       onNewRoutine,
       onOpen,
       onOpenAi,
-      onOpenRoutines,
+      onOpenBody,
+      onOpenExerciseHistory,
+      onOpenGraphs,
+      onOpenMuscles,
       onOpenSequence,
       onOpenSession,
       onResume,
+      onStartEmpty,
       others,
       plural,
       ready,
@@ -457,7 +536,8 @@ export function HomeScreen({
           {
             key: 'ai',
             icon: 'sparkle',
-            label: t('Open the AI assistant'),
+            label: t('Open the AI coach'),
+            caption: t('AI coach'),
             lit: aiReady,
             onPress: () => onOpenAi(),
           },
@@ -469,16 +549,18 @@ export function HomeScreen({
             key: 'library',
             icon: 'library',
             label: t('Routines & exercises'),
+            caption: t('Routines'),
             onPress: onOpenRoutines,
           },
         ]}
         onOpenHistory={onOpenHistory}
         historyLabel={t('Training history')}
+        historyCaption={t('History')}
       />
 
       <ScrollView
         ref={scrollRef}
-        onScroll={onScroll}
+        onScroll={handleScroll}
         scrollEventThrottle={16}
         className="flex-1"
         contentContainerStyle={{ paddingTop: bars.top, paddingBottom: bars.bottom }}
@@ -503,17 +585,18 @@ export function HomeScreen({
       ) : null}
 
       {/* THE ONE COMMIT ACTION, in the slot every section shares. */}
+      {/* Extended with its words at rest, round once the list moves (#8). */}
       {inProgress ? (
         <FloatingAction
-          round
+          round={!fabExtended}
           hidden={fabHidden}
-          label={t('Back to {name}', { name: inProgress.title })}
+          label={t('Resume {name}', { name: inProgress.title })}
           icon="play"
           onPress={onResume}
         />
       ) : openable ? (
         <FloatingAction
-          round
+          round={!fabExtended}
           hidden={fabHidden}
           label={t('Open {name}', { name: openable.name })}
           icon="play"
@@ -1049,112 +1132,178 @@ function SolidPlay({ size, color }: { size: number; color: string }) {
  * the numbers the RECENT rows below are already drawn from. The third is green
  * because it is the only one of the three about the workout you are ABOUT to do
  * rather than about the routine as written.
+ *
+ * The whole card opens the routine (#8), and so does its labelled `▶ Open Push`
+ * at the foot — the card for the thumb that lands anywhere on it, the button for
+ * the eye looking for what to press.
  */
 function Hero({
   plan,
   number,
   plural,
+  onOpen,
 }: {
   plan: NextUpPlan;
   number: number;
   plural: ReturnType<typeof usePlural>;
+  onOpen: () => void;
 }) {
   const t = useT();
   const lang = useLanguage();
+  const press = usePressScale(0.98);
+  const openLabel = t('Open {name}', { name: plan.name });
   return (
-    <View className="mx-lg mt-lg">
-      <GlassSurface tier="lit" radius={radius.hero} shadow="e2">
-        {/* The corner lamp: the theme's THIRD colour, so the hero carries the
+    <Animated.View
+      style={{ marginHorizontal: 16, marginTop: 16, transform: press.style.transform }}
+    >
+      <Pressable
+        onPress={onOpen}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        accessibilityRole="button"
+        accessibilityLabel={`${plan.focus ? `${t('Today')} · ${plan.focus}` : t('Today')}. ${openLabel}`}
+      >
+        <GlassSurface tier="lit" radius={radius.hero} shadow="e2">
+          {/* The corner lamp: the theme's THIRD colour, so the hero carries the
             far end of the gradient the floating ▶ under the thumb starts from. */}
-        <View
-          pointerEvents="none"
-          style={{ position: 'absolute', top: -80, right: -60, width: 220, height: 220 }}
-        >
-          <Svg width={220} height={220}>
-            <Defs>
-              <RadialGradient id="heroLamp" cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={stopTint(3, 1)} stopOpacity={0.26} />
-                <Stop offset="65%" stopColor={stopTint(3, 1)} stopOpacity={0} />
-              </RadialGradient>
-            </Defs>
-            <Circle cx={110} cy={110} r={110} fill="url(#heroLamp)" />
-          </Svg>
-        </View>
-        <View className="p-[20px]">
-          <View className="flex-row items-center" style={{ gap: 8 }}>
-            <RunningText
-              text={plan.focus ? `${t('Today')} · ${plan.focus}` : t('Today')}
-              fadeColor={FADE_ON.lit}
-              containerStyle={{ flex: 1 }}
-              maxFontSizeMultiplier={1.3}
-              style={{ letterSpacing: 1.1 }}
-              className="text-micro font-semibold uppercase text-acc"
-            />
-            {plan.nudgeCount > 0 ? (
-              <View
-                style={{
-                  height: 26,
-                  paddingHorizontal: 10,
-                  justifyContent: 'center',
-                  borderRadius: radius.pill,
-                  backgroundColor: tint(0.2),
-                  borderWidth: 1,
-                  borderColor: tint(0.34),
-                }}
-              >
-                <Text
-                  maxFontSizeMultiplier={1.3}
-                  style={{ fontSize: 12.5, letterSpacing: 0.9 }}
-                  className="font-semibold uppercase tabular-nums text-acc"
-                >
-                  {`${plan.nudgeCount} ${plural(plan.nudgeCount, {
-                    one: t('nudge'),
-                    few: 'подсказки',
-                    many: t('nudges'),
-                  })}`}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          <Text
-            numberOfLines={2}
-            maxFontSizeMultiplier={1.3}
-            style={focalType.heroName}
-            className="mt-sm font-semibold text-ink"
-          >
-            {plan.name}
-          </Text>
-
-          <Text className="mt-xs text-label text-ink-muted">
-            {t('{exercises} exercises · {sets} sets', {
-              exercises: plan.exerciseCount,
-              sets: plan.setCount,
-            })}
-          </Text>
-
-          {/* The divider fades out rather than crossing the card: a full-width
-              rule inside a pane reads as a seam between two panes. */}
           <View
-            className="mt-lg h-hairline"
-            style={{ backgroundColor: 'rgba(236,241,238,0.12)', width: '62%' }}
-          />
-
-          <View className="mt-lg flex-row flex-wrap" style={{ rowGap: 10 }}>
-            <HeroStat label={t('Exercises')} value={String(plan.exerciseCount)} />
-            <HeroStat label={t('Sets')} value={String(plan.setCount)} />
-            <HeroStat label={t('Workout')} value={`#${number}`} tone="green" rolls />
-            {plan.lastTrainedAt ? (
-              <HeroStat
-                label={t('Last')}
-                value={formatShortDate(plan.lastTrainedAt, lang)}
-                tone="muted"
-              />
-            ) : null}
+            pointerEvents="none"
+            style={{ position: 'absolute', top: -80, right: -60, width: 220, height: 220 }}
+          >
+            <Svg width={220} height={220}>
+              <Defs>
+                <RadialGradient id="heroLamp" cx="50%" cy="50%" r="50%">
+                  <Stop offset="0%" stopColor={stopTint(3, 1)} stopOpacity={0.26} />
+                  <Stop offset="65%" stopColor={stopTint(3, 1)} stopOpacity={0} />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={110} cy={110} r={110} fill="url(#heroLamp)" />
+            </Svg>
           </View>
-        </View>
-      </GlassSurface>
-    </View>
+          <View className="p-[20px]">
+            <View className="flex-row items-center" style={{ gap: 8 }}>
+              <RunningText
+                text={plan.focus ? `${t('Today')} · ${plan.focus}` : t('Today')}
+                fadeColor={FADE_ON.lit}
+                containerStyle={{ flex: 1 }}
+                maxFontSizeMultiplier={1.3}
+                style={{ letterSpacing: 1.1 }}
+                className="text-micro font-semibold uppercase text-acc"
+              />
+              {plan.nudgeCount > 0 ? (
+                <View
+                  style={{
+                    height: 26,
+                    paddingHorizontal: 10,
+                    justifyContent: 'center',
+                    borderRadius: radius.pill,
+                    backgroundColor: tint(0.2),
+                    borderWidth: 1,
+                    borderColor: tint(0.34),
+                  }}
+                >
+                  <Text
+                    maxFontSizeMultiplier={1.3}
+                    style={{ fontSize: 12.5, letterSpacing: 0.9 }}
+                    className="font-semibold uppercase tabular-nums text-acc"
+                  >
+                    {`${plan.nudgeCount} ${plural(plan.nudgeCount, {
+                      one: t('nudge'),
+                      few: 'подсказки',
+                      many: t('nudges'),
+                    })}`}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <Text
+              numberOfLines={2}
+              maxFontSizeMultiplier={1.3}
+              style={focalType.heroName}
+              className="mt-sm font-semibold text-ink"
+            >
+              {plan.name}
+            </Text>
+
+            <Text className="mt-xs text-label text-ink-muted">
+              {t('{exercises} exercises · {sets} sets', {
+                exercises: plan.exerciseCount,
+                sets: plan.setCount,
+              })}
+            </Text>
+
+            {/* The divider fades out rather than crossing the card: a full-width
+              rule inside a pane reads as a seam between two panes. */}
+            <View
+              className="mt-lg h-hairline"
+              style={{ backgroundColor: 'rgba(236,241,238,0.12)', width: '62%' }}
+            />
+
+            <View className="mt-lg flex-row flex-wrap" style={{ rowGap: 10 }}>
+              <HeroStat label={t('Exercises')} value={String(plan.exerciseCount)} />
+              <HeroStat label={t('Sets')} value={String(plan.setCount)} />
+              <HeroStat label={t('Workout')} value={`#${number}`} tone="green" rolls />
+              {plan.lastTrainedAt ? (
+                <HeroStat
+                  label={t('Last')}
+                  value={formatShortDate(plan.lastTrainedAt, lang)}
+                  tone="muted"
+                />
+              ) : null}
+            </View>
+
+            <View className="mt-lg">
+              <OpenButton label={openLabel} onPress={onOpen} />
+            </View>
+          </View>
+        </GlassSurface>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/**
+ * `▶ Open Push` — the hero's labelled primary: the commit gradient, a filled ▶
+ * and the words, 48 dp. Its own pressable inside the card's, so a tap on it is
+ * one open, not two. The name RUNS rather than wrapping or clipping.
+ */
+function OpenButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <BubblePressable
+      onPress={onPress}
+      radius="pill"
+      bubbleColor={palette.onAcc}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={(state) => [
+        pressedStyle(state),
+        {
+          height: 48,
+          borderRadius: radius.pill,
+          overflow: 'hidden',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 18,
+          gap: 8,
+        },
+      ]}
+    >
+      <LinearGradient
+        {...gradientFill()}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      <SolidPlay size={16} color={palette.onAcc} />
+      <RunningText
+        text={label}
+        fadeColor={FADE_ON.gradient}
+        containerStyle={{ flexShrink: 1 }}
+        maxFontSizeMultiplier={1.3}
+        style={{ color: palette.onAcc, fontSize: 16 }}
+        className="font-semibold"
+      />
+    </BubblePressable>
   );
 }
 
@@ -1541,21 +1690,26 @@ function RecentRow({
  * Nothing to open: there are no routines, or every one of them is empty.
  *
  * It used to be one card for both, pointing at "the list glyph in the corner" —
- * directions to a button instead of the button (U12). Now each case has its own
- * way forward IN the card, and the floating slot offers the same `+`:
- *   • no routines at all — `Make your first routine`, and `New routine` creates
- *     one and opens its editor;
- *   • routines that are all empty — `Nothing to open`, and `Open routines`, because
- *     the thing to do is fill one of those in, not make another.
+ * directions to a button instead of the button (U12). Each case keeps its own
+ * words, and both now offer the same three ways forward (#18), strongest first:
+ *   • `Create a routine` — the primary: creates one and opens its editor;
+ *   • `Set up a training order` — the sequence screen, for someone who already
+ *     knows they train push → pull → legs;
+ *   • `Start an empty workout` — the ghost: a session with nothing planned,
+ *     exercises added as you go. Absent while a workout is already running, since
+ *     that one would have to be thrown away first.
+ * The routines that are all empty are one tap away in the corner's `Routines`.
  */
 function Empty({
   first,
   onNewRoutine,
-  onOpenRoutines,
+  onOpenSequence,
+  onStartEmpty,
 }: {
   first: boolean;
   onNewRoutine: () => void;
-  onOpenRoutines: () => void;
+  onOpenSequence: () => void;
+  onStartEmpty: (() => void) | null;
 }) {
   const t = useT();
   return (
@@ -1576,14 +1730,192 @@ function Empty({
             ? t('It appears here, one tap from starting.')
             : t('Put some exercises in one of your routines and it shows up here, ready to open.')}
         </Text>
-        <View className="mt-lg self-start">
-          {first ? (
-            <PrimaryButton label={t('New routine')} onPress={onNewRoutine} />
-          ) : (
-            <PrimaryButton label={t('Open routines')} variant="ghost" onPress={onOpenRoutines} />
-          )}
+        <View className="mt-lg" style={{ gap: 8 }}>
+          <PrimaryButton label={t('Create a routine')} onPress={onNewRoutine} />
+          <PrimaryButton
+            label={t('Set up a training order')}
+            variant="ghost"
+            onPress={onOpenSequence}
+          />
+          {onStartEmpty ? (
+            <TextButton label={t('Start an empty workout')} onPress={onStartEmpty} />
+          ) : null}
         </View>
       </View>
     </GlassSurface>
+  );
+}
+
+/**
+ * PROGRESS, one tap from the section (#11).
+ *
+ *   ╭──────────────────────────────────────────╮
+ *   │ PROGRESS                       Graphs ›  │  ← the whole header opens Graphs
+ *   │ ╱╲__╱‾‾╲_╱‾                              │  ← volume, last ten workouts
+ *   │ ( Muscle map )  ( Body )                 │
+ *   ╰──────────────────────────────────────────╯
+ *
+ * All three used to sit behind ⟲ → Graphs → a row. The header row is one target
+ * with the sparkline inside it, so "how is it going" is a glance and "show me" is
+ * one tap; the line is a shape, not a reading — `lib/workoutHome.progressSpark`
+ * says what it leaves out. The two chips are secondary: places, not the answer.
+ */
+function ProgressCard({
+  onOpenGraphs,
+  onOpenMuscles,
+  onOpenBody,
+}: {
+  onOpenGraphs: () => void;
+  onOpenMuscles: () => void;
+  onOpenBody: () => void;
+}) {
+  const t = useT();
+  const workouts = useWorkoutHistory((s) => s.workouts);
+  const spark = useMemo(() => progressSpark(workouts), [workouts]);
+  return (
+    <View
+      className="mx-lg mt-md"
+      style={{
+        borderRadius: radius.row,
+        borderWidth: 1,
+        borderColor: glass.raisedEdge,
+        backgroundColor: glass.raised,
+        overflow: 'hidden',
+      }}
+    >
+      <BubblePressable
+        onPress={onOpenGraphs}
+        radius={radius.row}
+        accessibilityRole="button"
+        accessibilityLabel={`${t('Progress')}. ${t('Open the graphs')}`}
+        style={(state) => [pressedStyle(state), { paddingHorizontal: 14, paddingTop: 12 }]}
+      >
+        <View className="flex-row items-center" style={{ minHeight: 32 }}>
+          <View className="flex-1">
+            <Kicker>{t('Progress')}</Kicker>
+          </View>
+          <Text maxFontSizeMultiplier={1.3} className="text-label font-semibold text-acc">
+            {t('Graphs')}
+          </Text>
+          <Icon name="chevron-right" size={16} color={palette.acc} />
+        </View>
+        {spark ? (
+          <View style={{ marginTop: 6 }}>
+            <Sparkline values={spark.values} min={spark.min} max={spark.max} height={40} />
+          </View>
+        ) : null}
+      </BubblePressable>
+      <View
+        className="flex-row flex-wrap"
+        style={{ gap: 8, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 }}
+      >
+        <CardChip label={t('Muscle map')} onPress={onOpenMuscles} />
+        <CardChip label={t('Body')} onPress={onOpenBody} />
+      </View>
+    </View>
+  );
+}
+
+/** A secondary chip on a card: 44 dp, glass, a place to go. */
+function CardChip({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <BubblePressable
+      onPress={onPress}
+      radius="pill"
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={(state) => [
+        pressedStyle(state),
+        {
+          height: 44,
+          paddingHorizontal: 16,
+          flexDirection: 'row',
+          alignItems: 'center',
+          borderRadius: radius.pill,
+          borderWidth: 1,
+          borderColor: glass.raisedEdge,
+          backgroundColor: glass.sunken,
+        },
+      ]}
+    >
+      <Text maxFontSizeMultiplier={1.3} className="text-label font-semibold text-ink">
+        {label}
+      </Text>
+    </BubblePressable>
+  );
+}
+
+/**
+ * THE LAST SESSION, its exercises as links (#11).
+ *
+ *   LAST SESSION · Push · 27 Oct
+ *   Bench press ›   Incline press ›   Cable fly ›
+ *
+ * Each name is underlined with a › and opens THAT exercise's history — "what did
+ * I do on bench last time" answered from the screen you are standing on, instead
+ * of ⟲ → the workout → the library. The workout itself is still a Recent row
+ * below; this card is about the exercises in it.
+ */
+function LastSessionCard({ onOpenExercise }: { onOpenExercise: (exerciseId: ID) => void }) {
+  const t = useT();
+  const lang = useLanguage();
+  const workouts = useWorkoutHistory((s) => s.workouts);
+  const last = useMemo(() => lastSession(workouts), [workouts]);
+  if (!last || last.exercises.length === 0) return null;
+  return (
+    <View
+      className="mx-lg mt-kicker"
+      style={{
+        borderRadius: radius.row,
+        borderWidth: 1,
+        borderColor: glass.raisedEdge,
+        backgroundColor: glass.raised,
+        paddingHorizontal: 14,
+        paddingTop: 12,
+        paddingBottom: 6,
+      }}
+    >
+      <Kicker>{t('Last session')}</Kicker>
+      <Text
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.3}
+        className="mt-[2px] text-label text-ink-muted"
+      >
+        {`${last.title} · ${formatShortDate(last.startedAt, lang)}`}
+      </Text>
+      <View className="mt-xs flex-row flex-wrap" style={{ columnGap: 16 }}>
+        {last.exercises.map((exercise) => (
+          <BubblePressable
+            key={exercise.exerciseId}
+            onPress={() => onOpenExercise(exercise.exerciseId)}
+            radius={8}
+            accessibilityRole="link"
+            accessibilityLabel={t('{name}: open its history', { name: exercise.name })}
+            style={(state) => [
+              pressedStyle(state),
+              { minHeight: 44, flexDirection: 'row', alignItems: 'center', maxWidth: '100%' },
+            ]}
+          >
+            <View
+              style={{
+                flexShrink: 1,
+                borderBottomWidth: 1,
+                borderBottomColor: palette.inkFaint,
+                paddingBottom: 1,
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.3}
+                className="text-body font-semibold text-ink"
+              >
+                {exercise.name}
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={14} color={palette.inkMuted} />
+          </BubblePressable>
+        ))}
+      </View>
+    </View>
   );
 }

@@ -10,15 +10,13 @@ import {
   usableWeeklyGoal,
   weekGoalStatus,
   weeklyGoalOf,
-  weeklyGoalVisible,
   workoutsInWeek,
 } from './weeklyGoal';
 
 /**
  * The weekly training goal (W8). What matters: the week is Monday to Sunday in
  * local days and survives New Year as one week; an excused week reads excused,
- * never as a miss; the goal is 1–7 and three when unset; and none of it shows
- * while the engagement switch is off.
+ * never as a miss; and the goal is 1–7 and three when unset.
  */
 
 /** A local wall-clock time as ISO, so `dayKey` lands on the same day in every TZ. */
@@ -43,15 +41,6 @@ function workout(day: string, hour = 18): CompletedWorkout {
     sets: [],
   };
 }
-
-describe('visibility', () => {
-  it('is off when the engagement switch is off', () => {
-    expect(weeklyGoalVisible(false)).toBe(false);
-  });
-  it('is on when it is on', () => {
-    expect(weeklyGoalVisible(true)).toBe(true);
-  });
-});
 
 describe('ISO weeks, Monday to Sunday', () => {
   // Mon 5 Oct – Sun 11 Oct 2026.

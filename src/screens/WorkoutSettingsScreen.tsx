@@ -68,6 +68,13 @@
  * always does something, and it disappears when they agree — there is nothing to
  * dismiss because it is not asking for anything.
  *
+ * THE WEEKLY WORKOUT GOAL HAS A ROW HERE (2.9, redesign #13), with the sub-line
+ * "Shown on the Workout section" and the goal as its value. It used to be set
+ * only from the card it drives, and the card only existed with "Achievements and
+ * levels" on — so the setting was invisible until a switch about games was
+ * flipped. The row opens the same sheet the card does (`components/WeeklyGoal`),
+ * and both are on whatever that switch says.
+ *
  * Every number is clamped by `settingsStore`, so a row cannot hand a `NaN` to a
  * deadline; this screen only ever asks for a nudge.
  */
@@ -81,6 +88,8 @@ import { ConfirmSheet } from '../components/ConfirmSheet';
 import { Icon } from '../components/Icon';
 import { pressedStyle } from '../components/motion';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { WeeklyGoalSheet } from '../components/WeeklyGoal';
+import { BubblePressable } from '../components/bubbles';
 import { TimeWheel } from '../components/TimeWheel';
 import {
   DangerFootAction,
@@ -115,6 +124,7 @@ import {
   type NumericSetting,
 } from '../state/settingsStore';
 import { MAX_GYMS } from '../lib/gyms';
+import { weeklyGoalOf } from '../lib/weeklyGoal';
 import { CLUSTERS, clusterLabel } from '../lib/muscles';
 import {
   healthConnectState,
@@ -201,6 +211,8 @@ export function WorkoutSettingsScreen({
    */
   const setLadderOnAllExercises = useLibrary((s) => s.setLadderOnAllExercises);
   const clearHistory = useWorkoutHistory((s) => s.clearHistory);
+  /* #13: the weekly goal's sheet, opened from its row. */
+  const [goalOpen, setGoalOpen] = useState(false);
   const workouts = useWorkoutHistory((s) => s.workouts);
   const workoutCount = workouts.length;
   /*
@@ -483,7 +495,7 @@ export function WorkoutSettingsScreen({
             <Separator />
             <SwitchRow
               label={t('Questions after a workout')}
-              hint={t('A few taps on how it went, so the assistant knows more than the numbers')}
+              hint={t('A few taps on how it went, so the AI coach knows more than the numbers')}
               value={settings.askAfterWorkout}
               onChange={(v) => settings.setFlag('askAfterWorkout', v)}
             />
@@ -701,6 +713,14 @@ export function WorkoutSettingsScreen({
               target exists the training history's row reads `14 / 16` and its bar
               measures against it instead of against the busiest cluster. Nothing
               turns red, nothing warns, and going over is not an error. */}
+          <Kicker className="mx-lg mb-sm mt-xxl">{t('Weekly goal')}</Kicker>
+          <ListCard className="mx-lg">
+            <WeeklyGoalRow
+              value={t('{n} a week', { n: weeklyGoalOf(settings.weeklyWorkoutGoal) })}
+              onPress={() => setGoalOpen(true)}
+            />
+          </ListCard>
+
           <Kicker className="mx-lg mb-sm mt-xxl">{t('Weekly sets')}</Kicker>
           <ListCard className="mx-lg">
             {CLUSTER_ROWS.map((cluster, index) => {
@@ -822,7 +842,7 @@ export function WorkoutSettingsScreen({
 
           <Text className="mx-lg mt-md text-label text-ink-faint">
             {t(
-              'Everything on this screen is about training. The daily tasks and the expenses have settings screens of their own, and the backup that carries all three is one row in the general section.',
+              'Everything on this screen is about training. Daily tasks and Finance have settings screens of their own, and the backup that carries all three is one row in the general section.',
             )}
           </Text>
 
@@ -838,6 +858,8 @@ export function WorkoutSettingsScreen({
           ) : null}
         </ScrollView>
       </View>
+
+      {goalOpen ? <WeeklyGoalSheet onDismiss={() => setGoalOpen(false)} /> : null}
 
       {confirming === 'history' ? (
         <ConfirmSheet
@@ -886,6 +908,43 @@ export function WorkoutSettingsScreen({
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * `Weekly workout goal   4 a week ›`, with where it shows under the label. A
+ * row that opens a sheet rather than a stepper inline: the sheet also holds the
+ * excused weeks, and two places that set the goal should be one control.
+ */
+function WeeklyGoalRow({ value, onPress }: { value: string; onPress: () => void }) {
+  const t = useT();
+  return (
+    <BubblePressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${t('Weekly workout goal')}, ${value}`}
+      accessibilityHint={t('Shown on the Workout section')}
+      style={(state) => [
+        pressedStyle(state),
+        { minHeight: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
+      ]}
+    >
+      <View className="flex-1 pr-md py-sm">
+        <Text maxFontSizeMultiplier={1.3} className="text-body font-medium text-ink">
+          {t('Weekly workout goal')}
+        </Text>
+        <Text maxFontSizeMultiplier={1.3} className="mt-[2px] text-label text-ink-faint">
+          {t('Shown on the Workout section')}
+        </Text>
+      </View>
+      <Text
+        maxFontSizeMultiplier={1.3}
+        className="text-body font-medium tabular-nums text-ink-muted"
+      >
+        {value}
+      </Text>
+      <Icon name="chevron-right" size={16} color={palette.inkFaint} />
+    </BubblePressable>
+  );
+}
 
 /**
  * "You rest 2:38 between sets" — and one tap to make that the setting.
