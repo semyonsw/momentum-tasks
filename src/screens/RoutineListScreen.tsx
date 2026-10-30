@@ -19,9 +19,17 @@
  * The `Training sequence` row at the top is the way in to the optional running
  * order of those routines. It states whether it is on, because a feature that is
  * off and invisible is a feature nobody finds.
+ *
+ * `ADD ROUTINE` ASKS HOW (redesign #16): `Empty` or `Random…`. The random
+ * routine used to be a die in the header of EVERY routine's editor, where one
+ * stray tap replaced a routine somebody had spent weeks shaping. Rolling is a
+ * way to START a routine, so it now lives where routines start, and the die is
+ * gone from the editor of an existing one. `Random…` opens the same
+ * `RandomRoutineSheet` the die's long press did, and the roll itself still
+ * happens in the new routine's editor, where the reel can show it.
  */
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Pressable } from '../components/Pressable';
 
@@ -29,10 +37,13 @@ import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { pressedStyle } from '../components/motion';
 import { FADE_ON, RunningText } from '../components/RunningText';
+import { RandomRoutineSheet } from '../components/RandomRoutineSheet';
+import { Sheet, SheetCancel } from '../components/Sheet';
 import { AddRow, Kicker, ListCard, Separator } from '../components/primitives';
 import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import type { Language } from '../lib/i18n';
 import { describeItemsFocus } from '../lib/muscles';
+import { DEFAULT_RANDOM_SPEC, type RandomSpec } from '../lib/randomRoutine';
 import { palette } from '../theme/tokens';
 import type { Exercise, ID, Routine, TrainingSequence } from '../types/models';
 
@@ -43,7 +54,15 @@ interface RoutineListScreenProps {
   onOpen: (routineId: ID) => void;
   /** Open this routine as a workout. It starts inside, not here. */
   onStartWorkout: (routineId: ID) => void;
+  /** `Empty` in the add-routine sheet. */
   onCreate: () => void;
+  /**
+   * `Random…` in the add-routine sheet, once the spec sheet says `Roll`. The new
+   * routine's editor does the rolling, so the reel plays where the answer lands.
+   */
+  onCreateRandom: (spec: RandomSpec) => void;
+  /** The whole library, for the random sheet's "N exercises to draw from". */
+  library: readonly Exercise[];
   onOpenSequence: () => void;
   /** `‹` — the screen is pushed from the workout section, never a tab root. */
   onBack: () => void;
@@ -58,11 +77,15 @@ export function RoutineListScreen({
   onOpen,
   onStartWorkout,
   onCreate,
+  onCreateRandom,
+  library,
   onOpenSequence,
   onBack,
   switcher,
 }: RoutineListScreenProps) {
   const t = useT();
+  /** Which of the two add sheets is up: the choice, or the random spec. */
+  const [adding, setAdding] = useState<'choose' | 'random' | null>(null);
   const lang = useLanguage();
   const counted = usePlural();
   const stepCount = sequence.routineIds.length;
@@ -167,10 +190,79 @@ export function RoutineListScreen({
           })}
 
           <Separator inset={0} />
-          <AddRow label={t('Add routine')} onPress={onCreate} />
+          <AddRow label={t('Add routine')} onPress={() => setAdding('choose')} />
         </ListCard>
       </ScrollView>
+
+      {adding === 'choose' ? (
+        <Sheet title={t('Add routine')} onDismiss={() => setAdding(null)}>
+          <AddChoices
+            onEmpty={() => {
+              setAdding(null);
+              onCreate();
+            }}
+            onRandom={() => setAdding('random')}
+          />
+          <SheetCancel label={t('Cancel')} onDismiss={() => setAdding(null)} />
+        </Sheet>
+      ) : null}
+
+      {adding === 'random' ? (
+        <RandomRoutineSheet
+          exercises={library}
+          spec={DEFAULT_RANDOM_SPEC}
+          onRoll={(spec) => {
+            setAdding(null);
+            onCreateRandom(spec);
+          }}
+          onDismiss={() => setAdding(null)}
+        />
+      ) : null}
     </View>
+  );
+}
+
+/**
+ * The two ways to start a routine, each a 64-high two-line row: the verb, then
+ * one line saying what happens next.
+ */
+function AddChoices({ onEmpty, onRandom }: { onEmpty: () => void; onRandom: () => void }) {
+  const t = useT();
+  const choices = [
+    {
+      key: 'empty',
+      label: t('Empty'),
+      detail: t('Start blank and add exercises yourself'),
+      onPress: onEmpty,
+    },
+    {
+      key: 'random',
+      label: t('Random…'),
+      detail: t('Pick muscles and length, Momentum fills it in'),
+      onPress: onRandom,
+    },
+  ];
+  return (
+    <ListCard>
+      {choices.map((choice, index) => (
+        <View key={choice.key}>
+          {index > 0 ? <Separator /> : null}
+          <Pressable
+            onPress={choice.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${choice.label}. ${choice.detail}`}
+            style={pressedStyle}
+            className="min-h-[64px] flex-row items-center px-lg py-sm"
+          >
+            <View className="flex-1 pr-md">
+              <Text className="text-body font-medium text-ink">{choice.label}</Text>
+              <Text className="mt-[2px] text-label text-ink-faint">{choice.detail}</Text>
+            </View>
+            <Icon name="chevron-right" size={18} color={palette.inkFaint} />
+          </Pressable>
+        </View>
+      ))}
+    </ListCard>
   );
 }
 

@@ -165,7 +165,14 @@ export function ExerciseHistoryScreen({
       <ScreenHeader
         kicker={t('History')}
         onBack={onBack}
-        action={onEdit ? { label: t('Edit'), tone: 'muted', onPress: onEdit } : undefined}
+        /* `Edit exercise`, not `Edit` (#17): on a history screen a bare `Edit`
+           reads as editing the HISTORY. The pencil marks it as the way into the
+           exercise's own settings. */
+        action={
+          onEdit
+            ? { label: t('Edit exercise'), icon: 'edit', tone: 'muted', onPress: onEdit }
+            : undefined
+        }
       />
 
       <ScrollView

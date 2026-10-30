@@ -41,7 +41,7 @@
  * DELETE IS A MODE, AND IT ASKS (U15). Every row used to carry a `−`, and in a
  * list you are PICKING from a minus reads as "deselect" — on the screen titled
  * `Add exercise`, the one mark beside the thing you came to add was the one that
- * removes it from everywhere. So rows only pick, and `Edit` in the header turns
+ * removes it from everywhere. So rows only pick, and `Manage` in the header turns
  * the screen into the other thing: each row shows a bin, a tap on the row picks
  * nothing, and the header says `Done editing`. The rule is `exerciseRowControls`
  * in `lib/discoverability.ts`. Rejected: hiding the `−` in the picker only and
@@ -165,7 +165,9 @@ export function ExerciseLibraryScreen({
           exercises.length > 0 || editing
             ? editing
               ? { label: t('Done editing'), onPress: () => setEditing(false) }
-              : { label: t('Edit'), tone: 'muted', onPress: () => setEditing(true) }
+              : /* `Manage` (#17): `Edit` promised editing an exercise, and what
+                   it opens is the delete mode for the whole list. */
+                { label: t('Manage'), tone: 'muted', onPress: () => setEditing(true) }
             : undefined
         }
         bordered={false}

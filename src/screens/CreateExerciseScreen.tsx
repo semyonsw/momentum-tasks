@@ -111,6 +111,25 @@
  * Setting the global rest in Settings clears every one of these, which is what
  * lets `Between sets` mean between every set.
  *
+ * ── PLAIN WORDS, AND AN `ADVANCED` FOLD (redesign #17) ──────────────────────
+ *
+ * `Load mode: External / Added / Assisted` is now a radio list titled `Weight`,
+ * each choice with an exercise for an example. The rep ladder, `Reps to MAX`, the
+ * increment and the overload rows fold under one `Advanced` row whose sub-line
+ * names them; name, cue, muscles, the set inputs, sets and rest stay out, because
+ * they are what an edit is nearly always about. `lib/exerciseEditor.ts` decides
+ * which rows the fold holds. It opens on its own when the exercise already uses
+ * the ladder or MAX — folding away a setting that is ON hides why the set rows
+ * look the way they do.
+ *
+ * ── THE DANGER ZONE ────────────────────────────────────────────────────────
+ *
+ * An exercise's own screen ends with its Danger zone (§6), as every item's does.
+ * Delete only: the library has no archive for an exercise (`isArchived` is a
+ * field nothing sets), and a row that cannot work is worse than no row. It asks
+ * first, in the same words the library's `Manage` mode asks with, and that mode
+ * stays — it is the way to clear out several at once.
+ *
  * What this file does NOT own: the draft itself, and the two conversions between a
  * draft and a library row. Those became load-bearing the moment this screen could
  * edit an existing exercise — a mistake in them rewrites a row with history against
@@ -118,14 +137,18 @@
  */
 
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Pressable } from '../components/Pressable';
 
 import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { ConfirmSheet } from '../components/ConfirmSheet';
+import { Icon } from '../components/Icon';
+import { pressedStyle } from '../components/motion';
 import { FloatingAction } from '../components/glass';
 import { useLeaveGuard } from '../navigation/leaveGuard';
 import { ScreenHeader } from '../components/ScreenHeader';
 import {
+  DangerZone,
   FieldWell,
   Kicker,
   ListCard,
@@ -150,6 +173,7 @@ import {
 import { REST_LIMITS } from '../lib/rest';
 import { describeSetInputs, wellsFor, type WellSpec } from '../lib/exerciseShape';
 import { editorBack, editorCommitSlot, editorGuardsBack } from '../lib/editorLeave';
+import { advancedLabels, advancedRows, WEIGHT_CHOICES } from '../lib/exerciseEditor';
 import { tap } from '../lib/feedback';
 import { countsToMax, maxLabel } from '../lib/maxReps';
 import {
@@ -168,24 +192,16 @@ import {
   MUSCLE_CLUSTER,
 } from '../lib/muscles';
 import { formatClock, weightSteps } from '../lib/units';
-import { useLanguage, useT, type Translate } from '../hooks/useT';
+import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import { term, type Language } from '../lib/i18n';
-import { pushedSlot } from '../theme/tokens';
-import type { CountUnit, LoadMode, MuscleCluster, MuscleGroup, TimerMode } from '../types/models';
+import { palette, pushedSlot } from '../theme/tokens';
+import type { CountUnit, MuscleCluster, MuscleGroup, TimerMode } from '../types/models';
 
 /*
- * The three segmented controls' options, as functions rather than constants:
+ * The two segmented controls' options, as functions rather than constants:
  * the labels are translated, and a module-level array would be frozen in
  * whichever language the app started in.
  */
-function loadModes(t: Translate): readonly { value: LoadMode; label: string }[] {
-  return [
-    { value: 'external', label: t('External') },
-    { value: 'added_bodyweight', label: t('Added') },
-    { value: 'assisted', label: t('Assisted') },
-  ];
-}
-
 function countUnits(t: Translate): readonly { value: CountUnit; label: string }[] {
   return [
     { value: 'reps', label: t('Reps') },
@@ -243,6 +259,13 @@ interface CreateExerciseScreenProps {
   onBack: () => void;
   /** Create it, or save the changes — the caller knows which. */
   onSubmit: (draft: ExerciseDraft) => void;
+  /**
+   * Delete this exercise, after the screen's own confirmation. Edit mode only:
+   * absent, there is no Danger zone (a new exercise has nothing to delete).
+   */
+  onDelete?: () => void;
+  /** How many routines hold it — the confirmation says what deleting does to them. */
+  routineUses?: number;
 }
 
 export function CreateExerciseScreen({
@@ -251,9 +274,15 @@ export function CreateExerciseScreen({
   settingsRestSeconds,
   onBack,
   onSubmit,
+  onDelete,
+  routineUses = 0,
 }: CreateExerciseScreenProps) {
   const t = useT();
   const lang = useLanguage();
+  const countedRoutines = usePlural();
+  /** `Advanced`, folded — unless something in it is already on. See the header. */
+  const [advancedOpen, setAdvancedOpen] = useState(initial.ladderOn || initial.countToMax);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [draft, setDraft] = useState<ExerciseDraft>(initial);
   /** Which cluster's muscles are on show. A lens, never part of the draft. */
   const [pickerCluster, setPickerCluster] = useState<MuscleCluster>(
@@ -298,10 +327,12 @@ export function CreateExerciseScreen({
     if (editorBack(dirty) === 'ask') setConfirmingLeave(true);
     else onBack();
   };
-  const interceptBack = editorGuardsBack({ dirty, leaving: left, busy: confirmingLeave });
+  const busy = confirmingLeave || confirmingDelete;
+  const interceptBack = editorGuardsBack({ dirty, leaving: left, busy });
   useLeaveGuard(interceptBack, () => setConfirmingLeave(true));
   const named = draft.name.trim() !== '';
-  const commitSlot = editorCommitSlot({ busy: confirmingLeave, canCommit: named });
+  const commitSlot = editorCommitSlot({ busy, canCommit: named });
+  const advanced = advancedRows(draft);
 
   return (
     <View className="flex-1 bg-bg">
@@ -341,10 +372,12 @@ export function CreateExerciseScreen({
             accessibilityLabel={t('Form cue')}
           />
         </View>
+        {/* One plain line, not the paragraph it was (#17). The brief's wording
+            is "Shown in Focus mode", but the cue renders on the open exercise
+            card and Focus mode does not show it — the line says where it
+            actually appears. */}
         <Text className="mx-lg mt-sm text-label text-ink-faint">
-          {t(
-            'One line, shown on the card while you are doing this exercise. A seat height, a pin number, the thing you keep forgetting.',
-          )}
+          {t('Shown on the exercise card while you do it')}
         </Text>
 
         {/* Muscles, through the hierarchy: cluster first, then what's inside it.
@@ -485,18 +518,6 @@ export function CreateExerciseScreen({
           </View>
         ) : null}
 
-        {/* `MAX`, and the ladder. Both are claims about the rep target and they
-            are opposite ones, so they sit together and switching either on
-            switches the other off (`lib/exerciseDraft.ts`). Rep-counted work
-            only: a hold already has the honest version of `MAX` in a count-up
-            clock, and it does not get longer for the reason a set gets easier. */}
-        {supportsLadder(draft.countUnit) ? (
-          <>
-            <MaxRepsSection draft={draft} onChange={setDraft} />
-            <LadderSection draft={draft} onChange={setDraft} />
-          </>
-        ) : null}
-
         {/* The timer. Only time-counted work has a clock to run, and this is
             what turns "2:00 plank" from a number you type into a set the phone
             counts for you. */}
@@ -527,18 +548,29 @@ export function CreateExerciseScreen({
           </>
         ) : null}
 
-        {/* Load mode only means something when there is a load to read. */}
+        {/* WEIGHT — what the number on a set means. Only when there is a load
+            to read; each choice says it with an exercise (`lib/exerciseEditor`). */}
         {draft.requiresWeight ? (
           <>
-            <Kicker className="mx-lg mb-sm mt-xl">{t('Load mode')}</Kicker>
-            <View className="mx-lg">
-              <Segmented
-                options={loadModes(t)}
-                value={draft.loadMode}
-                onChange={(loadMode) => patch({ loadMode })}
-                accessibilityLabel={t('Load mode')}
-              />
-            </View>
+            <Kicker className="mx-lg mb-sm mt-xl">{t('Weight')}</Kicker>
+            <ListCard className="mx-lg">
+              <View accessibilityRole="radiogroup" accessibilityLabel={t('Weight')}>
+                {WEIGHT_CHOICES.map((choice, index) => (
+                  <View key={choice.value}>
+                    {index > 0 ? <Separator inset={40} /> : null}
+                    <RadioRow
+                      label={t(choice.label)}
+                      example={t(choice.example)}
+                      selected={draft.loadMode === choice.value}
+                      onPress={() => {
+                        tap();
+                        patch({ loadMode: choice.value });
+                      }}
+                    />
+                  </View>
+                ))}
+              </View>
+            </ListCard>
           </>
         ) : null}
 
@@ -567,20 +599,6 @@ export function CreateExerciseScreen({
             }}
           />
           <Separator />
-
-          {draft.requiresWeight ? (
-            <>
-              <SettingRow
-                label={t('Increment')}
-                value={`± ${draft.incrementKg} ${term('unit', 'kg', lang)}`}
-                onPress={() => {
-                  tap();
-                  patch({ incrementKg: nextIncrement(draft.incrementKg) });
-                }}
-              />
-              <Separator />
-            </>
-          ) : null}
 
           {/*
             REST, AND IT IS A REAL CONTROL NOW.
@@ -635,31 +653,6 @@ export function CreateExerciseScreen({
               </Pressable>
             </>
           )}
-
-          {/* Stated, not hidden: the user should know why they'll never see a
-              nudge here, rather than wonder whether it's broken. A ladder is the
-              second reason there is nothing to nudge — it prescribes the reps
-              itself, and two systems answering "what next" is one of them wrong
-              (see `evaluateOverload`). */}
-          {draft.ladderOn ? (
-            <>
-              <Separator />
-              <SettingRow
-                label={t('Overload nudges')}
-                value={t('Off · the ladder owns the reps')}
-                valueTone="faint"
-              />
-            </>
-          ) : draft.requiresWeight ? null : (
-            <>
-              <Separator />
-              <SettingRow
-                label={t('Overload nudges')}
-                value={t('Off · no load to add')}
-                valueTone="faint"
-              />
-            </>
-          )}
         </ListCard>
 
         {draft.requiresWeight ? null : (
@@ -671,6 +664,98 @@ export function CreateExerciseScreen({
             .
           </Text>
         )}
+
+        {/* ADVANCED — one row, folded, naming what is inside (#17). */}
+        <ListCard className="mx-lg mt-xl">
+          <Pressable
+            onPress={() => {
+              tap();
+              setAdvancedOpen((open) => !open);
+            }}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: advancedOpen }}
+            accessibilityLabel={t('Advanced')}
+            accessibilityHint={advancedLabels(draft)
+              .map((label) => t(label))
+              .join(', ')}
+            style={pressedStyle}
+            className="min-h-[64px] flex-row items-center px-lg py-sm"
+          >
+            <View className="flex-1 pr-md">
+              <Text className="text-body font-medium text-ink">{t('Advanced')}</Text>
+              <Text className="mt-[2px] text-label text-ink-faint">
+                {advancedLabels(draft)
+                  .map((label) => t(label))
+                  .join(' · ')}
+              </Text>
+            </View>
+            <Icon
+              name={advancedOpen ? 'chevron-down' : 'chevron-right'}
+              size={18}
+              color={palette.inkFaint}
+            />
+          </Pressable>
+        </ListCard>
+
+        {advancedOpen ? (
+          <>
+            {/* `MAX`, and the ladder. Both are claims about the rep target and
+                they are opposite ones, so they sit together and switching either
+                on switches the other off (`lib/exerciseDraft.ts`). Rep-counted
+                work only: a hold already has the honest version of `MAX` in a
+                count-up clock, and it does not get longer for the reason a set
+                gets easier. */}
+            {advanced.includes('max') ? <MaxRepsSection draft={draft} onChange={setDraft} /> : null}
+            {advanced.includes('ladder') ? (
+              <LadderSection draft={draft} onChange={setDraft} />
+            ) : null}
+
+            {advanced.includes('increment') || advanced.includes('overload') ? (
+              <ListCard className="mx-lg mt-xl">
+                {advanced.includes('increment') ? (
+                  <SettingRow
+                    label={t('Increment')}
+                    value={`± ${draft.incrementKg} ${term('unit', 'kg', lang)}`}
+                    onPress={() => {
+                      tap();
+                      patch({ incrementKg: nextIncrement(draft.incrementKg) });
+                    }}
+                  />
+                ) : null}
+                {advanced.includes('increment') && advanced.includes('overload') ? (
+                  <Separator />
+                ) : null}
+                {/* Stated, not hidden: the user should know why they'll never see
+                    a nudge here, rather than wonder whether it's broken. A ladder
+                    is the second reason there is nothing to nudge — it prescribes
+                    the reps itself, and two systems answering "what next" is one
+                    of them wrong (see `evaluateOverload`). */}
+                {advanced.includes('overload') ? (
+                  <SettingRow
+                    label={t('Overload nudges')}
+                    value={
+                      draft.ladderOn
+                        ? t('Off · the ladder owns the reps')
+                        : t('Off · no load to add')
+                    }
+                    valueTone="faint"
+                  />
+                ) : null}
+              </ListCard>
+            ) : null}
+          </>
+        ) : null}
+
+        {onDelete ? (
+          <View className="mx-lg mt-xl">
+            <DangerZone
+              onDelete={() => setConfirmingDelete(true)}
+              // Deleting a movement keeps the sets already logged — the default
+              // "gone, with all its history" would be a lie here.
+              deleteHint={t('Sets you already logged stay in your history.')}
+            />
+          </View>
+        ) : null}
       </KeyboardAwareScrollView>
 
       {/* THE COMMIT, in the floating slot (U5) rather than the header's corner.
@@ -705,7 +790,76 @@ export function CreateExerciseScreen({
           onCancel={() => setConfirmingLeave(false)}
         />
       ) : null}
+
+      {/* The library's `Manage` mode asks this same question, in these words. */}
+      {confirmingDelete && onDelete ? (
+        <ConfirmSheet
+          tone="danger"
+          title={t('Delete “{title}”?', { title: initial.name })}
+          body={[
+            routineUses > 0
+              ? t('It is in {count} {routines}, and will be removed from them.', {
+                  count: routineUses,
+                  routines: countedRoutines(routineUses, {
+                    one: t('routine'),
+                    few: 'программы',
+                    many: t('routines'),
+                  }),
+                })
+              : t('It is not in any routine.'),
+            t('Sets you already logged stay in your history.'),
+          ].join(' ')}
+          confirmLabel={t('Delete it')}
+          cancelLabel={t('Keep it')}
+          onConfirm={() => {
+            setLeft(true);
+            setConfirmingDelete(false);
+            onDelete();
+          }}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      ) : null}
     </View>
+  );
+}
+
+/**
+ * One `Weight` choice: a radio, the plain name, and the example under it.
+ * The whole 64-high row is the target.
+ */
+function RadioRow({
+  label,
+  example,
+  selected,
+  onPress,
+}: {
+  label: string;
+  example: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      accessibilityLabel={`${label}. ${example}`}
+      style={pressedStyle}
+      className="min-h-[64px] flex-row items-center px-lg py-sm"
+    >
+      <View
+        className={[
+          'h-[20px] w-[20px] items-center justify-center rounded-pill border',
+          selected ? 'border-green-bright' : 'border-hairline',
+        ].join(' ')}
+      >
+        {selected ? <View className="h-[10px] w-[10px] rounded-pill bg-green-bright" /> : null}
+      </View>
+      <View className="ml-md flex-1">
+        <Text className="text-body font-medium text-ink">{label}</Text>
+        <Text className="mt-[2px] text-label text-ink-faint">{example}</Text>
+      </View>
+    </Pressable>
   );
 }
 

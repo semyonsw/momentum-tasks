@@ -56,6 +56,11 @@ export interface HeaderAction {
   onPress: () => void;
   /** `primary` = green fill. `muted` = surface-alt, for "not yet / not now". */
   tone?: 'primary' | 'muted';
+  /**
+   * A glyph before the label — `Edit exercise` carries the pencil (#17). The
+   * label stays: the glyph says what kind of thing, the word says which.
+   */
+  icon?: IconName;
 }
 
 /**
@@ -195,10 +200,19 @@ export function ScreenHeader({
             accessibilityRole="button"
             accessibilityLabel={action.label}
             className={[
-              'h-[40px] items-center justify-center rounded-pill px-lg',
+              'h-[40px] flex-row items-center justify-center rounded-pill px-lg',
               action.tone === 'muted' ? 'border border-hairline bg-surface-alt' : 'bg-green',
             ].join(' ')}
           >
+            {action.icon ? (
+              <View className="mr-xs">
+                <Icon
+                  name={action.icon}
+                  size={14}
+                  color={action.tone === 'muted' ? palette.inkMuted : palette.onAcc}
+                />
+              </View>
+            ) : null}
             <Text
               className={[
                 'text-label font-semibold',

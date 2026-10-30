@@ -133,7 +133,7 @@
  * typed name and losing it.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { KeyboardAwareScrollView } from '../components/KeyboardAware';
@@ -210,6 +210,18 @@ interface RoutineEditorScreenProps {
    * thing anyone wants to change.
    */
   isNew?: boolean;
+  /**
+   * `Random…` in the list's add-routine sheet: roll THIS on arrival, so the reel
+   * plays here, where the answer lands (redesign #16). The editor of an existing
+   * routine has no die any more; a new one keeps it as the re-roll.
+   */
+  initialRoll?: RandomSpec;
+  /**
+   * The arrival roll has been taken. The caller drops `initialRoll` from the
+   * route, or coming back from `+ Add exercise` (which remounts this screen)
+   * would roll a second time over the first one.
+   */
+  onInitialRoll?: () => void;
   onBack: () => void;
   /** Commits the working name and order together — this screen is one draft. */
   onSave: (patch: RoutineDraft) => void;
@@ -270,6 +282,8 @@ export function RoutineEditorScreen({
   library,
   defaultRestSeconds,
   isNew = false,
+  initialRoll,
+  onInitialRoll,
   onBack,
   onSave,
   onOpenItem,
@@ -316,11 +330,21 @@ export function RoutineEditorScreen({
    * that decides at the end is an animation that can disagree with what it just
    * showed you.
    */
-  const [randomSpec, setRandomSpec] = useState<RandomSpec>(DEFAULT_RANDOM_SPEC);
-  const [rolling, setRolling] = useState<RolledRoutine | null>(null);
+  const [randomSpec, setRandomSpec] = useState<RandomSpec>(initialRoll ?? DEFAULT_RANDOM_SPEC);
+  /* The arrival roll is taken in the initialiser rather than an effect, so the
+     first frame is already the reel and never a flash of the empty routine. */
+  const [rolling, setRolling] = useState<RolledRoutine | null>(() =>
+    initialRoll ? rollRoutine(library, initialRoll, Math.random, lang) : null,
+  );
   const [asking, setAsking] = useState(false);
   /** Nothing to roll from: the die is present but inert, and says so. */
-  const [rollFailed, setRollFailed] = useState(false);
+  const [rollFailed, setRollFailed] = useState(initialRoll != null && rolling == null);
+  const consumeRoll = useRef(onInitialRoll);
+  useEffect(() => {
+    if (initialRoll) consumeRoll.current?.();
+    // Once, on arrival: the route is rewritten without the spec straight after.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Where each row sits and how tall it is, captured on layout. Offsets are
@@ -473,11 +497,13 @@ export function RoutineEditorScreen({
               : undefined
           }
           onBack={lifted ? undefined : handleBack}
-          /* The die goes while a row is in the air: rebuilding the list under a
-             finger that is dragging one of its rows is the one state this screen
-             cannot be in. */
+          /* The die is a NEW routine's only (redesign #16): on one that already
+             exists, a stray tap replaced weeks of hand-shaping, and `Random…`
+             under `Add routine` is where a rolled routine starts now. It also goes
+             while a row is in the air: rebuilding the list under a finger that is
+             dragging one of its rows is the one state this screen cannot be in. */
           iconAction={
-            lifted
+            lifted || !isNew
               ? undefined
               : {
                   icon: 'dice',

@@ -11,16 +11,14 @@
  *   │ ╭──────────────── Roll ───────────────────╮│
  *   ╰────────────────────────────────────────────╯
  *
- * ── THIS IS BEHIND A LONG PRESS, AND THAT IS THE POINT ────────────────────
+ * ── IT IS HOW A ROUTINE STARTS, NOT A THING DONE TO ONE ───────────────────
  *
- * A tap on the die rolls immediately, from the whole library, five exercises,
- * each exercise's own set count. That is the feature: no decisions. This sheet
- * is for the other half of the time — "pull and core only, four of them, three
- * sets" — and it is reached by HOLDING the same glyph, which is the gesture the
- * rest of the app already uses for "the other thing about this" (the expenses'
- * category tiles, every reorderable row). Since U11 a `⋮` beside the die opens
- * it by a tap as well — the hold had no mark, and a hold nobody can see is a
- * feature nobody finds (`lib/discoverability.ts`).
+ * `Add routine` asks `Empty` or `Random…`, and `Random…` opens this (redesign
+ * #16). It used to sit behind a die in the header of every routine's editor —
+ * tap to roll five from the whole library, hold (or the `⋮` beside it) for this
+ * sheet — and that put "replace everything here" one stray tap away on routines
+ * that had been shaped by hand for weeks. The die now shows only on a routine
+ * that was just created, as the re-roll; an existing routine has none.
  *
  * ── CHIPS, NOT A SEGMENTED CONTROL ────────────────────────────────────────
  *
