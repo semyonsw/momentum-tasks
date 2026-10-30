@@ -3,8 +3,10 @@
  *
  *   ‹ BODY MEASUREMENTS
  *   ┌──────────────────────────────────────────────┐
- *   │ Weight                  ╲_╱╲_      77.2 kg   │   ← the bodyweight log, read-only
- *   │ −7.3 kg since 12 January 2025 · 25 readings  │
+ *   │ Weight                  ╲_╱╲_                │   ← the bodyweight log
+ *   │ −7.3 kg since 12 January 2025                │
+ *   │ ( − )  ╭      77.2 kg  ✎      ╮  ( + )       │   ← the well: tap to type
+ *   │ ╭──────────── Log weight ─────────────╮      │
  *   ├──────────────────────────────────────────────┤
  *   │ Waist                   ╲___       82.5 cm › │   ← tap: opens in place
  *   │ −2.0 cm since 10 August · 8 readings         │
@@ -24,10 +26,14 @@
  * switch and a full chart — the Graphs view already charts bodyweight, and eight
  * weekly tape readings do not need an axis to read.
  *
- * WEIGHT IS HERE AND NOT EDITABLE HERE. It is the bodyweight log, which volume
- * arithmetic reads (`lib/bodyweightLog.ts`); it is set in Workout settings →
- * Body, where that consequence is spelled out. Showing it beside the tape keeps
- * the body in one place without giving it a second door.
+ * WEIGHT IS WRITTEN HERE TOO (redesign #14). It used to be read-only here and
+ * set only by a coarse `±` in Workout settings → Body — twenty taps to put in a
+ * scale reading. Now the value is a large well (with a small pencil) that opens
+ * the keypad, `±` nudge it by the fine step, and `Log weight` records it. Every
+ * write is `setBodyweightKg`, the same one the settings row uses, which updates
+ * the number volume reads AND the dated log together — so it is still one value
+ * with one history, now with a door where people look for it. The decisions
+ * (where it starts, the step, the clamp) are `lib/weighIn.ts`.
  *
  * Deleting a reading goes through the sheet's `Delete this reading…` and a
  * danger confirm (U19). Nothing here notifies, targets or judges a number.
@@ -44,7 +50,8 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { Sparkline } from '../components/Sparkline';
 import { BubblePressable } from '../components/bubbles';
 import { pressedStyle } from '../components/motion';
-import { DashedAdd } from '../components/primitives';
+import { NumberSheet } from '../components/NumberSheet';
+import { DashedAdd, PrimaryButton, ValueWell } from '../components/primitives';
 import { useToday } from '../hooks/useToday';
 import { useLanguage, useT } from '../hooks/useT';
 import {
@@ -66,6 +73,7 @@ import { tap } from '../lib/feedback';
 import { formatWeight, kgToLb, unitLabel } from '../lib/units';
 import type { BodyweightEntry } from '../lib/bodyweightLog';
 import { useSettings } from '../state/settingsStore';
+import { nudgeWeighIn, weighInDisplay, weighInFromDisplay, weighInStart } from '../lib/weighIn';
 import type { UnitSystem } from '../types/models';
 import { glass, palette, radius } from '../theme/tokens';
 
@@ -82,6 +90,16 @@ export function BodyScreen({ onBack }: { onBack: () => void }) {
   const [open, setOpen] = useState<MeasurementKey | null>(null);
   const [sheet, setSheet] = useState<{ draft: MeasurementDraft; editing: boolean } | null>(null);
   const [deleting, setDeleting] = useState<{ key: MeasurementKey; day: string } | null>(null);
+  const bodyweightKg = useSettings((s) => s.bodyweightKg);
+  const setBodyweightKg = useSettings((s) => s.setBodyweightKg);
+  /** The weight well's value — a draft until `Log weight`. See `WeightCard`. */
+  const [weightDraft, setWeightDraft] = useState(() => weighInStart(bodyweightLog, bodyweightKg));
+  const [typingWeight, setTypingWeight] = useState(false);
+  const logWeight = (kg: number) => {
+    tap();
+    setWeightDraft(kg);
+    setBodyweightKg(kg);
+  };
   /** The site the last reading went to — the add sheet opens on it. */
   const [lastSite, setLastSite] = useState<MeasurementKey>('waist');
 
@@ -122,7 +140,14 @@ export function BodyScreen({ onBack }: { onBack: () => void }) {
         </Text>
 
         <View className="mx-lg" style={{ gap: 8 }}>
-          <WeightRow log={bodyweightLog} unitSystem={unitSystem} />
+          <WeightCard
+            log={bodyweightLog}
+            unitSystem={unitSystem}
+            draft={weightDraft}
+            onDraft={setWeightDraft}
+            onType={() => setTypingWeight(true)}
+            onLog={logWeight}
+          />
           {sites.map((key) => {
             const entries = log?.[key] ?? [];
             const summary = summarizeMeasurement(entries);
@@ -184,6 +209,20 @@ export function BodyScreen({ onBack }: { onBack: () => void }) {
         </View>
       </ScrollView>
 
+      {typingWeight ? (
+        <NumberSheet
+          title={t('Weight')}
+          initial={weighInDisplay(weightDraft, unitSystem)}
+          decimal
+          confirmLabel={t('Log weight')}
+          onConfirm={(value) => {
+            setTypingWeight(false);
+            logWeight(weighInFromDisplay(value, unitSystem));
+          }}
+          onCancel={() => setTypingWeight(false)}
+        />
+      ) : null}
+
       {sheet ? (
         <MeasurementSheet
           initial={sheet.draft}
@@ -227,60 +266,157 @@ export function BodyScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
-/** The bodyweight log as one more row — read here, written in Workout settings. */
-function WeightRow({
+/**
+ * The bodyweight: its line and change, the value as a well, `±`, `Log weight`.
+ *
+ * The well holds a DRAFT until `Log weight` — nudging past 81.5 on the way to
+ * 80.5 should not record 81 and 81.5 as weigh-ins. The keypad is the exception:
+ * a typed number is a reading somebody just read off a scale, so its sheet's
+ * button is `Log weight` itself rather than a Save that then needs a second tap.
+ */
+function WeightCard({
   log: bodyweightLog,
   unitSystem,
+  draft,
+  onDraft,
+  onType,
+  onLog,
 }: {
   log: readonly BodyweightEntry[];
   unitSystem: UnitSystem;
+  draft: number;
+  onDraft: (update: (kg: number) => number) => void;
+  /** The well: open the keypad (the sheet is the screen's, drawn over everything). */
+  onType: () => void;
+  onLog: (kg: number) => void;
 }) {
   const t = useT();
   const lang = useLanguage();
-  if (bodyweightLog.length === 0) return null;
+
+  const toUnit = (kg: number) => (unitSystem === 'imperial' ? kgToLb(kg) : kg);
+  const weightUnit = unitLabel(unitSystem, lang);
   const latest = bodyweightLog[0];
   const first = bodyweightLog[bodyweightLog.length - 1];
-  const toUnit = (kg: number) => (unitSystem === 'imperial' ? kgToLb(kg) : kg);
-  const delta = Math.round((toUnit(latest.kg) - toUnit(first.kg)) * 10) / 10;
-  const sign = delta > 0 ? '+' : delta < 0 ? '−' : '±';
-  const weightUnit = unitLabel(unitSystem, lang);
-  const firstDay = dayKey(first.at);
-  const change =
-    bodyweightLog.length < 2
-      ? t('One reading')
-      : t('{change} since {date}', {
-          change: `${sign}${Math.abs(delta).toFixed(1)} ${weightUnit}`,
-          date:
-            firstDay.slice(0, 4) === dayKey(latest.at).slice(0, 4)
-              ? formatShortDay(firstDay, lang)
-              : formatLongDay(firstDay, lang),
-        });
+  let change = t('Nothing logged yet');
+  if (latest && first) {
+    const delta = Math.round((toUnit(latest.kg) - toUnit(first.kg)) * 10) / 10;
+    const sign = delta > 0 ? '+' : delta < 0 ? '−' : '±';
+    const firstDay = dayKey(first.at);
+    change =
+      bodyweightLog.length < 2
+        ? t('One reading')
+        : t('{change} since {date}', {
+            change: `${sign}${Math.abs(delta).toFixed(1)} ${weightUnit}`,
+            date:
+              firstDay.slice(0, 4) === dayKey(latest.at).slice(0, 4)
+                ? formatShortDay(firstDay, lang)
+                : formatLongDay(firstDay, lang),
+          });
+  }
   const values = [...bodyweightLog.slice(0, 12)].reverse().map((entry) => toUnit(entry.kg));
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+
   return (
     <View
-      accessible
-      accessibilityLabel={`${t('Weight')}, ${formatWeight(latest.kg, unitSystem)} ${weightUnit}. ${change}. ${t('Set in Workout settings')}`}
       style={{
-        minHeight: 72,
-        flexDirection: 'row',
-        alignItems: 'center',
         padding: 14,
-        paddingRight: 30,
         borderRadius: radius.row,
         borderWidth: 1,
         borderColor: glass.raisedEdge,
-        backgroundColor: glass.sunken,
+        backgroundColor: glass.raised,
       }}
     >
-      <SeriesRow
-        name={t('Weight')}
-        change={change}
-        count={t('Set in Workout settings')}
-        values={values}
-        value={formatWeight(latest.kg, unitSystem)}
-        unit={weightUnit}
-      />
+      <View className="flex-row items-center">
+        <View className="flex-1 pr-sm" style={{ minWidth: 0 }}>
+          <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 16.5, lineHeight: 22 }}
+            className="text-ink"
+          >
+            {t('Weight')}
+          </Text>
+          <Text maxFontSizeMultiplier={1.3} className="text-label tabular-nums text-ink-muted">
+            {change}
+          </Text>
+        </View>
+        {values.length > 1 ? (
+          <View style={{ width: 72 }}>
+            <Sparkline
+              values={values}
+              height={26}
+              min={Math.floor(lo - 0.5)}
+              max={Math.ceil(hi + 0.5)}
+            />
+          </View>
+        ) : null}
+      </View>
+
+      <View className="mt-md flex-row items-center" style={{ gap: 8 }}>
+        <NudgeButton
+          icon="minus"
+          label={t('Decrease {label}', { label: t('Weight') })}
+          onPress={() => onDraft((kg) => nudgeWeighIn(kg, -1, unitSystem))}
+        />
+        <ValueWell
+          onPress={onType}
+          accessibilityLabel={`${t('Weight')}, ${formatWeight(draft, unitSystem)} ${weightUnit}`}
+          accessibilityHint={t('Opens the keypad')}
+          style={{ height: 56 }}
+        >
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 24 }}
+            className="font-semibold tabular-nums text-ink"
+          >
+            {formatWeight(draft, unitSystem)}
+          </Text>
+          <Text maxFontSizeMultiplier={1.3} className="ml-[3px] text-label text-ink-muted">
+            {weightUnit}
+          </Text>
+          <View style={{ marginLeft: 8 }}>
+            <Icon name="edit" size={14} color={palette.inkFaint} />
+          </View>
+        </ValueWell>
+        <NudgeButton
+          icon="plus"
+          label={t('Increase {label}', { label: t('Weight') })}
+          onPress={() => onDraft((kg) => nudgeWeighIn(kg, 1, unitSystem))}
+        />
+      </View>
+
+      <View className="mt-md">
+        <PrimaryButton label={t('Log weight')} onPress={() => onLog(draft)} />
+      </View>
     </View>
+  );
+}
+
+/** A 44 dp `−` / `+` beside the weight well, for nudges. */
+function NudgeButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: 'plus' | 'minus';
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <BubblePressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      radius="pill"
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={pressedStyle}
+      className="h-hit w-[44px] items-center justify-center rounded-pill border border-hairline bg-surface-alt"
+    >
+      <Icon name={icon} size={16} color={palette.ink} />
+    </BubblePressable>
   );
 }
 

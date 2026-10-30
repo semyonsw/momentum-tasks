@@ -14,18 +14,19 @@
  *   │ ┌──────────────────────────────────────────┐ │
  *   │ │ #92  Pull + swimming     17 Aug · 74 min │ │
  *   │ │      6 exercises · 18 sets · 4 720 kg  ⌄ │ │
- *   │ │  Weighted 90° pull-ups   +40 kg · 4 4 4  │ │  ← open
+ *   │ │  ╭ ▦ Mon 17 Aug 2026          74 min ▾ ╮ │ │  ← the date well: opens
+ *   │ │  ✎ Tap a set to correct it               │ │    "Move to another day"
+ *   │ │  Weighted 90° pull-ups  +40 kg · 4 4 4 ✎ │ │  ← open
  *   │ │                             12 REPS TOTAL │ │
- *   │ │    1   40 kg    4 reps               ⌄   │ │
+ *   │ │    1  ╭ 40 kg ╮ ╭ 4 reps ╮           ⌄   │ │
  *   │ │        −2  −0.5   40 KG   +0.5  +2       │ │  ← one row, correcting
  *   │ │        Reps    Remove set        Done    │ │
  *   │ │  + Add a set          Remove exercise    │ │
- *   │ │  Plank                   2:00 · 2:00     │ │
+ *   │ │  Plank                   2:00 · 2:00   ✎ │ │
  *   │ │                                4:00 TOTAL │ │
  *   │ │  + Add an exercise                       │ │
- *   │ │  Edit name, date and length              │ │
+ *   │ │  Edit name, start and length             │ │
  *   │ │  ╭ Pull + swimming                     ╮ │ │
- *   │ │  │ Date       17 Aug 2026   ( − )( + ) │ │ │
  *   │ │  │ Started    17:00         ( − )( + ) │ │ │
  *   │ │  ╰ Took       74 min        ( − )( + ) ╯ │ │
  *   │ │  Workout number: 92                      │ │
@@ -62,6 +63,19 @@
  *    gain or lose an exercise, be renamed, be moved in time and be told how long
  *    it took — every one of them through `lib/workoutEdit.ts`, and every one of
  *    them regenerating the record rather than patching it.
+ *
+ *    THE DATE IS A WELL, AND IT PICKS A DAY (redesign #15). It used to be a
+ *    `−`/`+` in the edit block, a day a tap — fine for "it ran past midnight",
+ *    twenty taps for "I logged last week's session today", and invisible until
+ *    the block was opened. Now the open workout's first line is the date as a
+ *    tappable well, and it opens `DayPicker` in "Move to another day";
+ *    `lib/pastWorkout.ts` turns the picked day into the shift the store already
+ *    applies, so the clock time and every set move with it.
+ *
+ *    WHAT IS CORRECTABLE LOOKS IT. "Tap a set to correct it" under the date, a
+ *    pencil on every exercise header (the visible twin of tapping the header),
+ *    and the logged weight and count drawn as wells — a number in a well is a
+ *    control everywhere in the app.
  *
  *    THE STRUCTURAL EDITS ARE WHERE THEIR SUBJECT IS. `+ Add a set` and `Remove
  *    exercise` appear under the exercise whose rows are open, because that is the
@@ -144,9 +158,15 @@ import {
   DangerFootAction,
   FieldWell,
   Kicker,
+  PrimaryButton,
   Separator,
   StepperRow,
+  ValueWell,
 } from '../components/primitives';
+import { DayPicker } from '../components/DayPicker';
+import { Sheet, SheetCancel } from '../components/Sheet';
+import { useToday } from '../hooks/useToday';
+import { canMoveToDay, shiftToDay, workoutDateLabel } from '../lib/pastWorkout';
 import {
   BALANCE_WINDOWS,
   balanceWindowDays,
@@ -175,11 +195,11 @@ import {
 import { historyTotals, type SetCorrection } from '../state/workoutHistoryStore';
 import { SetMarksSheet } from '../components/SetMarksSheet';
 import { describeRir, effortApplies, rirChipLabel } from '../lib/effort';
-import { kindBadge, kindName, setKindOf } from '../lib/setType';
+import { kindBadge, kindName, setKindOf, setSheetTitle } from '../lib/setType';
 import { workingSetLabels } from '../lib/draft';
 import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import { term, type Language } from '../lib/i18n';
-import { formatMonth } from '../lib/days';
+import { dayKey, formatMonth } from '../lib/days';
 import { HISTORY_PAGE, monthsToRender, nearEnd, rowsIn } from '../lib/historyWindow';
 import { curve, gradientBar, palette, radius, tint } from '../theme/tokens';
 import { useSettings } from '../state/settingsStore';
@@ -197,9 +217,6 @@ import type { Exercise, ID, SessionEffort, SetHistory, UnitSystem } from '../typ
  * Lower case, because it is a clause in a sentence of facts and not a label:
  * `6 exercises · 18 sets · 4 720 kg · brutal`.
  */
-/** One day, in the minutes the retime stepper counts in. */
-const MINUTES_PER_DAY = 1440;
-
 /**
  * The step on the `Started` row, in minutes.
  *
@@ -344,6 +361,8 @@ export function HistoryScreen({
   const [openId, setOpenId] = useState<ID | null>(null);
   const [deleting, setDeleting] = useState<CompletedWorkout | null>(null);
   const [numbering, setNumbering] = useState<CompletedWorkout | null>(null);
+  /** The workout whose "Move to another day" sheet is open. */
+  const [moving, setMoving] = useState<CompletedWorkout | null>(null);
   /** The logged set whose annotations sheet is open. */
   const [marking, setMarking] = useState<{ workoutId: ID; setId: ID; title: string } | null>(null);
   const markingRow = marking
@@ -386,7 +405,7 @@ export function HistoryScreen({
     [workouts, exercisesById, window],
   );
   /* Either sheet takes the screen; the list behind it dims and stops scrolling. */
-  const dimmed = deleting != null || numbering != null;
+  const dimmed = deleting != null || numbering != null || moving != null;
 
   /*
    * HOW MUCH OF THE LOG IS MOUNTED — `lib/historyWindow.ts`. A page of workouts
@@ -499,6 +518,7 @@ export function HistoryScreen({
         tap();
         setNumbering(workout);
       },
+      askMove: (workout) => setMoving(workout),
       askMarks: (workoutId, setId, title) => setMarking({ workoutId, setId, title }),
     }),
     [],
@@ -765,6 +785,17 @@ export function HistoryScreen({
         />
       ) : null}
 
+      {moving ? (
+        <MoveDaySheet
+          workout={moving}
+          onMove={(shiftMinutes) => {
+            onEditWorkout(moving.id, { shiftMinutes });
+            setMoving(null);
+          }}
+          onDismiss={() => setMoving(null)}
+        />
+      ) : null}
+
       {deleting ? (
         <ConfirmSheet
           tone="danger"
@@ -789,7 +820,16 @@ export function HistoryScreen({
 
       {marking && markingRow ? (
         <SetMarksSheet
-          title={marking.title}
+          // The live session's title, so one sheet reads the same in both places:
+          // `Set 2 · Set type & reps left`, `Set W · …` for a warm-up.
+          title={setSheetTitle(
+            setKindOf(markingRow),
+            workingNumberOf(
+              workouts.find((w) => w.id === marking.workoutId)?.sets ?? [],
+              markingRow,
+            ),
+            lang,
+          )}
           kind={setKindOf(markingRow)}
           onKind={(kind) => onEditSet(marking.workoutId, marking.setId, { kind })}
           rir={markingRow.rir}
@@ -803,6 +843,9 @@ export function HistoryScreen({
     </View>
   );
 }
+
+/** A logged set's weight and count wells: room for "102.5 KG" on a 360 dp phone. */
+const WELL_WIDTH = 92;
 
 /** How long the Undo after a removal stays up — the session screen's number. */
 const UNDO_TOAST_MS = 4500;
@@ -823,6 +866,8 @@ interface RowActions {
   toggle: (workoutId: ID) => void;
   askDelete: (workout: CompletedWorkout) => void;
   askNumber: (workout: CompletedWorkout) => void;
+  /** Open "Move to another day" for this workout. */
+  askMove: (workout: CompletedWorkout) => void;
   /** Open a logged set's annotations sheet (RIR). */
   askMarks: (workoutId: ID, setId: ID, title: string) => void;
 }
@@ -879,6 +924,7 @@ const HistoryRow = memo(function HistoryRow({
       onPress={() => actions.toggle(id)}
       onDelete={() => actions.askDelete(workout)}
       onEditNumber={() => actions.askNumber(workout)}
+      onMoveDay={() => actions.askMove(workout)}
       onOpenMarks={(setId, title) => actions.askMarks(id, setId, title)}
     />
   );
@@ -894,6 +940,7 @@ function WorkoutRow({
   onEditSet,
   onDeleteSet,
   onEditNumber,
+  onMoveDay,
   onEditWorkout,
   onAddSet,
   onRemoveExercise,
@@ -910,6 +957,8 @@ function WorkoutRow({
   onEditSet: (setId: ID, patch: SetCorrection) => void;
   onDeleteSet: (setId: ID) => boolean;
   onEditNumber: () => void;
+  /** The date well: open "Move to another day". */
+  onMoveDay: () => void;
   /** Rename it, move it in time, or say how long it took. */
   onEditWorkout: (patch: {
     title?: string;
@@ -1067,6 +1116,34 @@ function WorkoutRow({
       {isOpen ? (
         <Reveal>
           <View className="border-t border-hairline pb-sm pt-xs">
+            {/* THE DATE WELL (redesign #15): when it happened and how long it
+                took, as one control that moves it. See the file header. */}
+            <View className="px-lg pt-sm">
+              <ValueWell
+                onPress={onMoveDay}
+                accessibilityLabel={t('{date}, {minutes} min. Move to another day', {
+                  date: workoutDateLabel(workout.startedAt, lang),
+                  minutes: workout.durationMinutes,
+                })}
+                style={{ height: 44, paddingHorizontal: 12, justifyContent: 'flex-start' }}
+              >
+                <Icon name="calendar" size={16} color={palette.inkMuted} />
+                <Text
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.3}
+                  className="ml-sm flex-1 text-body font-medium tabular-nums text-ink"
+                >
+                  {workoutDateLabel(workout.startedAt, lang)}
+                </Text>
+                <Text
+                  maxFontSizeMultiplier={1.3}
+                  className="mr-xs text-label tabular-nums text-ink-muted"
+                >
+                  {t('{minutes} min', { minutes: workout.durationMinutes })}
+                </Text>
+                <Icon name="chevron-down" size={16} color={palette.inkMuted} />
+              </ValueWell>
+            </View>
             {/* WHEN, spelled out. The row above says it in one run of facts;
                 open, the two times get a label each, because "18:05–19:20" in a
                 marquee is easy to read past and the start and end are exactly
@@ -1077,6 +1154,13 @@ function WorkoutRow({
                 label={t('Ended')}
                 value={formatEndTime(workout.startedAt, workout.endedAt) ?? '--:--'}
               />
+            </View>
+            {/* What can be corrected, said once, above the things that can be. */}
+            <View className="flex-row items-center px-lg pb-xs pt-sm">
+              <Icon name="edit" size={14} color={palette.inkFaint} />
+              <Text maxFontSizeMultiplier={1.3} className="ml-xs text-label text-ink-faint">
+                {t('Tap a set to correct it')}
+              </Text>
             </View>
             {workout.exercises.map((exercise) => {
               const total = describeTotal(exercise, t, lang);
@@ -1092,28 +1176,30 @@ function WorkoutRow({
               /* Working sets numbered around warm-ups, as the session numbers
                  them: W, 1, 2 — so `Set 2` here is the `Set 2` it was on the day. */
               const labels = workingSetLabels(rows);
+              const toggleExercise = () => {
+                tap();
+                setEditing(null);
+                setOpenExerciseId((current) =>
+                  current === exercise.exerciseId ? null : exercise.exerciseId,
+                );
+              };
 
               return (
                 <View key={`${exercise.exerciseId}-${exercise.name}`}>
-                  <Pressable
-                    onPress={() => {
-                      tap();
-                      setEditing(null);
-                      setOpenExerciseId((current) =>
-                        current === exercise.exerciseId ? null : exercise.exerciseId,
-                      );
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: listing }}
-                    accessibilityLabel={`${exercise.name}, ${exercise.summary}. ${
-                      clamped.hidden > 0 && !listing
-                        ? `${t('Show all {count} sets.', { count: exercise.setCount })} `
-                        : ''
-                    }${t('Correct a set.')}`}
-                    style={pressedStyle}
-                    className="flex-row items-start px-lg py-sm"
-                  >
-                    {/* TWO LINES OF NAME, and a column no summary can take.
+                  <View className="flex-row items-start">
+                    <Pressable
+                      onPress={toggleExercise}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: listing }}
+                      accessibilityLabel={`${exercise.name}, ${exercise.summary}. ${
+                        clamped.hidden > 0 && !listing
+                          ? `${t('Show all {count} sets.', { count: exercise.setCount })} `
+                          : ''
+                      }${t('Correct a set.')}`}
+                      style={pressedStyle}
+                      className="flex-1 flex-row items-start py-sm pl-lg"
+                    >
+                      {/* TWO LINES OF NAME, and a column no summary can take.
 
                       The name used to be `flex-1` beside a column that sized
                       itself to whatever the shorthand was, and an exercise with
@@ -1123,40 +1209,57 @@ function WorkoutRow({
                       purpose; this is the one place in the app where the split has
                       to follow the phone's width rather than a step of the
                       spacing scale. */}
-                    <Text
-                      numberOfLines={2}
-                      className="flex-1 pr-md text-label font-medium text-ink"
-                    >
-                      {exercise.name}
-                    </Text>
-                    <View className="shrink items-end" style={{ maxWidth: '56%' }}>
-                      <View className="flex-row items-baseline">
-                        <Text
-                          /* Open, the summary is worth its full height: the rows
+                      <Text
+                        numberOfLines={2}
+                        className="flex-1 pr-md text-label font-medium text-ink"
+                      >
+                        {exercise.name}
+                      </Text>
+                      <View className="shrink items-end" style={{ maxWidth: '56%' }}>
+                        <View className="flex-row items-baseline">
+                          <Text
+                            /* Open, the summary is worth its full height: the rows
                            under it are the same sets one per line, so a wrapped
                            shorthand above them is a heading, not a wall. */
-                          numberOfLines={listing ? 3 : 1}
-                          className="shrink text-label tabular-nums text-ink-muted"
-                        >
-                          {listing ? exercise.summary : clamped.text}
-                        </Text>
-                        {/* THE DOTS. Green, because green is what a tap does in this
+                            numberOfLines={listing ? 3 : 1}
+                            className="shrink text-label tabular-nums text-ink-muted"
+                          >
+                            {listing ? exercise.summary : clamped.text}
+                          </Text>
+                          {/* THE DOTS. Green, because green is what a tap does in this
                           app, and inside the row's own Pressable rather than a
                           nested one — the thing they open is the thing the row
                           opens. */}
-                        {clamped.hidden > 0 && !listing ? (
-                          <Text className="ml-xs text-body font-semibold leading-none text-green-bright">
-                            {'\u2026'}
+                          {clamped.hidden > 0 && !listing ? (
+                            <Text className="ml-xs text-body font-semibold leading-none text-green-bright">
+                              {'\u2026'}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {total ? (
+                          <Text className="mt-[2px] text-micro font-semibold uppercase tabular-nums text-green-bright">
+                            {total}
                           </Text>
                         ) : null}
                       </View>
-                      {total ? (
-                        <Text className="mt-[2px] text-micro font-semibold uppercase tabular-nums text-green-bright">
-                          {total}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </Pressable>
+                    </Pressable>
+                    {/* The pencil: the visible twin of tapping the header, which
+                      lists the sets so one can be corrected (redesign #15). */}
+                    <Pressable
+                      onPress={toggleExercise}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: listing }}
+                      accessibilityLabel={t('Correct the sets of {name}', { name: exercise.name })}
+                      style={pressedStyle}
+                      className="mr-xs h-hit w-[44px] items-center justify-center"
+                    >
+                      <Icon
+                        name="edit"
+                        size={16}
+                        color={listing ? palette.acc : palette.inkMuted}
+                      />
+                    </Pressable>
+                  </View>
 
                   {/* The logged rows, one correctable at a time. See the header. */}
                   {listing ? (
@@ -1263,7 +1366,7 @@ function WorkoutRow({
               </Pressable>
             ) : null}
 
-            {/* WHAT THE WORKOUT IS: its name, when it happened, how long it took.
+            {/* WHAT THE WORKOUT IS: its name, when it started, how long it took.
 
               Behind one row, because history is read far more often than it is
               corrected. Every control in here is the app's own ± idiom rather than
@@ -1280,14 +1383,14 @@ function WorkoutRow({
               }}
               accessibilityRole="button"
               accessibilityState={{ expanded: editingWorkout }}
-              accessibilityLabel={t('Edit the name, date and length of {title}', {
+              accessibilityLabel={t('Edit the name, start and length of {title}', {
                 title: workout.title,
               })}
               style={pressedStyle}
               className="h-hit justify-center px-lg"
             >
               <Text className="text-label font-medium text-green-bright">
-                {editingWorkout ? t('Done editing') : t('Edit name, date and length')}
+                {editingWorkout ? t('Done editing') : t('Edit name, start and length')}
               </Text>
             </Pressable>
 
@@ -1308,20 +1411,8 @@ function WorkoutRow({
                 />
 
                 <View className="mt-md overflow-hidden rounded-surface border border-hairline bg-surface">
-                  <StepperRow
-                    label={t('Date')}
-                    hint={t('Every set in this workout moves with it')}
-                    value={formatShortDate(workout.startedAt, lang)}
-                    onDecrease={() => {
-                      tap();
-                      onEditWorkout({ shiftMinutes: -MINUTES_PER_DAY });
-                    }}
-                    onIncrease={() => {
-                      tap();
-                      onEditWorkout({ shiftMinutes: MINUTES_PER_DAY });
-                    }}
-                  />
-                  <Separator />
+                  {/* The day is the date well's job now, at the top of the open
+                      workout; what is left here is the time within it. */}
                   <StepperRow
                     label={t('Started')}
                     value={formatTimeOfDay(workout.startedAt)}
@@ -1762,51 +1853,45 @@ function LoggedSetRow({
           </Text>
         </Pressable>
 
+        {/* The values are WELLS (redesign #15): a number in a well is one you
+            can tap, here as on the session's set row. The open one is lit. */}
         {weighted ? (
-          <Pressable
+          <ValueWell
             onPress={() => onFocusField('weight')}
-            hitSlop={6}
-            accessibilityRole="button"
+            lit={editing === 'weight'}
+            width={WELL_WIDTH}
             accessibilityLabel={t('Correct the weight, {weight} {unit}', {
               weight: formatWeight(row.weightKg, unitSystem, row.loadMode),
               unit: unitLabel(unitSystem, lang),
             })}
-            style={pressedStyle}
-            className={[
-              'min-w-[76px] flex-row items-baseline',
-              editing === 'weight' ? 'rounded-surface bg-surface px-xs' : '',
-            ].join(' ')}
+            style={{ marginLeft: 4, marginRight: 8 }}
           >
-            <Text className="text-label font-semibold tabular-nums text-ink">
+            <Text numberOfLines={1} className="text-label font-semibold tabular-nums text-ink">
               {formatWeight(row.weightKg, unitSystem, row.loadMode)}
             </Text>
-            <Text className="ml-xs text-micro uppercase text-ink-faint">
+            <Text numberOfLines={1} className="ml-xs text-micro uppercase text-ink-faint">
               {unitLabel(unitSystem, lang)}
             </Text>
-          </Pressable>
+          </ValueWell>
         ) : null}
 
-        <Pressable
+        <ValueWell
           onPress={() => onFocusField('count')}
-          hitSlop={6}
-          accessibilityRole="button"
+          lit={editing === 'count'}
+          width={WELL_WIDTH}
           accessibilityLabel={t('Correct the count, {count} {unit}', {
             count: formatCount(row.count, row.countUnit),
             unit: countUnitLabel(row.countUnit, lang),
           })}
-          style={pressedStyle}
-          className={[
-            'ml-md min-w-[76px] flex-row items-baseline',
-            editing === 'count' ? 'rounded-surface bg-surface px-xs' : '',
-          ].join(' ')}
+          style={weighted ? undefined : { marginLeft: 4 }}
         >
-          <Text className="text-label font-semibold tabular-nums text-ink">
+          <Text numberOfLines={1} className="text-label font-semibold tabular-nums text-ink">
             {formatCount(row.count, row.countUnit)}
           </Text>
-          <Text className="ml-xs text-micro uppercase text-ink-faint">
+          <Text numberOfLines={1} className="ml-xs text-micro uppercase text-ink-faint">
             {countUnitLabel(row.countUnit, lang)}
           </Text>
-        </Pressable>
+        </ValueWell>
 
         {graded ? (
           <Pressable
@@ -1953,6 +2038,48 @@ function LoggedSetRow({
 }
 
 /**
+ * "Move to another day" (redesign #15): a month to tap a day on, and `Move here`.
+ *
+ * The picked day is held here and only written on `Move here`, so browsing the
+ * months moves nothing. `Move here` stays inert (ghost) on the day the workout
+ * is already on and on a future day — see `canMoveToDay` for why the future is
+ * refused rather than clamped.
+ */
+function MoveDaySheet({
+  workout,
+  onMove,
+  onDismiss,
+}: {
+  workout: CompletedWorkout;
+  onMove: (shiftMinutes: number) => void;
+  onDismiss: () => void;
+}) {
+  const t = useT();
+  const today = useToday();
+  const [day, setDay] = useState(() => dayKey(workout.startedAt));
+  const ready = canMoveToDay(workout.startedAt, day, today);
+  return (
+    <Sheet title={t('Move to another day')} onDismiss={onDismiss}>
+      <DayPicker value={day} onChange={setDay} />
+      <Text maxFontSizeMultiplier={1.3} className="mt-md text-label text-ink-faint">
+        {t('Every set in this workout moves with it')}
+      </Text>
+      <View className="mt-xl">
+        <PrimaryButton
+          label={t('Move here')}
+          variant={ready ? 'primary' : 'ghost'}
+          onPress={() => {
+            const shift = shiftToDay(workout.startedAt, day);
+            if (ready && shift != null) onMove(shift);
+          }}
+        />
+        <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
+      </View>
+    </Sheet>
+  );
+}
+
+/**
  * Nothing to show — and WHICH nothing, because they are not the same.
  *
  * An empty log is the normal state of a new install and reads as an invitation. A
@@ -2068,3 +2195,16 @@ function describeTotal(exercise: CompletedExercise, t: Translate, lang: Language
  * silently loses its grouping on one build and not another is not worth the
  * dependency for one regex.
  */
+
+/** A logged set's place among its exercise's WORKING sets, 1-based; null for a warm-up. */
+function workingNumberOf(
+  sets: readonly { exerciseId: ID; setIndex: number; isWarmup: boolean; id: ID }[],
+  row: { exerciseId: ID; isWarmup: boolean; id: ID },
+): number | null {
+  if (row.isWarmup) return null;
+  const working = sets
+    .filter((s) => s.exerciseId === row.exerciseId && !s.isWarmup)
+    .sort((a, b) => a.setIndex - b.setIndex);
+  const at = working.findIndex((s) => s.id === row.id);
+  return at === -1 ? null : at + 1;
+}
