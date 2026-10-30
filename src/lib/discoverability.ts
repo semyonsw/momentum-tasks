@@ -12,7 +12,13 @@
  * every surface that answers a hold now carries a mark, and where the mark can
  * be a target it IS one, opening exactly what the hold opens:
  *
- *   • the SELECTED subsection chip shows `⋯`; tapping it opens the hold's menu;
+ *   • the SELECTED account chip shows `⋯`; tapping it opens what the hold
+ *     opens — the account's own edit sheet, whose danger zone holds `Archive`
+ *     (redesign §6: Archive lives on the item's own surface and nowhere else,
+ *     so the menu that used to offer it beside `Edit` had one row left, and a
+ *     one-row menu is a tap in the way);
+ *   • every task row shows `⋯`; tapping it opens the row's menu, the sheet the
+ *     hold opens (redesign #19);
  *   • a category tile shows `›`; tapping it opens the category, as the hold does,
  *     and the tile itself still records an amount — the common act keeps the
  *     big target;
@@ -87,45 +93,63 @@ export function exerciseRowControls(editing: boolean): ExerciseRowControls {
 /* Long-press surfaces and their visible marks (U11)                   */
 /* ------------------------------------------------------------------ */
 
-export type HoldSurface = 'moneyAccount' | 'moneyCategory' | 'exerciseCard' | 'routineDie';
+export type HoldSurface =
+  'moneyAccount' | 'moneyCategory' | 'exerciseCard' | 'routineDie' | 'taskRow';
 
 export const HOLD_SURFACES: readonly HoldSurface[] = [
   'moneyAccount',
   'moneyCategory',
   'exerciseCard',
   'routineDie',
+  'taskRow',
 ];
 
 export type HoldAction =
-  /** The subsection's name and glyph. */
+  /** The account's own sheet: its name, its glyph and its danger zone. */
   | 'editAccount'
-  /** Out of the chip row; its amounts stay. Only while another is live. */
-  | 'archiveAccount'
   /** The category's own screen. */
   | 'openCategory'
   /** Lift the card and slide it. */
   | 'reorder'
   /** The die's "what goes in it" sheet. */
-  | 'dieOptions';
+  | 'dieOptions'
+  /** The task row's menu — its rows are `lib/taskTap.ts`'s. */
+  | 'taskMenu';
 
 /** What the surface needs to know to decide its rows. */
 export interface HoldContext {
-  /** Live subsections — `archiveAccount` needs somewhere to fall back to. */
+  /** Live accounts. No hold row depends on it now; see `canArchiveAccount`. */
   liveAccounts?: number;
 }
 
 /** What holding the surface offers, in menu order. */
+// `context` is kept in the signature: the test that holds the mark and the
+// hold to the same rows runs every surface through the same contexts.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function holdActions(surface: HoldSurface, context: HoldContext = {}): HoldAction[] {
   switch (surface) {
     case 'moneyAccount':
-      return (context.liveAccounts ?? 1) > 1 ? ['editAccount', 'archiveAccount'] : ['editAccount'];
+      return ['editAccount'];
     case 'moneyCategory':
       return ['openCategory'];
     case 'exerciseCard':
       return ['reorder'];
     case 'routineDie':
       return ['dieOptions'];
+    case 'taskRow':
+      return ['taskMenu'];
   }
+}
+
+/**
+ * Whether an account's danger zone offers `Archive`. Only while ANOTHER live
+ * account exists: every amount names an account, so the last live one has
+ * nowhere to hand its money to (the store refuses it too). Delete is never
+ * offered — the store has no delete, and an account's amounts are in every
+ * total they ever reached.
+ */
+export function canArchiveAccount(liveAccounts: number): boolean {
+  return liveAccounts > 1;
 }
 
 /** The glyph that says "this answers a hold". */
@@ -141,6 +165,8 @@ export function holdCue(surface: HoldSurface): HoldCue {
       return 'grip';
     case 'routineDie':
       return 'options';
+    case 'taskRow':
+      return 'more';
   }
 }
 

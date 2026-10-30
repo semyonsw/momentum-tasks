@@ -26,10 +26,12 @@
  * because "how much do I have" is only answerable about a pocket or an account,
  * never about both at once.
  *
- * A LONG PRESS on a chip renames or archives it, which is the same
+ * A LONG PRESS on a chip opens that account's own sheet — its name, its glyph
+ * and its danger zone, where `Archive` lives (redesign §6) — which is the same
  * long-press-for-the-rare-thing the category tiles use. The SELECTED chip also
- * wears a `⋯` that opens the same menu by a tap, and every tile a `›` that opens
- * the category — a hold nobody can see is a feature nobody finds (U11,
+ * wears a `⋯` that opens it by a tap, the top bar's `Accounts` lists every
+ * account with the same sheet behind each, and every tile has a `›` strip that
+ * opens the category — a hold nobody can see is a feature nobody finds (U11,
  * `lib/discoverability.ts`).
  *
  * ── AND THE BALANCE IS A BUTTON ───────────────────────────────────────────
@@ -69,6 +71,13 @@
  * fell back to the clock: stepping back to the 16th and tapping `Food` wrote the
  * amount onto today. `dayInWindow` is the one answer both the ⟲ and the tile
  * use, so the day you are reading is the day you are writing.
+ *
+ * THE TILE IS TWO ZONES (redesign #20). The body adds, and says so with a small
+ * `+` badge in its corner; a `›` strip down the right edge — 44 dp wide, the
+ * tile's full height, behind a hairline — opens the category. The `›` used to
+ * be a 44-square floating in the corner over the body, which read as part of
+ * the tile and was hit by thumbs aiming at the tile. A hint line over the grid
+ * says both once.
  *
  * LONG PRESS is where the rare one went: straight to the category's own screen,
  * where its name, glyph, amounts and `Archive` live. It used to be a sheet that
@@ -192,7 +201,14 @@ import { SectionTopBar } from '../components/SectionTopBar';
 import { AiEntryCard } from '../components/AiEntryCard';
 import { Sheet } from '../components/Sheet';
 import { Stagger, pressedStyle } from '../components/motion';
-import { DashedAdd, Kicker, PrimaryButton, Separator, TextButton } from '../components/primitives';
+import {
+  DangerZone,
+  DashedAdd,
+  Kicker,
+  PrimaryButton,
+  Separator,
+  TextButton,
+} from '../components/primitives';
 import { ProgressRing } from '../components/ProgressRing';
 import { dayKey, formatShortDay, parseDay } from '../lib/days';
 import {
@@ -207,7 +223,7 @@ import {
 import { useToday } from '../hooks/useToday';
 import { describeForecast, monthEndForecast } from '../lib/forecast';
 import { budgetStatus, tileBudgetLine, visibleBudgets, type BudgetStatus } from '../lib/budgets';
-import { holdActions } from '../lib/discoverability';
+import { canArchiveAccount } from '../lib/discoverability';
 import { TOUCH_MIN } from '../lib/hitTarget';
 import { quickCategoryId } from '../lib/quickCategory';
 import { tap } from '../lib/feedback';
@@ -372,8 +388,8 @@ export function MoneyScreen({
   const [picking, setPicking] = useState(false);
   const [naming, setNaming] = useState(false);
   const [addingAccount, setAddingAccount] = useState(false);
-  /** The subsection a long press is asking about, and the one being renamed. */
-  const [heldAccount, setHeldAccount] = useState<MoneyAccount | null>(null);
+  /** The `Accounts` sheet from the top bar (redesign #9). */
+  const [listingAccounts, setListingAccounts] = useState(false);
   /** The subsection whose `Archive…` is waiting on the danger confirm. */
   const [archivingAccount, setArchivingAccount] = useState<MoneyAccount | null>(null);
   const [renamingAccount, setRenamingAccount] = useState<MoneyAccount | null>(null);
@@ -546,9 +562,19 @@ export function MoneyScreen({
           {
             key: 'ai',
             icon: 'sparkle',
-            label: t('Open the AI assistant'),
+            label: t('Open the AI coach'),
+            caption: t('AI coach'),
             lit: aiReady,
             onPress: () => onOpenAi(),
+          },
+          /* Every account, each opening its own sheet (redesign #9) — the
+             chips only ever showed the live ones' names. */
+          {
+            key: 'accounts',
+            icon: 'accounts',
+            label: t('Accounts'),
+            caption: t('Accounts'),
+            onPress: () => setListingAccounts(true),
           },
         ]}
       />
@@ -573,9 +599,9 @@ export function MoneyScreen({
               onPress={() => setAccountId(row.id)}
               onLongPress={() => {
                 tap();
-                setHeldAccount(row);
+                setRenamingAccount(row);
               }}
-              onMore={() => setHeldAccount(row)}
+              onMore={() => setRenamingAccount(row)}
             />
           ))}
           {/* `+` and `⇄` are 38 dp to match the chips they sit among, so they
@@ -586,7 +612,7 @@ export function MoneyScreen({
             onPress={() => setAddingAccount(true)}
             hitSlop={6}
             accessibilityRole="button"
-            accessibilityLabel={t('Add subsection')}
+            accessibilityLabel={t('Add account')}
             style={pressedStyle}
             className="h-[38px] flex-row items-center rounded-pill border border-dashed border-hairline px-md"
           >
@@ -600,7 +626,7 @@ export function MoneyScreen({
               }}
               hitSlop={6}
               accessibilityRole="button"
-              accessibilityLabel={t('Move money between subsections')}
+              accessibilityLabel={t('Move money between accounts')}
               style={pressedStyle}
               className="h-[38px] flex-row items-center rounded-pill border border-hairline bg-surface-alt px-md"
             >
@@ -761,7 +787,11 @@ export function MoneyScreen({
           onChange={setDirection}
         />
 
-        <View style={{ marginHorizontal: 11, marginTop: 16 }} className="flex-row flex-wrap">
+        <Text maxFontSizeMultiplier={1.3} className="mx-lg mt-md text-label text-ink-faint">
+          {t('Tap a category to add an amount. › opens it.')}
+        </Text>
+
+        <View style={{ marginHorizontal: 11, marginTop: 8 }} className="flex-row flex-wrap">
           {live.map((category, index) => (
             <Stagger
               key={category.id}
@@ -830,7 +860,7 @@ export function MoneyScreen({
           <PlanDoor
             glyph="◎"
             label={t('Savings goals')}
-            detail={goalCount > 0 ? String(goalCount) : t('A target for a subsection')}
+            detail={goalCount > 0 ? String(goalCount) : t('A target for an account')}
             onPress={onOpenGoals}
           />
         </View>
@@ -908,7 +938,7 @@ export function MoneyScreen({
 
       {addingAccount ? (
         <CategoryEditorSheet
-          title={t('Add subsection')}
+          title={t('Add account')}
           onSave={(name, glyph) => {
             const id = addAccount(name, glyph);
             // Land on what you just made — otherwise the only sign it worked is
@@ -920,9 +950,47 @@ export function MoneyScreen({
         />
       ) : null}
 
+      {/* THE ACCOUNTS SHEET — the top bar's `Accounts` (redesign #9). Every
+          live account, each opening its own edit sheet, and the way to add
+          one. A list rather than a new screen: an account is a glyph, a name
+          and a danger zone, and all three already fit the edit sheet. */}
+      {listingAccounts ? (
+        <Sheet title={t('Accounts')} onDismiss={() => setListingAccounts(false)}>
+          <View className="overflow-hidden rounded-surface bg-surface-alt">
+            {liveAccounts.map((row, index) => (
+              <View key={row.id}>
+                {index > 0 ? <Separator inset={16} /> : null}
+                <SheetRow
+                  label={`${row.glyph}  ${row.name}`}
+                  detail={formatMoney(balanceOfAccount(row, amounts), currency, units)}
+                  onPress={() => {
+                    setListingAccounts(false);
+                    setRenamingAccount(row);
+                  }}
+                />
+              </View>
+            ))}
+            <Separator inset={16} />
+            <SheetRow
+              label={t('Add account')}
+              onPress={() => {
+                setListingAccounts(false);
+                setAddingAccount(true);
+              }}
+            />
+          </View>
+          <TextButton label={t('Cancel')} onPress={() => setListingAccounts(false)} />
+        </Sheet>
+      ) : null}
+
+      {/* The account's OWN surface: its name and glyph, then its danger zone
+          (redesign §6). The chip's hold, its `⋯` and the Accounts sheet all
+          open this. `Archive` only while another account is live — every
+          amount names an account, so the last one has nowhere to hand its
+          money to. It asks first, like archiving a category (U19). */}
       {renamingAccount ? (
         <CategoryEditorSheet
-          title={t('Edit subsection')}
+          title={t('Edit account')}
           name={renamingAccount.name}
           glyph={renamingAccount.glyph}
           onSave={(name, glyph) => {
@@ -930,53 +998,18 @@ export function MoneyScreen({
             setRenamingAccount(null);
           }}
           onDismiss={() => setRenamingAccount(null)}
+          footer={
+            canArchiveAccount(liveAccounts.length) ? (
+              <DangerZone
+                onArchive={() => {
+                  const held = renamingAccount;
+                  setRenamingAccount(null);
+                  setArchivingAccount(held);
+                }}
+              />
+            ) : null
+          }
         />
-      ) : null}
-
-      {/* The long press on a subsection. `Archive` only exists while there is
-          another one to fall back to: every amount names an account, so the last
-          live one has nowhere to hand its money to. */}
-      {heldAccount ? (
-        <Sheet
-          title={`${heldAccount.glyph}  ${heldAccount.name}`}
-          onDismiss={() => setHeldAccount(null)}
-        >
-          <View className="overflow-hidden rounded-surface bg-surface-alt">
-            {/* The rows come from `holdActions`, the same list the ⋯ on the
-                chip opens — `lib/discoverability.ts`. */}
-            {holdActions('moneyAccount', { liveAccounts: liveAccounts.length }).map(
-              (action, index) => (
-                <View key={action}>
-                  {index > 0 ? <Separator inset={16} /> : null}
-                  {action === 'editAccount' ? (
-                    <SheetRow
-                      label={t('Edit subsection')}
-                      detail={t('Its name and its glyph')}
-                      onPress={() => {
-                        const held = heldAccount;
-                        setHeldAccount(null);
-                        setRenamingAccount(held);
-                      }}
-                    />
-                  ) : (
-                    <SheetRow
-                      label={`${t('Archive this subsection')}…`}
-                      detail={t('It leaves the row. Everything recorded in it stays recorded.')}
-                      onPress={() => {
-                        // It asks first, like archiving a category (U19): there
-                        // is no un-archive, and this row used to act on one tap.
-                        const held = heldAccount;
-                        setHeldAccount(null);
-                        setArchivingAccount(held);
-                      }}
-                    />
-                  )}
-                </View>
-              ),
-            )}
-          </View>
-          <TextButton label={t('Cancel')} onPress={() => setHeldAccount(null)} />
-        </Sheet>
       ) : null}
 
       {archivingAccount ? (
@@ -1251,8 +1284,8 @@ function AccountChip({
       accessibilityLabel={account.name}
       accessibilityHint={
         selected
-          ? t('Long press or tap the dots to edit the subsection')
-          : t('Long press to edit the subsection')
+          ? t('Long press or tap the dots to edit the account')
+          : t('Long press to edit the account')
       }
       style={(state) => [
         pressedStyle(state),
@@ -1359,7 +1392,7 @@ function CategoryTile({
   currency: string;
   onPress: () => void;
   onLongPress: () => void;
-  /** The `›` in the corner: the category's own screen, as the hold opens (U11). */
+  /** The `›` strip: the category's own screen, as the hold opens (U11, #20). */
   onOpen: () => void;
 }) {
   const t = useT();
@@ -1368,93 +1401,124 @@ function CategoryTile({
   const budgetLine = budget ? tileBudgetLine(budget, currency, units, lang) : null;
 
   return (
-    <BubblePressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={280}
-      radius={radius.card}
-      accessibilityRole="button"
-      accessibilityLabel={`${category.name}, ${formatMoney(total, currency, units)}${
-        budgetLine ? `. ${t('Budget')}: ${budgetLine}` : ''
-      }`}
-      accessibilityHint={t(
-        'Tap to add an amount here. Long press or tap the arrow to open the category.',
-      )}
-      style={(state) => [
-        pressedStyle(state),
-        {
-          height: 160,
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingHorizontal: 12,
-          borderRadius: radius.card,
-          overflow: 'hidden',
-          borderWidth: 1,
-          backgroundColor: 'rgba(236,241,238,0.055)',
-          borderColor: total > 0 ? tint(0.24) : 'rgba(236,241,238,0.06)',
-        },
-      ]}
+    <View
+      style={{
+        height: 160,
+        flexDirection: 'row',
+        borderRadius: radius.card,
+        overflow: 'hidden',
+        borderWidth: 1,
+        backgroundColor: 'rgba(236,241,238,0.055)',
+        borderColor: total > 0 ? tint(0.24) : 'rgba(236,241,238,0.06)',
+      }}
     >
       <SpecularEdge
         color={total > 0 ? 'rgba(236,241,238,0.1)' : 'rgba(236,241,238,0.06)'}
         radius={radius.card}
       />
-      {budget ? (
-        <ProgressRing
-          fraction={budget.fraction}
-          size={74}
-          stroke={2}
-          color={budget.over ? overBudget : palette.greenBright}
-          trackColor={palette.hairline}
-        >
+      {/* THE BODY — a tap adds an amount here. */}
+      <BubblePressable
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={280}
+        radius={radius.card}
+        accessibilityRole="button"
+        accessibilityLabel={`${category.name}, ${formatMoney(total, currency, units)}${
+          budgetLine ? `. ${t('Budget')}: ${budgetLine}` : ''
+        }`}
+        accessibilityHint={t(
+          'Tap to add an amount here. Long press or tap the arrow to open the category.',
+        )}
+        style={(state) => [
+          pressedStyle(state),
+          {
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 8,
+          },
+        ]}
+      >
+        {budget ? (
+          <ProgressRing
+            fraction={budget.fraction}
+            size={74}
+            stroke={2}
+            color={budget.over ? overBudget : palette.greenBright}
+            trackColor={palette.hairline}
+          >
+            <ProgressRing fraction={share} size={62} stroke={3.5}>
+              <Text className="text-[24px]">{category.glyph}</Text>
+            </ProgressRing>
+          </ProgressRing>
+        ) : (
           <ProgressRing fraction={share} size={62} stroke={3.5}>
             <Text className="text-[24px]">{category.glyph}</Text>
           </ProgressRing>
-        </ProgressRing>
-      ) : (
-        <ProgressRing fraction={share} size={62} stroke={3.5}>
-          <Text className="text-[24px]">{category.glyph}</Text>
-        </ProgressRing>
-      )}
-      <Text
-        numberOfLines={1}
-        maxFontSizeMultiplier={1.3}
-        style={{ fontSize: 14.5, marginTop: 11 }}
-        className="w-full text-center font-medium text-ink"
-      >
-        {category.name}
-      </Text>
-      {/* The total ROLLS to a new month's figure, with the ring beside it. */}
-      <RollingNumber
-        value={formatMoney(total, currency, units)}
-        lineHeight={19}
-        duration={700}
-        containerStyle={{ marginTop: 2 }}
-        style={{ fontSize: 14.5 }}
-        className={['font-semibold', total > 0 ? 'text-green-bright' : 'text-ink-faint'].join(' ')}
-      />
-      {budgetLine ? (
+        )}
         <Text
           numberOfLines={1}
-          adjustsFontSizeToFit
           maxFontSizeMultiplier={1.3}
-          style={{ fontSize: 12.5, color: budget?.over ? overBudget : palette.inkFaint }}
-          className="mt-[2px] w-full text-center font-medium tabular-nums"
+          style={{ fontSize: 14.5, marginTop: 11 }}
+          className="w-full text-center font-medium text-ink"
         >
-          {budgetLine}
+          {category.name}
         </Text>
-      ) : (
-        <Text
-          maxFontSizeMultiplier={1.3}
-          style={{ fontSize: 12.5, letterSpacing: 1.1 }}
-          className="mt-[2px] font-semibold uppercase tabular-nums text-ink-faint"
+        {/* The total ROLLS to a new month's figure, with the ring beside it. */}
+        <RollingNumber
+          value={formatMoney(total, currency, units)}
+          lineHeight={19}
+          duration={700}
+          containerStyle={{ marginTop: 2 }}
+          style={{ fontSize: 14.5 }}
+          className={['font-semibold', total > 0 ? 'text-green-bright' : 'text-ink-faint'].join(
+            ' ',
+          )}
+        />
+        {budgetLine ? (
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 12.5, color: budget?.over ? overBudget : palette.inkFaint }}
+            className="mt-[2px] w-full text-center font-medium tabular-nums"
+          >
+            {budgetLine}
+          </Text>
+        ) : (
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 12.5, letterSpacing: 1.1 }}
+            className="mt-[2px] font-semibold uppercase tabular-nums text-ink-faint"
+          >
+            {total > 0 ? `${Math.round(share * 100)}%` : '\u2014'}
+          </Text>
+        )}
+        {/* `+`, 24 dp, in the body's corner: what a tap on the body does.
+            A mark, not a second target — the whole body is the target. */}
+        <View
+          accessible={false}
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: glass.raisedEdge,
+            backgroundColor: glass.raised,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          {total > 0 ? `${Math.round(share * 100)}%` : '\u2014'}
-        </Text>
-      )}
-      {/* › — the hold's destination, said on the tile and tappable on its own.
-          44 × 44 in the corner, clear of the ring and the figures; the rest of
-          the tile still records an amount. */}
+          <Icon name="plus" size={13} color={palette.inkMuted} />
+        </View>
+      </BubblePressable>
+      {/* THE STRIP — `›`, the full height, behind a hairline: opens the
+          category, as the hold does. Its own zone, so a thumb aiming at the
+          tile cannot land on it by accident. */}
       <Pressable
         onPress={onOpen}
         accessibilityRole="button"
@@ -1462,19 +1526,17 @@ function CategoryTile({
         style={(state) => [
           pressedStyle(state),
           {
-            position: 'absolute',
-            top: 0,
-            right: 0,
             width: TOUCH_MIN,
-            height: TOUCH_MIN,
             alignItems: 'center',
             justifyContent: 'center',
+            borderLeftWidth: 1,
+            borderLeftColor: palette.hairline,
           },
         ]}
       >
-        <Icon name="chevron-right" size={16} color={palette.inkFaint} />
+        <Icon name="chevron-right" size={18} color={palette.inkMuted} />
       </Pressable>
-    </BubblePressable>
+    </View>
   );
 }
 
@@ -1630,7 +1692,7 @@ function PlanDoor({
 }
 
 /**
- * A row on the long-press sheet: a label, why you would tap it, and nothing else.
+ * A row on the Accounts sheet: a label, a faint line under it, and a `›`.
  *
  * `IntervalRow` below is the same geometry carrying a CHOICE — it renders a ✓ and
  * lives in a radio group. This one is a door, so it has neither.
@@ -1641,22 +1703,30 @@ function SheetRow({
   onPress,
 }: {
   label: string;
-  detail: string;
+  detail?: string;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${label}. ${detail}`}
+      accessibilityLabel={detail ? `${label}. ${detail}` : label}
       style={pressedStyle}
       className="h-row-lg flex-row items-center px-lg"
     >
       <View className="flex-1 pr-md">
-        <Text className="text-body text-ink">{label}</Text>
-        <Text numberOfLines={1} className="mt-[2px] text-label text-ink-faint">
-          {detail}
+        <Text numberOfLines={1} maxFontSizeMultiplier={1.3} className="text-body text-ink">
+          {label}
         </Text>
+        {detail ? (
+          <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.3}
+            className="mt-[2px] text-label tabular-nums text-ink-faint"
+          >
+            {detail}
+          </Text>
+        ) : null}
       </View>
       <Icon name="chevron-right" size={16} color={palette.inkFaint} />
     </Pressable>

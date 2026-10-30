@@ -24,9 +24,14 @@
  * rather than at a second sheet that would be this one with two words changed.
  * That is why the two fields are announced as `Name` and `Glyph` and not as a
  * category's: the title says which thing is being named.
+ *
+ * An account's sheet is also that account's OWN surface — there is no account
+ * screen — so its danger zone (redesign §6) is handed in as `footer` and drawn
+ * last, under Save. A category's own surface is its screen, so its sheet has
+ * none.
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
 import { useRevealOnFocus } from './KeyboardAware';
@@ -42,6 +47,8 @@ interface CategoryEditorSheetProps {
   glyph?: string;
   onSave: (name: string, glyph: string) => void;
   onDismiss: () => void;
+  /** The last block — an account's `DangerZone`. */
+  footer?: ReactNode;
 }
 
 export function CategoryEditorSheet({
@@ -50,6 +57,7 @@ export function CategoryEditorSheet({
   glyph: initialGlyph = '',
   onSave,
   onDismiss,
+  footer,
 }: CategoryEditorSheetProps) {
   const t = useT();
   const reveal = useRevealOnFocus();
@@ -105,6 +113,7 @@ export function CategoryEditorSheet({
         />
         <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
       </View>
+      {footer ? <View className="mt-lg">{footer}</View> : null}
     </Sheet>
   );
 }

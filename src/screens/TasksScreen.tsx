@@ -3,19 +3,20 @@
  *
  *   ┌──────────────────────────────────────────────┐
  *   │ DAILY TASKS                           ✦  ⟲   │
+ *   │ Tap the circle to tick a task off. ⋯ or…     │   the hint, once, on top
  *   │               ╭───────╮                      │
  *   │           ‹   │ TODAY │   ›                  │   the day dial, 132 dp: the
  *   │               │  13   │                      │   date inside the day's
  *   │               ╰───────╯                      │   fraction
  *   │      (6 done) (2 left) ┆1 on purpose┆        │
  *   │ ╭────────────────────────────────────────╮   │
- *   │ │ ✓  Morning Bible reading      (🜂 12) › │   │  lit — this one is done
+ *   │ │ ✓  Morning Bible reading      (🜂 12) ⋯ │   │  lit — this one is done
  *   │ ╰────────────────────────────────────────╯   │
  *   │ ╭────────────────────────────────────────╮   │
- *   │ │ ○  Evening Bible reading             › │   │
+ *   │ │ ┆  Evening Bible reading             ⋯ │   │  dashed — skipped on purpose
+ *   │ │    [Skipped on purpose] Every day      │   │
  *   │ ╰────────────────────────────────────────╯   │
  *   │ ( ✦ Ask about your habits             ✕ )    │  until closed or used
- *   │ Tap a circle to mark it done. Hold a row…    │
  *   │                                     ( + )    │
  *   └──────────────────────────────────────────────┘
  *
@@ -50,8 +51,9 @@
  * anybody seeing it happen; `lib/taskTap.ts` has the rule. `on purpose` leaves
  * the denominator entirely, so the ring reads `done / (asked − excused)`.
  *
- * The mark's tap target is 62 × 60 inside a 60-high card; tapping the rest of
- * the row opens that one task's own screen. Only the left column toggles.
+ * The mark is a 44 dp circle in a 60 × 60 target inside a 60-high card; the
+ * name and sub-line open that one task's own screen, and the `⋯` at the end
+ * opens the row's menu. Only the left column toggles.
  *
  * ── THE THREE STATES ARE THREE SURFACES ───────────────────────────────────
  *
@@ -71,11 +73,15 @@
  * blur budget is spent on the two bars, which is where the glass does its
  * actual work — see `components/glass.tsx`.
  *
- * ── HOLD A ROW FOR ITS MENU; `Move` LIFTS IT ──────────────────────────────
+ * ── HOLD A ROW, OR TAP ITS `⋯`, FOR ITS MENU; `Move` LIFTS IT ─────────────
  *
  * The hold used to lift the row straight away. It opens a menu now — Skip today,
- * Move, Open — so the skip has somewhere to live that a stray tap cannot reach,
- * and the reorder is still there, one word further in. `Move` puts the row in
+ * Pause, Move, Open — so the skip has somewhere to live that a stray tap cannot
+ * reach, and the reorder is still there, one word further in. The `⋯` on every
+ * row opens the SAME sheet (redesign #19): a hold nobody can see is a menu
+ * nobody finds, and the sheet's sub-line names the gesture so the two are
+ * learned as one. The task's own screen draws the same rows
+ * (`components/TaskActionList.tsx`); its `Move` comes back here to lift. `Move` puts the row in
  * the air with the same hook and the same `Drop` escape as the routine editor
  * and the logging screen: `hooks/useDragReorder.ts`. What is different
  * here is what is on screen — the day shows only the tasks that ASKED for
@@ -156,9 +162,10 @@ import {
   type ToastAction,
 } from '../components/glass';
 import { pressedStyle, usePressScale } from '../components/motion';
-import { Kicker, Separator, TextButton } from '../components/primitives';
+import { Kicker, MoreButton, TextButton } from '../components/primitives';
 import { NumberSheet } from '../components/NumberSheet';
 import { Sheet } from '../components/Sheet';
+import { TaskActionList } from '../components/TaskActionList';
 import { TaskEditorSheet } from '../components/TaskEditorSheet';
 import { useDragReorder, type CardLayout } from '../hooks/useDragReorder';
 import { useLanguage, useT } from '../hooks/useT';
@@ -193,6 +200,7 @@ import {
 import type { Language } from '../lib/i18n';
 import { showTasksHint, taskRowActions, tasksEmptyState, type TaskRowAction } from '../lib/taskTap';
 import { mixSrgb } from '../lib/theme';
+import { useTaskMove } from '../state/taskMoveStore';
 import { useTasks } from '../state/tasksStore';
 import {
   curve,
@@ -430,6 +438,24 @@ export function TasksScreen({
     else openRow(taskId);
   };
 
+  /*
+   * `Move` asked for on the task's own screen (redesign #19) — see
+   * `state/taskMoveStore.ts`. The list steps to the request's day first, then
+   * lifts the row the way its own menu's `Move` does. A row that is not on that
+   * day, or alone on it, has nothing to move past: the request just clears.
+   */
+  const moveRequest = useTaskMove((s) => s.request);
+  const clearMoveRequest = useTaskMove((s) => s.clear);
+  useEffect(() => {
+    if (!moveRequest || lifted) return;
+    if (moveRequest.day !== day) {
+      onChangeDay(moveRequest.day);
+      return;
+    }
+    clearMoveRequest();
+    if (rowIds.length > 1 && rowIds.includes(moveRequest.taskId)) lift(moveRequest.taskId);
+  }, [moveRequest, lifted, day, rowIds, onChangeDay, clearMoveRequest, lift]);
+
   /* The day bubble, and the dial stepping back while it is up. */
   const {
     visible: bubbleUp,
@@ -459,7 +485,8 @@ export function TasksScreen({
                 {
                   key: 'ai',
                   icon: 'sparkle',
-                  label: t('Open the AI assistant'),
+                  label: t('Open the AI coach'),
+                  caption: t('AI coach'),
                   lit: aiReady,
                   onPress: () => onOpenAi(),
                 },
@@ -477,6 +504,19 @@ export function TasksScreen({
         // The list must not scroll under a row that is in the air.
         scrollEnabled={lifted == null}
       >
+        {/* THE HINT, ONCE, AT THE TOP (redesign #19). It used to sit under
+            the list, which on a long day is under the fold — the place a hint
+            is read by nobody who needs it. It says the three things the rows
+            cannot say about themselves: the circle is the tick, `⋯` and the
+            hold are one menu, and what `on purpose` costs (nothing). */}
+        {!lifted && showTasksHint(rows.length) ? (
+          <Text maxFontSizeMultiplier={1.3} className="mx-lg mt-xs text-label text-ink-faint">
+            {t(
+              'Tap the circle to tick a task off. ⋯ or hold for more. “On purpose” means an excused day — it doesn’t break your streak.',
+            )}
+          </Text>
+        ) : null}
+
         {lifted && liftedTask ? (
           <View className="mx-lg mt-lg items-center">
             <Kicker tone="green">
@@ -647,6 +687,8 @@ export function TasksScreen({
                     // The hold menu: skip, move, open. Not while a row is in
                     // the air — the rows take no touches then anyway.
                     onLongPress={lifted ? undefined : holdRow}
+                    // The hold's visible twin (redesign #19): the same sheet.
+                    onMore={lifted ? undefined : holdRow}
                   />
                 </View>
               </ReorderRow>
@@ -693,14 +735,6 @@ export function TasksScreen({
             <AiEntryCard section="Tasks" ready={aiReady} onOpen={onOpenAi} />
           </View>
         )}
-
-        {!lifted && showTasksHint(rows.length) ? (
-          <Text className="mx-lg mt-[14px] text-label text-ink-faint">
-            {t(
-              'Tap a circle to mark it done. Hold a row to skip today on purpose or pause the task.',
-            )}
-          </Text>
-        ) : null}
       </ScrollView>
 
       {/* The day closed. Fired from the dial's own band, which is where the eye
@@ -849,9 +883,11 @@ function FirstTaskCard({ onPress }: { onPress: () => void }) {
 }
 
 /**
- * The row's hold menu (U6): the skip, the move and the month, as a sheet of
- * two-line rows — the session's ⋮ menu, the same shape. The skip leads, because
- * it is the one that only lives here.
+ * The row's menu (U6): the skip, the pause, the move and the month, as a sheet
+ * of two-line rows — the session's ⋮ menu, the same shape. The hold and the `⋯`
+ * open THIS sheet, and its sub-line says so (redesign #19): a user who found one
+ * door learns the other exists. The day is named only when it is not today —
+ * on today it is what the skip's own label already says.
  */
 function TaskMenu({
   task,
@@ -870,72 +906,15 @@ function TaskMenu({
 }) {
   const t = useT();
   const lang = useLanguage();
-  const copy: Record<TaskRowAction, { label: string; detail: string }> = {
-    count: {
-      label: t('Set a number…'),
-      detail: t('Type how many, instead of a tap each'),
-    },
-    skip: isToday
-      ? {
-          label: t('Skip today, on purpose'),
-          detail: t("Keeps the streak and leaves today's count"),
-        }
-      : {
-          label: t('Skip this day, on purpose'),
-          detail: t("Keeps the streak and leaves the day's count"),
-        },
-    unskip: { label: t('Take the skip back'), detail: t('Back to not answered') },
-    pause: {
-      label: t('Pause for a while…'),
-      detail: t('Excuse a run of days, for every task or a few'),
-    },
-    move: { label: t('Move'), detail: t('Slide it to a new place, then Drop') },
-    open: { label: t('Open history'), detail: t('The month and the streak') },
-  };
   return (
     <Sheet title={task.name} onDismiss={onDismiss}>
-      <Kicker className="mb-sm">
-        {isToday ? `${t('Today')} · ${formatLongDay(day, lang)}` : formatLongDay(day, lang)}
-      </Kicker>
-      <View className="overflow-hidden rounded-surface bg-surface-alt">
-        {actions.map((action, index) => (
-          <View key={action}>
-            {index > 0 ? <Separator inset={16} /> : null}
-            <MenuRow
-              label={copy[action].label}
-              detail={copy[action].detail}
-              onPress={() => onAction(action)}
-            />
-          </View>
-        ))}
-      </View>
+      <Text maxFontSizeMultiplier={1.3} className="-mt-sm mb-md text-label text-ink-muted">
+        {t('Same menu as press-and-hold')}
+      </Text>
+      {isToday ? null : <Kicker className="mb-sm">{formatLongDay(day, lang)}</Kicker>}
+      <TaskActionList actions={actions} isToday={isToday} onAction={onAction} />
       <TextButton label={t('Cancel')} onPress={onDismiss} />
     </Sheet>
-  );
-}
-
-function MenuRow({
-  label,
-  detail,
-  onPress,
-}: {
-  label: string;
-  detail: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${label}. ${detail}`}
-      style={pressedStyle}
-      className="h-row-lg justify-center px-lg"
-    >
-      <Text className="text-body text-ink">{label}</Text>
-      <Text numberOfLines={1} className="mt-[2px] text-label text-ink-faint">
-        {detail}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -1019,6 +998,7 @@ const TaskRow = memo(function TaskRow({
   onToggle,
   onOpen,
   onLongPress,
+  onMore,
 }: {
   task: Task;
   mark: TaskMark | null;
@@ -1038,6 +1018,8 @@ const TaskRow = memo(function TaskRow({
   onToggle: (taskId: ID) => void;
   onOpen: (taskId: ID) => void;
   onLongPress?: (taskId: ID) => void;
+  /** The `⋯` at the row's end — opens what the hold opens. */
+  onMore?: (taskId: ID) => void;
 }) {
   const t = useT();
   const lang = useLanguage();
@@ -1086,9 +1068,9 @@ const TaskRow = memo(function TaskRow({
           }
           accessibilityHint={onLongPress ? t('Hold for more: skip today, pause, move') : undefined}
           style={pressedStyle}
-          // 62 × 60, the row's full height — the one control on this screen
-          // that is pressed without being looked at.
-          className="h-[60px] w-[62px] items-center justify-center"
+          // 60 × 60 around the 44 dp circle, the row's full height — the one
+          // control on this screen that is pressed without being looked at.
+          className="h-[60px] w-[60px] items-center justify-center"
         >
           <Animated.View style={{ transform: press.style.transform }}>
             {progress !== null && task.target && mark === null ? (
@@ -1108,13 +1090,14 @@ const TaskRow = memo(function TaskRow({
             task.name,
             detail,
             strength !== null ? t('Habit strength {n}%', { n: strengthPercent(strength) }) : null,
+            missed ? t('Skipped on purpose') : null,
             t('Open the month.'),
           ]
             .filter(Boolean)
             .join('. ')}
           accessibilityHint={onLongPress ? t('Hold for more: skip today, pause, move') : undefined}
           style={pressedStyle}
-          className="h-[60px] flex-1 flex-row items-center pr-lg"
+          className="h-[60px] flex-1 flex-row items-center"
         >
           <View className="flex-1 pr-sm">
             {/* Both lines RUN: `Evening Bible reading and a short journal entry`
@@ -1127,11 +1110,15 @@ const TaskRow = memo(function TaskRow({
               className={['text-task', missed ? 'text-ink-muted' : 'text-ink'].join(' ')}
             />
             <View className="flex-row items-center" style={{ marginTop: 2 }}>
+              {/* An excused day says so in words as well as in the dashed
+                  circle (redesign #19) — the dash alone was a shape you had
+                  to have been told about. */}
+              {missed ? <ExcusedTag label={t('Skipped on purpose')} /> : null}
               {week && task.schedule.kind === 'weekly' ? (
                 <WeekPips done={week.done} times={task.schedule.times} />
               ) : null}
               <RunningText
-                text={missed ? `${detail} · ${t('streak kept')}` : detail}
+                text={detail}
                 maxFontSizeMultiplier={1.3}
                 fadeColor={fade}
                 containerStyle={{ flex: 1 }}
@@ -1163,10 +1150,19 @@ const TaskRow = memo(function TaskRow({
               freezesLabel={t('{n} streak freezes held. Open', { n: freezes })}
             />
           )}
-          <View className="ml-sm">
-            <Icon name="chevron-right" size={16} color={palette.inkFaint} />
-          </View>
         </Pressable>
+        {/* `⋯`, 44 dp: every hold has a visible twin (redesign §1). The `›`
+            it replaced only said "this opens" — which the name already does —
+            and left the hold's menu undiscoverable. The slot stays while a row
+            is in the air, so nothing shifts sideways under the drag. */}
+        <View style={{ width: 44, marginRight: 4 }}>
+          {onMore ? (
+            <MoreButton
+              onPress={() => onMore(task.id)}
+              accessibilityLabel={t('Options for {name}', { name: task.name })}
+            />
+          ) : null}
+        </View>
       </View>
     </GlassSurface>
   );
@@ -1174,8 +1170,8 @@ const TaskRow = memo(function TaskRow({
 
 /**
  * 60, down from 74 (U1): the name's 22 and the detail's 18 with 9 of air each
- * way. The design's floor is 56; 60 keeps the ✓'s 36 dp mark from touching the
- * card's edges, and is what puts six or seven rows above the fold.
+ * way. The design's floor is 56; 60 keeps the 44 dp tick circle off the card's
+ * edges, and is what puts six or seven rows above the fold.
  */
 const ROW_HEIGHT = 60;
 /** The habit-strength ring on a row (T4): the design's 22 dp, 3 dp stroke. */
@@ -1186,8 +1182,14 @@ const DIAL = 132;
 const DIAL_STROKE = 8;
 /** The detail line's grey — was the prototype's #6B766F; the raised `inkFaint` (U3) is that step now. */
 const DETAIL_INK = palette.inkFaint;
-/** The done mark and the two it replaces are one 36 dp footprint. */
-const MARK = 36;
+/**
+ * The tick circle: 44 dp (redesign #19), up from 36 — the circle is the one
+ * target on the screen, so it is drawn at the size a target is, and the three
+ * answers share that one footprint.
+ */
+const MARK = 44;
+/** The excused circle's dash and the tag's: the counts pill's excused edge. */
+const EXCUSED_EDGE = 'rgba(138,150,143,0.45)';
 
 /**
  * The three answers, as three marks. The filled one is the app's shared commit
@@ -1203,10 +1205,12 @@ function Mark({ mark, avoid = false }: { mark: TaskMark | null; avoid?: boolean 
     return (
       <CheckPop>
         {/* ⊘ on a habit to avoid (T7): a ✓ on "No sugar" reads as the sugar. */}
-        <CommitMark size={MARK} glyph={avoid ? 19 : 17} icon={avoid ? 'ban' : 'check'} />
+        <CommitMark size={MARK} glyph={avoid ? 22 : 20} icon={avoid ? 'ban' : 'check'} />
       </CheckPop>
     );
   }
+  /* Excused: the same circle, DASHED — the app's mark for "a slot left empty
+     on purpose", as on the row's card and the month grid (redesign #19). */
   if (mark === 'missed') {
     return (
       <View
@@ -1214,13 +1218,11 @@ function Mark({ mark, avoid = false }: { mark: TaskMark | null; avoid?: boolean 
           width: MARK,
           height: MARK,
           borderRadius: radius.pill,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: 'rgba(236,241,238,0.05)',
+          borderWidth: 1.5,
+          borderStyle: 'dashed',
+          borderColor: EXCUSED_EDGE,
         }}
-      >
-        <Icon name="x" size={13} color={DETAIL_INK} />
-      </View>
+      />
     );
   }
   return (
@@ -1237,7 +1239,37 @@ function Mark({ mark, avoid = false }: { mark: TaskMark | null; avoid?: boolean 
 }
 
 /**
- * A counted row's circle on an unfinished day (T1): the 36 dp footprint of the
+ * `Skipped on purpose` — the excused row's tag, ahead of its sub-line. Dashed
+ * like the circle beside it, so the word and the shape are read as one thing.
+ */
+function ExcusedTag({ label }: { label: string }) {
+  return (
+    <View
+      style={{
+        height: 20,
+        justifyContent: 'center',
+        paddingHorizontal: 7,
+        marginRight: 6,
+        borderRadius: radius.pill,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: EXCUSED_EDGE,
+      }}
+    >
+      <Text
+        maxFontSizeMultiplier={1.15}
+        numberOfLines={1}
+        style={{ lineHeight: 16 }}
+        className="text-micro font-medium text-ink-muted"
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * A counted row's circle on an unfinished day (T1): the 44 dp footprint of the
  * other marks, a track cut into one dash per part and the parts done filled in
  * over it, with `3/8` in the middle — the design's "fills by parts". Past
  * `SEGMENTS_MAX` parts the dashes would be slivers, so the track is whole and

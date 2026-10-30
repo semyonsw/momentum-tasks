@@ -14,7 +14,7 @@
  *   │ │ 6,000 AMD                               › │ │
  *   │ │ September 2026 · whole month · metro pass │ │
  *   │ + Add to this category                       │
- *   │ Archive this category                        │
+ *   │ DANGER ZONE ┌ Archive  Hide it. History… ┐  │
  *   └──────────────────────────────────────────────┘
  *
  * ── THE RENAME IS INLINE, BECAUSE IT IS THE WHOLE EDITOR ──────────────────
@@ -27,8 +27,9 @@
  *
  * Every amount in here is in the month, the year and the balance. Deleting the
  * category would either strand them or silently move three totals the user has
- * already read — so the row is `Archive this category` and the faint line under
- * it states exactly what survives. `state/moneyStore.ts` makes the same argument
+ * already read — so the screen ends with the danger zone every item's own screen
+ * ends with (redesign §6), holding `Archive` alone, and the confirm it opens
+ * states exactly what survives. `state/moneyStore.ts` makes the same argument
  * from the data side.
  *
  * The window comes from `MoneyScreen` rather than being picked again here: this
@@ -53,7 +54,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { pressedStyle } from '../components/motion';
 import {
   AddRow,
-  DangerFootAction,
+  DangerZone,
   FieldWell,
   Kicker,
   ListCard,
@@ -216,15 +217,9 @@ export function CategoryDetailScreen({
           />
         </View>
 
-        <View className="mx-lg mt-sm h-hairline bg-hairline" />
-        <DangerFootAction
-          label={t('Archive this category')}
-          hint={t(
-            'Archived, not deleted — its amounts stay in the month, the year and the balance.',
-          )}
-          onPress={() => setArchiving(true)}
-          className="mx-md mt-sm"
-        />
+        <View className="mx-lg mt-xl">
+          <DangerZone onArchive={() => setArchiving(true)} />
+        </View>
       </KeyboardAwareScrollView>
 
       {archiving ? (

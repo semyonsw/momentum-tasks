@@ -65,6 +65,39 @@ export function taskRowActions(
 }
 
 /**
+ * The same menu, as labelled rows on the task's own screen (redesign #19).
+ *
+ * The detail screen is not reading a day, it is reading the task — so its rows
+ * act on TODAY, and they follow the rule the row's menu follows on today's
+ * list. What differs is what today may not have: a task that does not ask
+ * today has no circle to count into or excuse, so `count`, `skip` and `unskip`
+ * leave rather than writing a mark on a day the list would never show; and
+ * `move` needs the task ON today's list with another row to pass. `pause` and
+ * `open` are about the task, not the day, and are always there.
+ *
+ * Rejected: offering a day picker for the skip (the month grid under the rows
+ * already answers "which day", by tapping it — and a skip for another day is the
+ * day list's job, where the pager is).
+ */
+export function taskDetailActions({
+  mark,
+  asksToday,
+  visibleToday,
+  counted,
+}: {
+  /** Today's answer. */
+  mark: TaskMark | null;
+  /** The task asks for something today. */
+  asksToday: boolean;
+  /** How many rows today's list holds. */
+  visibleToday: number;
+  counted: boolean;
+}): TaskRowAction[] {
+  const rows = taskRowActions(mark, asksToday ? visibleToday : 0, counted);
+  return asksToday ? rows : rows.filter((action) => action === 'pause' || action === 'open');
+}
+
+/**
  * What the screen says when there are no rows (U13), and it says it ONCE.
  *
  *  - `first`: there are no live tasks at all, so the one useful thing on the

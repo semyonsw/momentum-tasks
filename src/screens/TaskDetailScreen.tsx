@@ -11,14 +11,15 @@
  *   │ │ 12 🜂            ││ 11 of 13              │ │   lit | card
  *   │ └─────────────────┘└───────────────────────┘ │
  *   │ Paused until 18 October          Resume now  │   only while a pause runs
- *   │ ┌ ॥ Pause for a vacation…                 › ┐ │   the pause sheet (T3)
+ *   │ ┌ Set a number… · Skip today, on purpose ┐   │   the row menu's actions,
+ *   │ │ Pause for a while… · Move · Open history│   │   as labelled rows (#19)
  *   │          ‹ September 2026 ›                  │
  *   │  M  T  W  T  F  S  S                         │
  *   │     ▢  ▢  ■  ■  ■  ■                         │   cells pop in, 14 ms apart
  *   │  ■  ■  ■  ■  ■  ■  ◉  ← today                │
  *   │  ■ Done  ┆ On purpose  ▫ Not answered        │
  *   │ NOTE · 12 SEPTEMBER                          │
- *   │ Archive this task…                           │   muted, asks
+ *   │ DANGER ZONE ┌ Archive  Hide it. History… ┐  │   last, asks first
  *   │                              ╭ ✎ Edit task ╮ │   ghost, floating
  *   └──────────────────────────────────────────────┘
  *
@@ -55,17 +56,30 @@
  * reading a stored pause. `Resume now` clears the ones after today and leaves
  * today itself to the day screen; its Undo excuses those same squares again.
  *
+ * ── THE ROW'S MENU, AS ROWS ───────────────────────────────────────────────
+ *
+ * The five actions the day list's `⋯` and hold open are here too, as labelled
+ * rows, in the same words (`components/TaskActionList.tsx`, redesign #19), so
+ * the screen a task opens to is a place where everything about it can be done.
+ * They act on TODAY — this screen reads the task, not a day — and the ones a
+ * today without this task has no use for leave (`taskDetailActions`). Two of
+ * them cannot happen here and say where they go: `Move` hands the row to the
+ * day list, lifted (`state/taskMoveStore.ts`), and `Open history` brings the
+ * month grid below into view, because this screen IS the history. The row
+ * replaced the old `Pause for a vacation…` door, which was one of the five.
+ *
  * ── ARCHIVE, AND NO DELETE ────────────────────────────────────────────────
  *
  * Archiving keeps the months that were already drawn; deleting would silently
- * remove a year of answered days from a log whose only job is to remember them.
- * It is muted text at the foot of the scroll (`DangerFootAction`) — the one
- * thing here that takes the task off the day list — and it asks first, in the
- * danger sheet: there is no un-archive.
+ * remove a year of answered days from a log whose only job is to remember them
+ * — and the store has no delete to offer, so the danger zone holds `Archive`
+ * alone. It is the last block on the screen, the same `DangerZone` every
+ * item's own screen ends with (redesign §6), and it asks first, in the danger
+ * sheet: there is no un-archive.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
+import { Animated, Easing, type ScrollView, Text, View } from 'react-native';
 import { KeyboardAwareScrollView } from '../components/KeyboardAware';
 import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
@@ -76,7 +90,9 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { TaskEditorSheet } from '../components/TaskEditorSheet';
 import { pressedStyle } from '../components/motion';
 import { FloatingAction, Lamps, type ToastAction } from '../components/glass';
-import { PauseDoorRow, PauseSheet, raisePauseToast } from '../components/PauseSheet';
+import { PauseSheet, raisePauseToast } from '../components/PauseSheet';
+import { NumberSheet } from '../components/NumberSheet';
+import { TaskActionList } from '../components/TaskActionList';
 import { ProgressRing } from '../components/ProgressRing';
 import { FreezeSheet } from '../components/FreezeSheet';
 import { useEngagementView } from '../hooks/useEngagement';
@@ -89,7 +105,7 @@ import {
   strengthSeries,
   type StrengthPoint,
 } from '../lib/habitStrength';
-import { DangerFootAction, FieldWell, Kicker } from '../components/primitives';
+import { DangerZone, FieldWell, Kicker } from '../components/primitives';
 import { useLanguage, useT } from '../hooks/useT';
 import {
   dayKey,
@@ -99,9 +115,16 @@ import {
   parseDay,
   weekdayInitials,
 } from '../lib/days';
+import { taskDetailActions, type TaskRowAction } from '../lib/taskTap';
 import {
   type Task,
   type TaskCell,
+  asksOn,
+  describeProgress,
+  isCounted,
+  progressOf,
+  tasksOn,
+  unitOf,
   describeReminder,
   describeSchedule,
   describeTarget,
@@ -113,6 +136,7 @@ import {
   pausedUntil,
   taskMonth,
 } from '../lib/tasks';
+import { useTaskMove } from '../state/taskMoveStore';
 import { useTasks } from '../state/tasksStore';
 import { palette, radius, tint } from '../theme/tokens';
 
@@ -132,6 +156,11 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
   const archiveTask = useTasks((s) => s.archiveTask);
   const unpause = useTasks((s) => s.unpause);
   const excuse = useTasks((s) => s.excuse);
+  const tasks = useTasks((s) => s.tasks);
+  const setMark = useTasks((s) => s.setMark);
+  const setCount = useTasks((s) => s.setCount);
+  const restoreEntry = useTasks((s) => s.restoreEntry);
+  const requestMove = useTaskMove((s) => s.requestMove);
 
   const today = dayKey(new Date());
   const start = parseDay(today) ?? new Date();
@@ -140,6 +169,10 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [pausing, setPausing] = useState(false);
+  const [counting, setCounting] = useState(false);
+  /* `Open history` scrolls here: the month pager's place in the scroll. */
+  const scrollRef = useRef<ScrollView>(null);
+  const monthY = useRef(0);
 
   const month = useMemo(
     () => taskMonth(task, log, cursor.year, cursor.month, today, lang),
@@ -173,6 +206,35 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
     });
   };
 
+  /*
+   * The row menu's actions, for today (redesign #19). See the header and
+   * `taskDetailActions` for which appear; each does what the day list's menu
+   * does with it, and the skip says so with the same toast and Undo.
+   */
+  const todayMark = entryOf(log, task.id, today).mark;
+  const actions = taskDetailActions({
+    mark: todayMark,
+    asksToday: asksOn(task, today),
+    visibleToday: tasksOn(tasks, today).length,
+    counted: isCounted(task),
+  });
+  const onAction = (action: TaskRowAction) => {
+    if (action === 'count') setCounting(true);
+    else if (action === 'skip') {
+      const before = todayMark;
+      setMark(task.id, today, 'missed');
+      onToast(t('Skipped today, on purpose. The streak keeps.'), {
+        label: t('Undo'),
+        onPress: () => setMark(task.id, today, before),
+      });
+    } else if (action === 'unskip') setMark(task.id, today, null);
+    else if (action === 'pause') setPausing(true);
+    else if (action === 'move') {
+      requestMove({ taskId: task.id, day: today });
+      onBack();
+    } else scrollRef.current?.scrollTo({ y: Math.max(0, monthY.current - 8), animated: true });
+  };
+
   const step = (delta: number) => {
     const next = new Date(cursor.year, cursor.month + delta, 1);
     setCursor({ year: next.getFullYear(), month: next.getMonth() });
@@ -187,6 +249,7 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
       <ScreenHeader kicker={t('Tasks')} onBack={onBack} bordered={false} />
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
         style={{ flex: 1 }}
         keyboardShouldPersistTaps="never"
         // Clears the floating pill, which sits at the same `bottom: 92` here as
@@ -311,10 +374,16 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
           </View>
         ) : null}
         <View className="mx-lg mt-md">
-          <PauseDoorRow onPress={() => setPausing(true)} />
+          <TaskActionList actions={actions} isToday onAction={onAction} />
         </View>
 
-        <View className="mx-lg mt-[18px] flex-row items-center justify-center" style={{ gap: 4 }}>
+        <View
+          onLayout={(e) => {
+            monthY.current = e.nativeEvent.layout.y;
+          }}
+          className="mx-lg mt-[18px] flex-row items-center justify-center"
+          style={{ gap: 4 }}
+        >
           <Pressable
             onPress={() => step(-1)}
             accessibilityRole="button"
@@ -411,16 +480,12 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
           />
         </View>
 
-        {/* Muted text at the foot of the scroll, out of a thumb's resting reach,
-            and it opens the danger confirm rather than acting (U19). */}
-        <DangerFootAction
-          label={t('Archive this task')}
-          accessibilityHint={t(
-            'It leaves the day list. Every day you already answered stays where it is.',
-          )}
-          onPress={() => setArchiving(true)}
-          className="mx-md mt-xl"
-        />
+        {/* The last block, as on every item's own screen (redesign §6). It
+            opens the danger confirm rather than acting (U19). No Delete: see
+            the header. */}
+        <View className="mx-lg mt-xl">
+          <DangerZone onArchive={() => setArchiving(true)} />
+        </View>
       </KeyboardAwareScrollView>
 
       {/* Ghost, not filled: this screen's point is reading the month, and
@@ -448,6 +513,30 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
             setEditing(false);
           }}
           onDismiss={() => setEditing(false)}
+        />
+      ) : null}
+
+      {counting && isCounted(task) ? (
+        <NumberSheet
+          title={t('Set a number')}
+          body={t('{name} · the target is {count} {unit}', {
+            name: task.name,
+            count: task.target.count,
+            unit: unitOf(task, lang),
+          })}
+          initial={progressOf(task, entryOf(log, task.id, today))}
+          min={0}
+          onConfirm={(value) => {
+            setCounting(false);
+            const before = setCount(task.id, today, value);
+            if (!before) return;
+            const after = entryOf(useTasks.getState().log, task.id, today);
+            onToast(`${task.name} · ${describeProgress(task, after, lang)}`, {
+              label: t('Undo'),
+              onPress: () => restoreEntry(task.id, today, before),
+            });
+          }}
+          onCancel={() => setCounting(false)}
         />
       ) : null}
 

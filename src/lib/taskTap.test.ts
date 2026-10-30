@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { showTasksHint, taskRowActions, tasksEmptyState, toggledMark } from './taskTap';
+import {
+  showTasksHint,
+  taskDetailActions,
+  taskRowActions,
+  tasksEmptyState,
+  toggledMark,
+} from './taskTap';
 
 /**
  * The tap, the hold and the empty day. The first is the one that matters: a tap
@@ -56,6 +62,29 @@ describe('the hold menu', () => {
 
   it('keeps Move out when there is nothing to move past', () => {
     expect(taskRowActions(null, 1)).toEqual(['skip', 'pause', 'open']);
+  });
+});
+
+describe('the same menu on the task detail (redesign #19)', () => {
+  it('is the row menu, read for today', () => {
+    expect(
+      taskDetailActions({ mark: null, asksToday: true, visibleToday: 4, counted: true }),
+    ).toEqual(taskRowActions(null, 4, true));
+    expect(
+      taskDetailActions({ mark: 'missed', asksToday: true, visibleToday: 4, counted: false }),
+    ).toEqual(['unskip', 'pause', 'move', 'open']);
+  });
+
+  it('keeps only the task-wide rows on a day the task does not ask', () => {
+    expect(
+      taskDetailActions({ mark: null, asksToday: false, visibleToday: 6, counted: true }),
+    ).toEqual(['pause', 'open']);
+  });
+
+  it("keeps Move out when the task is alone on today's list", () => {
+    expect(
+      taskDetailActions({ mark: null, asksToday: true, visibleToday: 1, counted: false }),
+    ).toEqual(['skip', 'pause', 'open']);
   });
 });
 

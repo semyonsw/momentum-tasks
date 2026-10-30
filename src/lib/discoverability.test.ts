@@ -4,6 +4,7 @@ import {
   HOLD_SURFACES,
   LIBRARY_TABS,
   WORKOUT_CORNER,
+  canArchiveAccount,
   cueActions,
   cueIsTappable,
   exerciseRowControls,
@@ -56,17 +57,23 @@ describe('long-press surfaces (U11)', () => {
     }
   });
 
-  it('the subsection ⋯ menu matches the hold: edit, and archive only with another to fall back to', () => {
-    expect(holdActions('moneyAccount', { liveAccounts: 1 })).toEqual(['editAccount']);
-    expect(cueActions('moneyAccount', { liveAccounts: 1 })).toEqual(['editAccount']);
-    expect(holdActions('moneyAccount', { liveAccounts: 3 })).toEqual([
-      'editAccount',
-      'archiveAccount',
-    ]);
-    expect(cueActions('moneyAccount', { liveAccounts: 3 })).toEqual([
-      'editAccount',
-      'archiveAccount',
-    ]);
+  it('the account ⋯ matches the hold: its own edit sheet, where Archive lives (redesign §6)', () => {
+    for (const liveAccounts of [1, 3]) {
+      expect(holdActions('moneyAccount', { liveAccounts })).toEqual(['editAccount']);
+      expect(cueActions('moneyAccount', { liveAccounts })).toEqual(['editAccount']);
+    }
+  });
+
+  it("an account's danger zone archives only with another live account to fall back to", () => {
+    expect(canArchiveAccount(1)).toBe(false);
+    expect(canArchiveAccount(2)).toBe(true);
+    expect(canArchiveAccount(5)).toBe(true);
+  });
+
+  it('every task row has a ⋯ that opens the menu the hold opens (redesign #19)', () => {
+    expect(holdCue('taskRow')).toBe('more');
+    expect(cueActions('taskRow')).toEqual(holdActions('taskRow'));
+    expect(holdActions('taskRow')).toEqual(['taskMenu']);
   });
 
   it('the category › opens the category, as the hold does', () => {
