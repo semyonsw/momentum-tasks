@@ -70,22 +70,22 @@ const META: Record<
   { kicker: string; line: string; title: string; body: string; placeholder: string }
 > = {
   Workout: {
-    kicker: 'AI · Workout',
-    line: 'Gemini · reads your training log on this phone',
+    kicker: 'AI coach · Workout',
+    line: 'Reads your training log on this phone',
     title: 'Ask about your training',
     body: 'Answers come from your own log on this phone. It can also log your weight, fix a set that was really a warm-up, or show where anything is in the app. Nothing changes until you tap Apply. To talk instead of type, tap the mic on your keyboard.',
     placeholder: 'Ask, or say what to change…',
   },
   Tasks: {
-    kicker: 'AI · Daily tasks',
-    line: 'Gemini · reads your task answers on this phone',
+    kicker: 'AI coach · Tasks',
+    line: 'Reads your task answers on this phone',
     title: 'Ask about your habits',
     body: 'Reads your daily tasks and how each day was answered, including the days you excused on purpose. Tell it what you did and it will tick the day for you once you tap Apply. The mic on your keyboard works here too.',
     placeholder: 'Ask, or say what you did…',
   },
   Expenses: {
-    kicker: 'AI · Expenses',
-    line: 'Gemini · reads your amounts on this phone',
+    kicker: 'AI coach · Finance',
+    line: 'Reads your amounts on this phone',
     title: 'Ask about your money',
     body: 'Reads your amounts by day and month, with categories. Whole-month amounts like rent are counted per month, never per day. Say what you spent or earned and it will log it once you tap Apply. The mic on your keyboard works here too.',
     placeholder: 'Ask, or say what you spent…',

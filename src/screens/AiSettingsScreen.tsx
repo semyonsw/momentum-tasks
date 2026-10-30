@@ -66,13 +66,13 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const NOTE: Record<AiSection, string> = {
   Workout: 'Connect a Google AI key to use AI in your workouts.',
   Tasks: 'Connect a Google AI key to use AI in your daily tasks.',
-  Expenses: 'Connect a Google AI key to use AI in your expenses.',
+  Expenses: 'Connect a Google AI key to use AI in your finances.',
 };
 
 const CTA: Record<AiSection, string> = {
   Workout: 'Try it on your workouts',
-  Tasks: 'Open Tasks AI',
-  Expenses: 'Open Expenses AI',
+  Tasks: 'Open the Tasks AI coach',
+  Expenses: 'Open the Finance AI coach',
 };
 
 export interface AiSettingsScreenProps {
@@ -227,7 +227,7 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text className="mx-lg mt-xs text-title font-medium text-ink">{t('AI assistant')}</Text>
+        <Text className="mx-lg mt-xs text-title font-medium text-ink">{t('AI coach')}</Text>
 
         {from && !ready ? (
           <GlassSurface tier="well" radius={radius.row} flat className="mx-lg mt-lg">

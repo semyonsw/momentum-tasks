@@ -204,7 +204,7 @@ describe('asking a question', () => {
     await sendWithTimers('Tasks', 'how are you');
     expect(useAi.getState().chats.Tasks.at(-1)).toMatchObject({
       role: 'error',
-      text: 'Gemini is overloaded right now. Try again in a minute.',
+      text: 'The AI coach is overloaded right now. Try again in a minute.',
     });
   });
 

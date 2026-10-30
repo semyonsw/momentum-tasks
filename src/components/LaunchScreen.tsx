@@ -308,7 +308,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
     {
       store: 'money',
       count: accountCount,
-      label: plural(accountCount, { one: t('account'), few: 'раздела', many: t('accounts') }),
+      label: plural(accountCount, { one: t('account'), few: 'счёта', many: t('accounts') }),
     },
   ];
 

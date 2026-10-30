@@ -99,7 +99,7 @@ export function GoalsScreen({ onBack }: { onBack: () => void }) {
       >
         <Text className="mx-lg mb-md mt-md text-body text-ink-muted">
           {t(
-            'A goal reads one subsection’s balance. Move money into it with a transfer on Finance, and the goal fills.',
+            'A goal reads one account’s balance. Move money into it with a transfer on Finance, and the goal fills.',
           )}
         </Text>
 
@@ -231,7 +231,7 @@ export function GoalsScreen({ onBack }: { onBack: () => void }) {
         <ConfirmSheet
           tone="danger"
           title={t('Delete “{name}”?', { name: deleting.name })}
-          body={t('Only the goal goes. The money stays in its subsection.')}
+          body={t('Only the goal goes. The money stays in its account.')}
           confirmLabel={t('Delete it')}
           cancelLabel={t('Keep it')}
           onConfirm={() => {

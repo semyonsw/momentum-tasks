@@ -138,7 +138,7 @@ describe('for the assistant', () => {
         'How did the weights feel?': 'Too heavy',
         'Any pain or discomfort?': 'Shoulder, Elbow — left side, on the press',
         'Which exercise was the hardest?': 'Bench press',
-        'Anything else the coach should know?': 'Спал 5 часов',
+        'Anything else the AI coach should know?': 'Спал 5 часов',
       },
     });
   });
@@ -327,7 +327,7 @@ describe('the message to a new chat', () => {
     // A multi choice joins its picks; an exercise's own name is not translated.
     expect(lines).toContain('- Any pain or discomfort? Shoulder, Elbow');
     expect(lines).toContain('- Which exercise was the hardest? Bench press');
-    expect(lines).toContain('- Anything else the coach should know? Slept four hours');
+    expect(lines).toContain('- Anything else the AI coach should know? Slept four hours');
     expect(lines).toContain('What I did (60 min):');
     expect(lines).toContain('- Bench press: 60 kg · 8 8 6');
     expect(lines).toContain('- Dips: BW · 10 10 8');

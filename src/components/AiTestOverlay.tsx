@@ -283,7 +283,7 @@ export interface AiTestOverlayProps {
   maskedKey: string;
   model: string;
   latencyMs: number | null;
-  /** "Try it on your workouts" / "Open Tasks AI". */
+  /** "Try it on your workouts" / "Open the Tasks AI coach". */
   ctaLabel: string;
   onCta: () => void;
   /** Back on the ready screen. Back during the test does nothing — it is two seconds. */
@@ -396,7 +396,7 @@ export function AiTestOverlay({
               style={{ letterSpacing: 1.3 }}
               className="mt-xxl text-center text-micro font-semibold uppercase text-green-bright"
             >
-              {t('Gemini answered in {s} s', { s: seconds })}
+              {t('The AI coach answered in {s} s', { s: seconds })}
             </Text>
           </Stagger>
           <Stagger delay={200}>
@@ -410,7 +410,7 @@ export function AiTestOverlay({
           <Stagger delay={300}>
             <Text className="mt-md text-center text-body text-ink-muted">
               {t(
-                'Workout, Tasks and Expenses each have their own chat now. Look for the sparkle in the corner.',
+                'Workout, Tasks and Finance each have their own chat now. Look for the sparkle in the corner.',
               )}
             </Text>
           </Stagger>

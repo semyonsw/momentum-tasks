@@ -203,7 +203,7 @@ export function debriefQuestions(
         },
     {
       id: 'notes',
-      prompt: 'Anything else the coach should know?',
+      prompt: 'Anything else the AI coach should know?',
       kind: 'text',
       allowNote: true,
       options: [],

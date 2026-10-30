@@ -745,7 +745,7 @@ export const BADGES: readonly BadgeDef[] = [
     'sum',
     'goals',
     'Goal reached',
-    'A savings goal’s subsection reaches its target.',
+    'A savings goal’s account reaches its target.',
   ),
 ];
 

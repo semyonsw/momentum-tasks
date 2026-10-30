@@ -563,7 +563,7 @@ export function AmountEditorScreen({
                       tap();
                       setPicking('account');
                     }}
-                    accessibilityLabel={t('Subsection')}
+                    accessibilityLabel={t('Account')}
                   />
                   <DirectionSwitch
                     value={direction}
@@ -662,7 +662,7 @@ export function AmountEditorScreen({
             <Text className="mt-xs text-label font-medium text-green-bright">
               {value > 0
                 ? transfer
-                  ? t('Pick two different subsections')
+                  ? t('Pick two different accounts')
                   : t('Pick a category first')
                 : t('Type an amount first')}
             </Text>
@@ -701,7 +701,7 @@ export function AmountEditorScreen({
       />
 
       {picking === 'account' ? (
-        <Sheet title={t('Subsection')} onDismiss={() => setPicking(null)}>
+        <Sheet title={t('Account')} onDismiss={() => setPicking(null)}>
           <View className="overflow-hidden rounded-surface bg-surface-alt">
             {liveAccounts.map((option, index) => (
               <View key={option.id}>

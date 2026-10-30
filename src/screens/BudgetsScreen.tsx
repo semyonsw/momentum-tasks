@@ -114,7 +114,7 @@ export function BudgetsScreen({ onBack }: { onBack: () => void }) {
 
         <Text className="mx-lg mt-lg text-label text-ink-faint">
           {t(
-            'Budgets count every subsection, so food bought by card is still food. Each month starts at its own figure: what is left over does not carry into the next.',
+            'Budgets count every account, so food bought by card is still food. Each month starts at its own figure: what is left over does not carry into the next.',
           )}
         </Text>
       </ScrollView>

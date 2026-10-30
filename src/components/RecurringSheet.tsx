@@ -127,7 +127,7 @@ export function RecurringSheet({
         ))}
       </View>
 
-      <Kicker className="mb-sm mt-md">{t('Subsection')}</Kicker>
+      <Kicker className="mb-sm mt-md">{t('Account')}</Kicker>
       <View className="flex-row flex-wrap">
         {accounts.map((account) => (
           <SelectChip

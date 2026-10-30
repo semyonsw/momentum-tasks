@@ -290,7 +290,7 @@ describe('when Google has a bad moment', () => {
 
   it('names an overload as one', () => {
     expect(mapError(503, {}, 'm', 'en')).toBe(
-      'Gemini is overloaded right now. Try again in a minute.',
+      'The AI coach is overloaded right now. Try again in a minute.',
     );
   });
 });

@@ -157,7 +157,7 @@ export function MoneySettingsScreen({ onBack }: { onBack: () => void }) {
         </View>
         <Text className="mx-lg text-label text-ink-faint">
           {t(
-            'The window and the direction the expenses section starts at. Both still change on that screen; this is only where it begins.',
+            'The window and the direction the Finance section starts at. Both still change on that screen; this is only where it begins.',
           )}
         </Text>
 
@@ -176,7 +176,7 @@ export function MoneySettingsScreen({ onBack }: { onBack: () => void }) {
           ))}
         </View>
         <Text className="mx-lg text-label text-ink-faint">
-          {t('Which range the ⟲ in the corner of the expenses opens on.')}
+          {t('Which range the ⟲ in the corner of Finance opens on.')}
         </Text>
       </KeyboardAwareScrollView>
     </View>

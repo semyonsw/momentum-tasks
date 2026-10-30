@@ -73,7 +73,7 @@ export function TextAnswer({ text }: { text: string }) {
   const t = useT();
   return (
     <View style={{ maxWidth: '94%' }}>
-      <AnswerKicker>{t('Gemini')}</AnswerKicker>
+      <AnswerKicker>{t('AI coach')}</AnswerKicker>
       <Text style={{ fontSize: 15, lineHeight: 22 }} className="text-ink">
         {text}
       </Text>
@@ -327,7 +327,7 @@ export function ErrorAnswer({ text, onRetry }: { text: string; onRetry?: () => v
   const t = useT();
   return (
     <View style={{ maxWidth: '94%' }}>
-      <AnswerKicker>{t('Gemini')}</AnswerKicker>
+      <AnswerKicker>{t('AI coach')}</AnswerKicker>
       <Text style={{ fontSize: 15, lineHeight: 22 }} className="text-ink-muted">
         {text}
       </Text>

@@ -53,7 +53,7 @@ describe('the app guide', () => {
     }
   });
 
-  it('describes the warm-up checkbox, the question the 2.8 fix was for', () => {
-    expect(APP_GUIDE).toMatch(/"W" checkbox/);
+  it('describes the warm-up toggle, the question the 2.8 fix was for', () => {
+    expect(APP_GUIDE).toMatch(/W warm-up toggle/);
   });
 });

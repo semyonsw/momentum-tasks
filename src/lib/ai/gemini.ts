@@ -371,7 +371,7 @@ export function mapError(status: number, body: unknown, model: string, lang: Lan
       : t('Google refused the key.', lang);
   }
   if (status === 503) {
-    return t('Gemini is overloaded right now. Try again in a minute.', lang);
+    return t('The AI coach is overloaded right now. Try again in a minute.', lang);
   }
   if (status >= 500) return t('Google had a problem answering. Try again in a minute.', lang);
   const said = googleMessage(body);
@@ -389,7 +389,7 @@ export function mapTransportFailure(kind: 'timeout' | 'network', lang: Language)
 
 /** The chat's three ways for a 200 to still be unusable. */
 export function mapParseFailure(reason: 'safety' | 'shape' | 'length', lang: Language): string {
-  if (reason === 'safety') return t('Gemini declined to answer that.', lang);
+  if (reason === 'safety') return t('The AI coach declined to answer that.', lang);
   if (reason === 'length') {
     return t('The answer ran out of room before it finished. Try a narrower question.', lang);
   }

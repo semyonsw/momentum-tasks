@@ -106,7 +106,7 @@ export function GoalSheet({
         accessibilityLabel={t('Target in {currency}', { currency })}
       />
 
-      <Kicker className="mb-sm mt-lg">{t('Subsection')}</Kicker>
+      <Kicker className="mb-sm mt-lg">{t('Account')}</Kicker>
       <View className="flex-row flex-wrap">
         {accounts.map((account) => (
           <SelectChip

@@ -176,7 +176,7 @@ export function BalanceBubble({
             accessibilityRole="button"
             accessibilityState={{ selected }}
             accessibilityLabel={`${account.name}, ${formatMoney(account.balance, currency, scale)}`}
-            accessibilityHint={selected ? t('Back to the top') : t('Switch to this subsection')}
+            accessibilityHint={selected ? t('Back to the top') : t('Switch to this account')}
             style={({ pressed }) => ({
               width: grid.cellWidth,
               height: CELL_HEIGHT,

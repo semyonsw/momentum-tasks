@@ -105,7 +105,7 @@ export function AiEntryCard({
   const prompts = useAiPrompts(section).slice(0, 3);
   const title = t(TITLE[section]);
   const line = ready
-    ? t('Gemini · summaries, trends, suggestions')
+    ? t('AI coach · summaries, trends, suggestions')
     : t('Connect a Google AI key to start');
   const press = usePressScale(0.97);
   const dismissed = useSettings((s) => s.aiCardsDismissed);
@@ -163,7 +163,7 @@ export function AiEntryCard({
           <Pressable
             onPress={() => dismiss(section)}
             accessibilityRole="button"
-            accessibilityLabel={t('Hide the assistant card')}
+            accessibilityLabel={t('Hide the AI coach card')}
             accessibilityHint={t('The sparkle at the top stays the way in')}
             style={pressedStyle}
             className="flex-1 items-center justify-center"
