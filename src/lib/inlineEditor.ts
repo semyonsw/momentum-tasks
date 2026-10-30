@@ -19,10 +19,11 @@
  *
  *  1. FOCUS MODE CLOSES EVERY INLINE EDITOR, and the editor does not come back
  *     when focus mode closes. One editor for a number at a time.
- *  2. THE UP-NEXT ROW HAS NO INLINE EDITOR while it is the door into focus mode —
- *     its numbers open focus mode instead (`SetRow`'s header). An editor opened
- *     on a row BEFORE it became the up-next one is therefore hidden, not kept.
- *     A row that no longer exists has no editor either.
+ *  2. EVERY ROW HAS AN INLINE EDITOR, the up-next one included (redesign #1).
+ *     That row's numbers used to open focus mode instead, which made the one row
+ *     you were about to lift the one row whose numbers you could not nudge in
+ *     place; focus mode now has its two labelled doors (the dock pill and the
+ *     card's chip) and nothing else. A row that no longer exists has no editor.
  *  3. A CHIP PRESS ALWAYS DOES SOMETHING. Mid-type it takes the typed number; with
  *     nothing typed it closes the box AND nudges, rather than being swallowed. And
  *     a typed buffer is dropped the moment the number under it changes from
@@ -39,10 +40,6 @@ export interface EditorTarget {
 export interface EditorContext {
   /** The ids of the sets the card is drawing right now. */
   setIds: readonly string[];
-  /** The session's next set, when it is on this card. */
-  upNextSetId: string | null;
-  /** The up-next row opens focus mode (the screen passed the door). */
-  hasFocusDoor: boolean;
   /** Focus mode is on screen over the board. */
   focusModeOpen: boolean;
 }
@@ -55,7 +52,6 @@ export function visibleEditor(
   if (open == null) return null;
   if (context.focusModeOpen) return null;
   if (!context.setIds.includes(open.setId)) return null;
-  if (context.hasFocusDoor && open.setId === context.upNextSetId) return null;
   return open;
 }
 

@@ -46,7 +46,7 @@
  *    session built from last time gets its weights and reps, never its marks.
  */
 
-import { t, type Language } from './i18n';
+import { t, term, type Language } from './i18n';
 
 /** The three kinds stored in `setType`. A warm-up is `isWarmup`, never this. */
 export type SetType = 'drop' | 'failure' | 'amrap';
@@ -105,7 +105,10 @@ export function kindBadge(kind: SetKind): 'W' | 'D' | 'F' | 'A' | null {
   }
 }
 
-/** The kind's name — the design's `set.type.*` copy. */
+/**
+ * The kind's name — the design's `set.type.*` copy. Spoken labels and the log
+ * use it; the 2.9 pickers use the plainer words below.
+ */
 export function kindName(kind: SetKind, lang: Language): string {
   switch (kind) {
     case 'warmup':
@@ -143,4 +146,77 @@ export function endsAtLimit(set: { setType?: SetType }): boolean {
 /** Does this set take a rung of a rep ladder? Warm-ups and drop sets do not. */
 export function isLadderRung(set: KindFields): boolean {
   return !set.isWarmup && set.setType !== 'drop';
+}
+
+/* ------------------------------------------------------------------ */
+/* The 2.9 pickers (redesign #1, #2): plain words, one line of why     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The one-line legend, on the first-use tip and under the sheet's title. The
+ * letters are the row's own, so the legend is read off the thing it explains.
+ */
+export const SET_TYPE_LEGEND = 'W warm-up · D drop set · F to failure · A as many as possible';
+
+/**
+ * A kind as a CHIP in the inline editor: `Normal`, `Warm-up`, … — the letter is
+ * drawn beside it by the caller. `As many as possible` rather than `AMRAP`: the
+ * acronym is the one word in the list a beginner has to look up.
+ *
+ * `Normal` goes through `term`, because the bare word is already in the
+ * catalogue as an answer ("how did it feel? — Normal") and a set type is a
+ * different word in Russian.
+ */
+export function kindChipLabel(kind: SetKind, lang: Language): string {
+  switch (kind) {
+    case 'working':
+      return term('setType', 'Normal', lang);
+    case 'amrap':
+      return t('As many as possible', lang);
+    default:
+      return kindName(kind, lang);
+  }
+}
+
+/** A kind as a ROW in the sheet's radio list: `Normal set`, then the chip words. */
+export function kindRowName(kind: SetKind, lang: Language): string {
+  return kind === 'working' ? t('Normal set', lang) : kindChipLabel(kind, lang);
+}
+
+/** The sheet row's second line: what choosing the kind does to the numbers. */
+export function kindDescription(kind: SetKind, lang: Language): string {
+  switch (kind) {
+    case 'warmup':
+      return t('Light set, not counted', lang);
+    case 'drop':
+      return t('Lower the weight, keep going', lang);
+    case 'failure':
+      return t('Until no clean rep is left', lang);
+    case 'amrap':
+      return t('Max reps at this weight', lang);
+    default:
+      return t('Counts toward your volume', lang);
+  }
+}
+
+/**
+ * What the set well reads: the type's letter when it has one, else the working
+ * number. A typed set gives up its number on the row (the sheet's title still
+ * says it), because the letter is the rarer and so the more useful fact.
+ */
+export function setWellFace(kind: SetKind, workingNumber: number | null): string {
+  return kindBadge(kind) ?? (workingNumber == null ? '' : String(workingNumber));
+}
+
+/**
+ * The sheet's `Set N`: the working number where there is one, the well's letter
+ * (`W`) for a warm-up, which has no number — the same face the user just tapped.
+ */
+export function setSheetLabel(kind: SetKind, workingNumber: number | null): string {
+  return workingNumber == null ? setWellFace(kind, null) : String(workingNumber);
+}
+
+/** The sheet's whole title: `Set 2 · Set type & reps left`, `Set W · …` for a warm-up. */
+export function setSheetTitle(kind: SetKind, workingNumber: number | null, lang: Language): string {
+  return t('Set {n} · Set type & reps left', lang, { n: setSheetLabel(kind, workingNumber) });
 }

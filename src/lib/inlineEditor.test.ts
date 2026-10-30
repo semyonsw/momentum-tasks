@@ -23,8 +23,6 @@ import { lbToKg } from './units';
 
 const ctx = (over: Partial<EditorContext> = {}): EditorContext => ({
   setIds: ['s1', 's2', 's3', 's4'],
-  upNextSetId: 's1',
-  hasFocusDoor: true,
   focusModeOpen: false,
   ...over,
 });
@@ -51,14 +49,11 @@ describe('which inline editor is drawn', () => {
     }
   });
 
-  it('draws no editor under the up-next row while that row is the door into focus mode', () => {
-    expect(visibleEditor(at('s2'), ctx({ upNextSetId: 's2' }))).toBeNull();
-  });
-
-  it('still draws it on the up-next row of a card with no door (a card being read)', () => {
-    expect(visibleEditor(at('s2'), ctx({ upNextSetId: 's2', hasFocusDoor: false }))).toEqual(
-      at('s2'),
-    );
+  it('draws the editor under the up-next row too — its numbers never open focus mode (redesign #1)', () => {
+    // `s1` is the board's up-next row: tapping its weight or reps opens the
+    // inline editor like on any other row.
+    expect(visibleEditor(at('s1'), ctx())).toEqual(at('s1'));
+    expect(visibleEditor(at('s1', 'weight'), ctx())).toEqual(at('s1', 'weight'));
   });
 
   it('draws no editor for a row that has been removed', () => {
@@ -67,7 +62,7 @@ describe('which inline editor is drawn', () => {
 
   it('draws the editor on a logged row above the cursor', () => {
     // Correcting a logged set ("I actually got 6") is a supported flow.
-    expect(visibleEditor(at('s1'), ctx({ upNextSetId: 's3' }))).toEqual(at('s1'));
+    expect(visibleEditor(at('s1'), ctx())).toEqual(at('s1'));
   });
 });
 
@@ -76,8 +71,8 @@ describe('when the card forgets its editor', () => {
     expect(shouldCloseEditor(at('s3'), ctx({ focusModeOpen: true }))).toBe(true);
   });
 
-  it('forgets an editor whose row became the up-next one', () => {
-    expect(shouldCloseEditor(at('s2'), ctx({ upNextSetId: 's2' }))).toBe(true);
+  it('keeps an editor whose row became the up-next one — the up-next row edits in place', () => {
+    expect(shouldCloseEditor(at('s1'), ctx())).toBe(false);
   });
 
   it('forgets an editor whose row was removed', () => {
@@ -182,8 +177,6 @@ class Board {
   private context(): EditorContext {
     return {
       setIds: this.rows.map((r) => r.id),
-      upNextSetId: this.upNext,
-      hasFocusDoor: true,
       focusModeOpen: this.focusOpen,
     };
   }
@@ -221,11 +214,8 @@ class Board {
 
   /* --- the board ------------------------------------------------- */
 
+  /** Any row, the up-next one included, opens the inline editor (redesign #1). */
   tapCell(id: string, field: EditorTarget['field']) {
-    if (id === this.upNext) {
-      this.openFocus();
-      return;
-    }
     const same = this.editor?.setId === id && this.editor.field === field;
     this.editor = same ? null : { setId: id, field };
     this.typing = false;
@@ -333,7 +323,17 @@ describe('the trip through focus mode, replayed', () => {
     expect(board.row('s3').weightKg).toBe(42);
   });
 
-  it('an editor open on a row that focus mode makes up-next is closed, not left under it', () => {
+  it('tapping the up-next row opens the inline editor under it, never focus mode', () => {
+    const board = fourSets();
+    expect(board.upNext).toBe('s1');
+    board.tapCell('s1', 'weight');
+    expect(board.focusOpen).toBe(false);
+    expect(board.drawnEditor).toEqual(at('s1', 'weight'));
+    board.chip(2.5);
+    expect(board.row('s1').weightKg).toBe(42.5);
+  });
+
+  it('an editor open on a row that focus mode moves the cursor onto is still closed by the trip', () => {
     const board = fourSets();
     board.tapCell('s2', 'count');
     board.openFocus();

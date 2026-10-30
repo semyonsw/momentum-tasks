@@ -1,106 +1,60 @@
 /**
  * SetRow — the most important 56 dp in the app.
  *
- *   ┌──────────────────────────────────────────────┐
- *   │ [W]    +20 KG      ×    8 REPS           ( ✓ )│  ← a warm-up
- *   │  1     +40 KG      ×    4 REPS           ( ✓ )│
- *   │  2     +40 KG × 4 REPS  (RIR 1)          ( ✓ )│  ← graded: the effort chip
- *   │  2       2:00 MIN                    ( ▶ )( ✓ )│  ← a timed set
- *   │  3       65 KG     ×    5 REPS           ( ✓ )│
- *   │        20 + 2×10 + 2×2.5                      │  ← a barbell lift
- *   └──────────────────────────────────────────────┘
+ *   ┌──── 80 ────┬─────────┬─────────┬ 48 ┐
+ *   │ [W] [W ▾]  │  20 kg  │ 8 reps  │ (✓)│  ← a warm-up: toggle on, letter in the well
+ *   │ ┆W┆ [1 ▾]  │  80 kg  │ 8 reps  │ (✓)│  ← up next: the lit row, the solid ✓
+ *   │     [2 ▾]  │  80 kg  │ 8 RIR 2 │ (✓)│  ← logged and graded: the chip in the well
+ *   │     [F ▾]  │  80 kg  │ 6 reps  │ (✓)│  ← a typed set: its letter, not its number
+ *   │        20 + 2×20 + 2×10                │  ← a barbell lift: what goes on the bar
+ *   └────────────┴─────────┴─────────┴────┘
+ *   edit mode:  ⋮⋮ [1 ▾] │ 80 kg │ 8 reps │ (−)
  *
- * Interaction contract:
- *   • THE SET THAT SHOULD HAPPEN NEXT IS LIT. One row in the whole session
- *     carries it — the PRIMED row — and it is the answer to "I pressed Start, now
- *     what". Since Momentum v3 it is a lit pill (c2 fill, c2 edge, glow) inside the
- *     exercise card rather than a ring drawn over a flat row. Every row carries a
- *     1 dp border — transparent on all but this one — so the numbers under a thumb
- *     do not shift sideways when the edge arrives, or back when the ✓ lands and
- *     the light moves to the row below.
- *   • AND THE LIGHT IS NOT THE ONLY THING THAT SAYS SO. The primed row is TALLER
- *     and its set number, its weight and its count go `acc`, 30 dp against the
- *     other rows' 21, with a glow behind
- *     them. A 2 dp outline is a detail you have to look for; the numbers you are
- *     about to do are the thing you read at arm's length, mid-set, through sweat,
- *     so they are the thing that grows. It costs 8 dp of layout on ONE row in the
- *     session, and the row above it gives exactly that back as the ✓ lands —
- *     which is why the numbers under the thumb still do not move sideways, only
- *     the row's own height does.
+ * The grid is `lib/setRowLayout.ts` (80 | 1fr | 1fr | 48, gap 6), and the 2.9
+ * redesign (#1) is the reason for every part of it:
  *
- *     GREEN OUTRANKS THE GHOST, on this row only. A prefilled value renders
- *     `ink-faint` everywhere else and that is real information — "carried over,
- *     untouched" — but on the one row that means DO THIS NEXT, "do this next" is
- *     the louder fact, and the ghost state is still readable on every other row of
- *     the card. Green here is the same green the ring is drawn in and the same
- *     green the card's name goes: one accent, one meaning, three places.
- *   • The row arrives PRE-FILLED with last session's numbers, rendered faint
- *     ("ghost") on a lifted `surface-alt` background. That is the visual promise
- *     of "tap ✓ if nothing changed" — logging an identical set costs ONE tap.
- *   • A value goes full `ink` the moment it stops matching last session, or the
- *     moment the set is logged. Ink means "this is a fact now."
- *   • Tapping a number chips that cell up and opens the editor below the row —
- *     no keyboard, no modal, no scroll jump.
- *   • When `requiresWeight` is false the weight cell is ABSENT, not disabled,
- *     and the count cell widens into its place so rounds, minutes and reps all
- *     land under the same thumb position a weight would.
- *   • A TIMED set (a plank, a hang, a round) grows a ▶ to the LEFT of the ✓, and
- *     keeps the ✓. Two controls, because they answer two different questions:
- *     ▶ is "run the clock for me", ✓ is "I did this, take my word for it". The ✓
- *     never changes meaning anywhere in the app, so it does not get replaced —
- *     and a set held away from the phone can still be logged in one tap.
- *     While the clock is running the ▶ fills green and becomes stop-and-log.
- *   • A WARM-UP reads `W` where a working set reads its number, and the working
- *     sets number around it: W, 1, 2, 3. A warm-up is a set that does not
- *     count — it is out of the volume, out of the set count, out of the
- *     shorthand and out of every verdict — so it must not be numbered as though
- *     it did, and "set 2 of 5" must mean the second of five sets that counted.
- *     Same `ink-faint` as the numbers, because it is the same kind of landmark
- *     and not a warning.
- *   • SO DO THE OTHER SET TYPES (T-12): a 26 dp badge in the number's place —
- *     `W` muted, `D` drop / `F` failure / `A` AMRAP in green, because those three
- *     ARE working sets and are counted as such underneath: W, 1, D, 3 — the
- *     drop was the second working set. Tapping the badge or the number opens
- *     `SetMarksSheet`; `QuickAdjust`'s `Set type` is the labelled way to it.
- *   • A GRADED SET CARRIES ITS EFFORT: `RIR 2`, a 26 dp chip after the reps,
- *     tapping it opens the scale (`SetMarksSheet`). Only where a grade exists —
- *     an ungraded row is drawn exactly as it always was, so a lifter who never
- *     uses RIR never sees the feature — and the way in for a first grade is the
- *     `RIR` door in `QuickAdjust`, on the row's own editor.
- *   • THE RINGED ROW IS ALSO THE DOOR INTO FOCUS MODE. Tapping its numbers, or
- *     long-pressing it, opens the full-screen sheet instead of the inline editor —
- *     and ONLY on that row. `QuickAdjust` is unchanged on every other row of every
- *     card, and the long press stays off the card header, which is the reorder
- *     handle (`useDragReorder`). The trade is deliberate and it is stated here
- *     because it is a control that moved: the up-next row's `Type`, `Warm-up` and
- *     `Remove set` now live one screen away — focus mode's ± nudge covers the
- *     common edit, and the row's own editor is one ✓ or one tap on another row
- *     away. What that buys is the numbers you are about to lift at 56 dp instead
- *     of 30, on a screen with nothing else on it.
- *   • IN EDIT MODE EVERY ROW GROWS A `−` ON THE LEFT — a 28 dp `inkMuted` ring
- *     that pops in and removes THAT row. It used to be one `Remove set` that
- *     always took the bottom row, which is the right answer for "three today,
- *     not four" and the wrong one for "that warm-up was a mistake". It was coral
- *     until U19 kept that hue for the destructive confirm alone; the ring and the
- *     glyph are what tell it from a ✓, and the screen offers the Undo.
- *   • THE ✓ IS CAUGHT, AND THE ROW FLASHES. On the tap that logs it the fill pops
- *     in on the overshoot curve and the whole row washes green and fades — both
- *     only on the transition, never on a row that was already logged when the
- *     card opened, so opening a finished exercise is not a light show.
- *   • THE RING BREATHES. Its glow swells between 16 and 30 dp over 2.6 s, which is
- *     how the one row on a bench-height phone says "here" without being read.
- *   • A BARBELL LIFT gets what goes on the bar, under the weight cell:
- *     `20 + 2×10 + 2×2.5`. Only when the exercise declares a `barWeightKg`, so a
- *     machine, a dumbbell and a cable stack never show one — a plate breakdown for
- *     a pin position is a lie about the equipment. It INFORMS AND NEVER ROUNDS: an
- *     unreachable target renders no line at all rather than the nearest loadable
- *     weight, because `QuickAdjust`'s header is explicit that nothing here is
- *     snapped to a grid by a machine the app has never seen, and this is the most
- *     tempting place in the codebase to break that.
+ *   • A NUMBER THAT DOES SOMETHING LOOKS LIKE IT. The set number, the weight and
+ *     the reps are all WELLS (`ValueWell`) — a 40 dp sunken field with a hairline
+ *     — where they used to be bare text, two of which were secretly buttons. The
+ *     set well carries a ▾, because what it opens (the type and reps-left sheet)
+ *     is the one thing on the row nobody would guess from a number.
+ *   • TAPPING WEIGHT OR REPS ALWAYS OPENS THE INLINE EDITOR — on every row, the
+ *     lit up-next one included. The up-next row used to open focus mode instead,
+ *     and long-pressing it did too; the row you were about to lift was the one row
+ *     whose numbers you could not nudge in place, and nothing on it said so.
+ *     Focus mode keeps its two labelled doors (the dock's `Focus` and the card's
+ *     `Focus` chip) and no hidden ones. `lib/inlineEditor.ts` holds the rule.
+ *   • THE `W` TOGGLE IS ONLY WHERE THE ANSWER CAN STILL BE YES — un-logged, not
+ *     typed otherwise, and no working set logged above (`warmupToggleRows`).
+ *     Everywhere else the 30 dp slot is an empty spacer rather than nothing, so
+ *     the weight well's left edge is the same on every row and never jumps
+ *     sideways under the thumb when the toggle goes. Edit mode puts the ⋮⋮ grip
+ *     in that same slot for the same reason.
+ *   • ONE SOLID GREEN THING PER ROW, AT MOST: the up-next row's ✓. Its row is lit
+ *     (`acc` at 7 % with an `acc` edge) so the set to do next is findable at arm's
+ *     length; a logged ✓ goes soft (`acc` at 14 %) because the log is history and
+ *     the lit row below is what the eye should land on next.
+ *   • A WARM-UP READS ONE STEP SMALLER (17 against 19) — it is a set that does
+ *     not count, out of the volume and the set count, and its numbers step back
+ *     with it. Its well reads `W`, and the working sets number around it: W 1 2 3.
+ *   • A GRADED SET CARRIES `RIR 2` IN THE REPS WELL, in place of the `reps` unit
+ *     — the unit is implied by the chip and the well is 79 dp at 360. Only where a
+ *     grade exists; the way to a first grade is the inline editor's `Reps left`.
+ *   • THE ✓ IS CAUGHT, AND THE ROW FLASHES — on the transition only, so opening a
+ *     finished card is not a light show.
+ *   • A TIMED SET grows a ▶ left of the ✓ and keeps the ✓: ▶ is "run the clock",
+ *     ✓ is "I did this", and a hold done away from the phone still logs in one tap.
+ *   • A BARBELL LIFT gets what goes on the bar on a line under the row, aligned
+ *     with the weight. Only for an exercise with a `barWeightKg`, and it INFORMS
+ *     AND NEVER ROUNDS: a target the plates cannot make draws no line rather than
+ *     the nearest loadable weight. The one thing that makes a row taller than 56.
+ *
+ * REJECTED: keeping the number-or-badge as bare text and adding a separate ⓘ for
+ * the type. Two targets for one question, and the number is where people tap.
  */
 
-import { memo, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, Text, View, type ViewStyle } from 'react-native';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Pressable, Text, View, type ViewStyle } from 'react-native';
 
 import { commit, tap, undo } from '../lib/feedback';
 import type { DraftSet } from '../lib/draft';
@@ -109,68 +63,65 @@ import { describePlates, platesFor } from '../lib/plates';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
 import { countUnitLabel, formatCount, formatWeight, unitLabel } from '../lib/units';
 import { describeRir, effortApplies, rirChipLabel } from '../lib/effort';
-import { kindBadge, kindName, setKindOf, type SetKind } from '../lib/setType';
+import { kindBadge, kindName, setKindOf, setWellFace, type SetKind } from '../lib/setType';
+import { SET_ROW, UNIT_FONT_SIZE, valueFontSize } from '../lib/setRowLayout';
 import { useLanguage, useT } from '../hooks/useT';
-import { LinearGradient } from 'expo-linear-gradient';
 
-import { glass, gradientFill, palette, tint } from '../theme/tokens';
-import { SpecularEdge } from './glass';
+import { glass, palette, tint } from '../theme/tokens';
 import { Icon } from './Icon';
-import { Flash, Pop, usePressScale } from './motion';
+import { Flash, Pop } from './motion';
+import { RemoveRowButton, ValueWell } from './primitives';
 
 export type SetField = 'weight' | 'count';
 
 interface SetRowProps {
   set: DraftSet;
   /**
-   * What the leftmost column reads: the WORKING-set number (1-based), or null for
-   * a warm-up, which reads `W` instead.
-   *
-   * Computed by the card rather than here, because it depends on the sets above
-   * this one — `workingSetLabels` is the pure function that does it.
+   * The WORKING-set number (1-based), or null for a warm-up, which reads `W`.
+   * Computed by the card (`workingSetLabels`): it depends on the rows above.
    */
   workingNumber: number | null;
+  /** The row's place in the card, 1-based — "Mark set 3 as warm-up". */
+  position: number;
   exercise: Exercise;
   unitSystem: UnitSystem;
-  /**
-   * THE next set of the whole session: the first unlogged row of the exercise the
-   * cursor is on. Rings the row in green — see the file header.
-   */
+  /** THE next set of the whole session. Lights the row — see the file header. */
   isUpNext?: boolean;
-  /**
-   * Open focus mode. Present ONLY on the up-next row — see the file header.
-   *
-   * When it is present it REPLACES this row's inline editor: the numbers and a
-   * long press both go to the sheet, whose ± nudge is the same chips at four
-   * times the size.
-   */
-  onOpenFocus?: () => void;
-  /** Which field (if any) is currently open in the inline editor. */
+  /** Which field (if any) is open in the inline editor: its well gets the outline. */
   focusedField: SetField | null;
   /** This exercise is clock-driven: render the ▶. */
   isTimed?: boolean;
   /** The clock is running for THIS set. */
   isTiming?: boolean;
-  /**
-   * The plates this gym has, from Settings. Only read for an exercise that
-   * declares a bar weight, and a stable reference from the store — this component
-   * is memoized.
-   */
+  /** The gym's plates, from Settings — a stable store reference (this is memoized). */
   availablePlatesKg?: readonly number[];
   onFocusField: (field: SetField) => void;
   onToggleComplete: () => void;
   /** Start the clock, or — while it runs — stop it and log what it read. */
   onPressTimer?: () => void;
   /**
-   * Session edit mode: present = draw the `−` and remove THIS row with it.
-   * Absent everywhere outside edit mode, which is what hides it.
+   * EDIT MODE. Present = the row is drawn as `⋮⋮ | set | weight | reps | −`: the
+   * grip takes the W toggle's slot, the `−` (`RemoveRowButton`) takes the ✓'s, and
+   * the `−` removes THIS row. Absent everywhere outside edit mode.
    */
   onRemove?: () => void;
-  /** Open the set's annotations sheet (`SetMarksSheet`) — the `RIR` chip's tap. */
+  /**
+   * Edit mode's grip, when the card implements drag-to-reorder: a long press on
+   * the ⋮⋮ calls this. Absent = the grip is drawn as a mark only. Ignored outside
+   * edit mode.
+   */
+  onGripLongPress?: () => void;
+  /**
+   * Replaces the default ⋮⋮ entirely, for a card whose drag needs its own
+   * responder on the handle (a PanResponder, a gesture-handler view). It is drawn
+   * in the 30 dp slot as given. Ignored outside edit mode.
+   */
+  grip?: ReactNode;
+  /** Open `SetMarksSheet` — the set well's tap. Absent = the well is a label. */
   onOpenMarks?: () => void;
   /**
-   * Flip this row between warm-up and working — the `W` checkbox. Present only
-   * where the answer can still be yes (`warmupToggleRows`); absent hides it.
+   * Flip this row between warm-up and working — the `W` toggle. Present only where
+   * the answer can still be yes (`warmupToggleRows`); absent draws the spacer.
    */
   onToggleWarmup?: () => void;
 }
@@ -178,10 +129,10 @@ interface SetRowProps {
 function SetRowComponent({
   set,
   workingNumber,
+  position,
   exercise,
   unitSystem,
   isUpNext = false,
-  onOpenFocus,
   focusedField,
   isTimed = false,
   isTiming = false,
@@ -190,16 +141,19 @@ function SetRowComponent({
   onToggleComplete,
   onPressTimer,
   onRemove,
+  onGripLongPress,
+  grip,
   onOpenMarks,
   onToggleWarmup,
 }: SetRowProps) {
   const t = useT();
   const lang = useLanguage();
   const done = set.isCompleted;
+  const editing = onRemove != null;
+  const kind = setKindOf(set);
   /*
-   * THE MOMENT A SET IS LOGGED, as opposed to the fact that it is. The pop and
-   * the flash are keyed on the transition, so a row that mounts already logged —
-   * a finished card opened to read it — renders at rest. See the file header.
+   * THE MOMENT A SET IS LOGGED, as opposed to the fact that it is: the pop and the
+   * flash are keyed on the transition, so a row that mounts logged renders at rest.
    */
   const wasDone = useRef(done);
   const [loggedAt, setLoggedAt] = useState<number | null>(null);
@@ -208,36 +162,27 @@ function SetRowComponent({
     if (!done) setLoggedAt(null);
     wasDone.current = done;
   }, [done]);
-  /*
-   * A logged set is not "up next" however the card labels it: the ring means DO
-   * THIS, and the row it belongs on moves the instant the ✓ lands.
-   */
-  const ring = isUpNext && !done;
-  // Ghost = a value carried over from last session that the user hasn't touched.
-  const ghost = set.isPrefilled && !done;
-  /** The count cell is standing in for a number nobody has yet. */
+  /* A logged set is not "up next" however the card labels it. */
+  const lit = isUpNext && !done;
   const countsMax = showsMaxLabel(exercise, set);
-  /*
-   * THE EFFORT CHIP — `RIR 2`, after the reps (T-11). Only where somebody graded
-   * the set, only on reps, and never on the lit row: that row is a set about to
-   * happen, and RIR is a fact about one that did. With the chip present the two
-   * cells give up their minimum widths and the count's unit may clip to `R…` —
-   * the design's own behaviour — because 96 + 76 dp of reserved cell plus a chip
-   * leaves the ✓ less than its 48 at 360 dp. The numbers move only when a grade is
-   * SET, which is the user's own tap in a sheet, never under the thumb on a ✓.
-   */
   const chip =
-    set.rir != null && effortApplies(exercise.countUnit) && !ring ? rirChipLabel(set.rir) : null;
-  // Logged numbers step back to muted (Momentum v3): the log is history, and the
-  // lit row below them is the one the eye should land on.
-  const valueTone = ghost ? 'text-ink-faint' : done ? 'text-ink-muted' : 'text-ink';
-
+    set.rir != null && effortApplies(exercise.countUnit) && !countsMax
+      ? rirChipLabel(set.rir)
+      : null;
   /*
-   * What goes on the bar. Null — and therefore no line — for a machine (no
-   * `barWeightKg`), for an empty weight cell, and for a target this plate set
-   * cannot make. See the file header on why the third case is a missing line
-   * rather than a rounded weight.
+   * The states table: logged and lit read full ink at 700; an un-logged row reads
+   * muted at 600 — except a value the user has already changed from the carried
+   * one, which is a fact now and reads ink (still 600, still not logged).
    */
+  const strong = done || lit;
+  const valueColor = strong || !set.isPrefilled ? palette.ink : palette.inkMuted;
+  const valueStyle = {
+    fontSize: valueFontSize(set.isWarmup),
+    fontWeight: strong ? ('700' as const) : ('600' as const),
+    color: valueColor,
+  };
+
+  /* Null — no line — for a machine, an empty weight, or a target the plates cannot make. */
   const plateLabel =
     exercise.barWeightKg != null && set.weightKg != null
       ? describePlates(
@@ -253,283 +198,175 @@ function SetRowComponent({
     onToggleComplete();
   };
 
-  // The get-ready count and the stop both have their own feedback (see
-  // `useSetTimer`), so pressing ▶ only needs to acknowledge the tap itself.
-  const handleTimer = () => {
-    tap();
-    onPressTimer?.();
-  };
+  const weightText = formatWeight(set.weightKg, unitSystem, exercise.loadMode);
+  const weightUnit = unitLabel(unitSystem, lang);
+  const countText = countsMax
+    ? maxLabel(lang).toUpperCase()
+    : formatCount(set.count, exercise.countUnit);
+  const countUnit = countsMax ? '' : countUnitLabel(exercise.countUnit, lang);
 
-  /**
-   * WHAT THE NUMBERS OPEN. The ringed row goes to focus mode; every other row
-   * opens its own inline editor, exactly as it always has.
-   */
-  const openWeight = ring && onOpenFocus ? onOpenFocus : () => onFocusField('weight');
-  const openCount = ring && onOpenFocus ? onOpenFocus : () => onFocusField('count');
-
-  /*
-   * MOMENTUM v3: the rows are pills inside the exercise card, 6 apart, and the
-   * PRIMED row is the lit one — c2 @ 12 % fill, a c2 @ 32 % edge and a glow —
-   * with 10 dp of padding where the others have 6. Every row carries a 1 dp
-   * border, transparent on the rest, so the edge arriving on the primed row
-   * does not move the numbers under the thumb sideways; only its height grows.
-   * The first unlogged row of a card that is only being READ does not lift:
-   * one lit row per session is the whole point of lighting it.
-   */
   const rowStyle: ViewStyle = {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 14,
-    paddingRight: 10,
-    paddingVertical: ring ? 10 : 6,
+    minHeight: SET_ROW.height,
+    gap: SET_ROW.gap,
     borderRadius: ROW_RADIUS,
     borderWidth: 1,
-    borderColor: ring ? tint(0.32) : 'transparent',
-    backgroundColor: ring ? tint(0.12) : 'transparent',
+    borderColor: lit ? tint(0.45) : 'transparent',
+    backgroundColor: lit ? tint(0.07) : 'transparent',
   };
 
-  /*
-   * A LONG PRESS ON THE ROW ITSELF, and only the ringed one.
-   *
-   * The children are built ONCE and handed to whichever container this row needs,
-   * rather than through a component declared in here: a component defined during
-   * render is a new type on every render, and React would unmount and rebuild the
-   * whole row — four Pressables and an inline editor — every time the clock ticked.
-   *
-   * `onLongPress` with no `onPress`: the cells and the ✓ inside keep their own
-   * taps (a child Pressable wins the touch), and a short press on the row's empty
-   * middle does nothing, which is what it did before. The card header keeps the
-   * long press that lifts it for reordering — a row is not a reorder handle.
-   */
-  const rowChildren = (
-    <>
-      {/* The flash. First child so everything paints over it; it takes nothing. */}
-      {loggedAt != null ? <Flash key={loggedAt} radius={ROW_RADIUS} /> : null}
+  return (
+    <View>
+      <View style={rowStyle}>
+        {/* The flash. First child so everything paints over it; it takes nothing. */}
+        {loggedAt != null ? <Flash key={loggedAt} radius={ROW_RADIUS} /> : null}
 
-      {/* EDIT MODE's own control, and the only thing in the row that moves the
-          numbers: 38 dp in from the left, the row's content slides over by it. */}
-      {onRemove ? <RemoveMark onPress={onRemove} /> : null}
+        {/* THE LEAD COLUMN, 80 dp whatever is in it: toggle / grip / spacer, 6, set well. */}
+        <View style={{ width: SET_ROW.toggle, alignItems: 'center' }}>
+          {editing ? (
+            (grip ?? <Grip onLongPress={onGripLongPress} />)
+          ) : onToggleWarmup ? (
+            <WarmupToggle on={set.isWarmup} position={position} onPress={onToggleWarmup} />
+          ) : null}
+        </View>
+        <SetWell kind={kind} workingNumber={workingNumber} lit={lit} onPress={onOpenMarks} />
 
-      {/* Set index — the number, or the set type's badge (`W` `D` `F` `A`, T-12)
-          in its place: see the file header. It goes green and up a size on the
-          ringed row with the numbers beside it: it is the label OF those numbers,
-          and a micro `ink-faint` 3 next to a 30 dp green weight reads as a
-          different row's. Tapping it opens the set's sheet — type and RIR. */}
-      <SetLabel
-        kind={setKindOf(set)}
-        workingNumber={workingNumber}
-        ring={ring}
-        onPress={onOpenMarks}
-      />
-
-      {/* The `W` checkbox: say "warm-up" before the ✓, so its weight is never
-          carried down over the working sets (`lib/warmupOffer.ts`). */}
-      {onToggleWarmup ? <WarmupCheck on={set.isWarmup} onPress={onToggleWarmup} /> : null}
-
-      {exercise.requiresWeight ? (
-        <>
-          <View className={chip || onToggleWarmup ? 'shrink-0' : 'min-w-[96px]'}>
-            <ValueCell
-              width="w-full"
-              value={formatWeight(set.weightKg, unitSystem, exercise.loadMode)}
-              unit={unitLabel(unitSystem, lang)}
-              tone={valueTone}
-              emphasis={ring}
-              focused={focusedField === 'weight'}
-              onPress={openWeight}
-              accessibilityLabel={t('Weight {weight} {unit}', {
-                weight: formatWeight(set.weightKg, unitSystem, exercise.loadMode),
-                unit: unitLabel(unitSystem, lang),
-              })}
-            />
-            {/* Micro, ink-faint, under the number it describes: it is reference,
-                not a control, and nothing about it is tappable. */}
-            {plateLabel ? (
-              <Text
-                numberOfLines={1}
-                className="mt-[1px] text-micro tabular-nums text-ink-faint"
-                accessibilityLabel={t('On the bar: {plates} kilograms', { plates: plateLabel })}
-              >
-                {plateLabel}
-              </Text>
-            ) : null}
-          </View>
-          <Text style={{ fontSize: 16, marginHorizontal: 6 }} className="text-ink-faint">
-            ×
-          </Text>
-        </>
-      ) : null}
-
-      {/* Count cell — reps / rounds / minutes / metres. Takes the weight cell's
-          96 dp when there is no weight, so the thumb target never moves. */}
-      <ValueCell
-        width={chip ? 'shrink' : exercise.requiresWeight ? 'min-w-[76px]' : 'min-w-[96px]'}
-        shrinkUnit={chip != null}
-        /* `MAX` rather than a 0 until the first rep is counted — the word is what
-           is being asked for, and the zero is only the counter. See
-           `lib/maxReps.ts`. */
-        value={
-          countsMax ? maxLabel(lang).toUpperCase() : formatCount(set.count, exercise.countUnit)
-        }
-        unit={countsMax ? '' : countUnitLabel(exercise.countUnit, lang)}
-        tone={valueTone}
-        emphasis={ring}
-        focused={focusedField === 'count'}
-        onPress={openCount}
-        accessibilityLabel={
-          countsMax ? maxLabel(lang) : `${set.count} ${countUnitLabel(exercise.countUnit, lang)}`
-        }
-      />
-
-      {chip ? (
-        <Pressable
-          onPress={onOpenMarks}
-          disabled={!onOpenMarks}
-          hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
-          accessibilityRole="button"
-          accessibilityLabel={describeRir(set.rir ?? 0, lang)}
-          accessibilityHint={t('Opens the reps-in-reserve scale')}
-          style={{
-            height: 26,
-            marginLeft: 6,
-            paddingHorizontal: 8,
-            borderRadius: 13,
-            borderWidth: 1,
-            borderColor: palette.hairline,
-            backgroundColor: glass.sunken,
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <Text
-            maxFontSizeMultiplier={1.3}
-            numberOfLines={1}
-            className="text-[12.5px] font-semibold tabular-nums text-ink"
+        {exercise.requiresWeight ? (
+          <ValueWell
+            onPress={() => onFocusField('weight')}
+            lit={focusedField === 'weight'}
+            emphasis={lit}
+            style={WELL_STYLE}
+            accessibilityLabel={t('Weight {weight} {unit}', {
+              weight: weightText,
+              unit: weightUnit,
+            })}
           >
-            {chip}
-          </Text>
-        </Pressable>
-      ) : null}
-
-      <View className="flex-1" />
-
-      {/* Run the clock. Present only on timed work, and only until the set is
-          logged — there is nothing to time about a set that already happened. */}
-      {isTimed && !done ? (
-        <Pressable
-          onPress={handleTimer}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isTiming
-              ? t('Stop the timer and log this set')
-              : t('Start the {count} timer', {
-                  count: formatCount(set.count, exercise.countUnit),
-                })
-          }
-          className={[
-            'mr-sm h-hit w-hit items-center justify-center rounded-pill',
-            isTiming ? 'bg-green' : 'border border-hairline',
-          ].join(' ')}
-        >
-          <Icon name="play" size={16} color={isTiming ? palette.onAcc : palette.acc} />
-        </Pressable>
-      ) : null}
-
-      {/* The commit target. Deliberately the largest element in the row. */}
-      <Pressable
-        onPress={handleComplete}
-        hitSlop={12}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: done }}
-        accessibilityLabel={done ? t('Undo set') : t('Complete set')}
-        /*
-          THE MARK, 46–50 dp. Logged: the theme's gradient with an `onAcc` ✓.
-          Primed: a 2 dp `acc` ring at 50 with an `acc` ✓ and a glow — the one
-          control on the screen the thumb is about to press. Anything else: an
-          empty 46 dp ring, because a ✓ drawn on a set not yet done is a claim.
-        */
-        style={
-          done
-            ? { width: 46, height: 46 }
-            : ring
-              ? {
-                  width: 50,
-                  height: 50,
-                  borderRadius: 9999,
-                  borderWidth: 2,
-                  borderColor: palette.acc,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }
-              : {
-                  width: 46,
-                  height: 46,
-                  borderRadius: 9999,
-                  borderWidth: 1.5,
-                  borderColor: '#2A3330',
-                }
-        }
-      >
-        {done ? (
-          /* The fill, caught: it pops in on the overshoot curve when THIS tap
-             logged it, and simply is there on a row that was logged already. */
-          loggedAt != null ? (
-            <Pop key={loggedAt} duration={360} style={DONE_FILL}>
-              <DoneFill />
-            </Pop>
-          ) : (
-            <View style={DONE_FILL}>
-              <DoneFill />
-            </View>
-          )
-        ) : ring ? (
-          <Icon name="check" size={20} color={palette.acc} />
+            <WellValue value={weightText} style={valueStyle}>
+              <Unit text={weightUnit} />
+            </WellValue>
+          </ValueWell>
         ) : null}
-      </Pressable>
 
-      {/* The breath over the lit row's glow. Last child so it paints over the
-          row, `pointerEvents="none"` so it takes nothing from the ✓ under it. */}
-    </>
-  );
+        {/* Reps / rounds / minutes / metres. With no weight it takes both columns. */}
+        <ValueWell
+          onPress={() => onFocusField('count')}
+          lit={focusedField === 'count'}
+          emphasis={lit}
+          style={WELL_STYLE}
+          accessibilityLabel={`${countsMax ? maxLabel(lang) : `${set.count} ${countUnit}`}${
+            chip && set.rir != null ? `, ${describeRir(set.rir, lang)}` : ''
+          }`}
+        >
+          <WellValue value={countText} style={valueStyle}>
+            {chip ? <RirChip label={chip} /> : countUnit ? <Unit text={countUnit} /> : null}
+          </WellValue>
+        </ValueWell>
 
-  return ring && onOpenFocus ? (
-    <Pressable
-      onLongPress={onOpenFocus}
-      delayLongPress={280}
-      accessibilityHint={t('Long press for focus mode')}
-      style={rowStyle}
-    >
-      {rowChildren}
-    </Pressable>
-  ) : (
-    <View style={rowStyle}>{rowChildren}</View>
+        {/* Run the clock: timed work only, until logged, and not while editing. */}
+        {isTimed && !done && !editing ? (
+          <Pressable
+            onPress={() => {
+              tap();
+              onPressTimer?.();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isTiming
+                ? t('Stop the timer and log this set')
+                : t('Start the {count} timer', {
+                    count: formatCount(set.count, exercise.countUnit),
+                  })
+            }
+            style={{
+              width: SET_ROW.logCircle,
+              height: SET_ROW.logCircle,
+              borderRadius: 9999,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: isTiming ? 0 : 1,
+              borderColor: palette.hairline,
+              backgroundColor: isTiming ? palette.acc : 'transparent',
+            }}
+          >
+            <Icon name="play" size={16} color={isTiming ? palette.onAcc : palette.acc} />
+          </Pressable>
+        ) : null}
+
+        {/* THE LOG COLUMN, 48: the ✓, or edit mode's `−` in its place. */}
+        <View style={{ width: SET_ROW.log, alignItems: 'center' }}>
+          {editing ? (
+            <RemoveRowButton onPress={onRemove} accessibilityLabel={t('Remove this set')} />
+          ) : (
+            <Pressable
+              onPress={handleComplete}
+              hitSlop={4}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: done }}
+              accessibilityLabel={done ? t('Undo set') : t('Complete set')}
+              style={{
+                width: SET_ROW.logCircle,
+                height: SET_ROW.logCircle,
+                borderRadius: 9999,
+                alignItems: 'center',
+                justifyContent: 'center',
+                // Un-logged: a hairline ring. Lit and logged are fills, no ring.
+                borderWidth: lit || done ? 0 : 1,
+                borderColor: palette.hairline,
+                backgroundColor: lit ? palette.acc : 'transparent',
+              }}
+            >
+              {done ? (
+                /* The soft fill, caught: it pops in when THIS tap logged it. */
+                loggedAt != null ? (
+                  <Pop key={loggedAt} duration={360} style={DONE_FILL}>
+                    <Icon name="check" size={20} color={palette.acc} />
+                  </Pop>
+                ) : (
+                  <View style={DONE_FILL}>
+                    <Icon name="check" size={20} color={palette.acc} />
+                  </View>
+                )
+              ) : (
+                <Icon name="check" size={20} color={lit ? palette.onAcc : palette.inkMuted} />
+              )}
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* Reference, not a control: under the weight well's left edge. */}
+      {plateLabel && exercise.requiresWeight ? (
+        <Text
+          numberOfLines={1}
+          className="text-[12.5px] tabular-nums text-ink-faint"
+          style={{ marginLeft: 1 + SET_ROW.lead + SET_ROW.gap + SET_ROW.wellPadding }}
+          accessibilityLabel={t('On the bar: {plates} kilograms', { plates: plateLabel })}
+        >
+          {plateLabel}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
 /**
- * The leftmost 26 dp: a working set's number, or its type's badge.
+ * The set well: 44 × 40, the number (or the type's letter) and a ▾.
  *
- * The badge is the design's 26 dp rounded square with the letter in it — muted
- * for a warm-up (a set that does not count), green for drop / failure / AMRAP
- * (working sets of a particular kind). A plain working set keeps its bare number,
- * so a session with no types looks exactly as it did.
- *
- * A TAP TARGET NOW, where it used to be "purely a landmark": it is the one place
- * on every row — logged or not, lit or not — that is about the set as a whole
- * rather than one of its numbers, which is what a type is. Slop above, below and
- * to the left only, so it reaches 44 dp tall without eating into the weight cell.
- * `QuickAdjust`'s `Set type` is the labelled way to the same sheet.
+ * Letters are muted for a warm-up (a set that does not count) and green for drop /
+ * failure / AMRAP (working sets of a particular kind); a number is muted, and ink
+ * on the lit row, where it is the label of the numbers about to be lifted.
  */
-function SetLabel({
+function SetWell({
   kind,
   workingNumber,
-  ring,
+  lit,
   onPress,
 }: {
   kind: SetKind;
   workingNumber: number | null;
-  ring: boolean;
+  lit: boolean;
   onPress?: () => void;
 }) {
   const t = useT();
@@ -541,65 +378,48 @@ function SetLabel({
       : kind === 'working'
         ? t('Set {n}', { n: workingNumber })
         : t('Set {n}, {kind}', { n: workingNumber, kind: kindName(kind, lang) });
-  const face = badge ? (
-    <View
-      style={{
-        width: 26,
-        height: 26,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: kind === 'warmup' ? palette.hairline : tint(0.4),
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
+  const color = badge && kind !== 'warmup' ? palette.acc : lit ? palette.ink : palette.inkMuted;
+  return (
+    <ValueWell
+      width={SET_ROW.setWell}
+      onPress={onPress}
+      emphasis={lit}
+      style={{ paddingHorizontal: 4 }}
+      accessibilityLabel={label}
+      accessibilityHint={onPress ? t('Opens the set type and reps in reserve') : undefined}
     >
       <Text
-        maxFontSizeMultiplier={1.3}
-        className={kind === 'warmup' ? 'text-ink-faint' : 'text-acc'}
-        style={{ fontSize: 13, fontWeight: '700' }}
+        allowFontScaling={false}
+        numberOfLines={1}
+        className="tabular-nums"
+        style={{ fontSize: 17, fontWeight: '700', color }}
       >
-        {badge}
+        {setWellFace(kind, workingNumber)}
       </Text>
-    </View>
-  ) : (
-    <Text
-      maxFontSizeMultiplier={1.3}
-      className={[
-        'font-semibold uppercase tabular-nums',
-        ring ? 'text-acc' : 'text-ink-faint',
-      ].join(' ')}
-      style={{ fontSize: 14 }}
-    >
-      {workingNumber ?? ''}
-    </Text>
-  );
-  return onPress ? (
-    <Pressable
-      onPress={() => {
-        tap();
-        onPress();
-      }}
-      hitSlop={{ top: 9, bottom: 9, left: 8, right: 0 }}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint={t('Opens the set type and reps in reserve')}
-      style={{ width: 26, minHeight: 26, justifyContent: 'center' }}
-    >
-      {face}
-    </Pressable>
-  ) : (
-    <View accessible accessibilityLabel={label} style={{ width: 26, justifyContent: 'center' }}>
-      {face}
-    </View>
+      {onPress ? (
+        <View style={{ marginLeft: 2 }}>
+          <Icon name="chevron-down" size={10} color={palette.inkMuted} />
+        </View>
+      ) : null}
+    </ValueWell>
   );
 }
 
 /**
- * `[✓] W` — a real checkbox with its letter beside it, because the request was
- * "a check box for the warm-up" and the bare badge had proved invisible. Muted
- * like the `W` badge when off; green when on, the same green as every ✓.
+ * The `W` toggle: a 30 dp rounded square. Off, a dashed muted outline and a muted
+ * W — present, but plainly not on; on, solid `acc` with the W in ink-on-acc. The
+ * hit area reaches 44 through `hitSlop`, so the slot stays 30 and the weight well
+ * does not move.
  */
-function WarmupCheck({ on, onPress }: { on: boolean; onPress: () => void }) {
+function WarmupToggle({
+  on,
+  position,
+  onPress,
+}: {
+  on: boolean;
+  position: number;
+  onPress: () => void;
+}) {
   const t = useT();
   return (
     <Pressable
@@ -607,43 +427,25 @@ function WarmupCheck({ on, onPress }: { on: boolean; onPress: () => void }) {
         tap();
         onPress();
       }}
-      hitSlop={{ top: 9, bottom: 9, left: 2, right: 2 }}
+      hitSlop={7}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: on }}
-      accessibilityLabel={
-        on ? t('Warm-up set, tap to make it a working set') : t('Mark as warm-up')
-      }
+      accessibilityLabel={t('Mark set {n} as warm-up', { n: position })}
       style={{
-        flexDirection: 'row',
+        width: SET_ROW.toggle,
+        height: SET_ROW.toggle,
+        borderRadius: 9,
+        borderWidth: on ? 0 : 1.5,
+        borderStyle: on ? 'solid' : 'dashed',
+        borderColor: palette.inkMuted,
+        backgroundColor: on ? palette.acc : 'transparent',
         alignItems: 'center',
-        height: 26,
-        marginLeft: 6,
-        marginRight: 6,
-        paddingHorizontal: 6,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: on ? tint(0.4) : palette.hairline,
-        backgroundColor: on ? tint(0.14) : 'transparent',
+        justifyContent: 'center',
       }}
     >
-      <View
-        style={{
-          width: 12,
-          height: 12,
-          borderRadius: 3,
-          borderWidth: 1.5,
-          borderColor: on ? palette.acc : palette.inkFaint,
-          backgroundColor: on ? palette.acc : 'transparent',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {on ? <Icon name="check" size={9} color={palette.onAcc} /> : null}
-      </View>
       <Text
-        maxFontSizeMultiplier={1.3}
-        className={on ? 'text-acc' : 'text-ink-faint'}
-        style={{ fontSize: 13, fontWeight: '700', marginLeft: 4 }}
+        allowFontScaling={false}
+        style={{ fontSize: 13, fontWeight: '800', color: on ? palette.onAcc : palette.inkMuted }}
       >
         W
       </Text>
@@ -651,151 +453,125 @@ function WarmupCheck({ on, onPress }: { on: boolean; onPress: () => void }) {
   );
 }
 
-/** A set row's corner — the design's 18, `radius.row`. */
-const ROW_RADIUS = 18;
-
-/** The logged mark: 46 dp, clipped round, the gradient painted inside. */
-const DONE_FILL: ViewStyle = {
-  width: 46,
-  height: 46,
-  borderRadius: 9999,
-  overflow: 'hidden',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
-
-/** The gradient and its `onAcc` ✓ — text on a gradient is never ink. */
-function DoneFill() {
-  return (
-    <>
-      <LinearGradient
-        {...gradientFill()}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-      />
-      <SpecularEdge color="rgba(236,241,238,0.22)" radius={9999} />
-      <Icon name="check" size={20} color={palette.onAcc} />
-    </>
-  );
-}
-
 /**
- * Edit mode's `−`: 28 dp, a 1.5 dp coral ring, coral minus, 10 of air before the
- * set number. It pops in when edit mode opens and sinks under the finger.
+ * Edit mode's ⋮⋮ — the visible twin of the drag (redesign §1). A mark only unless
+ * the card wires `onGripLongPress`; 44 tall so it is a real target when it is one.
  */
-function RemoveMark({ onPress }: { onPress: () => void }) {
+function Grip({ onLongPress }: { onLongPress?: () => void }) {
   const t = useT();
-  const press = usePressScale(0.85);
-  return (
-    <Pop duration={260} style={{ marginRight: 10 }}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={press.onPressIn}
-        onPressOut={press.onPressOut}
-        hitSlop={10}
-        accessibilityRole="button"
-        accessibilityLabel={t('Remove this set')}
+  const glyph = <Icon name="grip" size={18} color={palette.inkMuted} />;
+  if (!onLongPress) {
+    return (
+      <View
+        accessible
+        accessibilityLabel={t('Reorder this set')}
+        style={{ height: 44, justifyContent: 'center' }}
       >
-        <Animated.View
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 9999,
-            borderWidth: 1.5,
-            borderColor: palette.inkMuted,
-            alignItems: 'center',
-            justifyContent: 'center',
-            transform: press.style.transform,
-          }}
-        >
-          <Icon name="minus" size={12} color={palette.inkMuted} />
-        </Animated.View>
-      </Pressable>
-    </Pop>
-  );
-}
-
-const PRIMED_NUMERAL = { fontSize: 30, lineHeight: 34, letterSpacing: -0.8 } as const;
-const ROW_NUMERAL = { fontSize: 21, lineHeight: 26, letterSpacing: -0.3 } as const;
-
-/**
- * One number + its micro unit, baseline-aligned.
- *
- * Focused, it grows a `surface` chip behind itself with a −8 left margin, so
- * the chip appears *around* the value without the value sliding sideways. The
- * number under the thumb must not move when it is tapped.
- *
- * `emphasis` is the up-next row: GREEN, two sizes up the scale, bold, and glowing.
- * The glow is the app's ONE glow (`theme/tokens`), the same value the ring around
- * this row is drawn with — a second, stronger green would be a second meaning, and
- * there is only one thing being said here.
- *
- * The `tone` prop is IGNORED under emphasis, deliberately: see the file header on
- * why green outranks the prefill ghost on this one row.
- */
-function ValueCell({
-  width,
-  value,
-  unit,
-  tone,
-  emphasis = false,
-  focused,
-  onPress,
-  accessibilityLabel,
-  shrinkUnit = false,
-}: {
-  width: string;
-  /** Let the unit clip (`REPS` → `R…`) before anything else gives way. */
-  shrinkUnit?: boolean;
-  value: string;
-  unit: string;
-  tone: string;
-  /** This is the set to do next: bigger, bolder, glowing. */
-  emphasis?: boolean;
-  focused: boolean;
-  onPress: () => void;
-  accessibilityLabel: string;
-}) {
+        {glyph}
+      </View>
+    );
+  }
   return (
     <Pressable
-      onPress={onPress}
-      hitSlop={8}
+      onLongPress={onLongPress}
+      delayLongPress={200}
+      hitSlop={{ left: 7, right: 7 }}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      className={[
-        width,
-        'flex-row items-baseline',
-        focused ? '-ml-sm rounded-surface bg-surface px-sm py-[2px]' : '',
-      ].join(' ')}
+      accessibilityLabel={t('Reorder this set')}
+      style={{ height: 44, justifyContent: 'center' }}
     >
-      {/* 30 / 34 on the primed row, 21 / 26 everywhere else — the design's two
-          sizes, set in `style` so the release bundle cannot drop them. */}
-      <Text
-        allowFontScaling={false}
-        className={['font-semibold tabular-nums', emphasis ? 'text-acc' : tone].join(' ')}
-        style={[emphasis ? PRIMED_NUMERAL : ROW_NUMERAL, { flexShrink: 0 }]}
-      >
-        {value}
-      </Text>
-      <Text
-        numberOfLines={shrinkUnit ? 1 : undefined}
-        style={shrinkUnit ? { flexShrink: 1 } : undefined}
-        className={[
-          'ml-xs font-semibold uppercase',
-          // The unit rides with the number, one notch behind it in size and in
-          // colour: `KG` at micro beside a 30 dp numeral reads as a different
-          // row's label, and `KG` in full green would compete with the number it
-          // belongs to.
-          emphasis ? 'text-label text-acc' : 'text-micro text-ink-faint',
-        ].join(' ')}
-      >
-        {unit}
-      </Text>
+      {glyph}
     </Pressable>
   );
 }
 
 /**
- * Memoized: an 18-set session renders ~35 rows, and every tick of the rest
- * timer re-renders the screen. Rows must not repaint for someone else's state.
+ * A value and whatever rides beside it (a unit, or the `RIR` chip). The numeral
+ * shrinks to fit before anything is cropped — the last resort under the width
+ * budget `lib/setRowLayout.ts` tests at 360 dp.
+ */
+function WellValue({
+  value,
+  style,
+  children,
+}: {
+  value: string;
+  style: { fontSize: number; fontWeight: '600' | '700'; color: string };
+  children?: ReactNode;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', minWidth: 0 }}>
+      <Text
+        allowFontScaling={false}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
+        className="tabular-nums"
+        style={[style, { flexShrink: 1 }]}
+      >
+        {value}
+      </Text>
+      {children ? <View style={{ marginLeft: SET_ROW.unitGap }}>{children}</View> : null}
+    </View>
+  );
+}
+
+function Unit({ text }: { text: string }) {
+  return (
+    <Text
+      maxFontSizeMultiplier={1.2}
+      numberOfLines={1}
+      style={{ fontSize: UNIT_FONT_SIZE, fontWeight: '600', color: palette.inkMuted }}
+    >
+      {text}
+    </Text>
+  );
+}
+
+/** `RIR 2`: 22 dp, inside the reps well in the unit's place. */
+function RirChip({ label }: { label: string }) {
+  return (
+    <View
+      style={{
+        height: 22,
+        paddingHorizontal: SET_ROW.chipPadding,
+        borderRadius: 11,
+        borderWidth: 1,
+        borderColor: palette.hairline,
+        backgroundColor: glass.raised,
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={1}
+        className="tabular-nums"
+        style={{ fontSize: UNIT_FONT_SIZE, fontWeight: '600', color: palette.ink }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+/** A set row's corner — the design's 14 for the lit row. */
+const ROW_RADIUS = 14;
+
+/** The value wells' tighter padding — see `SET_ROW.wellPadding`. */
+const WELL_STYLE = { paddingHorizontal: SET_ROW.wellPadding };
+
+/** The logged mark: the whole circle, `acc`-soft. */
+const DONE_FILL: ViewStyle = {
+  width: SET_ROW.logCircle,
+  height: SET_ROW.logCircle,
+  borderRadius: 9999,
+  backgroundColor: tint(0.14),
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+/**
+ * Memoized: an 18-set session renders ~35 rows, and every tick of the rest timer
+ * re-renders the screen. Rows must not repaint for someone else's state.
  */
 export const SetRow = memo(SetRowComponent);
