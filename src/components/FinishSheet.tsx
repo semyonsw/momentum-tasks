@@ -6,14 +6,14 @@
  *   │                   ▬▬▬▬                     │
  *   │ SESSION COMPLETE                           │
  *   │ Workout 92                                 │
- *   │ ╭ MINUTES ╮ ╭ SETS    ╮ ╭ KG MOVED ╮       │  ← roll up from 0
- *   │ │ 68      │ │ 17      │ │ 6,240    │       │
+ *   │ ╭ TIME    ╮ ╭ SETS    ╮ ╭ VOLUME   ╮       │  ← roll up from 0
+ *   │ │ 68 min  │ │ 17      │ │ 6,240 kg │       │
  *   │ 7 sets are still unlogged. They won't be   │
  *   │ saved.                                     │
  *   │ HOW DID THAT GO                            │
  *   │ ( Easy | ▓Right▓ | Brutal )                │  ← the thumb slides
  *   │ ╭──────────── Save workout ────────────╮   │
- *   │               Keep going                   │
+ *   │              Keep training                 │
  *   ╰────────────────────────────────────────────╯
  *
  * ── THE MOTION PASS MADE IT A MOMENT ──────────────────────────────────────
@@ -39,6 +39,14 @@
  * button writes the real number back. It is derived from what you did, not typed
  * into a form, which is this app's whole idiom for a plan — the same idiom as a
  * prefill coming from last session.
+ *
+ * Since the 2.9 redesign (#6) the offer is a `Changed from the plan` card —
+ * `Bench press  3 sets → 4 sets` — and a two-line primary button that says what
+ * the tap does in full: `Save and make 4 sets the plan for Bench press`, over
+ * `Next Push starts with 4 × 80 kg. Other exercises stay as planned.` The old
+ * `Finish and update the plan` needed the sentence above it to be understood.
+ * `Save workout` steps down to secondary beside it, and `Keep training` is the
+ * ghost way back. The words are `lib/finishSheet.ts`'s `planOffer`.
  *
  * Four things it is not:
  *
@@ -83,8 +91,11 @@ import { Animated, Pressable, ScrollView, Text, View, useWindowDimensions } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMotionScale } from '../hooks/useMotionScale';
-import { useT, type Translate } from '../hooks/useT';
+import { useLanguage, useT, type Translate } from '../hooks/useT';
+import type { PlanOffer } from '../lib/finishSheet';
 import { formatValue } from '../lib/money';
+import { kgToLb, unitLabel } from '../lib/units';
+import type { UnitSystem } from '../types/models';
 import { curve, glass, gradientFill, motion, palette, radius, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
 import { Kicker, PrimaryButton } from './primitives';
@@ -121,10 +132,10 @@ interface FinishSheetProps {
   unloggedCount: number;
   loggedCount: number;
   /**
-   * "Dips did 5 sets, not 4" — the one line, or null when the session matched the
-   * plan (or had no plan). Null hides the whole offer, button included.
+   * The rows and the button's two lines (`planOffer`), or null when the session
+   * matched the plan (or had no plan). Null hides the card and the button.
    */
-  planChange: string | null;
+  planOffer: PlanOffer | null;
   /**
    * "Wide pull-ups · new max 17 · 17 + 10 + 9 + 8 + 7 next time" — what the
    * ladders in this session earned, or null when none of them moved.
@@ -156,6 +167,8 @@ interface FinishSheetProps {
   minutes?: number | null;
   /** Kilograms moved in the working sets — `sessionVolume`. */
   volumeKg?: number;
+  /** Shown in the lifter's own unit: a pounds user sees pounds moved. */
+  unitSystem?: UnitSystem;
   /**
    * The records this session broke, already worded (`describeSessionRecord`):
    * at most three, most significant first. Empty hides the block entirely.
@@ -185,7 +198,7 @@ export interface FinishRecord {
 export function FinishSheet({
   unloggedCount,
   loggedCount,
-  planChange,
+  planOffer,
   ladderChange,
   effort,
   onSetEffort,
@@ -195,10 +208,12 @@ export function FinishSheet({
   workoutNumber = null,
   minutes = null,
   volumeKg = 0,
+  unitSystem = 'metric',
   records = [],
   milestone = null,
 }: FinishSheetProps) {
   const t = useT();
+  const lang = useLanguage();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const motionScale = useMotionScale();
@@ -236,7 +251,7 @@ export function FinishSheet({
 
   return (
     <View className="absolute inset-0" accessibilityViewIsModal>
-      {/* Scrim. Tapping it is the same as "Keep going": the safe option is
+      {/* Scrim. Tapping it is the same as "Keep training": the safe option is
           always the easy one, even when the easy one is a mis-tap. */}
       <Animated.View
         style={{
@@ -252,7 +267,7 @@ export function FinishSheet({
         <Pressable
           onPress={onDismiss}
           accessibilityRole="button"
-          accessibilityLabel={t('Keep going')}
+          accessibilityLabel={t('Keep training')}
           style={{ flex: 1 }}
         />
       </Animated.View>
@@ -294,8 +309,9 @@ export function FinishSheet({
             lit: it is the number that grows workout over workout. */}
           <View className="mt-[18px] flex-row" style={{ gap: 8 }}>
             <StatTile
-              label={t('Minutes')}
+              label={t('Time')}
               value={revealStats ? String(Math.max(0, minutes ?? 0)) : '0'}
+              unit={t('min')}
               duration={900}
             />
             <StatTile
@@ -304,8 +320,13 @@ export function FinishSheet({
               duration={900}
             />
             <StatTile
-              label={t('Kg moved')}
-              value={revealStats ? formatValue(volumeKg) : '0'}
+              label={t('Volume')}
+              value={
+                revealStats
+                  ? formatValue(Math.round(unitSystem === 'imperial' ? kgToLb(volumeKg) : volumeKg))
+                  : '0'
+              }
+              unit={unitLabel(unitSystem, lang)}
               duration={1100}
               lit
             />
@@ -353,12 +374,10 @@ export function FinishSheet({
             <Text className="mt-lg text-body tabular-nums text-green-bright">{ladderChange}</Text>
           ) : null}
 
-          {/* The fact, then the button that acts on it. Stated above the buttons
-            rather than inside one, because it is a sentence about the session and
-            the button is a choice about the routine. */}
-          {planChange ? (
-            <Text className="mt-lg text-body tabular-nums text-ink">{planChange}</Text>
-          ) : null}
+          {/* What moved, one row per exercise, above the button that acts on it:
+            the card is the fact about the session, the button the choice about
+            the routine. */}
+          {planOffer ? <PlanChangesCard offer={planOffer} /> : null}
 
           {/*
           HOW DID THAT GO — above the buttons, because it is about the session and
@@ -428,12 +447,9 @@ export function FinishSheet({
           ) : null}
 
           <View className="mt-[20px]">
-            {planChange ? (
+            {planOffer ? (
               <>
-                <PrimaryButton
-                  label={t('Finish and update the plan')}
-                  onPress={onConfirmAndUpdatePlan}
-                />
+                <PlanButton offer={planOffer} onPress={onConfirmAndUpdatePlan} />
                 <View className="h-sm" />
                 <PrimaryButton label={t('Save workout')} variant="ghost" onPress={onConfirm} />
               </>
@@ -447,10 +463,10 @@ export function FinishSheet({
             <Pressable
               onPress={onDismiss}
               accessibilityRole="button"
-              accessibilityLabel={t('Keep going')}
+              accessibilityLabel={t('Keep training')}
               className="mt-xs h-[48px] items-center justify-center"
             >
-              <Text className="text-label font-medium text-ink-muted">{t('Keep going')}</Text>
+              <Text className="text-label font-medium text-ink-muted">{t('Keep training')}</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -589,11 +605,14 @@ function MilestoneCard({ milestone }: { milestone: FinishMilestone }) {
 function StatTile({
   label,
   value,
+  unit,
   duration,
   lit = false,
 }: {
   label: string;
   value: string;
+  /** `min` / `kg` after the number, small: the label names the quantity now. */
+  unit?: string;
   duration: number;
   lit?: boolean;
 }) {
@@ -619,15 +638,126 @@ function StatTile({
       >
         {label}
       </Text>
-      <RollingNumber
-        value={value}
-        lineHeight={30}
-        duration={duration}
-        containerStyle={{ marginTop: 6 }}
-        style={{ fontSize: 26 }}
-        className={['font-semibold', lit ? 'text-green-bright' : 'text-ink'].join(' ')}
-      />
+      <View className="mt-[6px] flex-row items-baseline">
+        <RollingNumber
+          value={value}
+          lineHeight={30}
+          duration={duration}
+          style={{ fontSize: 26 }}
+          className={['font-semibold', lit ? 'text-green-bright' : 'text-ink'].join(' ')}
+        />
+        {unit ? (
+          <Text
+            maxFontSizeMultiplier={1.3}
+            numberOfLines={1}
+            className={['ml-[4px] text-label', lit ? 'text-green-bright' : 'text-ink-muted'].join(
+              ' ',
+            )}
+          >
+            {unit}
+          </Text>
+        ) : null}
+      </View>
     </View>
+  );
+}
+
+/**
+ * `Changed from the plan` — one row per exercise whose set count moved, the
+ * name on the left and `3 sets → 4 sets` on the right. Plain glass: it is a
+ * fact, and the button under it is where the accent goes.
+ */
+function PlanChangesCard({ offer }: { offer: PlanOffer }) {
+  const t = useT();
+  return (
+    <>
+      <Kicker tone="faint" className="mt-[20px]">
+        {t('Changed from the plan')}
+      </Kicker>
+      <View
+        className="mt-[8px]"
+        style={{
+          borderRadius: radius.row,
+          borderWidth: 1,
+          backgroundColor: glass.raised,
+          borderColor: glass.raisedEdge,
+          paddingHorizontal: 14,
+        }}
+      >
+        {offer.rows.map((row, index) => (
+          <View
+            key={row.key}
+            accessible
+            accessibilityLabel={`${row.name}: ${row.change}`}
+            style={{
+              minHeight: 48,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              borderTopWidth: index > 0 ? 1 : 0,
+              borderTopColor: palette.hairline,
+            }}
+          >
+            <Text
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={1}
+              className="flex-1 text-body font-medium text-ink"
+            >
+              {row.name}
+            </Text>
+            <Text maxFontSizeMultiplier={1.3} className="text-label tabular-nums text-ink-muted">
+              {row.change}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </>
+  );
+}
+
+/**
+ * The plan offer as a button that says everything it does: the action on the
+ * first line, what it means for the next session on the second (12.5 px). The
+ * commit gradient, like `Save workout` when it is alone — it is the primary.
+ */
+function PlanButton({ offer, onPress }: { offer: PlanOffer; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={offer.title}
+      accessibilityHint={offer.caption}
+      // A static style: this file's `Pressable` is React Native's, whose style
+      // callback NativeWind drops (see `components/Pressable.tsx`).
+      style={{
+        minHeight: 64,
+        borderRadius: 22,
+        overflow: 'hidden',
+        justifyContent: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+      }}
+    >
+      <LinearGradient
+        {...gradientFill()}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      <SpecularEdge color="rgba(236,241,238,0.22)" radius={22} height={2} />
+      <Text
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 16, lineHeight: 21 }}
+        className="text-center font-semibold text-on-acc"
+      >
+        {offer.title}
+      </Text>
+      <Text
+        maxFontSizeMultiplier={1.3}
+        style={{ fontSize: 12.5, lineHeight: 17, opacity: 0.8 }}
+        className="mt-[2px] text-center text-on-acc"
+      >
+        {offer.caption}
+      </Text>
+    </Pressable>
   );
 }
 

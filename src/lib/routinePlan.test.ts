@@ -271,6 +271,26 @@ describe('performedSetCounts', () => {
     ).toEqual([{ exerciseId: 'ex_dips', name: 'Dips', completedSets: 2 }]);
   });
 
+  it('carries the last working weight, for the Finish sheet caption', () => {
+    const [counted] = performedSetCounts([
+      {
+        exercise: { id: 'ex_bench', name: 'Bench' },
+        sets: [
+          { isCompleted: true, isWarmup: true, weightKg: 40 },
+          { isCompleted: true, weightKg: 80 },
+          { isCompleted: true, weightKg: 82.5 },
+          { isCompleted: false, weightKg: 85 },
+        ],
+      },
+    ]);
+    expect(counted.weightKg).toBe(82.5);
+    const [change] = plannedSetDiff(
+      [item({ id: 'ri1', exerciseId: 'ex_bench', targetSets: 3 })],
+      [counted],
+    );
+    expect(change.weightKg).toBe(82.5);
+  });
+
   it('does not count a ticked warm-up as one of the planned sets', () => {
     expect(
       performedSetCounts([
@@ -392,5 +412,29 @@ describe('routineDraftChanged', () => {
     expect(
       routineDraftChanged(saved, { name: 'Pull', items: [a, { ...b, supersetGroup: 'g1' }] }),
     ).toBe(true);
+  });
+});
+
+describe('performedSetCounts — what the Finish sheet promises', () => {
+  const sets = (...rows: { w: number; type?: string }[]) =>
+    rows.map((r) => ({ isCompleted: true, weightKg: r.w, ...(r.type ? { setType: r.type } : {}) }));
+
+  it('leaves a drop set out of the count and out of the weight', () => {
+    const [row] = performedSetCounts([
+      {
+        exercise: { id: 'b', name: 'Bench' },
+        sets: sets({ w: 80 }, { w: 80 }, { w: 80 }, { w: 60, type: 'drop' }),
+      },
+    ]);
+    expect(row).toMatchObject({ completedSets: 3, weightKg: 80 });
+  });
+
+  it('names no weight for an assisted or added load', () => {
+    for (const loadMode of ['assisted', 'added_bodyweight'] as const) {
+      const [row] = performedSetCounts([
+        { exercise: { id: 'p', name: 'Pull-up', loadMode }, sets: sets({ w: 20 }, { w: 20 }) },
+      ]);
+      expect(row.weightKg).toBeUndefined();
+    }
   });
 });

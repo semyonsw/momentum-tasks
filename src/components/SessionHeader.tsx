@@ -40,6 +40,13 @@
  * door. Rejected: keeping `Restart clock` in the bar and moving only Stop — the
  * line would stay for one chip, and the clock you might restart is already
  * up here to be read.
+ *
+ * THE 2.9 REDESIGN (#4, #7) named both corners. The ⋮ became a 46 dp glass
+ * circle captioned `Options` — it now also holds `+ Add an exercise` and the
+ * `Auto-start rest` switch, so it is a place worth finding, not a door to two
+ * rare actions. And the back circle says what it does to the workout: `Back,
+ * workout keeps running` while one is running, because "back" out of a session
+ * used to read as "end it", and people finished workouts to get to Home.
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -51,10 +58,9 @@ import { useT } from '../hooks/useT';
 import { curve, motion, palette, radius, tint } from '../theme/tokens';
 import { GlassBar, SpecularEdge } from './glass';
 import { Icon } from './Icon';
-import { pressedStyle } from './motion';
+import { CaptionedIconButton } from './primitives';
 import { RollingPhrase } from './RollingNumber';
 import { FADE_ON, RunningText } from './RunningText';
-import { TOUCH_MIN_WORKOUT, hitSlopFor } from '../lib/hitTarget';
 import { formatElapsed } from '../lib/units';
 
 /** The pushed-screen kicker: 13 / 16, letter-spacing 1.4. */
@@ -71,6 +77,7 @@ export function SessionHeader({
   startedAt,
   workoutNumber,
   onBack,
+  backLabel,
   onMenu,
   moving,
   children,
@@ -83,6 +90,8 @@ export function SessionHeader({
   /** What this workout will be saved as. Null hides the pill. */
   workoutNumber: number | null;
   onBack?: () => void;
+  /** The back circle's spoken label. Defaults to "Back". */
+  backLabel?: string;
   /** The session's ⋮ — what it opens is the screen's. Hidden mid-move. */
   onMenu?: () => void;
   /** A card is in the air: what to say instead, and the way to put it down. */
@@ -96,7 +105,9 @@ export function SessionHeader({
 
   return (
     <GlassBar style={{ paddingTop: insets.top }}>
-      <View className={`h-[60px] flex-row items-center pl-[10px] ${onMenu ? 'pr-xs' : 'pr-md'}`}>
+      <View
+        className={`min-h-[60px] flex-row items-center pl-[10px] ${onMenu ? 'py-[4px] pr-xs' : 'pr-md'}`}
+      >
         {/* The pushed screens' 46 dp back circle. Kept as an empty slot of the
             same size mid-move, so the two lines beside it do not jump. */}
         <Pressable
@@ -104,7 +115,7 @@ export function SessionHeader({
           disabled={!onBack}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel={t('Back')}
+          accessibilityLabel={backLabel ?? t('Back')}
           style={
             onBack
               ? {
@@ -210,29 +221,18 @@ export function SessionHeader({
           </View>
         ) : null}
 
-        {/* 46, the back circle's size, so the bar is symmetric; plain rather
-            than glass, because it is a door to two rare actions and not a
-            place the eye should land. */}
+        {/* 46, the back circle's size, so the bar is symmetric — and captioned,
+            because it is where adding an exercise and the rest switch live now
+            (redesign #4): an icon that leads somewhere says where. */}
         {onMenu && !moving ? (
-          <Pressable
-            onPress={onMenu}
-            hitSlop={hitSlopFor(46, TOUCH_MIN_WORKOUT)}
-            accessibilityRole="button"
-            accessibilityLabel={t('Session options')}
-            style={(state) => [
-              pressedStyle(state),
-              {
-                width: 46,
-                height: 46,
-                marginLeft: 4,
-                borderRadius: radius.pill,
-                alignItems: 'center',
-                justifyContent: 'center',
-              },
-            ]}
-          >
-            <Icon name="more" size={22} color={palette.ink} />
-          </Pressable>
+          <View style={{ marginLeft: 4 }}>
+            <CaptionedIconButton
+              icon={<Icon name="more" size={22} color={palette.ink} />}
+              caption={t('Options')}
+              accessibilityLabel={t('Session options')}
+              onPress={onMenu}
+            />
+          </View>
         ) : null}
       </View>
 

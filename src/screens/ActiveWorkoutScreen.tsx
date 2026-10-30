@@ -3,7 +3,7 @@
  *
  *   ┌──────────────────────────────────────────────┐
  *   │ (‹) PULL + SWIMMING                  #92   ⋮ │   ← header, always visible
- *   │     11 of 18 sets · 42:10                    │   ← ⋮: Restart clock, Stop and exit…
+ *   │     11 of 18 sets · 42:10            Options │   ← ⋮: add, auto-rest, restart, stop
  *   ├──────────────────────────────────────────────┤
  *   │ ╭──────────────────────────────────────────╮ │
  *   │ │ BETWEEN SETS               Next: set 3   │ │   ← the lit rest card, up top
@@ -20,7 +20,8 @@
  *   │ Wide pull-ups machine                  0/4 ● │   ← collapsed
  *   │ Plank                                  0/3   │
  *   │  1      2:00 MIN                   ( ▶ )( ) │   ← timed: run the clock
- *   │ ( + Add an exercise )                        │   ← anything, mid-workout
+ *   │ (          + Add an exercise           )     │   ← anything, mid-workout
+ *   │ ╭ (◎ Focus)          (Finish)             ╮ │   ← the dock
  *   └──────────────────────────────────────────────┘
  *
  * NO TAB BAR. The session owns the screen: there is nothing else worth doing
@@ -61,10 +62,10 @@
  *   • `+ Add an exercise` at the bottom — pick anything from the library, or create
  *     something that isn't in it yet, and it lands at the end of THIS session with
  *     one set. Neck work at the end of pull day is not a routine edit.
- *   • THE ✎ on the open card — SESSION EDIT MODE. `editingEntryId` below is the
- *     one card in it: every row grows its own `−`, and `Add set`, `Warm-up`,
- *     `Rest, targets and cue` and `Remove exercise` replace the footer. It ends on
- *     `Done` and nothing else. See `ExerciseCard`.
+ *   • THE `Edit` PILL on the open card — SESSION EDIT MODE. `editingEntryId`
+ *     below is the one card in it: every row grows its own `−`, and `Add set`,
+ *     `Warm-up`, `Rest, targets and cue` and `Remove exercise` replace the footer.
+ *     It ends on `Done` and nothing else. See `ExerciseCard`.
  *   • LONG PRESS, THEN SLIDE to reorder. The order you planned is not the order the
  *     machines are free in.
  *
@@ -145,7 +146,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
+import { Pressable } from '../components/Pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -167,10 +169,11 @@ import { useDragReorder, type CardLayout } from '../hooks/useDragReorder';
 import { ADVANCE_HOLD_MS, holdsAfterFinishing } from '../lib/cardAdvance';
 import { resolveRest } from '../lib/rest';
 import { describeLadderOutcomes, ladderOutcomes } from '../lib/repLadder';
-import { describePlannedSetDiff, performedSetCounts, plannedSetDiff } from '../lib/routinePlan';
+import { performedSetCounts, plannedSetDiff } from '../lib/routinePlan';
 import { supersetPosition } from '../lib/superset';
 import { upNextSet } from '../lib/upNext';
 import { describeWarmup, warmupSets, type WarmupSet } from '../lib/warmup';
+import { warmupPercents } from '../lib/exerciseCardLine';
 import {
   beatSomething,
   describeSessionRecord,
@@ -183,14 +186,15 @@ import { formatCount, formatWeight, unitLabel } from '../lib/units';
 import { useActiveWorkout, useSessionProgress } from '../state/activeWorkoutStore';
 import { platesInForce, useSettings } from '../state/settingsStore';
 import { useEngagementView } from '../hooks/useEngagement';
-import { finishOpensSheet } from '../lib/finishSheet';
+import { finishOpensSheet, planOffer } from '../lib/finishSheet';
 import { describeMilestone, milestoneCard, milestoneDue } from '../lib/milestones';
-import { PrimaryButton, Separator, TextButton } from '../components/primitives';
+import { PrimaryButton, Separator, SwitchRow, TextButton } from '../components/primitives';
+import { DOCK_HEIGHT, SessionDock } from '../components/SessionDock';
 import { Sheet } from '../components/Sheet';
 import { SetMarksSheet } from '../components/SetMarksSheet';
 import { effortApplies } from '../lib/effort';
-import { setKindOf } from '../lib/setType';
-import { FloatingPair, Lamps, Toast, type ToastAction } from '../components/glass';
+import { setKindOf, setSheetTitle, type SetKind } from '../lib/setType';
+import { Lamps, Toast, type ToastAction } from '../components/glass';
 import { draftToSetHistory, sessionVolume, workingSetLabels } from '../lib/draft';
 import type { ID, RoutineItem, UnitSystem } from '../types/models';
 
@@ -222,9 +226,12 @@ interface CardHandlers {
   onPatchSet: (setId: ID, patch: Partial<DraftSet>) => void;
   onOpenSetMarks: (setId: ID) => void;
   onToggleWarmup: (setId: ID) => void;
+  /** The inline editor's type and reps-left chips — the sheet's `markSet`, in place. */
+  onMarkSet: (setId: ID, marks: { kind?: SetKind; rir?: number | null }) => void;
   onAddWarmup: () => void;
   onAddSet: () => void;
   onRemoveSet: (setId: ID) => void;
+  onMoveSet: (setId: ID, toIndex: number) => void;
   onAcceptOverload: () => void;
   onDismissOverload: () => void;
   onRemoveExercise: () => void;
@@ -286,12 +293,12 @@ interface ActiveWorkoutScreenProps {
 /** How long a toast with an Undo in it stays up. */
 const UNDO_TOAST_MS = 4500;
 /**
- * The floating pair's `bottom` — the design's 28 for the live workout, a little
- * higher than the sections' 24 because nothing sits under it here (no nav bar).
+ * The dock's `bottom` — the design's 28 for the live workout, a little higher
+ * than the sections' 24 because nothing sits under it here (no nav bar).
  */
 const PAIR_BOTTOM = 28;
-/** The pair is 64 tall at `PAIR_BOTTOM`; a toast clears it by 12. */
-const SESSION_TOAST_BOTTOM = PAIR_BOTTOM + 64 + 12;
+/** The dock is `DOCK_HEIGHT` (66) tall at `PAIR_BOTTOM`; a toast clears it by 12. */
+const SESSION_TOAST_BOTTOM = PAIR_BOTTOM + DOCK_HEIGHT + 12;
 
 export function ActiveWorkoutScreen({
   unitSystem,
@@ -399,6 +406,7 @@ export function ActiveWorkoutScreen({
   const patchSet = useActiveWorkout((s) => s.patchSet);
   const markSet = useActiveWorkout((s) => s.markSet);
   const addSet = useActiveWorkout((s) => s.addSet);
+  const moveSet = useActiveWorkout((s) => s.moveSet);
   const addWarmupSets = useActiveWorkout((s) => s.addWarmupSets);
   const removeSet = useActiveWorkout((s) => s.removeSet);
   const insertSet = useActiveWorkout((s) => s.insertSet);
@@ -424,6 +432,10 @@ export function ActiveWorkoutScreen({
    * also what `completeSet` will do.
    */
   const restSeconds = useSettings((s) => s.restSecondsBetweenSets);
+  /* The Session options sheet's switch (redesign #4) — the same setting as
+     Workout settings' `Start rest automatically`, so the two cannot disagree. */
+  const autoStartRest = useSettings((s) => s.autoStartRest);
+  const setSettingFlag = useSettings((s) => s.setFlag);
   /*
    * The plates of whichever gym the user says they are in, for the `20 + 2×10`
    * line under a barbell lift. Memoized on the two stable references it derives
@@ -456,7 +468,7 @@ export function ActiveWorkoutScreen({
    * `warmupSets` for the four cases — and the card reads that as "no row".
    */
   const warmupPlans = useMemo(() => {
-    const plans: Record<ID, { sets: WarmupSet[]; summary: string }> = {};
+    const plans: Record<ID, { sets: WarmupSet[]; summary: string; percents: string | null }> = {};
     for (const entry of session?.entries ?? []) {
       // Nothing to warm up for once the exercise is under way — or once its
       // warm-ups are already on it: a second tap used to add the ramp twice.
@@ -469,7 +481,9 @@ export function ActiveWorkoutScreen({
         availablePlatesKg,
       });
       const summary = describeWarmup(sets);
-      if (summary) plans[entry.localId] = { sets, summary };
+      if (summary) {
+        plans[entry.localId] = { sets, summary, percents: warmupPercents(sets, working) };
+      }
     }
     return plans;
   }, [availablePlatesKg, session?.entries]);
@@ -930,11 +944,13 @@ export function ActiveWorkoutScreen({
         const target = entryNow()?.sets.find((set) => set.localId === setId);
         if (target) markSet(entryId, setId, { kind: target.isWarmup ? 'working' : 'warmup' });
       },
+      onMarkSet: (setId, marks) => markSet(entryId, setId, marks),
       onAddWarmup: () => {
         const plan = live.current.warmupPlans[entryId];
         if (plan) addWarmupSets(entryId, plan.sets);
       },
       onAddSet: () => addSet(entryId),
+      onMoveSet: (setId, toIndex) => moveSet(entryId, setId, toIndex),
       onRemoveSet: (setId) => {
         const sets = entryNow()?.sets ?? [];
         const index = sets.findIndex((set) => set.localId === setId);
@@ -1008,6 +1024,13 @@ export function ActiveWorkoutScreen({
         workoutNumber: workoutNumber ?? null,
         shown: milestoneShown,
       }),
+      // 5. THE SESSION STRAYED FROM ITS PLAN (redesign #6): the sheet's primary
+      //    button is the offer to make it the plan, and a one-tap save would
+      //    never show it.
+      planChanged:
+        session.routineId != null &&
+        routineItems != null &&
+        plannedSetDiff(routineItems, performedSetCounts(session.entries)).length > 0,
     });
     if (opens) {
       setConfirming('finish');
@@ -1022,6 +1045,7 @@ export function ActiveWorkoutScreen({
     milestonesOn,
     progress.done,
     progress.total,
+    routineItems,
     session,
     workoutNumber,
   ]);
@@ -1104,7 +1128,7 @@ export function ActiveWorkoutScreen({
     return {
       entry,
       set: entry.sets[index],
-      title: label == null ? t('Warm-up') : t('Set {n}', { n: label }),
+      title: setSheetTitle(setKindOf(entry.sets[index]), label, lang),
     };
   })();
 
@@ -1123,11 +1147,13 @@ export function ActiveWorkoutScreen({
           startedAt={session.startedAt}
           workoutNumber={workoutNumber ?? null}
           onBack={lifted ? undefined : onExit}
+          /* #7: leaving a STARTED workout does not end it (the shell keeps it
+             running), and the label says so — `Back` out of a session read as
+             "stop", and people pressed Finish to get Home. */
+          backLabel={isStarted ? t('Back, workout keeps running') : undefined}
           // `Stop and exit` and `Restart clock` live behind the ⋮ (U16).
-          onMenu={() => {
-            tap();
-            setConfirming('menu');
-          }}
+          // No `tap()` here: the captioned button already gives the haptic.
+          onMenu={() => setConfirming('menu')}
           /*
            * NO COMMIT ACTION IN THIS BAR — placement rule 1. `Finish` and `Start`
            * are the floating pair at the foot of the screen, where the thumb that
@@ -1165,7 +1191,7 @@ export function ActiveWorkoutScreen({
           style={{ flex: 1 }}
           contentContainerStyle={{
             paddingTop: 8,
-            // The floating pair is 64 tall at `PAIR_BOTTOM`; this is what keeps
+            // The dock is 64 tall at `PAIR_BOTTOM`; this is what keeps
             // the last card clear of it.
             paddingBottom: insets.bottom + PAIR_BOTTOM + 96,
           }}
@@ -1248,6 +1274,7 @@ export function ActiveWorkoutScreen({
                       onPatchSet={handlers.onPatchSet}
                       onOpenSetMarks={handlers.onOpenSetMarks}
                       onToggleWarmup={handlers.onToggleWarmup}
+                      onMarkSet={handlers.onMarkSet}
                       /*
                       WARM-UP. Decided here rather than in the card because it
                       needs the gym's plates and `lib/warmup.ts` — the card renders
@@ -1258,9 +1285,11 @@ export function ActiveWorkoutScreen({
                       bestLine={bestLines[entry.localId] ?? null}
                       deloadMessage={deloadMessages[entry.localId] ?? null}
                       warmupSummary={warmupPlans[entry.localId]?.summary ?? null}
+                      warmupPercents={warmupPlans[entry.localId]?.percents ?? null}
                       onAddWarmup={warmupPlans[entry.localId] ? handlers.onAddWarmup : undefined}
                       onAddSet={handlers.onAddSet}
                       onRemoveSet={handlers.onRemoveSet}
+                      onMoveSet={handlers.onMoveSet}
                       onAcceptOverload={handlers.onAcceptOverload}
                       onDismissOverload={handlers.onDismissOverload}
                     />
@@ -1270,74 +1299,63 @@ export function ActiveWorkoutScreen({
             })}
 
             {/* Anything at all, appended to the workout in flight. Last in the
-                list because that is where it lands — and DASHED, a slot rather
-                than a card, left-aligned under the cards (Momentum v3). */}
+                list because that is where it lands. A full-width secondary
+                button since the 2.9 redesign (#4): the faint dashed pill it
+                replaced read as a hint, not a control, and people went looking
+                for "add" in the ⋮. It is in the ⋮ now too. */}
             {onAddExercise && !lifted ? (
-              <Pressable
-                onPress={() => {
-                  tap();
-                  onAddExercise();
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={t('Add an exercise to this workout')}
-                style={({ pressed }) => ({
-                  alignSelf: 'flex-start',
-                  height: 44,
-                  paddingHorizontal: 16,
-                  borderRadius: 9999,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  borderWidth: 1,
-                  borderStyle: 'dashed',
-                  borderColor: 'rgba(236,241,238,0.14)',
-                  backgroundColor: pressed ? 'rgba(236,241,238,0.05)' : 'transparent',
-                })}
-                className="mx-lg mt-xs"
-              >
-                <Text style={{ fontSize: 15, color: '#AEB9B3' }} className="font-medium">
-                  {`+ ${t('Add an exercise')}`}
-                </Text>
-              </Pressable>
+              <View className="mx-lg mt-xs">
+                <PrimaryButton
+                  label={`+ ${t('Add an exercise')}`}
+                  variant="ghost"
+                  onPress={onAddExercise}
+                />
+              </View>
             ) : null}
           </View>
         </KeyboardAwareScrollView>
       </View>
 
       {/*
-        THE FLOATING PAIR — placement rule 4, and the one place in the app where
-        two actions share the slot.
+        THE DOCK — placement rule 4, and the one place in the app where two
+        actions share the slot.
 
-        `Focus` is filled at 64 and `Finish` is ghost at 52, with 10 between
-        them. Different weight AND different geometry, deliberately: a thumb that
-        has pressed `Focus` sixty times this session must not be able to end the
-        workout by muscle memory. Finishing is the one commit in this app that is
-        not one tap to undo.
+        It was the floating pair: `Focus` filled at 64 and `Finish` ghost at 52.
+        The redesign (#5) made the two halves EQUAL in a glass bar, because the
+        small ghost read as a footnote and people hunted for how to end the
+        workout. The muscle-memory guard survives as colour: a thumb that has
+        pressed the accent `Focus` sixty times is not aiming at the glass half.
 
         Before the workout is started there is nothing to finish and nothing to
-        focus on, so the pair is one button and it is the one thing to do.
+        focus on, so the dock offers starting it, and the way out.
       */}
       {dimmed || lifted || focusOpen ? null : isStarted && allLogged ? (
-        /* Every set logged: nothing left to focus on, so the pair becomes the one
-           thing left to do, and it pops in. */
-        <FloatingPair
+        /* Every set logged: nothing left to focus on, so the dock becomes the one
+           thing left to do. */
+        <SessionDock
           bottom={PAIR_BOTTOM}
-          primary={{ label: t('Finish workout'), icon: 'check', onPress: handleFinish }}
+          items={[
+            { label: t('Finish workout'), icon: 'check', primary: true, onPress: handleFinish },
+          ]}
         />
       ) : isStarted ? (
-        <FloatingPair
+        /* THE DOCK (redesign #5): a glass bar, two equal halves — the one Focus
+           icon (the viewfinder; ▶ means start/play and nothing else) on the
+           accent half, Finish on the glass. See `SessionDock`. */
+        <SessionDock
           bottom={PAIR_BOTTOM}
-          secondary={{ label: t('Finish'), onPress: handleFinish }}
-          primary={{
-            label: t('Focus'),
-            symbol: 'center_focus_strong',
-            onPress: () => setFocusOpen(true),
-          }}
+          items={[
+            { label: t('Focus'), icon: 'focus', primary: true, onPress: () => setFocusOpen(true) },
+            { label: t('Finish'), onPress: handleFinish },
+          ]}
         />
       ) : (
-        <FloatingPair
+        <SessionDock
           bottom={PAIR_BOTTOM}
-          secondary={{ label: t('Stop and exit'), onPress: handleStopAndExit }}
-          primary={{ label: t('Start workout'), icon: 'play', onPress: handleStart }}
+          items={[
+            { label: t('Stop and exit'), onPress: handleStopAndExit },
+            { label: t('Start workout'), icon: 'play', primary: true, onPress: handleStart },
+          ]}
         />
       )}
 
@@ -1359,9 +1377,10 @@ export function ActiveWorkoutScreen({
           workoutNumber={workoutNumber ?? null}
           minutes={isStarted ? elapsedMinutes : null}
           volumeKg={sessionVolume(session, bodyweightKg ?? null).kg}
+          unitSystem={unitSystem}
           unloggedCount={progress.total - progress.done}
           loggedCount={progress.done}
-          planChange={describePlannedSetDiff(planChanges, lang)}
+          planOffer={planOffer(planChanges, session.title, unitSystem, lang)}
           ladderChange={ladderChange}
           records={finishRecords}
           milestone={milestone}
@@ -1401,6 +1420,30 @@ export function ActiveWorkoutScreen({
           danger sheet when sets would be thrown away. */}
       {confirming === 'menu' ? (
         <Sheet title={t('Session options')} onDismiss={() => setConfirming(null)}>
+          {/* Redesign #4: the two session-wide things that had no home on this
+              screen come first — adding an exercise (also the button under the
+              cards) and whether rest starts on its own — then the old rows. */}
+          <View className="mb-sm overflow-hidden rounded-surface bg-surface-alt">
+            {onAddExercise ? (
+              <>
+                <MenuRow
+                  label={`+ ${t('Add an exercise')}`}
+                  onPress={() => {
+                    tap();
+                    setConfirming(null);
+                    onAddExercise();
+                  }}
+                />
+                <Separator inset={16} />
+              </>
+            ) : null}
+            <SwitchRow
+              label={t('Auto-start rest')}
+              hint={t('Rest timer starts when you log a set')}
+              value={autoStartRest}
+              onChange={(value) => setSettingFlag('autoStartRest', value)}
+            />
+          </View>
           <View className="overflow-hidden rounded-surface bg-surface-alt">
             {isStarted ? (
               <>
@@ -1498,7 +1541,8 @@ function MenuRow({
   onPress,
 }: {
   label: string;
-  detail: string;
+  /** What it will do. Absent when the label already says it all. */
+  detail?: string;
   quiet?: boolean;
   onPress: () => void;
 }) {
@@ -1506,14 +1550,16 @@ function MenuRow({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${label} ${detail}`}
+      accessibilityLabel={detail ? `${label} ${detail}` : label}
       style={pressedStyle}
-      className="h-row-lg justify-center px-lg"
+      className={`${detail ? 'h-row-lg' : 'h-row'} justify-center px-lg`}
     >
       <Text className={`text-body ${quiet ? 'text-ink-muted' : 'text-ink'}`}>{label}</Text>
-      <Text numberOfLines={1} className="mt-[2px] text-label text-ink-faint">
-        {detail}
-      </Text>
+      {detail ? (
+        <Text numberOfLines={1} className="mt-[2px] text-label text-ink-faint">
+          {detail}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }

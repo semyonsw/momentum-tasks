@@ -228,6 +228,12 @@ export interface PlannedSetChange {
   name: string;
   plannedSets: number;
   completedSets: number;
+  /**
+   * The weight the last working set was logged at — what the next session of
+   * this routine prefills, so what the Finish sheet's caption promises
+   * ("Next Push starts with 4 × 80 kg"). Absent for unweighted work.
+   */
+  weightKg?: number;
 }
 
 /**
@@ -255,7 +261,12 @@ export interface PlannedSetChange {
  */
 export function plannedSetDiff(
   items: readonly RoutineItem[],
-  performed: readonly { exerciseId: ID; name: string; completedSets: number }[],
+  performed: readonly {
+    exerciseId: ID;
+    name: string;
+    completedSets: number;
+    weightKg?: number;
+  }[],
 ): PlannedSetChange[] {
   const claimed = new Set<ID>();
   const changes: PlannedSetChange[] = [];
@@ -274,6 +285,7 @@ export function plannedSetDiff(
       name: entry.name,
       plannedSets: item.targetSets,
       completedSets: entry.completedSets,
+      ...(entry.weightKg != null ? { weightKg: entry.weightKg } : {}),
     });
   }
 
@@ -329,17 +341,34 @@ export function describePlannedSetDiff(
 /** Completed-set counts per exercise, in session order — `plannedSetDiff`'s input. */
 export function performedSetCounts(
   entries: readonly {
-    exercise: Pick<Exercise, 'id' | 'name'>;
-    sets: readonly { isCompleted: boolean; isWarmup?: boolean }[];
+    exercise: Pick<Exercise, 'id' | 'name'> & Partial<Pick<Exercise, 'loadMode'>>;
+    sets: readonly {
+      isCompleted: boolean;
+      isWarmup?: boolean;
+      setType?: string;
+      weightKg?: number | null;
+    }[];
   }[],
-): { exerciseId: ID; name: string; completedSets: number }[] {
-  return entries.map((entry) => ({
-    exerciseId: entry.exercise.id,
-    name: entry.exercise.name,
+): { exerciseId: ID; name: string; completedSets: number; weightKg?: number }[] {
+  return entries.map((entry) => {
     // Working sets only: `targetSets` never counted the ramp, so a bench day with
-    // three warm-ups offered to rewrite a 3-set plan to six.
-    completedSets: entry.sets.filter((s) => s.isCompleted && !s.isWarmup).length,
-  }));
+    // three warm-ups offered to rewrite a 3-set plan to six. Nor a DROP set: it is
+    // extra work after the plan (the ladder and the card's "4 sets" skip it too),
+    // so "3 sets and a drop" is not a reason to make the plan 4.
+    const working = entry.sets.filter((s) => s.isCompleted && !s.isWarmup && s.setType !== 'drop');
+    // The LAST working weight, not the heaviest: it is what the next session
+    // prefills from, and the Finish sheet's caption is a promise about that. Only
+    // for a plain load — "4 × 20 kg" on an assisted pull-up or a belt reads as
+    // the bar, not the assistance or the plate on the belt.
+    const plainLoad = entry.exercise.loadMode == null || entry.exercise.loadMode === 'external';
+    const weightKg = plainLoad ? working[working.length - 1]?.weightKg : undefined;
+    return {
+      exerciseId: entry.exercise.id,
+      name: entry.exercise.name,
+      completedSets: working.length,
+      ...(typeof weightKg === 'number' && weightKg > 0 ? { weightKg } : {}),
+    };
+  });
 }
 
 /* ------------------------------------------------------------------ */

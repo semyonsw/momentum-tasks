@@ -67,6 +67,7 @@ import {
   reshapeLadderSets,
 } from '../lib/repLadder';
 import { moveToIndex } from '../lib/reorder';
+import { moveSetTo } from '../lib/setOrder';
 import { hasRoundLeft, isRoundExercise } from '../lib/rounds';
 import { nextInSupersetRound, nextSupersetRound } from '../lib/superset';
 import { carriesWeight, carryWeightForward, defaultWeightUpdate } from '../lib/weightCarry';
@@ -173,6 +174,8 @@ interface ActiveWorkoutState {
   insertEntry: (entry: DraftEntry, index: number) => void;
   /** Reorder: put `entryId` at `toIndex`, closing the gap it left behind. */
   moveEntry: (entryId: ID, toIndex: number) => void;
+  /** Put one unlogged set at `toIndex` in its exercise — edit mode's ⋮⋮. See `lib/setOrder.ts`. */
+  moveSet: (entryId: ID, setId: ID, toIndex: number) => void;
   /**
    * "I'm starting now." Anchors the session clock to this instant.
    *
@@ -431,6 +434,20 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
        * a tap there) and then do exactly the same thing with it, and that was written
        * out twice.
        */
+      moveSet: (entryId, setId, toIndex) => {
+        const { session } = get();
+        if (!session) return;
+        const entry = session.entries.find((e) => e.localId === entryId);
+        if (!entry) return;
+        const sets = moveSetTo(entry.sets, setId, toIndex);
+        if (sets === entry.sets) return;
+        set({
+          // Through the ladder: its rungs are positions, so a moved row takes the
+          // target of the place it lands in.
+          session: mapEntry(session, entryId, (e) => withLadderPlan({ ...e, sets: [...sets] })),
+        });
+      },
+
       moveEntry: (entryId, toIndex) => {
         const { session } = get();
         if (!session) return;

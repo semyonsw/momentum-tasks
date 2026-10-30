@@ -8,8 +8,7 @@
  *   └────────────────────────────────────────────┘
  *
  * Expanded: ONE glass card (Momentum v3) holding the header, the overload line,
- * the set rows as pills 6 apart, and a footer of `+ Add set` / `− Remove set`
- * with `Rest` and `Focus` under them.
+ * the set rows as pills 6 apart, and a footer of `+ Warm-up` and `Rest`.
  *
  * At most one card is expanded at a time, and NONE is a legal answer — tapping the
  * open card's header shuts it. That is the whole navigation model of the logging
@@ -52,28 +51,28 @@
  * component: a bracket around a single exercise says nothing, and one is easy to
  * produce by removing a partner mid-session.
  *
- * ── THE PLAN IS BEHIND THE ✎ ────────────────────────────────────────────────
+ * ── THE PLAN IS BEHIND `Edit` ───────────────────────────────────────────────
  *
- * An open card used to carry every control that changes the PLAN — `Add set`,
- * `Remove set`, `Warm-up`, `Edit exercise`, `Remove exercise` — under its sets,
- * all the time, on every card, for the whole session. Those are decisions made
- * two or three times a workout, and they sat a thumb's width from the ✓ that is
- * pressed sixty times. So they moved behind a 36 dp ✎ beside the card's name.
+ * An open card used to carry every control that changes the PLAN under its sets,
+ * all the time. Those are decisions made two or three times a workout, and they
+ * sat a thumb's width from the ✓ that is pressed sixty times. So they moved
+ * behind edit mode — and in the 2.9 redesign (#3) the door to it became a
+ * labelled `✎ Edit` pill, because the unlabelled ✎ and bin circles it replaced
+ * were two of the least-found controls in the app.
  *
- *   • OUTSIDE EDIT MODE the footer is the design's `+ Add set` / `− Remove set`
- *     pair (Momentum v3 brought the commonest plan edit back out: "one more set"
- *     is decided mid-exercise, with chalk on your hands), and under it two chips,
- *     `⏸ Rest 1:30 | ▶ Focus`. `− Remove set` takes the LAST row and is not
- *     offered on a one-row exercise — removing that row is removing the
- *     exercise. That has its OWN control, a coral bin beside the ✎: taking an
- *     exercise out used to mean opening edit mode or pressing `−` once per set
- *     until the last one took the card with it, and "skip the leg press, it's
- *     taken" is decided in a second. It does not ask; the screen's Undo covers it.
- *   • IN EDIT MODE the ✎ becomes a green `Done` pill, `EDITING PLAN` appears over
- *     the name, every set row grows its own coral `−` (so you remove the set you
- *     mean, not the bottom one), and the footer becomes `+ Add set`, `+ Warm-up`
- *     (only before anything is logged), `✎ Rest, targets and cue`, and a coral
- *     `− Remove exercise`.
+ *   • THE HEADER is the name, a sub-line `4 sets · target 80 kg × 8`
+ *     (`lib/exerciseCardLine.ts`), a `◎ Focus` chip on the card holding the
+ *     session's next set — one of focus mode's only two doors, with the dock's —
+ *     and the `Edit` pill.
+ *   • OUTSIDE EDIT MODE the footer is two chips: `+ Warm-up` while nothing here is
+ *     logged, and `⏱ Rest 1:30 ✎` — the chip runs a rest, the ✎ opens the editor
+ *     that holds this exercise's rest. Taking an exercise out is in edit mode now;
+ *     the one-tap bin beside the name went with the redesign.
+ *   • IN EDIT MODE the pill becomes an acc-soft `✓ Done`, the sub-line reads
+ *     `Editing · tap ⋮⋮ to move a set` (`lib/setOrder.ts`), every set row grows its grip and its red
+ *     `−` (`SetRow`, so you remove the set you mean, not the bottom one), and the
+ *     footer becomes full-width `+ Add set`, `+ Warm-up  40 · 60 · 80`, `Rest,
+ *     targets and cue ›`, a divider, and the red `Remove exercise`.
  *
  * Edit mode belongs to the SCREEN, not to the card (`editingExerciseId`): at most
  * one card is in it, and it ends only on `Done`. Shutting the card or logging a
@@ -107,7 +106,8 @@ import { Animated, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
 import type { DraftEntry, DraftSet } from '../lib/draft';
-import { formatTarget, workingSetLabels } from '../lib/draft';
+import { workingSetLabels } from '../lib/draft';
+import { exerciseSubline } from '../lib/exerciseCardLine';
 import { shouldCloseEditor, visibleEditor } from '../lib/inlineEditor';
 import { tap, undo } from '../lib/feedback';
 import { isTimed as isTimedExercise } from '../lib/setTimer';
@@ -118,14 +118,18 @@ import { SpecularEdge } from './glass';
 import { DragHandle, Icon } from './Icon';
 import { useLanguage, useT } from '../hooks/useT';
 import { useMotionScale } from '../hooks/useMotionScale';
-import { GrowIn, Pop, Stagger, usePressScale } from './motion';
+import { GrowIn } from './motion';
+import { DangerButton } from './primitives';
 import { warmupToggleRows } from '../lib/warmupOffer';
+import { canMoveSet, movableRange } from '../lib/setOrder';
 import { OverloadNudge } from './OverloadNudge';
 import { Pressable } from './Pressable';
 import { QuickAdjust } from './QuickAdjust';
 import { RollingNumber } from './RollingNumber';
 import { FADE_ON, RunningText } from './RunningText';
 import { SetRow, type SetField } from './SetRow';
+import { SetTypeTip } from './SetTypeTip';
+import type { SetKind } from '../lib/setType';
 
 interface ExerciseCardProps {
   entry: DraftEntry;
@@ -159,10 +163,10 @@ interface ExerciseCardProps {
   /** Another card is being dragged, so this one is not the subject right now. */
   dimmed?: boolean;
   /**
-   * Open focus mode on the session's next set.
+   * Open focus mode on the session's next set — the header's `Focus` chip.
    *
    * Only handed to the card that HOLDS that set (see `upNextSetId`), because focus
-   * mode always shows the work: a `Focus` row on a card you opened to read would
+   * mode always shows the work: a `Focus` chip on a card you opened to read would
    * take you somewhere else in the session, which is the same confusion the glow
    * was moved off the cursor to avoid.
    */
@@ -186,12 +190,20 @@ interface ExerciseCardProps {
   onOpenSetMarks?: (setId: ID) => void;
   /** Flip a row between warm-up and working — the rows' `W` checkbox. */
   onToggleWarmup?: (setId: ID) => void;
+  /**
+   * Change a set's type or grade from the inline editor (`QuickAdjust`'s chips).
+   * Through the store's `markSet` rather than `onPatchSet`, so a warm-up said
+   * here answers the warm-up offer exactly as the sheet does. Absent = no chips.
+   */
+  onMarkSet?: (setId: ID, marks: { kind?: SetKind; rir?: number | null }) => void;
   onAddSet: () => void;
   /**
    * Take one row out of the STORE. Called after the row's exit animation, never
    * before — and never for the last row, which goes through `onRemoveExercise`.
    */
   onRemoveSet: (setId: ID) => void;
+  /** Put a set at another index — edit mode's ⋮⋮ (`lib/setOrder.ts`). Absent = no moving. */
+  onMoveSet?: (setId: ID, toIndex: number) => void;
   /**
    * Session edit mode is on for THIS card — see the file header. The screen owns
    * it, so at most one card is ever in it.
@@ -213,6 +225,8 @@ interface ExerciseCardProps {
   onAddWarmup?: () => void;
   /** "40 × 5 · 60 × 5 · 80 × 3" — what `onAddWarmup` is about to do. */
   warmupSummary?: string | null;
+  /** "40 · 60 · 80" — the same rows as shares of the working weight (#3). */
+  warmupPercents?: string | null;
   /**
    * A best this exercise has broken IN THIS SESSION, already logged: "85 kg × 5".
    *
@@ -283,14 +297,17 @@ function ExerciseCardComponent({
   onPatchSet,
   onOpenSetMarks,
   onToggleWarmup,
+  onMarkSet,
   onAddSet,
   onRemoveSet,
   isEditing = false,
+  onMoveSet,
   onToggleEditing,
   onAcceptOverload,
   onDismissOverload,
   onAddWarmup,
   warmupSummary,
+  warmupPercents,
   bestLine,
   deloadMessage,
   onPressTimer,
@@ -310,8 +327,6 @@ function ExerciseCardComponent({
    */
   const editorContext = {
     setIds: entry.sets.map((s) => s.localId),
-    upNextSetId: upNextSetId ?? null,
-    hasFocusDoor: onOpenFocus != null,
     focusModeOpen,
   };
   const focus = visibleEditor(openEditor, editorContext);
@@ -340,6 +355,14 @@ function ExerciseCardComponent({
    * and a component subtracting a running count from an index is a component with
    * a state machine in it.
    */
+  /*
+   * THE LIFTED ROW, while a set is being moved: tap ⋮⋮ to lift, tap ⋮⋮ where it
+   * goes. Dropped when edit mode ends — a lift never outlives the mode it began in.
+   */
+  const [liftedSetId, setLiftedSetId] = useState<ID | null>(null);
+  useEffect(() => {
+    if (!isEditing) setLiftedSetId(null);
+  }, [isEditing]);
   const setLabels = workingSetLabels(entry.sets);
   const warmupToggles = warmupToggleRows(entry.sets);
   const nudgeWaiting = entry.overload.shouldNudge && !entry.overloadAccepted;
@@ -368,8 +391,22 @@ function ExerciseCardComponent({
    * per row per render meant every row of the open card repainted on every ✓
    * and every ± chip, plate line and all.
    */
-  const live = useRef({ removeRow, onPressTimer, onToggleSet, onOpenSetMarks, onToggleWarmup });
-  live.current = { removeRow, onPressTimer, onToggleSet, onOpenSetMarks, onToggleWarmup };
+  const live = useRef({
+    removeRow,
+    onPressTimer,
+    onToggleSet,
+    onOpenSetMarks,
+    onToggleWarmup,
+    onMarkSet,
+  });
+  live.current = {
+    removeRow,
+    onPressTimer,
+    onToggleSet,
+    onOpenSetMarks,
+    onToggleWarmup,
+    onMarkSet,
+  };
   const rowHandlers = useRef(new Map<ID, RowHandlers>()).current;
   const handlersFor = (setId: ID): RowHandlers => {
     const known = rowHandlers.get(setId);
@@ -391,6 +428,8 @@ function ExerciseCardComponent({
       },
       onOpenMarks: () => live.current.onOpenSetMarks?.(setId),
       onToggleWarmup: () => live.current.onToggleWarmup?.(setId),
+      onKind: (kind) => live.current.onMarkSet?.(setId, { kind }),
+      onRir: (rir) => live.current.onMarkSet?.(setId, { rir }),
     };
     rowHandlers.set(setId, handlers);
     return handlers;
@@ -503,17 +542,10 @@ function ExerciseCardComponent({
   /* ---------------------------------------------------------------- */
   /* Expanded                                                          */
   /* ---------------------------------------------------------------- */
-  const showRest = onStartRest != null && restSeconds > 0;
-  const showFocus = onOpenFocus != null;
-
-  /*
-   * `− Remove set` outside edit mode takes the LAST row, the design's pair with
-   * `+ Add set`. It is offered only while there are two rows or more: removing
-   * the last one is removing the exercise, and that goes through edit mode's
-   * `Remove exercise` and its Undo rather than through a button labelled "set".
-   */
-  const liveRows = entry.sets.filter((s) => !leaving.has(s.localId));
-  const lastRow = liveRows.length > 1 ? liveRows[liveRows.length - 1] : null;
+  /* The rest chip needs something to do: run a rest (the cursor's card) or
+     open the editor that holds it. */
+  const showRest = restSeconds > 0 && (onStartRest != null || onEditExercise != null);
+  const showWarmup = onAddWarmup != null && warmupSummary != null;
 
   return (
     <View
@@ -565,30 +597,38 @@ function ExerciseCardComponent({
               </View>
             ) : null}
             <View className="flex-1">
-              {/* The mode, said in words over the name, for as long as it lasts. */}
-              {isEditing ? (
-                <Stagger rise={6} duration={240}>
-                  <Text className="mb-xs text-micro font-semibold uppercase text-acc">
-                    {t('Editing plan')}
-                  </Text>
-                </Stagger>
-              ) : null}
               <Text
                 style={{ fontSize: 19, lineHeight: 24 }}
                 className={['font-semibold', isLifted ? 'text-acc' : 'text-ink'].join(' ')}
               >
                 {entry.exercise.name}
               </Text>
-              <Text
-                style={{ fontSize: 14, lineHeight: 19 }}
-                className="mt-xs tabular-nums text-ink-muted"
-              >
-                {formatTarget(entry, lang)}
-                {entry.exercise.isUnilateral ? ` · ${t('each side')}` : ''}
-                {entry.lastSessionShort
-                  ? ` · ${t('last: {what}', { what: entry.lastSessionShort })}`
-                  : ''}
-              </Text>
+              {/* The sub-line: the plan in the order it is read (`4 sets · target
+                  80 kg × 8`), or — for as long as edit mode lasts — the mode,
+                  said in words, in the accent. */}
+              {isEditing ? (
+                <Text
+                  style={{ fontSize: 14, lineHeight: 19 }}
+                  className="mt-xs font-medium text-acc"
+                >
+                  {liftedSetId
+                    ? t('Now tap ⋮⋮ where it should go')
+                    : onMoveSet && movableRange(entry.sets)
+                      ? t('Editing · tap ⋮⋮ to move a set')
+                      : t('Editing')}
+                </Text>
+              ) : (
+                <Text
+                  style={{ fontSize: 14, lineHeight: 19 }}
+                  className="mt-xs tabular-nums text-ink-muted"
+                >
+                  {exerciseSubline(entry, unitSystem, lang)}
+                  {entry.exercise.isUnilateral ? ` · ${t('each side')}` : ''}
+                  {entry.lastSessionShort
+                    ? ` · ${t('last: {what}', { what: entry.lastSessionShort })}`
+                    : ''}
+                </Text>
+              )}
 
               {/*
               A BEST, ONCE IT HAS HAPPENED — and only once it has. `acc` is the
@@ -612,31 +652,40 @@ function ExerciseCardComponent({
             </View>
           </Pressable>
 
-          {/* THE WAY OUT OF AN EXERCISE, in one tap and without edit mode — see
-              the file header. Edit mode has its own `Remove exercise` row. */}
-          {onRemoveExercise && !isEditing ? (
-            <RemoveCircle onPress={onRemoveExercise} name={entry.exercise.name} />
+          {/* FOCUS, by name and by the one Focus icon (redesign #5) — only on the
+              card holding the session's next set, because focus mode always
+              shows the work. Not while editing: that is the plan, not the set. */}
+          {onOpenFocus && !isEditing ? (
+            <HeaderPill
+              icon="focus"
+              label={t('Focus')}
+              tone="acc"
+              accessibilityLabel={t('Open focus mode on your next set')}
+              onPress={onOpenFocus}
+            />
           ) : null}
 
-          {/* THE DOOR INTO EDIT MODE, and the way out of it. */}
+          {/* THE DOOR INTO EDIT MODE, and the way out of it — one labelled pill
+              in place of the unlabelled ✎ and bin circles (redesign #3). */}
           {onToggleEditing ? (
             isEditing ? (
-              <DonePill onPress={onToggleEditing} />
+              <HeaderPill
+                icon="check"
+                label={t('Done')}
+                tone="soft"
+                accessibilityLabel={t('Done editing the plan')}
+                onPress={onToggleEditing}
+              />
             ) : (
-              <EditCircle onPress={onToggleEditing} name={entry.exercise.name} />
+              <HeaderPill
+                icon="edit"
+                label={t('Edit')}
+                tone="muted"
+                accessibilityLabel={t('Edit the plan of {name}', { name: entry.exercise.name })}
+                onPress={onToggleEditing}
+              />
             )
           ) : null}
-
-          {/* The affordance for shutting it. */}
-          <Pressable
-            onPress={onToggleExpanded}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel={t('Tap to close its sets')}
-            className="ml-xs h-[36px] w-[36px] items-center justify-center"
-          >
-            <Icon name="chevron-down" size={18} color={palette.inkFaint} />
-          </Pressable>
         </View>
 
         {/* The overload offer, in `acc` under the plan — see `OverloadNudge`. */}
@@ -663,6 +712,10 @@ function ExerciseCardComponent({
             <Text className="flex-1 text-label tabular-nums text-ink-muted">{deloadMessage}</Text>
           </View>
         ) : null}
+
+        {/* The set row's letters, explained once — on the open card, above its
+            rows, until "Got it" (`SetTypeTip`). */}
+        <SetTypeTip />
 
         <View className="mt-md">
           {entry.sets.map((set, index) => (
@@ -691,14 +744,31 @@ function ExerciseCardComponent({
                      one row in the session is THE next row, and lighting all of
                      them would mark nothing. `upNextSetId` is that row. */
                   isUpNext={set.localId === upNextSetId}
-                  /* The two gestures on the up-next row — see `SetRow`. */
-                  onOpenFocus={set.localId === upNextSetId ? onOpenFocus : undefined}
+                  position={index + 1}
                   focusedField={focus?.setId === set.localId ? focus.field : null}
                   isTimed={isTimed}
                   isTiming={timingSetId === set.localId}
                   availablePlatesKg={availablePlatesKg}
                   /* Edit mode's `−`, on every row — see the file header. */
                   onRemove={isEditing ? handlersFor(set.localId).onRemove : undefined}
+                  grip={
+                    isEditing && onMoveSet ? (
+                      <SetGrip
+                        movable={canMoveSet(entry.sets, set.localId)}
+                        lifted={liftedSetId === set.localId}
+                        anyLifted={liftedSetId != null}
+                        position={index + 1}
+                        onPress={() => {
+                          if (liftedSetId == null) setLiftedSetId(set.localId);
+                          else {
+                            if (liftedSetId !== set.localId) onMoveSet(liftedSetId, index);
+                            setLiftedSetId(null);
+                          }
+                        }}
+                        onStep={(by) => onMoveSet(set.localId, index + by)}
+                      />
+                    ) : undefined
+                  }
                   onPressTimer={handlersFor(set.localId).onPressTimer}
                   onFocusField={handlersFor(set.localId).onFocusField}
                   onToggleComplete={handlersFor(set.localId).onToggleComplete}
@@ -722,8 +792,10 @@ function ExerciseCardComponent({
                     unitSystem={unitSystem}
                     onChange={(patch) => onPatchSet(set.localId, patch)}
                     onClose={() => setFocus(null)}
-                    onRemoveSet={() => removeRow(set.localId)}
-                    onOpenMarks={onOpenSetMarks ? handlersFor(set.localId).onOpenMarks : undefined}
+                    /* `Log set` is the row's ✓: it closes the editor and logs. */
+                    onLog={handlersFor(set.localId).onToggleComplete}
+                    onKind={onMarkSet ? handlersFor(set.localId).onKind : undefined}
+                    onRir={onMarkSet ? handlersFor(set.localId).onRir : undefined}
                   />
                 </GrowIn>
               ) : null}
@@ -732,89 +804,59 @@ function ExerciseCardComponent({
         </View>
 
         {isEditing ? (
+          /*
+           * EDIT MODE'S FOOTER (redesign #3): full-width secondary buttons, one
+           * per plan edit, in the order they are reached for — another set, the
+           * warm-up ramp, the exercise's own numbers — then a divider and the one
+           * red button. Full width and labelled, because the half-width cells
+           * they replaced were read as a table rather than as buttons.
+           */
           <GrowIn key="editing" duration={motion.row}>
-            <View
-              className="mt-md overflow-hidden"
-              style={{
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: 'rgba(236,241,238,0.06)',
-              }}
-            >
-              <View className="flex-row">
+            <View className="mt-md" style={{ gap: 8 }}>
+              <FooterButton
+                label={`+ ${t('Add {unit}', { unit })}`}
+                onPress={() => {
+                  tap();
+                  onAddSet();
+                }}
+              />
+              {/* WARM-UP, with the share of the working weight each row is at —
+                  muted, the way a footnote is — so the button says what it is
+                  about to add. Only before anything is logged: the screen
+                  decides (`warmupPlans`). */}
+              {onAddWarmup && warmupSummary ? (
                 <FooterButton
-                  icon="plus"
-                  label={t('Add {unit}', { unit })}
-                  tone="green"
+                  label={`+ ${t('Warm-up')}`}
+                  muted={warmupPercents ?? undefined}
+                  accessibilityLabel={t('Add warm-up sets: {what}', { what: warmupSummary })}
                   onPress={() => {
                     tap();
-                    onAddSet();
+                    onAddWarmup();
                   }}
                 />
-                {/* WARM-UP, and it states the numbers it is about to add — a
-                    button that silently inserts three rows is one the user has to
-                    undo to find out about. Only before anything is logged:
-                    `warmupSets` decides. */}
-                {onAddWarmup && warmupSummary ? (
-                  <>
-                    <View className="w-hairline bg-hairline" />
-                    <Pressable
-                      onPress={() => {
-                        tap();
-                        onAddWarmup();
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('Add warm-up sets: {what}', { what: warmupSummary })}
-                      style={({ pressed }) =>
-                        pressed ? { backgroundColor: tint(0.08) } : undefined
-                      }
-                      className="h-row flex-1 items-center justify-center px-sm"
-                    >
-                      <Text className="text-label font-medium text-acc">{`+ ${t('Warm-up')}`}</Text>
-                      <Text
-                        numberOfLines={1}
-                        className="text-[12.5px] tabular-nums text-ink-faint"
-                        maxFontSizeMultiplier={1.3}
-                      >
-                        {warmupSummary}
-                      </Text>
-                    </Pressable>
-                  </>
-                ) : null}
-              </View>
-
-              {/* The plan's own numbers — rest, defaults, targets, the cue — in
-                  the exercise editor, mid-workout. Muted: it changes the plan, it
-                  does not advance it. */}
-              {onEditExercise ? (
-                <>
-                  <View className="h-hairline bg-hairline" />
-                  <FooterButton
-                    icon="edit"
-                    label={t('Rest, targets and cue')}
-                    tone="muted"
-                    accessibilityLabel={t('Edit {name}: rest, defaults and targets', {
-                      name: entry.exercise.name,
-                    })}
-                    onPress={() => {
-                      tap();
-                      onEditExercise();
-                    }}
-                  />
-                </>
               ) : null}
-
-              {/* The way out of an exercise in one tap. It does not ask: the
-                  screen offers the Undo. Muted like every other destructive
-                  control (U19) — coral is kept for the confirm sheet. */}
+              {/* The plan's own numbers — rest, defaults, targets, the cue — in
+                  the exercise editor, mid-workout. */}
+              {onEditExercise ? (
+                <FooterButton
+                  label={`${t('Rest, targets and cue')} ›`}
+                  accessibilityLabel={t('Edit {name}: rest, defaults and targets', {
+                    name: entry.exercise.name,
+                  })}
+                  onPress={() => {
+                    tap();
+                    onEditExercise();
+                  }}
+                />
+              ) : null}
+              {/* The way out of an exercise. It does not ask: the screen offers
+                  the Undo. The danger style lives in `DangerButton`. */}
               {onRemoveExercise ? (
                 <>
-                  <View className="h-hairline bg-hairline" />
-                  <FooterButton
-                    icon="minus"
+                  <View className="my-xs h-hairline bg-hairline" />
+                  <DangerButton
                     label={t('Remove exercise')}
-                    tone="muted"
-                    accessibilityLabel={t('Remove {name} from this workout', {
+                    accessibilityHint={t('Remove {name} from this workout', {
                       name: entry.exercise.name,
                     })}
                     onPress={() => {
@@ -826,60 +868,38 @@ function ExerciseCardComponent({
               ) : null}
             </View>
           </GrowIn>
-        ) : (
-          <>
-            {/* `+ Add set` / `− Remove set` — the design's pair under the rows. */}
-            <View className="mt-md flex-row items-center justify-between">
-              <TextAction
-                label={`+ ${t('Add {unit}', { unit })}`}
-                tone="acc"
+        ) : showWarmup || showRest ? (
+          /*
+           * THE NORMAL FOOTER (redesign #3): two chips. `+ Warm-up` only while
+           * nothing here is logged — after the first set it is too late to warm
+           * up for it. `Rest 1:30` with a trailing ✎, so it reads as a number you
+           * can change: the chip runs a rest now (the answer to "auto-rest is
+           * off, how do I rest at all"), the ✎ opens the editor that holds the
+           * exercise's rest. `+ Add set` / `− Remove set` moved into edit mode
+           * with every other plan edit; one tap on `Edit` away.
+           */
+          <View className="mt-md flex-row" style={{ gap: 8 }}>
+            {showWarmup ? (
+              <FooterChip
+                icon="plus"
+                label={t('Warm-up')}
+                accessibilityLabel={t('Add warm-up sets: {what}', { what: warmupSummary ?? '' })}
                 onPress={() => {
                   tap();
-                  onAddSet();
+                  onAddWarmup?.();
                 }}
               />
-              {lastRow ? (
-                <TextAction
-                  label={`− ${t('Remove {unit}', { unit })}`}
-                  tone="muted"
-                  onPress={() => removeRow(lastRow.localId)}
-                />
-              ) : null}
-            </View>
-
-            {/* Rest on demand — the answer to "auto-rest is off, so how do I run
-                a rest at all", and the way back from a `Skip` you didn't mean —
-                and the named door into focus mode on the card holding the next
-                set. Glass chips, so they read as controls and not as sets. */}
-            {showRest || showFocus ? (
-              <View className="mt-sm flex-row" style={{ gap: 8 }}>
-                {showRest ? (
-                  <FooterChip
-                    icon="pause"
-                    label={t('Rest {clock}', { clock: formatClock(restSeconds) })}
-                    tone="muted"
-                    accessibilityLabel={t('Start a {clock} rest', {
-                      clock: formatClock(restSeconds),
-                    })}
-                    onPress={() => onStartRest?.()}
-                  />
-                ) : null}
-                {showFocus ? (
-                  <FooterChip
-                    icon="play"
-                    label={t('Focus')}
-                    tone="acc"
-                    accessibilityLabel={t('Open focus mode on your next set')}
-                    onPress={() => {
-                      tap();
-                      onOpenFocus?.();
-                    }}
-                  />
-                ) : null}
-              </View>
             ) : null}
-          </>
-        )}
+            {showRest ? (
+              <RestChip
+                label={t('Rest {clock}', { clock: formatClock(restSeconds) })}
+                startLabel={t('Start a {clock} rest', { clock: formatClock(restSeconds) })}
+                onStart={onStartRest}
+                onEdit={onEditExercise}
+              />
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -895,6 +915,8 @@ interface RowHandlers {
   onToggleComplete: () => void;
   onOpenMarks: () => void;
   onToggleWarmup: () => void;
+  onKind: (kind: SetKind) => void;
+  onRir: (rir: number | null) => void;
 }
 
 /** Hoisted: `RollingNumber` is memoized, and an inline object is a new prop. */
@@ -906,242 +928,221 @@ const EXPANDED_RADIUS = 22;
 const COLLAPSED_RADIUS = 20;
 
 /**
- * `+ Add set` / `− Remove set`: 40 tall, text only, 15 / 500. The accent one
- * adds; the muted one takes away.
+ * A header pill (redesign #3, #5): icon + word, 36 dp drawn and 44 dp to the
+ * finger. `acc` is Focus (the accent outline — it goes to the work), `muted` is
+ * Edit, and `soft` is edit mode's Done — the acc-soft fill, saying the card is
+ * in a mode without shouting it the way a solid pill would.
  */
-function TextAction({
-  label,
-  tone,
-  onPress,
-}: {
-  label: string;
-  tone: 'acc' | 'muted';
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [
-        { height: 40, paddingHorizontal: 10, borderRadius: 12, justifyContent: 'center' },
-        pressed
-          ? { backgroundColor: tone === 'acc' ? tint(0.08) : 'rgba(236,241,238,0.04)' }
-          : null,
-      ]}
-    >
-      <Text
-        numberOfLines={1}
-        style={{ fontSize: 15, color: tone === 'acc' ? palette.acc : palette.inkMuted }}
-        className="font-medium"
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-/** `⏸ Rest 1:30` / `▶ Focus` — two 44 dp glass chips sharing the row. */
-function FooterChip({
+function HeaderPill({
   icon,
   label,
   tone,
   onPress,
   accessibilityLabel,
 }: {
-  icon: 'pause' | 'play';
+  icon: 'focus' | 'edit' | 'check';
   label: string;
-  tone: 'acc' | 'muted';
+  tone: 'acc' | 'muted' | 'soft';
   onPress: () => void;
   accessibilityLabel: string;
 }) {
-  const color = tone === 'acc' ? palette.acc : palette.inkMuted;
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => ({
-        flex: 1,
-        height: 44,
-        borderRadius: 9999,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 12,
-        backgroundColor: pressed ? 'rgba(236,241,238,0.09)' : 'rgba(236,241,238,0.05)',
-        borderWidth: 1,
-        borderColor: tone === 'acc' ? tint(0.3) : 'rgba(236,241,238,0.08)',
-      })}
-    >
-      <Icon name={icon} size={13} color={color} />
-      <Text
-        numberOfLines={1}
-        style={{ color, marginLeft: 8 }}
-        className="text-label font-medium tabular-nums"
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-/**
- * One cell of the footer: an icon and a label, 56 high, centred. Every row and
- * half-row of both footers is one of these, so the two modes are the same shape.
- */
-function FooterButton({
-  icon,
-  label,
-  tone,
-  onPress,
-  accessibilityLabel,
-}: {
-  icon: 'plus' | 'minus' | 'edit' | 'pause' | 'play';
-  label: string;
-  tone: 'green' | 'muted';
-  onPress: () => void;
-  accessibilityLabel?: string;
-}) {
-  const color = tone === 'green' ? palette.acc : palette.inkMuted;
-  const glyph = tone === 'muted' ? palette.inkFaint : color;
-  const wash = tone === 'green' ? tint(0.08) : 'rgba(236,241,238,0.04)';
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      style={({ pressed }) => (pressed ? { backgroundColor: wash } : undefined)}
-      className="h-row flex-1 flex-row items-center justify-center px-sm"
-    >
-      <Icon name={icon} size={13} color={glyph} />
-      <Text
-        numberOfLines={1}
-        style={{ color }}
-        className={['ml-sm text-label tabular-nums', tone === 'muted' ? '' : 'font-medium'].join(
-          ' ',
-        )}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-/**
- * The ✎: a 36 dp glass circle beside the name. It sinks and tilts −12° under the
- * finger — a pencil being picked up — which is the only flourish in the card.
- */
-function EditCircle({ onPress, name }: { onPress: () => void; name: string }) {
-  const t = useT();
-  const press = usePressScale(0.88, -12);
+  const color = tone === 'muted' ? palette.inkMuted : palette.acc;
   return (
     <Pressable
       onPress={() => {
         tap();
         onPress();
       }}
-      onPressIn={press.onPressIn}
-      onPressOut={press.onPressOut}
-      hitSlop={6}
+      hitSlop={{ top: 4, bottom: 4, left: 3, right: 3 }}
       accessibilityRole="button"
-      accessibilityLabel={t('Edit the plan of {name}', { name })}
-      className="ml-sm"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => ({
+        marginLeft: 6,
+        height: 36,
+        paddingHorizontal: 12,
+        borderRadius: 9999,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: tone === 'muted' ? glass.raisedEdge : tint(0.45),
+        backgroundColor:
+          tone === 'soft' ? tint(0.14) : pressed ? 'rgba(236,241,238,0.09)' : glass.raised,
+      })}
     >
-      <Animated.View
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 9999,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: 'rgba(236,241,238,0.055)',
-          borderWidth: 1,
-          borderColor: 'rgba(236,241,238,0.07)',
-          transform: press.style.transform,
-        }}
+      <Icon name={icon} size={15} color={color} />
+      <Text
+        maxFontSizeMultiplier={1.3}
+        numberOfLines={1}
+        style={{ color, marginLeft: 6 }}
+        className="text-label font-semibold"
       >
-        <Icon name="edit" size={16} color={palette.inkMuted} />
-      </Animated.View>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** `+ Warm-up` — a 44 dp glass chip in the normal footer. */
+function FooterChip({
+  icon,
+  label,
+  onPress,
+  accessibilityLabel,
+}: {
+  icon: 'plus';
+  label: string;
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => ({
+        height: 44,
+        borderRadius: 9999,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 14,
+        backgroundColor: pressed ? 'rgba(236,241,238,0.09)' : glass.raised,
+        borderWidth: 1,
+        borderColor: tint(0.3),
+      })}
+    >
+      <Icon name={icon} size={13} color={palette.acc} />
+      <Text numberOfLines={1} style={{ marginLeft: 6 }} className="text-label font-medium text-acc">
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 /**
- * The bin beside the ✎: the same 36 dp glass circle, muted glyph (U19 — coral is
- * the confirm sheet's alone). It does not ask — the screen slides the card out
- * and offers the Undo, logged sets and all.
+ * `⏱ Rest 1:30 ✎` — one chip, two targets. The body runs the rest now; the
+ * trailing ✎ (its own 44 dp target) opens the editor that holds the exercise's
+ * rest. Either may be absent — a card that is not the cursor cannot run a rest,
+ * and then the whole chip is the way to the editor.
  */
-function RemoveCircle({ onPress, name }: { onPress: () => void; name: string }) {
+function RestChip({
+  label,
+  startLabel,
+  onStart,
+  onEdit,
+}: {
+  label: string;
+  startLabel: string;
+  onStart?: () => void;
+  onEdit?: () => void;
+}) {
   const t = useT();
-  const press = usePressScale(0.88);
+  const body = onStart ?? onEdit;
   return (
-    <Pressable
-      onPress={() => {
-        undo();
-        onPress();
+    <View
+      style={{
+        flex: 1,
+        height: 44,
+        borderRadius: 9999,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: glass.raised,
+        borderWidth: 1,
+        borderColor: 'rgba(236,241,238,0.08)',
+        overflow: 'hidden',
       }}
-      onPressIn={press.onPressIn}
-      onPressOut={press.onPressOut}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={t('Remove {name} from this workout', { name })}
-      className="ml-sm"
     >
-      <Animated.View
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 9999,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: glass.sunken,
-          borderWidth: 1,
-          borderColor: glass.ghostEdge,
-          transform: press.style.transform,
-        }}
-      >
-        <Icon name="trash" size={16} color={palette.inkMuted} />
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-/** `✓ Done` — the only way out of edit mode, and it arrives with a pop. */
-function DonePill({ onPress }: { onPress: () => void }) {
-  const t = useT();
-  return (
-    <Pop duration={300} style={{ marginLeft: 8 }}>
       <Pressable
         onPress={() => {
           tap();
-          onPress();
+          body?.();
         }}
-        hitSlop={6}
         accessibilityRole="button"
-        accessibilityLabel={t('Done editing the plan')}
-        style={{
-          height: 36,
-          paddingHorizontal: 14,
-          borderRadius: 9999,
+        accessibilityLabel={onStart ? startLabel : t('Change the rest: {what}', { what: label })}
+        style={({ pressed }) => ({
+          flex: 1,
+          height: 44,
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: palette.green,
-          borderWidth: 1,
-          borderColor: tint(0.5),
-        }}
+          justifyContent: 'center',
+          paddingLeft: 14,
+          backgroundColor: pressed ? 'rgba(236,241,238,0.06)' : 'transparent',
+        })}
       >
-        <Icon name="check" size={14} color={palette.onAcc} />
+        <Icon name="timer" size={15} color={palette.inkMuted} />
         <Text
-          maxFontSizeMultiplier={1.3}
-          style={{ fontSize: 13, marginLeft: 6, color: palette.onAcc }}
-          className="font-semibold"
+          numberOfLines={1}
+          style={{ marginLeft: 6 }}
+          className="text-label font-medium tabular-nums text-ink-muted"
         >
-          {t('Done')}
+          {label}
         </Text>
       </Pressable>
-    </Pop>
+      {onEdit ? (
+        <Pressable
+          onPress={() => {
+            tap();
+            onEdit();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t('Change the rest: {what}', { what: label })}
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: pressed ? 'rgba(236,241,238,0.06)' : 'transparent',
+          })}
+        >
+          <Icon name="edit" size={14} color={palette.inkFaint} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * One full-width secondary button of edit mode's footer: 48 high, glass, the
+ * label centred. `muted` is a trailing part in faint ink — the warm-up's
+ * `40 · 60 · 80`.
+ */
+function FooterButton({
+  label,
+  muted,
+  onPress,
+  accessibilityLabel,
+}: {
+  label: string;
+  muted?: string;
+  onPress: () => void;
+  accessibilityLabel?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      style={({ pressed }) => ({
+        minHeight: 48,
+        borderRadius: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 16,
+        borderWidth: 1,
+        borderColor: glass.raisedEdge,
+        backgroundColor: pressed ? 'rgba(236,241,238,0.09)' : glass.raised,
+      })}
+    >
+      <Text
+        maxFontSizeMultiplier={1.3}
+        numberOfLines={1}
+        className="text-body font-medium text-ink"
+      >
+        {label}
+        {muted ? <Text className="tabular-nums text-ink-faint">{`  ${muted}`}</Text> : null}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -1205,3 +1206,76 @@ function MiniRing({ fraction, done }: { fraction: number; done: boolean }) {
 }
 
 export const ExerciseCard = memo(ExerciseCardComponent);
+
+/**
+ * Edit mode's ⋮⋮ on one set row: tap to lift it, tap another row's ⋮⋮ to drop
+ * it there, tap the lifted one again to put it down where it was. A row that may
+ * not move (a logged set, history) draws the mark faint and does nothing. Screen
+ * readers get Move up / Move down instead of the two-tap dance.
+ */
+function SetGrip({
+  movable,
+  lifted,
+  anyLifted,
+  position,
+  onPress,
+  onStep,
+}: {
+  movable: boolean;
+  lifted: boolean;
+  anyLifted: boolean;
+  position: number;
+  onPress: () => void;
+  onStep: (by: -1 | 1) => void;
+}) {
+  const t = useT();
+  const glyph = (
+    <Icon
+      name="grip"
+      size={18}
+      color={lifted ? palette.acc : movable ? palette.inkMuted : palette.hairline}
+    />
+  );
+  if (!movable) {
+    return (
+      <View style={{ width: 30, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+        {glyph}
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      hitSlop={{ top: 0, bottom: 0, left: 7, right: 7 }}
+      accessibilityRole="button"
+      accessibilityState={{ selected: lifted }}
+      accessibilityLabel={
+        lifted
+          ? t('Set {n} is lifted. Tap to put it back', { n: position })
+          : anyLifted
+            ? t('Move the lifted set here, to place {n}', { n: position })
+            : t('Move set {n}', { n: position })
+      }
+      accessibilityActions={[
+        { name: 'moveUp', label: t('Move up') },
+        { name: 'moveDown', label: t('Move down') },
+      ]}
+      onAccessibilityAction={(event) => onStep(event.nativeEvent.actionName === 'moveUp' ? -1 : 1)}
+      style={{
+        width: 30,
+        height: 44,
+        borderRadius: 9,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: lifted ? tint(0.14) : anyLifted ? glass.sunken : 'transparent',
+        borderWidth: lifted || anyLifted ? 1 : 0,
+        borderColor: lifted ? tint(0.45) : palette.hairline,
+      }}
+    >
+      {glyph}
+    </Pressable>
+  );
+}
