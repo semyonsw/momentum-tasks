@@ -60,16 +60,21 @@ fi
 cp android/app/build/outputs/apk/release/app-release.apk "$APK"
 
 say "verifying $APK"
-apksigner verify --print-certs "$APK" | grep -q 'CN=Android Debug' \
+# Each tool's output is captured whole, then searched. Piped straight into
+# `head` or `grep -q`, the tool is killed by SIGPIPE when the reader stops early,
+# and under `pipefail` that fails the check on a perfectly good APK.
+CERTS="$(apksigner verify --print-certs "$APK")"
+BADGING="$(aapt2 dump badging "$APK")"
+BUNDLE_HITS="$(unzip -p "$APK" assets/index.android.bundle | grep -ac 'cancel-pending' || true)"
+grep -q 'CN=Android Debug' <<<"$CERTS" \
   || die "signed with the wrong key — it would not install over the phone's app"
-aapt2 dump badging "$APK" | head -1 | grep -q "versionName='$VERSION'" \
+grep -q "versionName='$VERSION'" <<<"$BADGING" \
   || die "versionName in the APK is not $VERSION"
-if aapt2 dump badging "$APK" | grep -q 'RECORD_AUDIO'; then
+if grep -q 'RECORD_AUDIO' <<<"$BADGING"; then
   die "the APK asks for the microphone"
 fi
-unzip -p "$APK" assets/index.android.bundle | grep -aq 'cancel-pending' \
-  || die "the bundle does not contain this release's JS"
-aapt2 dump badging "$APK" | head -1
+[ "${BUNDLE_HITS:-0}" -gt 0 ] || die "the bundle does not contain this release's JS"
+head -1 <<<"$BADGING"
 echo "signature, version, permissions and bundle: OK"
 
 # Keep the previous APK as the rollback; drop anything older.
