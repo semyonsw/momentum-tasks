@@ -5,6 +5,7 @@
 #
 #      tools/release-apk.sh            # build, verify, commit, push
 #      tools/release-apk.sh --no-push  # build and verify only
+#      PROBE='some new string' tools/release-apk.sh   # bundle check for THIS release
 #
 #  The version comes from app.json, so bump it (and commit the code) first.
 #  Every trap CLAUDE.md documents is handled here rather than rediscovered:
@@ -65,7 +66,8 @@ say "verifying $APK"
 # and under `pipefail` that fails the check on a perfectly good APK.
 CERTS="$(apksigner verify --print-certs "$APK")"
 BADGING="$(aapt2 dump badging "$APK")"
-BUNDLE_HITS="$(unzip -p "$APK" assets/index.android.bundle | grep -ac 'cancel-pending' || true)"
+# PROBE: an ASCII string this release's JS introduced (see CLAUDE.md on Hermes).
+BUNDLE_HITS="$(unzip -p "$APK" assets/index.android.bundle | grep -ac "${PROBE:-cancel-pending}" || true)"
 grep -q 'CN=Android Debug' <<<"$CERTS" \
   || die "signed with the wrong key — it would not install over the phone's app"
 grep -q "versionName='$VERSION'" <<<"$BADGING" \

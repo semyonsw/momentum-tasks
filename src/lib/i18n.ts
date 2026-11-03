@@ -1119,6 +1119,9 @@ const RU: Record<string, string> = {
   'Change the number of workout {number}': 'Изменить номер тренировки {number}',
   'Set this workout’s number': 'Задать номер этой тренировки',
   'Workout number: {number}': 'Номер тренировки: {number}',
+  'Workout number: {number} · {yearNumber} in {year}':
+    'Номер тренировки: {number} · {yearNumber}-я в {year}',
+  'number {number} of {year}': '{number}-я в {year} году',
   'Set the workout number': 'Задать номер тренировки',
   'Delete the {title} workout': 'Удалить тренировку «{title}»',
   'A label, not a conversion. Every amount is stored as a plain number, so changing this changes what is printed after each figure and nothing else — no rate, no rewriting of what you already recorded. Up to four characters; points and tokens are as valid here as a currency.':

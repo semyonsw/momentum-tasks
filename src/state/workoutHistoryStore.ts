@@ -436,10 +436,12 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()((set, get) => ({
     }
 
     const numbers = workoutNumbers(workouts, numbering);
-    const index = workouts.findIndex((w) => w.id === id);
-    // The workout just newer than the one going, or just older if it was the
-    // newest. Both keep every surviving number where it was.
-    const heir = workouts[index - 1] ?? workouts[index + 1] ?? null;
+    // The counted workout just newer than the one going, or just older if it was
+    // the newest. Both keep every surviving number where it was. An `unnumbered`
+    // neighbour cannot inherit: a pin on it is a pin on nothing.
+    const counted = workouts.filter((w) => !w.unnumbered);
+    const index = counted.findIndex((w) => w.id === id);
+    const heir = counted[index - 1] ?? counted[index + 1] ?? null;
     set({
       workouts: remaining,
       numbering: persistNumbering(heir ? { workoutId: heir.id, number: numbers[heir.id] } : null),
@@ -569,7 +571,8 @@ export const useWorkoutHistory = create<WorkoutHistoryState>()((set, get) => ({
   setWorkoutNumber: (id, number) => {
     const rounded = Math.round(number);
     if (!Number.isFinite(rounded) || rounded < 1) return;
-    if (!get().workouts.some((w) => w.id === id)) return;
+    // An `unnumbered` workout cannot hold the pin — it has no place in the count.
+    if (!get().workouts.some((w) => w.id === id && !w.unnumbered)) return;
     set({ numbering: persistNumbering({ workoutId: id, number: rounded }) });
   },
 
@@ -861,6 +864,8 @@ function sanitizeWorkout(value: unknown): CompletedWorkout | null {
     ...(raw.effort === 'easy' || raw.effort === 'right' || raw.effort === 'hard'
       ? { effort: raw.effort }
       : {}),
+    // Only ever `true` or absent: "counted" is the default and needs no key.
+    ...(raw.unnumbered === true ? { unnumbered: true } : {}),
     exercises,
     sets,
   };

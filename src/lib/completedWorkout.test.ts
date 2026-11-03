@@ -9,6 +9,8 @@ import {
   recentlyUsedExerciseIds,
   recomputeWorkout,
   workoutNumbers,
+  yearNumbers,
+  type CompletedWorkout,
 } from './completedWorkout';
 import { buildDraftSession, type DraftSession } from './draft';
 import { seedExercises, seedRoutine, seedUser } from '../data/seed';
@@ -387,6 +389,24 @@ describe('warm-ups in a finished workout', () => {
  * load — rather than being patched.
  */
 describe('recomputeWorkout', () => {
+  it('keeps an exercise line that never had rows — an imported note', () => {
+    const workout = buildCompletedWorkout(logFirstEntry(draft(), 3, 40), undefined, 82);
+    if (!workout) throw new Error('nothing was recorded');
+    const note = {
+      exerciseId: 'ex_note',
+      name: 'Neck Stand + Shrungs',
+      countUnit: 'reps' as const,
+      loadMode: 'none' as const,
+      setCount: 0,
+      summary: '3×',
+      totalCount: 0,
+      topWeightKg: null,
+    };
+    const after = recomputeWorkout({ ...workout, exercises: [...workout.exercises, note] }, 82);
+    expect(after.exercises.at(-1)).toEqual(note);
+    expect(after.setCount).toBe(workout.setCount);
+  });
+
   /** A finished workout of `count` sets at `weightKg`, with a bodyweight applied. */
   function finished(count = 3, weightKg = 40) {
     const workout = buildCompletedWorkout(logFirstEntry(draft(), count, weightKg), undefined, 82);
@@ -544,6 +564,91 @@ describe('workoutNumbers', () => {
 
   it('has nothing to say about an empty log', () => {
     expect(workoutNumbers([], { workoutId: 'w1', number: 5 })).toEqual({});
+  });
+  it('skips an unnumbered workout without leaving a gap', () => {
+    // An imported 2024 session sits between w1 and w2 and holds no place.
+    const workouts: CompletedWorkout[] = log(3).map((w) =>
+      w.id === 'w2' ? { ...w, unnumbered: true } : w,
+    );
+    expect(workoutNumbers(workouts, { workoutId: 'w3', number: 32 })).toEqual({
+      w1: 31,
+      w3: 32,
+    });
+  });
+
+  it('keeps sessions from before the count out of it entirely', () => {
+    // Old notebook sessions older than the pinned run: the run keeps its numbers.
+    const workouts: CompletedWorkout[] = log(4).map((w) =>
+      w.id === 'w1' || w.id === 'w2' ? { ...w, unnumbered: true } : w,
+    );
+    expect(workoutNumbers(workouts, { workoutId: 'w3', number: 32 })).toEqual({
+      w3: 32,
+      w4: 33,
+    });
+  });
+
+  it('treats a pin on an unnumbered workout as no pin', () => {
+    const workouts: CompletedWorkout[] = log(3).map((w) =>
+      w.id === 'w3' ? { ...w, unnumbered: true } : w,
+    );
+    expect(workoutNumbers(workouts, { workoutId: 'w3', number: 91 })).toEqual({ w1: 1, w2: 2 });
+  });
+});
+
+describe('yearNumbers', () => {
+  /** Newest-first workouts at the given local dates. */
+  const at = (...dates: [number, number, number][]): CompletedWorkout[] =>
+    dates
+      .map(([y, m, d], i) => {
+        const iso = new Date(y, m - 1, d, 18, 0).toISOString();
+        return {
+          id: `w${i + 1}`,
+          title: 'Session',
+          startedAt: iso,
+          endedAt: iso,
+          durationMinutes: 60,
+          setCount: 1,
+          totalVolumeKg: 0,
+          volumeIsPartial: false,
+          exercises: [],
+          sets: [],
+        };
+      })
+      .reverse();
+
+  it('restarts at 1 with the first workout of a new year', () => {
+    const workouts = at([2026, 12, 28], [2026, 12, 30], [2027, 1, 2], [2027, 1, 5]);
+    const numbers = workoutNumbers(workouts, { workoutId: 'w2', number: 160 });
+    expect(numbers).toEqual({ w1: 159, w2: 160, w3: 161, w4: 162 });
+    expect(yearNumbers(workouts, numbers)).toEqual({ w1: 159, w2: 160, w3: 1, w4: 2 });
+  });
+
+  it('gives the first year the lifetime number — the count began that year', () => {
+    // A log whose oldest row is workout 89, in August: still the 89th of its year.
+    const workouts = at([2026, 8, 19], [2026, 8, 20]);
+    const numbers = workoutNumbers(workouts, { workoutId: 'w1', number: 89 });
+    expect(yearNumbers(workouts, numbers)).toEqual({ w1: 89, w2: 90 });
+  });
+
+  it('counts a year from the last numbered workout before it, across skipped years', () => {
+    const workouts = at([2026, 3, 1], [2026, 6, 1], [2028, 2, 1]);
+    const numbers = workoutNumbers(workouts);
+    expect(yearNumbers(workouts, numbers)).toEqual({ w1: 1, w2: 2, w3: 1 });
+  });
+
+  it('gives nothing to a workout without a lifetime number', () => {
+    const workouts = at([2024, 9, 1], [2026, 2, 23], [2026, 2, 26]).map((w) =>
+      w.id === 'w1' ? { ...w, unnumbered: true } : w,
+    );
+    const numbers = workoutNumbers(workouts, { workoutId: 'w2', number: 32 });
+    // The 2024 session is not a "previous year" for 2026 either: it has no number.
+    expect(yearNumbers(workouts, numbers)).toEqual({ w2: 32, w3: 33 });
+  });
+
+  it('skips numbers below 1', () => {
+    const workouts = at([2026, 1, 1], [2026, 1, 2]);
+    const numbers = workoutNumbers(workouts, { workoutId: 'w2', number: 1 });
+    expect(yearNumbers(workouts, numbers)).toEqual({ w2: 1 });
   });
 });
 

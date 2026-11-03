@@ -94,6 +94,16 @@ export interface CompletedWorkout {
    * one.
    */
   effort?: SessionEffort;
+  /**
+   * Kept OUT OF THE COUNT: in the log, but holding no place in `workoutNumbers`.
+   *
+   * For training from before the count began — a 2024 notebook imported into a
+   * log whose "workout 1" was January 2026. Without it those sessions would take
+   * numbers 31, 30, 29… down the column and every real number above them would
+   * be right only by coincidence. Absent on everything the app records itself;
+   * only an import sets it.
+   */
+  unnumbered?: boolean;
   exercises: CompletedExercise[];
   /** The rows the overload engine and next session's prefills read. */
   sets: SetHistory[];
@@ -237,7 +247,17 @@ export function recomputeWorkout(
     const rows = working
       .filter((row) => row.exerciseId === snapshot.exerciseId)
       .sort((a, b) => a.setIndex - b.setIndex);
-    if (rows.length === 0) continue;
+    /*
+     * A line that NEVER had rows is a note, not an emptied exercise: imported
+     * paper logs say "neck stand 3×" with no counts, and the record keeps that as
+     * a snapshot with `setCount: 0` and the note's own words as its summary.
+     * Correcting a set elsewhere in the workout must not delete it. A line whose
+     * last row was deleted had a non-zero `setCount` and still drops out.
+     */
+    if (rows.length === 0) {
+      if (snapshot.setCount === 0) exercises.push(snapshot);
+      continue;
+    }
 
     /*
      * The snapshot IS enough: `summarizeSessionSets` reads `countUnit` and
@@ -418,12 +438,17 @@ export interface WorkoutNumberAnchor {
  * A number can come out below 1 — pin "1" to the newest of five workouts and the
  * four before it have nowhere to go. Those are left unnumbered by the UI rather
  * than shown as 0 or −3, which reads as a bug rather than as a choice.
+ *
+ * An `unnumbered` workout is skipped entirely: it gets no key and takes no place,
+ * so the sessions either side of it are consecutive. A pin on one is a pin on
+ * nothing, exactly like a pin on a deleted workout.
  */
 export function workoutNumbers(
-  workouts: readonly CompletedWorkout[],
+  all: readonly CompletedWorkout[],
   anchor: WorkoutNumberAnchor | null = null,
 ): Record<ID, number> {
   const numbers: Record<ID, number> = {};
+  const workouts = all.some((w) => w.unnumbered) ? all.filter((w) => !w.unnumbered) : all;
   if (workouts.length === 0) return numbers;
 
   /* Chronological position, oldest = 0, out of a newest-first array. */
@@ -439,6 +464,45 @@ export function workoutNumbers(
     numbers[workout.id] = base + (chrono(index) - baseChrono);
   });
   return numbers;
+}
+
+/**
+ * "The first workout of 2027": each workout's place within its own calendar year,
+ * keyed by id, beside the lifetime number rather than instead of it.
+ *
+ * DERIVED FROM THE LIFETIME NUMBERS, not by counting rows per year. The year's
+ * count is the workout's number minus the number of the last workout of an EARLIER
+ * year — so January's first session is 1 however many came before. For the first
+ * year the log holds, that subtraction has nothing to subtract: the count began
+ * that year, and the year's number IS the lifetime number. Counting rows instead
+ * would call workout 89 "the first of 2026" for anybody whose log starts in
+ * August, which is the one thing the pinned number exists to stop.
+ *
+ * Years are the phone's own, like `monthKey`: a session just after midnight on
+ * 1 January belongs to the new year on every screen at once. Workouts without a
+ * lifetime number (below 1, or `unnumbered`) get no year number either.
+ *
+ * `workouts` newest first, as everywhere in this file.
+ */
+export function yearNumbers(
+  workouts: readonly CompletedWorkout[],
+  numbers: Readonly<Record<ID, number>>,
+): Record<ID, number> {
+  const out: Record<ID, number> = {};
+  let year: number | null = null;
+  let offset = 0;
+  let previous = 0;
+  for (let index = workouts.length - 1; index >= 0; index -= 1) {
+    const workout = workouts[index];
+    const number = numbers[workout.id];
+    if (number == null || number < 1) continue;
+    const thisYear = new Date(workout.startedAt).getFullYear();
+    if (year !== null && thisYear !== year) offset = previous;
+    year = thisYear;
+    previous = number;
+    out[workout.id] = number - offset;
+  }
+  return out;
 }
 
 /**

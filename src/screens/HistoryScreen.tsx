@@ -176,7 +176,12 @@ import {
   type ClusterCount,
 } from '../lib/balance';
 import { tap, undo } from '../lib/feedback';
-import { monthKey, type CompletedExercise, type CompletedWorkout } from '../lib/completedWorkout';
+import {
+  monthKey,
+  yearNumbers,
+  type CompletedExercise,
+  type CompletedWorkout,
+} from '../lib/completedWorkout';
 import { clusterLabel } from '../lib/muscles';
 import { clampSummary } from '../lib/summaryClamp';
 import {
@@ -400,6 +405,8 @@ export function HistoryScreen({
   const weeklyTargets = useSettings((s) => s.weeklySetTargets);
 
   const totals = useMemo(() => historyTotals(workouts), [workouts]);
+  /* "1st of 2027" beside "#112" — derived from the same numbers, see `yearNumbers`. */
+  const years = useMemo(() => yearNumbers(workouts, numbers), [numbers, workouts]);
   const months = useMemo(() => groupByMonth(workouts, lang), [lang, workouts]);
   const balance = useMemo(
     () => clusterBalance({ workouts, exercisesById, windowDays: balanceWindowDays(window) }),
@@ -764,6 +771,7 @@ export function HistoryScreen({
                         <HistoryRow
                           workout={workout}
                           number={numbers[workout.id]}
+                          yearNumber={years[workout.id]}
                           isOpen={openId === workout.id}
                           unitSystem={unitSystem}
                           canAddExercise={onAddExercise != null}
@@ -923,6 +931,7 @@ function SessionTime({ label, value }: { label: string; value: string }) {
 const HistoryRow = memo(function HistoryRow({
   workout,
   number,
+  yearNumber,
   isOpen,
   unitSystem,
   canAddExercise,
@@ -930,6 +939,7 @@ const HistoryRow = memo(function HistoryRow({
 }: {
   workout: CompletedWorkout;
   number?: number;
+  yearNumber?: number;
   isOpen: boolean;
   unitSystem: UnitSystem;
   canAddExercise: boolean;
@@ -940,6 +950,7 @@ const HistoryRow = memo(function HistoryRow({
     <WorkoutRow
       workout={workout}
       number={number}
+      yearNumber={yearNumber}
       isOpen={isOpen}
       unitSystem={unitSystem}
       onEditSet={(setId, patch) => actions.editSet(id, setId, patch)}
@@ -960,6 +971,7 @@ const HistoryRow = memo(function HistoryRow({
 function WorkoutRow({
   workout,
   number,
+  yearNumber,
   isOpen,
   unitSystem,
   onPress,
@@ -977,6 +989,8 @@ function WorkoutRow({
   workout: CompletedWorkout;
   /** Its ordinal, or undefined / below 1 when the pinning leaves it without one. */
   number?: number;
+  /** Its place in its own calendar year — `yearNumbers`. Absent with `number`. */
+  yearNumber?: number;
   isOpen: boolean;
   unitSystem: UnitSystem;
   onPress: () => void;
@@ -1006,6 +1020,8 @@ function WorkoutRow({
   const counted = usePlural();
   const exerciseCount = workout.exercises.length;
   const numbered = number != null && number >= 1;
+  const year = new Date(workout.startedAt).getFullYear();
+  const inYear = numbered && yearNumber != null ? yearNumber : null;
   /** The exercise whose logged sets are listed, and the set being corrected. */
   const [openExerciseId, setOpenExerciseId] = useState<ID | null>(null);
   const [editing, setEditing] = useState<{ setId: ID; field: 'weight' | 'count' } | null>(null);
@@ -1090,6 +1106,7 @@ function WorkoutRow({
         accessibilityState={{ expanded: isOpen }}
         accessibilityLabel={[
           numbered ? `${t('Workout {number}', { number })},` : '',
+          inYear != null ? `${t('number {number} of {year}', { number: inYear, year })},` : '',
           workout.title,
           formatShortDate(workout.startedAt, lang),
           t('from {start} to {end}', {
@@ -1107,14 +1124,28 @@ function WorkoutRow({
         {/* The ordinal is its own left column so the numbers line up down the
             list like a ledger, and so a long title can never push it off. The
             gutter is reserved even when a workout has no number, because a row
-            that shifts left is harder to scan than one with a gap. */}
-        <Text
-          maxFontSizeMultiplier={1.3}
-          style={{ fontSize: 14 }}
-          className="w-[38px] font-semibold tabular-nums text-acc"
-        >
-          {numbered ? `#${number}` : ''}
-        </Text>
+            that shifts left is harder to scan than one with a gap. The year's
+            count sits under it, small and dim: the lifetime number is the one
+            you scan for, "the 1st of '27" is the one you read once you are there. */}
+        <View className="w-[56px]">
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontSize: 14 }}
+            className="font-semibold tabular-nums text-acc"
+          >
+            {numbered ? `#${number}` : ''}
+          </Text>
+          {inYear != null ? (
+            <Text
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={1}
+              style={{ color: DETAIL_INK }}
+              className="text-micro tabular-nums"
+            >
+              {`'${String(year).slice(-2)} #${inYear}`}
+            </Text>
+          ) : null}
+        </View>
 
         <View className="flex-1 pr-md" style={{ minWidth: 0 }}>
           <RunningText
@@ -1478,22 +1509,33 @@ function WorkoutRow({
 
             {/* Renumbering sits above delete because it is the one you actually
               reach for, and both are inside the open row for the same reason:
-              you read what the workout was before you touch it. */}
-            <Pressable
-              onPress={onEditNumber}
-              accessibilityRole="button"
-              accessibilityLabel={
-                numbered
-                  ? t('Change the number of workout {number}', { number })
-                  : t('Set this workout’s number')
-              }
-              style={pressedStyle}
-              className="h-hit justify-center px-lg"
-            >
-              <Text className="text-label font-medium text-green-bright">
-                {numbered ? t('Workout number: {number}', { number }) : t('Set the workout number')}
-              </Text>
-            </Pressable>
+              you read what the workout was before you touch it. A workout kept
+              out of the count has no number to change, so it has no row. */}
+            {workout.unnumbered ? null : (
+              <Pressable
+                onPress={onEditNumber}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  numbered
+                    ? t('Change the number of workout {number}', { number })
+                    : t('Set this workout’s number')
+                }
+                style={pressedStyle}
+                className="h-hit justify-center px-lg"
+              >
+                <Text className="text-label font-medium text-green-bright">
+                  {numbered
+                    ? inYear != null
+                      ? t('Workout number: {number} · {yearNumber} in {year}', {
+                          number,
+                          yearNumber: inYear,
+                          year,
+                        })
+                      : t('Workout number: {number}', { number })
+                    : t('Set the workout number')}
+                </Text>
+              </Pressable>
+            )}
 
             {/* No red, and not a swipe: see the file header. 24 dp and a
               hairline away from the number above it (U20): the two were

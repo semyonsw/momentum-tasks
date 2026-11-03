@@ -159,7 +159,10 @@ CREATE TABLE IF NOT EXISTS workouts (
   -- How the session felt, or NULL for one nobody answered for (SessionEffort).
   -- Present in the CREATE for a fresh install, and added by addMissingColumns on
   -- a database that predates it. No backticks in here: this is a template literal.
-  effort            TEXT
+  effort            TEXT,
+  -- 1 = kept out of the workout count (CompletedWorkout.unnumbered), NULL = counted.
+  -- Added by addMissingColumns on older databases, like effort.
+  unnumbered        INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS set_history (
@@ -244,6 +247,7 @@ export function db(): Db {
 function addMissingColumns(database: Db): void {
   const wanted: readonly { table: string; column: string; type: string }[] = [
     { table: 'workouts', column: 'effort', type: 'TEXT' },
+    { table: 'workouts', column: 'unnumbered', type: 'INTEGER' },
     { table: 'set_history', column: 'rir', type: 'REAL' },
     { table: 'set_history', column: 'set_type', type: 'TEXT' },
   ];
@@ -281,6 +285,7 @@ interface WorkoutRow {
   volume_is_partial: number;
   exercises_json: string;
   effort: string | null;
+  unnumbered?: number | null;
 }
 
 interface SetRow {
@@ -343,6 +348,7 @@ export function readAllWorkouts(): unknown[] {
     // than as `effort: null` — the store's sanitizer is the one that decides what
     // an unusable value means, and absence is what "nobody answered" looks like.
     ...(row.effort ? { effort: row.effort } : {}),
+    ...(row.unnumbered === 1 ? { unnumbered: true } : {}),
     exercises: parseExercises(row.exercises_json),
     sets: bySession.get(row.id) ?? [],
   }));
@@ -478,8 +484,8 @@ function writeWorkoutIn(database: Db, workout: CompletedWorkout): void {
   database.runSync(
     `INSERT OR REPLACE INTO workouts
        (id, title, routine_id, started_at, ended_at, duration_minutes,
-        set_count, total_volume_kg, volume_is_partial, exercises_json, effort)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        set_count, total_volume_kg, volume_is_partial, exercises_json, effort, unnumbered)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     workout.id,
     workout.title,
     workout.routineId ?? null,
@@ -491,6 +497,7 @@ function writeWorkoutIn(database: Db, workout: CompletedWorkout): void {
     workout.volumeIsPartial ? 1 : 0,
     JSON.stringify(workout.exercises),
     workout.effort ?? null,
+    workout.unnumbered ? 1 : null,
   );
   database.runSync('DELETE FROM set_history WHERE session_id = ?', workout.id);
   for (const row of workout.sets) insertSet(database, workout.id, row);
