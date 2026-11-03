@@ -188,6 +188,13 @@ release quietly contains no release.
 All four, every time. The suite is the project's memory of bugs that already
 happened once.
 
+Plus the render suite, `node node_modules/jest/bin/jest.js` (`jest.config.js`,
+`*.render.test.tsx`): the few bugs that only exist between React and the screen
+— a rolling digit pinned half a cell off, a DONE that logged twice. From WSL,
+call vitest and jest through `node node_modules/...` as written: the `.bin`
+shims in this shared tree fall through to the Windows `node.exe`, which then
+dies on rollup's missing win32 binary.
+
 ## House style
 
 Read a neighbouring file before writing one. This codebase comments the *decision*

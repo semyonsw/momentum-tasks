@@ -12,7 +12,6 @@ import {
   textWidth,
   valueWellWidth,
 } from './setRowLayout';
-import { kgToLb } from './units';
 
 /**
  * The set row's grid (redesign #1) and the inline editor's steps (#2). The width
@@ -103,9 +102,18 @@ describe('the inline steppers', () => {
 
   it('step an imperial weight in pounds: 5 lb by default', () => {
     expect(stepperStep('weight', reps, 'imperial')).toBe(5);
-    expect(stepperStep('weight', { ...reps, incrementKg: 2.5 }, 'imperial')).toBe(
-      Number(kgToLb(2.5).toFixed(1)),
-    );
+  });
+
+  // Regression: the seed's 2.5 / 5 kg increments stepped ±5.5 / ±11 lb, so 140
+  // and 145 were unreachable from 135.
+  it('snap a converted kg increment to a pound plate in imperial', () => {
+    expect(stepperStep('weight', { ...reps, incrementKg: 2.5 }, 'imperial')).toBe(5);
+    expect(stepperStep('weight', { ...reps, incrementKg: 5 }, 'imperial')).toBe(10);
+    expect(stepperStep('weight', { ...reps, incrementKg: 1.25 }, 'imperial')).toBe(2.5);
+    // Under half a plate: the fine pound, never a step of 0.
+    expect(stepperStep('weight', { ...reps, incrementKg: 0.5 }, 'imperial')).toBe(1);
+    // Metric is untouched.
+    expect(stepperStep('weight', { ...reps, incrementKg: 2.5 }, 'metric')).toBe(2.5);
   });
 
   it('step a count by its unit: a rep, fifteen seconds, 25 m', () => {

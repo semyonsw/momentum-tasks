@@ -245,6 +245,18 @@ export function describeBests(
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+/**
+ * How a best's kilograms are written: bare, whatever the exercise's load mode.
+ *
+ * `heaviest` and `bestSetLoad` hold the EFFECTIVE load — bodyweight plus the belt
+ * on a weighted pull-up — so the `+` that marks a logged added load would be a lie
+ * here: 80 kg of lifter with `+40` on the belt read "Best +120 × 8". The `+` belongs
+ * to the set rows, which show what was logged; the bests show what was on the bar.
+ */
+export function formatBestLoad(kg: number, unitSystem: UnitSystem): string {
+  return formatWeight(kg, unitSystem, 'external');
+}
+
 /* ------------------------------------------------------------------ */
 /* e1RM trend and the records timeline                                 */
 /* ------------------------------------------------------------------ */

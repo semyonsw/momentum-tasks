@@ -55,7 +55,7 @@
 
 import { useMemo } from 'react';
 
-import { formatClock } from '../lib/units';
+import { formatCountdown } from '../lib/units';
 import { restNext, type RestNext } from '../lib/restNext';
 import { useRestTimer } from '../hooks/useRestTimer';
 import { useActiveWorkout, type RestSource } from '../state/activeWorkoutStore';
@@ -187,7 +187,7 @@ export function RestTimerPill() {
     >
       <PillKicker label={restLabel(source, isPaused, t)} aside={nextLine(next, t)} tone={tone} />
       <PillClock
-        value={formatClock(remaining)}
+        value={formatCountdown(remaining)}
         tone={tone}
         breathe={finalTen && isRunning}
         accessibilityLabel={

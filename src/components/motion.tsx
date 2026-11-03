@@ -44,7 +44,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Animated, Easing, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useArrived } from '../hooks/useArrived';
-import { growInDeadline } from '../lib/growIn';
+import { growInDeadline, leaveLatch } from '../lib/growIn';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { curve, motion, palette, tint } from '../theme/tokens';
 
@@ -327,6 +327,9 @@ export function GrowIn({
   const slide = useRef(new Animated.Value(0)).current;
   const onLeftRef = useRef(onLeft);
   onLeftRef.current = onLeft;
+  /* `onLeft` once, whether the close animation ends or the row is unmounted
+     first (`leaveLatch` has the collapsed-card bug this closes). */
+  const [latch] = useState(leaveLatch);
   const rise = useMemo(
     () => fade.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }),
     [fade],
@@ -386,7 +389,7 @@ export function GrowIn({
   useEffect(() => {
     if (!leaving) return;
     if (scale === 0) {
-      const frame = requestAnimationFrame(() => onLeftRef.current?.());
+      const frame = requestAnimationFrame(() => latch.fire(onLeftRef.current));
       return () => cancelAnimationFrame(frame);
     }
     height.setValue(natural ?? 0);
@@ -402,11 +405,20 @@ export function GrowIn({
       Animated.timing(fade, { toValue: 0, duration: out, easing: EASING, useNativeDriver: true }),
       Animated.timing(slide, { toValue: 1, duration: out, easing: EASING, useNativeDriver: true }),
     ]).start(({ finished }) => {
-      if (finished) onLeftRef.current?.();
+      if (finished) latch.fire(onLeftRef.current);
     });
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaving]);
+
+  /* Unmounted mid-leave (the card collapsed inside the 280 ms): the animation
+     will never report `finished`, so the removal is delivered here instead. */
+  useEffect(
+    () => () => {
+      latch.unmount(leavingRef.current, onLeftRef.current);
+    },
+    [latch],
+  );
 
   const onLayout = useCallback(
     (e: { nativeEvent: { layout: { height: number } } }) => {

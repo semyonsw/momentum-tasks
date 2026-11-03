@@ -99,6 +99,9 @@ export interface RestState {
    * reasons: `+15` moves the deadline, and a PAUSE stops it entirely. Pause time
    * is rest taken — the user was resting — so the honest measurement is "how long
    * since rest started", which is what this is. See `restTakenSeconds`.
+   *
+   * Also null once a ✓ has measured it — see `completeSet`. A rest ends at the
+   * first set after it, so only that set took it.
    */
   startedAt: number | null;
   /** Epoch ms when rest ends. null = idle, or paused (see `pausedRemainingMs`). */
@@ -697,7 +700,7 @@ export const useActiveWorkout = create<ActiveWorkoutState>()(
                 originSetId: setId,
                 pausedRemainingMs: null,
               }
-            : rest,
+            : consumeRest(rest),
           /*
            * A ✓ on a set whose own clock is running ENDS that clock. It kept
            * running, and at the bell `commitSetTimer` logged the set a second
@@ -1494,6 +1497,23 @@ function measureRestTaken(rest: RestState, now: number): number | null {
   const seconds = Math.round((now - rest.startedAt) / 1000);
   if (seconds <= 0 || seconds > MAX_PLAUSIBLE_REST_SECONDS) return null;
   return seconds;
+}
+
+/**
+ * The rest after the ✓ that measured it, when that ✓ starts no rest of its own.
+ *
+ * Only the first set after a rest TOOK that rest. A rest that ran out stays in the
+ * store (the pill hides at zero, it is not cleared), and with auto-rest off, or
+ * mid-superset, nothing replaces it — so every later ✓ used to measure from the
+ * same old `startedAt`: 95 s, then 160, then 240, a rising staircase of rests
+ * nobody took, all fed into the medians `restHistory` reports.
+ *
+ * Only the measurement is spent. The deadline, the pause and the origin row are
+ * left exactly as they were, because a rest started by hand is still the user's
+ * pill to watch and skip — `completeSet`'s rule 3 — and they are all it reads.
+ */
+export function consumeRest(rest: RestState): RestState {
+  return rest.startedAt == null ? rest : { ...rest, startedAt: null };
 }
 
 /* ------------------------------------------------------------------ */

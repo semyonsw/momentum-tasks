@@ -98,6 +98,13 @@ module.exports = tseslint.config(
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   {
+    // Jest's setup file runs before any test module, with `jest` as a global and
+    // `require` as the only way a `jest.mock` factory can reach a module.
+    files: ['test/jestSetup.js'],
+    languageOptions: { globals: { jest: 'readonly', require: 'readonly' } },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     /*
      * A test that indexes its own fixture KNOWS the row is there — it built it
      * three lines up — and `!` is the honest way to say so. Ninety warnings of

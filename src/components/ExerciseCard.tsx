@@ -112,6 +112,7 @@ import { shouldCloseEditor, visibleEditor } from '../lib/inlineEditor';
 import { tap, undo } from '../lib/feedback';
 import { isTimed as isTimedExercise } from '../lib/setTimer';
 import { formatClock } from '../lib/units';
+import { flushThen } from '../lib/typedFlush';
 import type { ID, UnitSystem } from '../types/models';
 import { curve, glass, glassTier, motion, palette, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
@@ -321,6 +322,13 @@ function ExerciseCardComponent({
   const lang = useLanguage();
   const [openEditor, setFocus] = useState<{ setId: ID; field: SetField } | null>(null);
   /*
+   * The open editor's "commit what is typed", registered by `QuickAdjust`. Every
+   * press on a row that closes the editor calls it FIRST (`flushThen`): the list
+   * keeps the keyboard up across taps, so no blur commits a typed 85 before the ✓
+   * logs the set at the old 80 — see `lib/typedFlush.ts`.
+   */
+  const flushEditor = useRef<(() => void) | null>(null);
+  /*
    * The editor actually drawn. Focus mode owns the up-next row's numbers, and
    * while it is on screen it owns every number — see `lib/inlineEditor.ts` for the
    * stale box this used to leave behind.
@@ -376,6 +384,7 @@ function ExerciseCardComponent({
    */
   const removeRow = (setId: ID) => {
     undo();
+    flushEditor.current?.();
     setFocus(null);
     const remaining = entry.sets.filter((s) => !leaving.has(s.localId)).length;
     if (remaining <= 1) {
@@ -413,19 +422,23 @@ function ExerciseCardComponent({
     if (known) return known;
     const handlers: RowHandlers = {
       onRemove: () => live.current.removeRow(setId),
-      onPressTimer: () => {
-        setFocus(null); // the clock and the editor never share the row
-        live.current.onPressTimer(setId);
-      },
+      onPressTimer: () =>
+        flushThen(flushEditor.current, () => {
+          setFocus(null); // the clock and the editor never share the row
+          live.current.onPressTimer(setId);
+        }),
       onFocusField: (field) =>
-        setFocus((current) =>
-          // Tapping the open field again closes the panel.
-          current?.setId === setId && current.field === field ? null : { setId, field },
+        flushThen(flushEditor.current, () =>
+          setFocus((current) =>
+            // Tapping the open field again closes the panel.
+            current?.setId === setId && current.field === field ? null : { setId, field },
+          ),
         ),
-      onToggleComplete: () => {
-        setFocus(null); // committing a set always closes the editor
-        live.current.onToggleSet(setId);
-      },
+      onToggleComplete: () =>
+        flushThen(flushEditor.current, () => {
+          setFocus(null); // committing a set always closes the editor
+          live.current.onToggleSet(setId);
+        }),
       onOpenMarks: () => live.current.onOpenSetMarks?.(setId),
       onToggleWarmup: () => live.current.onToggleWarmup?.(setId),
       onKind: (kind) => live.current.onMarkSet?.(setId, { kind }),
@@ -796,6 +809,7 @@ function ExerciseCardComponent({
                     onLog={handlersFor(set.localId).onToggleComplete}
                     onKind={onMarkSet ? handlersFor(set.localId).onKind : undefined}
                     onRir={onMarkSet ? handlersFor(set.localId).onRir : undefined}
+                    flushRef={flushEditor}
                   />
                 </GrowIn>
               ) : null}

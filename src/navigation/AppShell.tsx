@@ -150,6 +150,7 @@ import { isTransferCategory, type Direction, type Interval } from '../lib/money'
 import { SECTIONS, backAction, type SectionTab, type ShellRoute } from '../lib/sectionNav';
 import { seedUser } from '../data/seed';
 import { emptyWorkoutRoutine } from '../lib/workoutHome';
+import { pushRoute, reusesSession } from './sessionRoute';
 import type { CompletedWorkout } from '../lib/completedWorkout';
 import type { Exercise, ID, MuscleGroup, SetHistory, UnitSystem } from '../types/models';
 import type { RandomSpec } from '../lib/randomRoutine';
@@ -562,7 +563,8 @@ export function AppShell() {
   );
 
   const currentTop = stack[stack.length - 1] ?? null;
-  const push = useCallback((route: Route) => setStack((s) => [...s, route]), []);
+  // Never `session` on `session`: a double-tap on Start reaches here twice (`sessionRoute.ts`).
+  const push = useCallback((route: Route) => setStack((s) => pushRoute(s, route)), []);
   /**
    * Swap the top of the stack for another route.
    *
@@ -1018,7 +1020,7 @@ export function AppShell() {
        * looking at push day and then deciding on pull would land you back on push
        * with no way to tell why.
        */
-      if (session && (session.startedAt != null || session.routineId === routineId)) {
+      if (reusesSession(session, routineId)) {
         push({ name: 'session' });
         return;
       }
@@ -1091,7 +1093,9 @@ export function AppShell() {
    * refuses too, so a stale tap cannot discard logged sets.
    */
   const handleStartEmpty = useCallback(() => {
-    if (useActiveWorkout.getState().session?.startedAt != null) {
+    // Also an unstarted EMPTY session (routine id `''`): that is the second tap of
+    // a double-tap, and starting again would build a second session over the first.
+    if (reusesSession(useActiveWorkout.getState().session, '')) {
       push({ name: 'session' });
       return;
     }

@@ -25,7 +25,8 @@
  */
 
 import type { DraftSet } from './draft';
-import { countStep, kgToLb, lbToKg, weightSteps } from './units';
+import { term, type Language } from './i18n';
+import { countStep, countUnitLabel, kgToLb, lbToKg, weightSteps } from './units';
 import type { CountUnit, UnitSystem } from '../types/models';
 
 /** Which of a set's two numbers a chip is nudging. */
@@ -69,4 +70,41 @@ export function nudgeSet(
   const next = Math.max(0, Number((current + delta).toFixed(2)));
 
   return { weightKg: imperial ? lbToKg(next) : next };
+}
+
+/**
+ * A change to one set: either the new fields outright, or how to get them FROM
+ * the set as it is at the moment the change lands.
+ *
+ * The second form exists for the ± chips. `nudgeSet(target.set, …)` computed from
+ * the set the screen last RENDERED, and two taps that land before the screen
+ * re-renders both start from the same number: tap + twice fast and the count goes
+ * up by one. An updater is resolved against the store's own copy instead, so
+ * every tap counts — the same reason React's `setState` takes a function.
+ */
+export type SetPatch = Partial<DraftSet> | ((set: DraftSet) => Partial<DraftSet>);
+
+export function resolvePatch(patch: SetPatch, set: DraftSet): Partial<DraftSet> {
+  return typeof patch === 'function' ? patch(set) : patch;
+}
+
+/** The live set a patch is aimed at, or null if it was deleted under the tap. */
+export function findDraftSet(
+  session: { entries: readonly { localId: string; sets: readonly DraftSet[] }[] } | null,
+  entryId: string,
+  setId: string,
+): DraftSet | null {
+  const entry = session?.entries.find((e) => e.localId === entryId);
+  return entry?.sets.find((s) => s.localId === setId) ?? null;
+}
+
+/**
+ * The unit a COUNT STEP is spoken in. A timed count steps in seconds (`+15`),
+ * but its cell is read in minutes (`1:00 MIN`), so `{step} {countUnitLabel}`
+ * told a screen reader "+15 min" for a fifteen-second chip.
+ */
+export function countStepUnitLabel(countUnit: CountUnit, lang: Language): string {
+  return countUnit === 'seconds' || countUnit === 'rounds'
+    ? term('unit', 'sec', lang)
+    : countUnitLabel(countUnit, lang);
 }

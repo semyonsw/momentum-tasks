@@ -238,6 +238,19 @@ export function formatClock(totalSeconds: number): string {
 }
 
 /**
+ * A running countdown's clock: the WHOLE seconds still to go, rounded up.
+ *
+ * `formatClock` alone rounds, so a rest with 0.4 s left read 0:00 while the
+ * count-in — which ceils (`useCountdownBeeps`) — still had a beep and a tone to
+ * play, and every tick landed half a second after the number it belonged to. This
+ * is the set timer's rule (`readSetTimer`): 0:00 means it is over, and the
+ * number on screen is the number being beeped.
+ */
+export function formatCountdown(remainingSeconds: number): string {
+  return formatClock(remainingSeconds > 0 ? Math.ceil(remainingSeconds) : 0);
+}
+
+/**
  * A workout's running clock: `12:04`, or `1:12:04` past an hour.
  *
  * Not `formatClock`, which is a COUNTDOWN's format — it rounds, because a rest

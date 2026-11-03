@@ -26,3 +26,33 @@ export function growInDeadline(durationMs: number, scale: number): number {
   const factor = Number.isFinite(scale) && scale > 0 ? scale : 0;
   return Math.round(nominal * factor) + GROW_IN_GRACE_MS;
 }
+
+/*
+ * ── LEAVING, AND BEING UNMOUNTED MID-LEAVE ──────────────────────────────────
+ *
+ * A removed row closes for 280 ms and only THEN leaves the store, in `onLeft`
+ * from the animation's end. Collapse the card inside those 280 ms and the row
+ * unmounts, the animation ends `finished: false`, and `onLeft` never ran — the
+ * set the user removed stayed in the store and was saved with the workout. So
+ * an unmount while leaving delivers the removal too, and the latch below makes
+ * sure the two paths (animation end, unmount) remove it once between them.
+ */
+
+/** One `onLeft` per row, whichever of its paths gets there first. */
+export interface LeaveLatch {
+  /** Deliver `onLeft` unless it already was. True if this call delivered it. */
+  fire(onLeft: (() => void) | undefined): boolean;
+  /** The unmount path: delivers only for a row that was leaving. */
+  unmount(leaving: boolean, onLeft: (() => void) | undefined): boolean;
+}
+
+export function leaveLatch(): LeaveLatch {
+  let fired = false;
+  const fire = (onLeft: (() => void) | undefined) => {
+    if (fired) return false;
+    fired = true;
+    onLeft?.();
+    return true;
+  };
+  return { fire, unmount: (leaving, onLeft) => (leaving ? fire(onLeft) : false) };
+}

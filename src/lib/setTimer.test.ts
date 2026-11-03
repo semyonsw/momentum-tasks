@@ -16,11 +16,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   MIN_WORK_SECONDS,
+  SHELL_COMMIT_GRACE_MS,
+  UNOBSERVED_GO,
+  goCue,
   readSetTimer,
+  shellShouldCommit,
   resolveTimerMode,
   withPrepareSkipped,
   withWorkAdjusted,
   workEndsAt,
+  type GoLatch,
   type SetTimerSpec,
 } from './setTimer';
 
@@ -162,5 +167,107 @@ describe('resolveTimerMode', () => {
 
   it('defaults to manual — a timer is opt-in per exercise', () => {
     expect(resolveTimerMode({ countUnit: 'seconds' })).toBe('manual');
+  });
+});
+
+/**
+ * The shell's backstop commit. It used to fire on the same tick the screen's hook
+ * first read `over`, and whichever of the two 4 Hz intervals looked first won —
+ * when the shell won, the timer was cleared before the screen rendered the zero
+ * its bell hangs on, and a plank ended in silence.
+ */
+describe('shellShouldCommit', () => {
+  it('leaves the bell to the screen: not on the tick the clock reads over', () => {
+    expect(readSetTimer(plank, at(125)).phase).toBe('over');
+    expect(shellShouldCommit(plank, at(125))).toBe(false);
+    expect(shellShouldCommit(plank, at(125) + SHELL_COMMIT_GRACE_MS - 1)).toBe(false);
+  });
+
+  it('logs it a beat later, when nothing on screen did', () => {
+    expect(shellShouldCommit(plank, at(125) + SHELL_COMMIT_GRACE_MS)).toBe(true);
+    // A hold that ended in a pocket ten minutes ago is still committed.
+    expect(shellShouldCommit(plank, at(725))).toBe(true);
+  });
+
+  it('never commits a count-up — it has no bell', () => {
+    expect(shellShouldCommit(hang, at(3600))).toBe(false);
+  });
+});
+
+/**
+ * "Go", once per hold — not once per instance of the hook. Focus mode and the pill
+ * each mount their own `useSetTimer`, so opening focus mode mid-plank is a new
+ * instance meeting a clock that is already in `work`.
+ */
+describe('goCue', () => {
+  /** Feed a sequence of readings through one instance; collect what fired. */
+  function run(readings: [SetTimerSpec | null, number][], latch: GoLatch = UNOBSERVED_GO) {
+    const fired: number[] = [];
+    for (const [spec, now] of readings) {
+      const next = goCue(latch, spec, now);
+      latch = next.latch;
+      if (next.fire) fired.push(now);
+    }
+    return fired;
+  }
+
+  it('stays silent when an instance mounts on a hold already under way', () => {
+    // Opening focus mode forty seconds into the plank.
+    expect(
+      run([
+        [plank, at(45)],
+        [plank, at(46)],
+        [plank, at(60)],
+      ]),
+    ).toEqual([]);
+  });
+
+  it('sounds once for a get-ready this instance watched run out', () => {
+    expect(
+      run([
+        [plank, at(3)],
+        [plank, at(4.9)],
+        [plank, at(5.1)],
+        [plank, at(6)],
+      ]),
+    ).toEqual([at(5.1)]);
+  });
+
+  it('sounds for a timer started while the instance was mounted', () => {
+    const noLeadIn = { ...plank, prepareSeconds: 0 };
+    expect(
+      run([
+        [null, at(0)],
+        [noLeadIn, at(0.1)],
+        [noLeadIn, at(1)],
+      ]),
+    ).toEqual([at(0.1)]);
+  });
+
+  it('sounds when the instance mounts WITH a hold that has only just begun', () => {
+    // The pill mounts only once a timer exists, so a chained round with no lead-in
+    // is first seen already in `work` — and that is its start.
+    const round = { ...plank, prepareSeconds: 0 };
+    expect(
+      run([
+        [round, at(0.25)],
+        [round, at(1)],
+      ]),
+    ).toEqual([at(0.25)]);
+  });
+
+  it('sounds again for "Start now", which is a new startedAt', () => {
+    const skipped = withPrepareSkipped(plank, at(2));
+    expect(
+      run([
+        [plank, at(1)],
+        [skipped, at(2)],
+        [skipped, at(3)],
+      ]),
+    ).toEqual([at(2)]);
+  });
+
+  it('says nothing at the bell, or for a hold first seen already over', () => {
+    expect(run([[plank, at(200)]])).toEqual([]);
   });
 });

@@ -33,7 +33,14 @@
  * and `Type` (the value field). Nothing is snapped to a grid: 16.5 kg stays 16.5.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactNode,
+} from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { Pressable } from './Pressable';
 
@@ -44,14 +51,8 @@ import type { Exercise, UnitSystem } from '../types/models';
 import { nudgeSet } from '../lib/setNudge';
 import { chipPress, editorValueKey } from '../lib/inlineEditor';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
-import {
-  countUnitLabel,
-  formatCount,
-  formatWeight,
-  lbToKg,
-  parseCountInput,
-  unitLabel,
-} from '../lib/units';
+import { countUnitLabel, formatCount, formatWeight, unitLabel } from '../lib/units';
+import { typedPatch } from '../lib/typedFlush';
 import type { SetField } from './SetRow';
 import { describeRir, effortApplies } from '../lib/effort';
 import { SET_KINDS, kindBadge, kindChipLabel, setKindOf, type SetKind } from '../lib/setType';
@@ -75,6 +76,11 @@ interface QuickAdjustProps {
   onKind?: (kind: SetKind) => void;
   /** Grade it, or take the grade back (`null`). */
   onRir?: (rir: number | null) => void;
+  /**
+   * Where the editor puts its "commit what is typed" — the card calls it before
+   * anything on the row closes the editor (`lib/typedFlush.ts` has why).
+   */
+  flushRef?: MutableRefObject<(() => void) | null>;
 }
 
 export function QuickAdjust({
@@ -87,12 +93,28 @@ export function QuickAdjust({
   onLog,
   onKind,
   onRir,
+  flushRef,
 }: QuickAdjustProps) {
   const t = useT();
   const lang = useLanguage();
   const kind = setKindOf(set);
-  const [typing, setTyping] = useState<SetField | null>(null);
-  const [buffer, setBuffer] = useState('');
+  const [typing, setTypingState] = useState<SetField | null>(null);
+  const [buffer, setBufferState] = useState('');
+  /*
+   * Mirrored into refs AT WRITE TIME, so the card's flush reads what is in the box
+   * this instant — it runs from another component's press handler, against
+   * whatever closure was registered last.
+   */
+  const typingRef = useRef<SetField | null>(null);
+  const bufferRef = useRef('');
+  const setTyping = useCallback((next: SetField | null) => {
+    typingRef.current = next;
+    setTypingState(next);
+  }, []);
+  const setBuffer = useCallback((next: string) => {
+    bufferRef.current = next;
+    setBufferState(next);
+  }, []);
   const inputRef = useRef<TextInput>(null);
   const reveal = useRevealOnFocus();
   const isTimeCount = exercise.countUnit === 'seconds' || exercise.countUnit === 'rounds';
@@ -115,22 +137,27 @@ export function QuickAdjust({
       setTyping(null);
       setBuffer('');
     }
-  }, [typing, valueKey]);
+  }, [typing, valueKey, setTyping, setBuffer]);
 
   const commitTyped = () => {
-    if (typing === 'weight') {
-      const parsed = Number(buffer.replace(',', '.'));
-      if (!Number.isNaN(parsed) && buffer.trim() !== '') {
-        onChange({ weightKg: unitSystem === 'imperial' ? lbToKg(parsed) : parsed });
-      }
-    } else if (typing === 'count') {
-      // In the unit the field shows — minutes on a timed one. See `parseCountInput`.
-      const count = parseCountInput(buffer, exercise.countUnit);
-      if (count != null) onChange({ count });
-    }
+    const patch = typedPatch(typingRef.current, bufferRef.current, unitSystem, exercise.countUnit);
+    if (patch) onChange(patch);
     setTyping(null);
     setBuffer('');
   };
+
+  /* Hand the card its flush; take it back on the way out so a closed editor is
+     never asked to commit. */
+  useEffect(() => {
+    if (!flushRef) return undefined;
+    const flush = () => {
+      if (typingRef.current) commitTyped();
+    };
+    flushRef.current = flush;
+    return () => {
+      if (flushRef.current === flush) flushRef.current = null;
+    };
+  });
 
   /** One step. A step pressed mid-type takes what was typed first (`chipPress`). */
   const bump = (target: SetField, delta: number) => {

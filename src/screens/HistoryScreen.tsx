@@ -201,6 +201,7 @@ import { useLanguage, usePlural, useT, type Translate } from '../hooks/useT';
 import { term, type Language } from '../lib/i18n';
 import { dayKey, formatMonth } from '../lib/days';
 import { HISTORY_PAGE, monthsToRender, nearEnd, rowsIn } from '../lib/historyWindow';
+import { supersedesUndo } from '../lib/historyUndo';
 import { curve, gradientBar, palette, radius, tint } from '../theme/tokens';
 import { useSettings } from '../state/settingsStore';
 import {
@@ -487,15 +488,29 @@ export function HistoryScreen({
   const undoable = useRef(withUndo);
   undoable.current = withUndo;
 
+  /* Any other edit retires a pending Undo — `lib/historyUndo.ts` has why. */
+  const dismissUndo = () => setToast(null);
+
   const actions = useMemo<RowActions>(
     () => ({
-      editSet: (workoutId, setId, patch) => latest.current.onEditSet(workoutId, setId, patch),
+      editSet: supersedesUndo(
+        (workoutId: ID, setId: ID, patch: SetCorrection) =>
+          latest.current.onEditSet(workoutId, setId, patch),
+        dismissUndo,
+      ),
       deleteSet: (workoutId, setId) =>
         undoable.current(workoutId, latest.current.t('Removed a set'), () =>
           latest.current.onDeleteSet(workoutId, setId),
         ),
-      editWorkout: (workoutId, patch) => latest.current.onEditWorkout(workoutId, patch),
-      addSet: (workoutId, exerciseId) => latest.current.onAddSet(workoutId, exerciseId),
+      editWorkout: supersedesUndo(
+        (workoutId: ID, patch: Parameters<RowActions['editWorkout']>[1]) =>
+          latest.current.onEditWorkout(workoutId, patch),
+        dismissUndo,
+      ),
+      addSet: supersedesUndo(
+        (workoutId: ID, exerciseId: ID) => latest.current.onAddSet(workoutId, exerciseId),
+        dismissUndo,
+      ),
       removeExercise: (workoutId, exerciseId) => {
         const name =
           latest.current.workouts
@@ -505,7 +520,10 @@ export function HistoryScreen({
           latest.current.onRemoveExercise(workoutId, exerciseId),
         );
       },
-      addExercise: (workoutId) => latest.current.onAddExercise?.(workoutId),
+      addExercise: supersedesUndo(
+        (workoutId: ID) => latest.current.onAddExercise?.(workoutId),
+        dismissUndo,
+      ),
       toggle: (workoutId) => {
         tap();
         setOpenId((current) => (current === workoutId ? null : workoutId));
@@ -789,6 +807,7 @@ export function HistoryScreen({
         <MoveDaySheet
           workout={moving}
           onMove={(shiftMinutes) => {
+            dismissUndo();
             onEditWorkout(moving.id, { shiftMinutes });
             setMoving(null);
           }}
@@ -810,6 +829,8 @@ export function HistoryScreen({
           confirmLabel={t('Delete it')}
           cancelLabel={t('Keep it')}
           onConfirm={() => {
+            // An Undo still up would put this workout back from its snapshot.
+            dismissUndo();
             onDelete(deleting.id);
             setDeleting(null);
             setOpenId(null);
@@ -831,10 +852,16 @@ export function HistoryScreen({
             lang,
           )}
           kind={setKindOf(markingRow)}
-          onKind={(kind) => onEditSet(marking.workoutId, marking.setId, { kind })}
+          onKind={(kind) => {
+            dismissUndo();
+            onEditSet(marking.workoutId, marking.setId, { kind });
+          }}
           rir={markingRow.rir}
           showEffort={effortApplies(markingRow.countUnit)}
-          onRir={(rir) => onEditSet(marking.workoutId, marking.setId, { rir })}
+          onRir={(rir) => {
+            dismissUndo();
+            onEditSet(marking.workoutId, marking.setId, { rir });
+          }}
           onDismiss={() => setMarking(null)}
         />
       ) : null}

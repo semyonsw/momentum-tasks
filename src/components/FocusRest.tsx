@@ -61,11 +61,17 @@ import Reanimated, {
 import Svg, { Circle } from 'react-native-svg';
 import { Pressable } from './Pressable';
 
-import type { DraftSet } from '../lib/draft';
+import type { SetPatch } from '../lib/setNudge';
 import type { FocusPlan, FocusTarget } from '../lib/focusPlan';
 import { tap } from '../lib/feedback';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
-import { countUnitLabel, formatClock, formatCount, formatWeight, unitLabel } from '../lib/units';
+import {
+  countUnitLabel,
+  formatCount,
+  formatCountdown,
+  formatWeight,
+  unitLabel,
+} from '../lib/units';
 import type { RestTimerApi } from '../hooks/useRestTimer';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { curve, motion, palette, radius, tint } from '../theme/tokens';
@@ -105,7 +111,7 @@ export function FocusRest({
    * = the block is a statement again, which is what a caller with no session to
    * patch should get rather than a control that does nothing.
    */
-  onPatch?: (patch: Partial<DraftSet>) => void;
+  onPatch?: (patch: SetPatch) => void;
 }) {
   /*
    * Screen-local, and reset by the block disappearing — a panel is open because
@@ -178,7 +184,7 @@ export function FocusRest({
             color={finalTen ? palette.ink : palette.greenBright}
           >
             <RollingNumber
-              value={formatClock(remaining)}
+              value={formatCountdown(remaining)}
               lineHeight={96}
               duration={320}
               accessibilityLabel={

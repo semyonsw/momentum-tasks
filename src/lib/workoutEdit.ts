@@ -161,13 +161,15 @@ export function retimeWorkout(
   if (!Number.isFinite(startedAt.getTime())) return workout;
 
   const at = startedAt.toISOString();
-  const endedAt = new Date(
-    startedAt.getTime() + clampDurationMinutes(workout.durationMinutes) * MS_PER_MINUTE,
-  ).toISOString();
+  // The clamped duration is WRITTEN as well as used: an end computed from 600
+  // beside a stored 840 is a record that contradicts itself.
+  const durationMinutes = clampDurationMinutes(workout.durationMinutes);
+  const endedAt = new Date(startedAt.getTime() + durationMinutes * MS_PER_MINUTE).toISOString();
 
   return finish(workout, bodyweightKg, {
     startedAt: at,
     endedAt,
+    durationMinutes,
     sets: workout.sets.map((row) => ({ ...row, performedAt: at })),
   });
 }

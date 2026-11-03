@@ -14,11 +14,15 @@
  * and the two cannot double-log: `commitSetTimer` clears the timer, and a cleared
  * timer is nothing to commit. It ticks only while a COUNTDOWN is running; a
  * count-up has no bell and ends on the user's ✓.
+ *
+ * It commits a beat AFTER the bell, not on it (`shellShouldCommit`). On the bell
+ * it won the race about half the time, cleared the timer before the screen's hook
+ * had rendered zero, and the final tone never played.
  */
 
 import { useEffect } from 'react';
 
-import { readSetTimer } from '../lib/setTimer';
+import { shellShouldCommit } from '../lib/setTimer';
 import { useActiveWorkout } from '../state/activeWorkoutStore';
 
 const TICK_MS = 250;
@@ -34,7 +38,7 @@ export function useSetTimerCommit(): void {
       const state = useActiveWorkout.getState();
       const timer = state.setTimer;
       if (timer?.mode !== 'countdown') return;
-      if (readSetTimer(timer, Date.now()).phase === 'over') state.commitSetTimer();
+      if (shellShouldCommit(timer, Date.now())) state.commitSetTimer();
     };
     check();
     const interval = setInterval(check, TICK_MS);

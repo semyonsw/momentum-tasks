@@ -24,12 +24,13 @@
  * to undo, so it must not be pressable by muscle memory alone.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable } from './Pressable';
 
 import { commit, tap, undo as undoFeedback } from '../lib/feedback';
+import { acceptsDone, undoAction } from '../lib/focusPress';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { gradientFill, palette, tint } from '../theme/tokens';
 import { SpecularEdge } from './glass';
@@ -44,6 +45,15 @@ import { useT } from '../hooks/useT';
  * it is the one control on the screen whose press has to read from two metres.
  */
 const PRESS_SCALE_LARGE = 0.975;
+
+/**
+ * DONE's pending log, reachable from the undo chip above it. `FocusBottom` owns
+ * the slot, `FocusDone` fills it while its ripple wait runs, and undo pressed in
+ * that window cancels the DONE instead of un-logging the set before it — see
+ * `lib/focusPress.ts`.
+ */
+type PendingDone = { cancel: (() => void) | null };
+const PendingDoneContext = createContext<PendingDone | null>(null);
 
 /**
  * DONE — 176 dp of "I did that".
@@ -77,17 +87,23 @@ export function FocusDone({
   const press = usePressScale(0.92);
   const [rippleKey, setRippleKey] = useState<number | null>(null);
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** When the last press that counted landed — the double-tap cooldown. */
+  const acceptedAt = useRef<number | null>(null);
+  const slot = useContext(PendingDoneContext);
   useEffect(
     () => () => {
       if (pending.current) clearTimeout(pending.current);
+      if (slot) slot.cancel = null;
     },
-    [],
+    [slot],
   );
 
   const handlePress = () => {
-    if (pending.current) return;
+    const now = Date.now();
+    if (pending.current || !acceptsDone(acceptedAt.current, now)) return;
+    acceptedAt.current = now;
     commit();
-    setRippleKey(Date.now());
+    setRippleKey(now);
     const wait = delayMs * motionScale;
     if (wait <= 0) {
       onPress();
@@ -95,8 +111,16 @@ export function FocusDone({
     }
     pending.current = setTimeout(() => {
       pending.current = null;
+      if (slot) slot.cancel = null;
       onPress();
     }, wait);
+    if (slot) {
+      slot.cancel = () => {
+        if (pending.current) clearTimeout(pending.current);
+        pending.current = null;
+        slot.cancel = null;
+      };
+    }
   };
 
   return (
@@ -196,6 +220,7 @@ export function FocusFinish({ onPress }: { onPress: () => void }) {
  */
 function FocusUndoRow({ onPress }: { onPress: (() => void) | null }) {
   const t = useT();
+  const slot = useContext(PendingDoneContext);
 
   return (
     <Pressable
@@ -203,6 +228,11 @@ function FocusUndoRow({ onPress }: { onPress: (() => void) | null }) {
         onPress
           ? () => {
               undoFeedback();
+              const cancel = slot?.cancel ?? null;
+              if (cancel && undoAction(true) === 'cancel-pending') {
+                cancel();
+                return;
+              }
               onPress();
             }
           : undefined
@@ -335,10 +365,13 @@ export function FocusBottom({
   children: ReactNode;
   onUndo: (() => void) | null;
 }) {
+  const slot = useRef<PendingDone>({ cancel: null }).current;
   return (
-    <View className="px-lg pb-xl">
-      <FocusUndoRow onPress={onUndo} />
-      <View className="mt-sm">{children}</View>
-    </View>
+    <PendingDoneContext.Provider value={slot}>
+      <View className="px-lg pb-xl">
+        <FocusUndoRow onPress={onUndo} />
+        <View className="mt-sm">{children}</View>
+      </View>
+    </PendingDoneContext.Provider>
   );
 }

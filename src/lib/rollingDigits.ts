@@ -66,3 +66,23 @@ export function columnMove(
   if (prev.digit !== next.digit) return 'roll';
   return 'none';
 }
+
+/**
+ * WHETHER A FINISHED ROLL MAY PIN ITS COLUMN — only if it is still the latest.
+ *
+ * A roll ends by setting its target outright, so a column a native frame left a
+ * hair short still lands on its cell. But on the native driver the `finished`
+ * callback arrives asynchronously, and on fast ± taps it can arrive AFTER the
+ * next roll has started: pinning then stops the new roll and parks the column on
+ * the OLD digit — or, if the size changed in between (`9 → 10` reps), on an
+ * offset measured in the old cell height, which is half of one digit over half
+ * of another. That was the "stuck number" in focus mode. Each roll carries the
+ * generation it was started in, and only the current generation may pin.
+ */
+export function mayPin(
+  rollGeneration: number,
+  currentGeneration: number,
+  finished: boolean,
+): boolean {
+  return finished && rollGeneration === currentGeneration;
+}

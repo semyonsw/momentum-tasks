@@ -32,7 +32,7 @@ import type { DraftSet } from '../lib/draft';
 import { useLanguage } from '../hooks/useT';
 import { tap } from '../lib/feedback';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
-import { nudgeSet, nudgeSteps, type NudgeField } from '../lib/setNudge';
+import { nudgeSet, nudgeSteps, type NudgeField, type SetPatch } from '../lib/setNudge';
 import { countUnitLabel, formatCount, formatWeight, unitLabel } from '../lib/units';
 import type { Exercise, UnitSystem } from '../types/models';
 
@@ -45,7 +45,7 @@ export function FocusNudge({
   set: DraftSet;
   exercise: Exercise;
   unitSystem: UnitSystem;
-  onChange: (patch: Partial<DraftSet>) => void;
+  onChange: (patch: SetPatch) => void;
 }) {
   const lang = useLanguage();
 
@@ -56,7 +56,6 @@ export function FocusNudge({
       {exercise.requiresWeight ? (
         <NudgePill
           field="weight"
-          set={set}
           exercise={exercise}
           unitSystem={unitSystem}
           value={formatWeight(set.weightKg, unitSystem, exercise.loadMode)}
@@ -68,7 +67,6 @@ export function FocusNudge({
       <View className={exercise.requiresWeight ? 'mt-sm' : ''}>
         <NudgePill
           field="count"
-          set={set}
           exercise={exercise}
           unitSystem={unitSystem}
           value={
@@ -86,7 +84,6 @@ export function FocusNudge({
 
 function NudgePill({
   field,
-  set,
   exercise,
   unitSystem,
   value,
@@ -94,18 +91,18 @@ function NudgePill({
   onChange,
 }: {
   field: NudgeField;
-  set: DraftSet;
   exercise: Exercise;
   unitSystem: UnitSystem;
   value: string;
   unit: string;
-  onChange: (patch: Partial<DraftSet>) => void;
+  onChange: (patch: SetPatch) => void;
 }) {
   const { fine, coarse } = nudgeSteps(field, exercise.countUnit, unitSystem);
 
   const bump = (delta: number) => {
     tap();
-    onChange(nudgeSet(set, field, delta, unitSystem));
+    // An updater, not a value: see `SetPatch` on fast taps.
+    onChange((live) => nudgeSet(live, field, delta, unitSystem));
   };
 
   return (

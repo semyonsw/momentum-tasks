@@ -29,7 +29,13 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { commit, countFinal, tap, undo } from '../lib/feedback';
-import { readSetTimer, type SetTimerReading } from '../lib/setTimer';
+import {
+  UNOBSERVED_GO,
+  goCue,
+  readSetTimer,
+  type GoLatch,
+  type SetTimerReading,
+} from '../lib/setTimer';
 import { useActiveWorkout, type SetTimerState } from '../state/activeWorkoutStore';
 import { useSettings } from '../state/settingsStore';
 import { useCountdownBeeps } from './useCountdownBeeps';
@@ -76,7 +82,8 @@ export function useSetTimer(): SetTimerApi {
   );
   /** Guards the one-shot events against a second tick for the same timer. */
   const committedFor = useRef<number | null>(null);
-  const wentToWorkFor = useRef<number | null>(null);
+  /** Per instance — see `goCue` for why a fresh mount must not replay "go". */
+  const goLatch = useRef<GoLatch>(UNOBSERVED_GO);
 
   /* --- the two count-ins ---------------------------------------------- */
   /*
@@ -152,17 +159,19 @@ export function useSetTimer(): SetTimerApi {
 
   /* --- phase changes -------------------------------------------------- */
   useEffect(() => {
-    if (!timer || !reading) return;
-
     /*
      * "Go." The long tone plus a medium impact — the same weight as logging a
      * set, because this is the moment the set actually starts. Guarded on `work`
      * rather than on "not prepare": a timer rehydrated after the app was killed
      * mid-plank is already over, and announcing "go" a beat before the bell would
-     * be a lie.
+     * be a lie. Asked before the null check below: an instance that mounted with
+     * nothing running has observed "nothing", so the timer started next is news.
      */
-    if (reading.phase === 'work' && wentToWorkFor.current !== timer.startedAt) {
-      wentToWorkFor.current = timer.startedAt;
+    const go = goCue(goLatch.current, timer, Date.now());
+    goLatch.current = go.latch;
+    if (!timer || !reading) return;
+
+    if (go.fire) {
       // A count-up has no bell of its own, so its start is the one cue it gets.
       if (timer.prepareSeconds > 0 || timer.mode === 'countup') countFinal();
       else commit();

@@ -99,13 +99,20 @@ import { Pressable as StylePressable } from './Pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
-import type { DraftSet } from '../lib/draft';
 import { describeSetPosition, focusPlan, focusTarget, type FocusTarget } from '../lib/focusPlan';
 import { tap } from '../lib/feedback';
 import { isTimed as isTimedExercise } from '../lib/setTimer';
 import { workNumeralSize } from '../lib/focusType';
 import { maxLabel, showsMaxLabel } from '../lib/maxReps';
-import { nudgeSet, nudgeSteps } from '../lib/setNudge';
+import { holdDoneEnding } from '../lib/focusPress';
+import {
+  countStepUnitLabel,
+  findDraftSet,
+  nudgeSet,
+  nudgeSteps,
+  resolvePatch,
+  type SetPatch,
+} from '../lib/setNudge';
 import { countUnitLabel, formatCount, formatWeight, unitLabel } from '../lib/units';
 import { useRestTimer } from '../hooks/useRestTimer';
 import { useSetTimer } from '../hooks/useSetTimer';
@@ -182,6 +189,14 @@ export function FocusMode({ unitSystem, elapsedMinutes, onClose, onFinish }: Foc
   const commitSetTimer = useActiveWorkout((s) => s.commitSetTimer);
   const cancelSetTimer = useActiveWorkout((s) => s.cancelSetTimer);
   const keepAwakeEnabled = useSettings((s) => s.keepAwakeEnabled);
+  /*
+   * A ± lands on the store's copy of the set, not the one this render drew — two
+   * taps faster than a re-render must be two steps, not one. See `SetPatch`.
+   */
+  const patchLive = (entryId: string, setId: string, patch: SetPatch) => {
+    const live = findDraftSet(useActiveWorkout.getState().session, entryId, setId);
+    if (live) patchSet(entryId, setId, resolvePatch(patch, live));
+  };
 
   /* --- the two clocks. See the file header on why they live here. ----- */
   const rest = useRestTimer();
@@ -326,7 +341,9 @@ export function FocusMode({ unitSystem, elapsedMinutes, onClose, onFinish }: Foc
    */
   const handleHoldDone = useCallback(
     (target: FocusTarget) => {
-      if (timer.reading?.phase === 'work') {
+      /* A hold that has not yet counted a second commits as nothing — so it logs
+         as planned instead. See `lib/focusPress.ts`. */
+      if (holdDoneEnding(timer.reading?.phase, timer.reading?.workedSeconds) === 'commit') {
         flashNow();
         commitSetTimer();
         return;
@@ -334,7 +351,15 @@ export function FocusMode({ unitSystem, elapsedMinutes, onClose, onFinish }: Foc
       if (timer.timer) cancelSetTimer();
       logSet(target);
     },
-    [cancelSetTimer, commitSetTimer, flashNow, logSet, timer.reading?.phase, timer.timer],
+    [
+      cancelSetTimer,
+      commitSetTimer,
+      flashNow,
+      logSet,
+      timer.reading?.phase,
+      timer.reading?.workedSeconds,
+      timer.timer,
+    ],
   );
 
   const handleUndo = useMemo(() => {
@@ -382,7 +407,7 @@ export function FocusMode({ unitSystem, elapsedMinutes, onClose, onFinish }: Foc
          `FocusRest`. Bound to `plan.current` rather than to a stored target,
          because the session is editable while rest runs and the row this patches
          has to be the row the block is showing. */
-      onPatch={current ? (patch) => patchSet(current.entryId, current.setId, patch) : undefined}
+      onPatch={current ? (patch) => patchLive(current.entryId, current.setId, patch) : undefined}
     />
   ) : !current ? (
     <SessionComplete
@@ -408,7 +433,7 @@ export function FocusMode({ unitSystem, elapsedMinutes, onClose, onFinish }: Foc
         tap();
         setNudgeOpen((open) => !open);
       }}
-      onPatch={(patch) => patchSet(current.entryId, current.setId, patch)}
+      onPatch={(patch) => patchLive(current.entryId, current.setId, patch)}
       onDone={() => logSet(current)}
       onUndo={handleUndo}
     />
@@ -505,7 +530,7 @@ function Lift({
   unitSystem: UnitSystem;
   nudgeOpen: boolean;
   onToggleNudge: () => void;
-  onPatch: (patch: Partial<DraftSet>) => void;
+  onPatch: (patch: SetPatch) => void;
   onDone: () => void;
   onUndo: (() => void) | null;
 }) {
@@ -530,7 +555,10 @@ function Lift({
   /* And the height: two lines of it must leave room for the name, DONE and undo
      on a short phone — the screen does not scroll. */
   const sheet = screen - insets.top - insets.bottom;
-  const byHeight = Math.floor((sheet - LIFT_FURNITURE) / (lines.length * 1.1));
+  /* The open ± panel takes its height out of the same budget: added on top of
+     numbers already sized to fill it, it pushed undo and DONE off a short phone. */
+  const panel = nudgeOpen ? nudgePanelHeight(exercise.requiresWeight) : 0;
+  const byHeight = Math.floor((sheet - LIFT_FURNITURE - panel) / (lines.length * 1.1));
   const numeral = Math.max(40, Math.min(NUMERAL, byHeight, ...sizes));
   const lineHeight = Math.round(numeral * 1.1);
 
@@ -538,7 +566,7 @@ function Lift({
   const countStep = nudgeSteps('count', exercise.countUnit, unitSystem).fine;
   const nudge = (field: 'weight' | 'count', delta: number) => {
     tap();
-    onPatch(nudgeSet(target.set, field, delta, unitSystem));
+    onPatch((live) => nudgeSet(live, field, delta, unitSystem));
   };
 
   /* The whole number block, read as one sentence and opened as one control. */
@@ -651,7 +679,7 @@ function Lift({
             onPress={() => nudge('count', -countStep)}
             accessibilityLabel={t('{step} {unit}', {
               step: formatStep(-countStep),
-              unit: countUnitLabel(exercise.countUnit, lang),
+              unit: countStepUnitLabel(exercise.countUnit, lang),
             })}
           />
           <Pressable
@@ -708,7 +736,7 @@ function Lift({
             onPress={() => nudge('count', countStep)}
             accessibilityLabel={t('{step} {unit}', {
               step: formatStep(countStep),
-              unit: countUnitLabel(exercise.countUnit, lang),
+              unit: countStepUnitLabel(exercise.countUnit, lang),
             })}
           />
         </View>
@@ -744,6 +772,15 @@ const GAP = 14;
  * padding. The rest is the numbers' to share.
  */
 const LIFT_FURNITURE = 52 + 28 + 18 + 22 + 6 + 4 + 44 + 8 + 176 + 24 + 24;
+
+/**
+ * The ± panel `FocusNudge` draws under the numbers: its `mt-md`, the count pill,
+ * and — when there is a weight — the weight pill and the `mt-sm` between them.
+ */
+function nudgePanelHeight(requiresWeight: boolean): number {
+  const PILL = 56;
+  return 12 + PILL + (requiresWeight ? 8 + PILL : 0);
+}
 
 /**
  * How far a unit sits up from the bottom of its numeral's box so the two share a

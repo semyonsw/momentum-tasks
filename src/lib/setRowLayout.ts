@@ -26,7 +26,7 @@
 
 import type { CountUnit, UnitSystem } from '../types/models';
 import { DEFAULT_OVERLOAD_POLICY } from './progressiveOverload';
-import { countStep, kgToLb, resolveIncrementKg } from './units';
+import { countStep, kgToLb, resolveIncrementKg, roundToStep, weightSteps } from './units';
 
 /** The grid, in dp. `log` is the column; the circle inside it is `logCircle`. */
 export const SET_ROW = {
@@ -173,6 +173,14 @@ export function rirQuickSelected(rir: number | undefined | null): number | null 
  * mode's (`nudgeSteps`), where four chips have the room; the inline editor has one
  * button each side, and the one that is worth a button is the plate you own.
  * A count steps by its unit's natural step: a rep, fifteen seconds, 25 m.
+ *
+ * AN IMPERIAL STEP IS A POUND PLATE, not a converted kilo. The built-in exercises
+ * carry 2.5 / 5 kg increments, and converting them gave ±5.5 / ±11 lb — so from
+ * 135 the button reached 140.5 and 146, never 140 or 145, which is the unloadable
+ * 5.5 lb `resolveIncrementKg` already refuses to invent for its 5 lb fallback.
+ * So the converted step snaps to the smallest pound plate, 2.5 lb (2.5 kg → 5 lb,
+ * 5 kg → 10 lb, 1.25 kg → 2.5 lb), and anything smaller than half of one keeps
+ * the fine 1 lb step (`weightSteps`) rather than becoming a button that adds 0.
  */
 export function stepperStep(
   field: 'weight' | 'count',
@@ -182,5 +190,10 @@ export function stepperStep(
 ): number {
   if (field === 'count') return countStep(exercise.countUnit);
   const kg = resolveIncrementKg(exercise.incrementKg, policyIncrementKg, unitSystem);
-  return unitSystem === 'imperial' ? Number(kgToLb(kg).toFixed(1)) : kg;
+  if (unitSystem !== 'imperial') return kg;
+  const lb = roundToStep(kgToLb(kg), SMALLEST_PLATE_LB);
+  return lb > 0 ? lb : weightSteps('imperial').fine;
 }
+
+/** The smallest pound plate a gym hangs on a bar. */
+const SMALLEST_PLATE_LB = 2.5;

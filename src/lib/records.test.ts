@@ -4,6 +4,7 @@ import {
   beatSomething,
   describeBests,
   exerciseBests,
+  formatBestLoad,
   recordsBeatenBy,
   type ExerciseBests,
 } from './records';
@@ -266,5 +267,17 @@ describe('the one-line summary', () => {
 
   it('is null when the log has nothing to say', () => {
     expect(describeBests(exerciseBests([], pulldown), 'reps', kg, reps)).toBeNull();
+  });
+
+  it('writes an added-bodyweight best as the on-body total, with no +', () => {
+    // 80 kg of lifter with +40 on the belt read "Best +120 × 8": the best is the
+    // effective load, so the `+` that marks a logged added load does not belong.
+    const bests = exerciseBests(
+      [row({ exerciseId: pullup.id, loadMode: 'added_bodyweight', weightKg: 40, count: 8 })],
+      pullup,
+      () => 80,
+    );
+    const line = describeBests(bests, 'reps', (n) => formatBestLoad(n, 'metric'), reps);
+    expect(line).toBe('120 × 8 · 960 set');
   });
 });

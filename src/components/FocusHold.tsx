@@ -42,9 +42,11 @@
  * nothing moves — see `FocusClockBlock`'s `filled`.
  */
 
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import { Text, View } from 'react-native';
 
 import { describeSetPosition, type FocusTarget } from '../lib/focusPlan';
+import { acceptsHoldRowPress, holdRowPhase } from '../lib/holdRow';
 import type { SetTimerApi } from '../hooks/useSetTimer';
 import { formatClock, formatCount } from '../lib/units';
 import { FocusClockBlock } from './FocusClock';
@@ -84,6 +86,26 @@ export function FocusHold({
    */
   const finalTen = running && isCountdown && (reading?.display ?? 0) <= FINAL_SECONDS;
   const tone = pillTone(finalTen);
+
+  /*
+   * The row's settle window — see `lib/holdRow.ts`. Stamped in a layout effect so
+   * the time is set before the new row is painted, and so no tap can reach the
+   * new buttons ahead of it. The first row on mount is not a change.
+   */
+  const rowPhase = holdRowPhase(reading?.phase);
+  const row = useRef<{ phase: typeof rowPhase; changedAt: number | null }>({
+    phase: rowPhase,
+    changedAt: null,
+  });
+  useLayoutEffect(() => {
+    if (row.current.phase !== rowPhase) row.current = { phase: rowPhase, changedAt: Date.now() };
+  }, [rowPhase]);
+  const settled = useCallback(
+    (action: () => void) => () => {
+      if (acceptsHoldRowPress(row.current.changedAt, Date.now())) action();
+    },
+    [],
+  );
 
   /* --- what the clock reads, and what it is called ------------------- */
   let value: string;
@@ -167,14 +189,14 @@ export function FocusHold({
             <>
               <FocusAction
                 label={t('Start now')}
-                onPress={startNow}
+                onPress={settled(startNow)}
                 accessibilityLabel={t('Start the hold now, without the count-in')}
               />
               <View className="w-sm" />
               <FocusQuietAction
                 icon="x"
                 width="w-[56px]"
-                onPress={cancel}
+                onPress={settled(cancel)}
                 accessibilityLabel={t('Cancel the timer without logging')}
               />
             </>
@@ -185,7 +207,7 @@ export function FocusHold({
                   <FocusQuietAction
                     label={`+${stepSeconds}`}
                     width="w-[72px]"
-                    onPress={() => add(stepSeconds)}
+                    onPress={settled(() => add(stepSeconds))}
                     accessibilityLabel={t('Hold {seconds} seconds longer', {
                       seconds: stepSeconds,
                     })}
@@ -197,14 +219,14 @@ export function FocusHold({
                 label={t('Stop')}
                 icon="pause"
                 tone="filled"
-                onPress={stop}
+                onPress={settled(stop)}
                 accessibilityLabel={t('Stop the clock and log what it read')}
               />
               <View className="w-sm" />
               <FocusQuietAction
                 icon="x"
                 width="w-[56px]"
-                onPress={cancel}
+                onPress={settled(cancel)}
                 accessibilityLabel={t('Abandon the hold without logging')}
               />
             </>
@@ -212,7 +234,7 @@ export function FocusHold({
             <FocusAction
               label={t('Start')}
               icon="play"
-              onPress={onStart}
+              onPress={settled(onStart)}
               accessibilityLabel={t('Start the {count} clock', {
                 count: formatCount(target.set.count, exercise.countUnit),
               })}

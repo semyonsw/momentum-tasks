@@ -174,3 +174,80 @@ export function withWorkAdjusted(spec: SetTimerSpec, deltaSeconds: number): SetT
   if (spec.mode === 'countup') return spec;
   return { ...spec, workSeconds: Math.max(MIN_WORK_SECONDS, spec.workSeconds + deltaSeconds) };
 }
+
+/**
+ * How long past the bell the SHELL waits before logging a countdown itself.
+ *
+ * Two hooks watch the same clock: `useSetTimer` on screen, which rings the bell
+ * (`useCountdownBeeps` reaching 0) and commits, and `useSetTimerCommit` in the
+ * shell, which exists for the screen that is not mounted. Both ticked at 4 Hz on
+ * unrelated phases, so about half the time the shell saw `over` first, cleared
+ * the timer, and the screen's hook never rendered the zero its final tone hangs
+ * on — a plank that ended in silence. Waiting a beat lets the screen ring and
+ * commit first; the shell stays the backstop, three ticks late at worst, which
+ * nobody standing up from a plank can notice. Under a second, so the backstop
+ * still lands well before the rest it starts would be worth anything.
+ */
+export const SHELL_COMMIT_GRACE_MS = 750;
+
+/** Should the shell-level backstop log this countdown now? */
+export function shellShouldCommit(spec: SetTimerSpec, nowMs: number): boolean {
+  const end = workEndsAt(spec);
+  return end != null && nowMs >= end + SHELL_COMMIT_GRACE_MS;
+}
+
+/**
+ * The "go" cue's latch, one per mounted `useSetTimer`.
+ *
+ * `wentFor` is the `startedAt` whose work phase has already been announced (or
+ * was already under way when this instance first looked). `observed` is false
+ * until the instance has seen its first reading, timer or no timer.
+ */
+export interface GoLatch {
+  observed: boolean;
+  wentFor: number | null;
+}
+
+export const UNOBSERVED_GO: GoLatch = { observed: false, wentFor: null };
+
+/**
+ * How recently the work phase must have begun for an instance's FIRST reading to
+ * still count as its arrival. The set-timer pill mounts only once a timer exists,
+ * so a ▶ with no get-ready (a chained round, an exercise with no lead-in) is first
+ * seen already in `work` — and that is the start, not the past.
+ */
+export const GO_REACH_MS = 1000;
+
+/**
+ * Sound "go" now?
+ *
+ * Only for a work phase this instance watched ARRIVE: a timer it saw in get-ready,
+ * one that started (or was rewound by "Start now", which is a new `startedAt`)
+ * while it was mounted, or one whose work began within `GO_REACH_MS` of the
+ * instance's first look. Opening focus mode on a plank already forty seconds in
+ * mounts a fresh instance, and a per-instance latch that started empty used to
+ * replay the long tone at that moment — "go" for a hold that went long ago. So a
+ * first reading deep into the work phase only arms the latch, the same rule
+ * `nextCue` keeps for the count-in.
+ */
+export function goCue(
+  latch: GoLatch,
+  spec: SetTimerSpec | null,
+  nowMs: number,
+): { fire: boolean; latch: GoLatch } {
+  const phase = spec ? readSetTimer(spec, nowMs).phase : null;
+  const working = spec != null && phase === 'work';
+
+  if (!latch.observed) {
+    const workAgeMs = spec ? nowMs - (spec.startedAt + spec.prepareSeconds * 1000) : Infinity;
+    const fresh = working && workAgeMs < GO_REACH_MS;
+    return {
+      fire: fresh,
+      latch: { observed: true, wentFor: working ? spec.startedAt : null },
+    };
+  }
+  if (working && latch.wentFor !== spec.startedAt) {
+    return { fire: true, latch: { observed: true, wentFor: spec.startedAt } };
+  }
+  return { fire: false, latch };
+}

@@ -508,7 +508,9 @@ describe('rest lengths: the exercise, then the setting', () => {
       expect(isResting(before)).toBe(true);
 
       useActiveWorkout.getState().completeSet(entry.localId, entry.sets[0].localId);
-      expect(useActiveWorkout.getState().rest).toBe(before);
+      // Everything the pill reads is untouched; only the measurement is spent, so
+      // the next ✓ does not record this rest a second time (`consumeRest`).
+      expect(useActiveWorkout.getState().rest).toEqual({ ...before, startedAt: null });
     } finally {
       useSettings.getState().setFlag('autoStartRest', true);
     }
@@ -1439,6 +1441,30 @@ describe('rest actually taken', () => {
     const rows = draftToSetHistory(finished);
 
     expect(rows[0].restTakenSeconds).toBe(100);
+  });
+
+  it('measures a rest once — the next ✓ with no new rest records nothing', () => {
+    // With auto-rest off nothing replaces an expired rest, and every later ✓ used
+    // to measure from its old start: 95 s, then 160 s, then more — rests nobody
+    // took, skewing the medians.
+    const session = startRoutine();
+    const entry = session.entries[0];
+
+    useSettings.getState().setFlag('autoStartRest', false);
+    try {
+      useActiveWorkout.getState().startRest(60, 'set');
+      useActiveWorkout.setState((state) => ({
+        rest: { ...state.rest, startedAt: Date.now() - 95_000, endsAt: Date.now() - 35_000 },
+      }));
+
+      useActiveWorkout.getState().completeSet(entry.localId, entry.sets[0].localId);
+      useActiveWorkout.getState().completeSet(entry.localId, entry.sets[1].localId);
+
+      expect(setById(entry.localId, entry.sets[0].localId)?.restTakenSeconds).toBe(95);
+      expect(setById(entry.localId, entry.sets[1].localId)?.restTakenSeconds).toBeUndefined();
+    } finally {
+      useSettings.getState().setFlag('autoStartRest', true);
+    }
   });
 });
 

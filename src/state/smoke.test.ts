@@ -31,7 +31,7 @@ import { useLibrary } from './libraryStore';
 import { useSettings } from './settingsStore';
 import { useWorkoutHistory } from './workoutHistoryStore';
 import { parseBackup } from '../lib/backup';
-import { autoRoundToStart } from '../lib/rounds';
+import { ROUND_START_GRACE_MS, autoRoundToStart } from '../lib/rounds';
 import { upNextSet } from '../lib/upNext';
 import { seedRoutines, seedUser } from '../data/seed';
 import { fixtureHistoryByExerciseId } from '../../test/fixtures/history';
@@ -236,7 +236,7 @@ describe('a boxing session', () => {
     // Rest over: the chain names round 2, and it starts with no lead-in at all.
     const due = autoRoundToStart({
       ...mid,
-      nowMs: (useActiveWorkout.getState().rest.endsAt ?? 0) + 1,
+      nowMs: (useActiveWorkout.getState().rest.endsAt ?? 0) + ROUND_START_GRACE_MS,
     });
     expect(due?.setId).toBe(bag.sets[1].localId);
 

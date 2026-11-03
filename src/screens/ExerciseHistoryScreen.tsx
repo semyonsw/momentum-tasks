@@ -59,13 +59,14 @@ import {
   describeE1rmTrend,
   e1rmSeries,
   exerciseBests,
+  formatBestLoad,
   prTimeline,
   recordLabel,
   recordSet,
   recordValue,
 } from '../lib/records';
 import { bodyweightAt } from '../lib/bodyweightLog';
-import { formatCount, formatShortDate, formatWeight, kgToLb } from '../lib/units';
+import { formatCount, formatShortDate, kgToLb } from '../lib/units';
 import { term } from '../lib/i18n';
 import { useSettings } from '../state/settingsStore';
 import { chartWash, palette } from '../theme/tokens';
@@ -155,7 +156,8 @@ export function ExerciseHistoryScreen({
   const bestsLine = describeBests(
     bests,
     exercise.countUnit,
-    (kg) => `${loadPrefix}${formatWeight(kg, unitSystem, 'external')}`,
+    // Bests are on-body totals, so no `+` even on added-bodyweight work.
+    (kg) => formatBestLoad(kg, unitSystem),
     (count) => formatCount(count, exercise.countUnit),
     lang,
   );

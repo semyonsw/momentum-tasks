@@ -68,6 +68,19 @@ export interface RestSlice {
   pausedRemainingMs: number | null;
 }
 
+/**
+ * How long past a rest's deadline the chain waits before starting the round.
+ *
+ * The rest's final tone is `useRestTimer` reading zero, and the chain's own 4 Hz
+ * tick is not in step with it: starting the round the instant `endsAt` passed
+ * cleared the rest (`skipRest`) before the pill had rendered its zero, so most
+ * rests between rounds ended without the long tone — the one cue that says "hands
+ * up" to somebody not looking at the phone. Half a second is two of the pill's
+ * ticks, long enough for it to ring and short enough that the round still starts
+ * on the bell as far as anyone can tell.
+ */
+export const ROUND_START_GRACE_MS = 500;
+
 /** Any running clock at all — the chain never talks over one. */
 export type TimerSlice = object | null;
 
@@ -104,9 +117,9 @@ export interface AutoRoundStart {
  *    yet", and a chain that started the next round through a paused clock would
  *    be the one control here that cannot be stopped.
  *
- * A rest that has reached zero does NOT block: the pill sits at 0:00 until
- * something moves it, and that something is this. The caller skips the spent rest
- * as it starts the round — see the hook.
+ * A rest that has reached zero does NOT block, once `ROUND_START_GRACE_MS` has let
+ * its final tone ring. The caller skips the spent rest as it starts the round —
+ * see the hook.
  */
 export function autoRoundToStart(input: AutoRoundInput): AutoRoundStart | null {
   const { session, roundsAuto, rest, setTimer, nowMs } = input;
@@ -123,7 +136,7 @@ export function autoRoundToStart(input: AutoRoundInput): AutoRoundStart | null {
   if (!next) return null;
 
   if (rest.pausedRemainingMs != null) return null;
-  if (rest.endsAt != null && rest.endsAt > nowMs) return null;
+  if (rest.endsAt != null && nowMs < rest.endsAt + ROUND_START_GRACE_MS) return null;
 
   return { entryId: entry.localId, setId: next.localId };
 }

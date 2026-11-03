@@ -6,6 +6,7 @@ import {
   daysBetween,
   formatChartDate,
   formatClock,
+  formatCountdown,
   formatCount,
   formatDuration,
   formatShortDate,
@@ -158,6 +159,24 @@ describe('formatClock', () => {
 
   it('never goes negative', () => {
     expect(formatClock(-12)).toBe('0:00');
+  });
+});
+
+describe('formatCountdown', () => {
+  it('reads 0:00 only when the countdown is actually over', () => {
+    // The rest pill rounded, so it said 0:00 with 0.4 s — and a final tone — to go.
+    expect(formatCountdown(0.4)).toBe('0:01');
+    expect(formatCountdown(0)).toBe('0:00');
+  });
+
+  it('shows the same whole second the count-in beeps for', () => {
+    expect(formatCountdown(89.4)).toBe('1:30');
+    expect(formatCountdown(90)).toBe('1:30');
+    expect(formatCountdown(90.1)).toBe('1:31');
+  });
+
+  it('never goes negative', () => {
+    expect(formatCountdown(-3)).toBe('0:00');
   });
 });
 

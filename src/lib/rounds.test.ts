@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { autoRoundToStart, hasRoundLeft, isRoundExercise } from './rounds';
+import { ROUND_START_GRACE_MS, autoRoundToStart, hasRoundLeft, isRoundExercise } from './rounds';
 import type { DraftEntry, DraftSession, DraftSet } from './draft';
 import { DEFAULT_OVERLOAD_POLICY, evaluateOverload } from './progressiveOverload';
 import { seedExercises } from '../data/seed';
@@ -71,7 +71,7 @@ function ready() {
   return {
     session: session([bag]),
     roundsAuto: bag.localId,
-    rest: { endsAt: NOW - 1, pausedRemainingMs: null },
+    rest: { endsAt: NOW - ROUND_START_GRACE_MS, pausedRemainingMs: null },
     setTimer: null,
     nowMs: NOW,
   };
@@ -117,6 +117,17 @@ describe('autoRoundToStart', () => {
         ...ready(),
         rest: { endsAt: NOW + 30_000, pausedRemainingMs: null },
       }),
+    ).toBeNull();
+  });
+
+  it('waits a beat past the rest’s zero, so its final tone gets to ring', () => {
+    // Starting the round clears the rest; on the instant of zero that was before
+    // the pill had read 0, and the long tone never played.
+    expect(
+      autoRoundToStart({ ...ready(), rest: { endsAt: NOW - 1, pausedRemainingMs: null } }),
+    ).toBeNull();
+    expect(
+      autoRoundToStart({ ...ready(), rest: { endsAt: NOW, pausedRemainingMs: null } }),
     ).toBeNull();
   });
 

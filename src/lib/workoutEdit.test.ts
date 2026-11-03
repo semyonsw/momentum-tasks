@@ -164,6 +164,15 @@ describe('moving a workout in time', () => {
     expect(Date.parse(next.endedAt) - Date.parse(next.startedAt)).toBe(74 * 60_000);
   });
 
+  it('keeps the stored duration and the end in agreement past the cap', () => {
+    // An imported 14-hour record: the end was computed from the 600 cap while
+    // `durationMinutes` stayed 840, so the record said two different things.
+    const long = { ...workout(), durationMinutes: 840 };
+    const next = retimeWorkout(long, new Date(2026, 7, 16, 6, 0));
+    expect(next.durationMinutes).toBe(600);
+    expect(Date.parse(next.endedAt) - Date.parse(next.startedAt)).toBe(600 * 60_000);
+  });
+
   it('nudges by whole minutes, one day being 1440 of them', () => {
     const next = shiftWorkout(workout(), -1440);
     expect(next.startedAt).toBe(new Date(2026, 7, 16, 10, 24).toISOString());
