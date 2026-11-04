@@ -12,6 +12,7 @@ import {
   totalXp,
   xpBreakdown,
   XP_WEIGHTS,
+  xpWeightsFor,
 } from './xp';
 
 /**
@@ -145,5 +146,65 @@ describe('the level curve', () => {
   it('says what it is counting toward', () => {
     expect(describeNextLevel(levelProgress(1920), 'en')).toBe('of 2,100 XP to level 7');
     expect(describeNextLevel(levelProgress(1920), 'ru')).toContain('7');
+  });
+});
+
+describe('one log per app (3.0.0)', () => {
+  const one = [{ day: '2026-10-01', value: 1 }];
+  const all = () =>
+    facts({
+      sets: [{ day: '2026-10-01', value: 10 }],
+      workouts: one,
+      tasksDone: [...one, ...one],
+      perfectDays: one,
+      amounts: one,
+      records: one,
+    });
+
+  it('each app levels on its own log, and lists only its own rows', () => {
+    expect(xpBreakdown(all(), 'workout').map((line) => line.source)).toEqual([
+      'sets',
+      'workouts',
+      'records',
+    ]);
+    expect(totalXp(all(), 'workout')).toBe(10 * 2 + 40 + 60);
+    expect(xpBreakdown(all(), 'tasks').map((line) => line.source)).toEqual([
+      'tasksDone',
+      'perfectDays',
+    ]);
+    expect(totalXp(all(), 'tasks')).toBe(2 * 5 + 25);
+    expect(xpBreakdown(all(), 'expenses').map((line) => line.source)).toEqual(['amounts']);
+    expect(totalXp(all(), 'expenses')).toBe(3);
+  });
+
+  it('the three apps split the table between them, every row once', () => {
+    const rows = (['workout', 'tasks', 'expenses'] as const).flatMap((v) =>
+      xpWeightsFor(v).map((row) => row.source),
+    );
+    expect([...rows].sort()).toEqual(XP_WEIGHTS.map((row) => row.source).sort());
+    expect(xpWeightsFor()).toBe(XP_WEIGHTS);
+  });
+
+  it('the Workout app holding 2.x tasks and money is not levelled by them', () => {
+    const input: LogsInput = {
+      ...EMPTY,
+      workouts: [workout('2026-10-01', 20)],
+      tasks: [
+        {
+          id: 't',
+          name: 't',
+          schedule: { kind: 'daily' },
+          auto: null,
+          startedOn: '2026-10-01',
+          reminder: null,
+          archivedAt: null,
+          order: 0,
+        },
+      ],
+      log: { t: { '2026-10-01': { mark: 'done', note: '' } } },
+    };
+    const scoped = logFacts({ ...input, variant: 'workout' });
+    expect(scoped.tasksDone).toEqual([]);
+    expect(totalXp(scoped, 'workout')).toBe(40 + 20 * 2);
   });
 });

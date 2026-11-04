@@ -5,11 +5,13 @@
  *   │ ▮▯  Insights              2 patterns   › │   56 dp, raised glass
  *   ╰──────────────────────────────────────────╯
  *
- * At the foot of ALL THREE histories, under Wrapped and above Settings (the
- * T-U7 / T-10 foot rows): an insight is about how the logs relate, so it
- * belongs to none of them more than the others, and the past is where a look
- * back belongs. Rejected: a Landing card — it would be a fourth thing competing
- * for the first screen, for a page whose cards change once in weeks.
+ * At the foot of the spending history, under Wrapped and above Settings (the
+ * T-10 foot row): the past is where a look back belongs. Until 3.0.0 it sat
+ * under all three histories, because most insights compared two logs; since the
+ * split only the Expenses app has a card left to show (`insights.insightsOffered`),
+ * and the shell passes no `onOpenInsights` elsewhere, so the door is not drawn.
+ * Rejected: a card on the section's first screen — a page whose cards change
+ * once in weeks does not earn a place there.
  *
  * The count is `useInsights`' own, so the door never promises a card the screen
  * does not show; with none it says so instead of hiding — the screen explains

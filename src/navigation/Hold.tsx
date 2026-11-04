@@ -1,5 +1,5 @@
 /**
- * The roots — Home and the four sections — FROZEN while a pushed screen fully
+ * The roots — the app's section and Settings — FROZEN while a pushed screen fully
  * covers them. They are `display: none` then, so nothing they would draw is
  * seen; but they were still RE-RENDERED on every shell render, and during a
  * workout that is every set logged: each ✓ and each ± rebuilt Home (its hero,

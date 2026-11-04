@@ -1,6 +1,19 @@
 /**
  * App entry — providers, the boundary, the notification handler, and the shell.
  *
+ * ── ONE ENTRY, THREE APPS (3.0) ───────────────────────────────────────────
+ *
+ * This file is the entry of the Workout, Tasks and Expenses APKs alike
+ * (`lib/appVariant.ts`), and the background work below is mounted only in the
+ * app it belongs to — `mountsFor` in `lib/appEntry.ts` decides, so the rule is
+ * tested for all three without a build. The session clock, the history re-read
+ * and migration are the training log's, so Workout's; the budget alerts are the
+ * money's, so Expenses'. The reminder sync runs everywhere and decides inside
+ * `useReminders` which reminders are this app's. Backups and notifications are
+ * every app's. Mounting them all everywhere would have been wasteful at best —
+ * and at worst the Workout app, which still holds the old money on disk,
+ * raising a budget alert for an app the user is not in.
+ *
  * Everything about WHICH screen is showing lives in `src/navigation/AppShell`;
  * everything about WHAT the data is lives in the three stores under `src/state`
  * (the library and routines, the settings, the finished workouts).
@@ -52,7 +65,7 @@
  * `components/LaunchScreen.tsx`, drawn OVER everything else on a cold start: it
  * opens on the native splash's own picture — the green ✓ on the page colour — so
  * the handover from Android's splash to JS is not a cut, and it leaves once the
- * three stores it names have really loaded (2.3 s at the least, 6 s at the most;
+ * store this app is built on has really loaded (2.3 s at the least, 6 s at the most;
  * `lib/launchReady.ts`). The app renders UNDER it from the first frame, so by
  * the time it dissolves the screen behind it is already there. It is keyed to
  * this JS process, not to the app coming to the foreground: a resume never shows
@@ -76,6 +89,8 @@ import { reportRootHeight } from './src/hooks/useKeyboard';
 import { useSettings } from './src/state/settingsStore';
 import { prepareAudio } from './src/lib/beeper';
 import { rgbChannels, themeColors } from './src/lib/theme';
+import { APP_VARIANT } from './src/lib/appVariant';
+import { mountsFor } from './src/lib/appEntry';
 import { applyTheme } from './src/theme/tokens';
 import {
   REMINDER_KIND,
@@ -143,6 +158,9 @@ try {
  */
 let launchPlayed = false;
 
+/** What this app mounts in the background — see `lib/appEntry.ts`. */
+const MOUNTS = mountsFor(APP_VARIANT);
+
 export default function App() {
   const [launching, setLaunching] = useState(() => !launchPlayed);
   useEffect(() => {
@@ -179,14 +197,17 @@ export default function App() {
      * equals the old one re-rendered every history subscriber and re-ran every
      * overload verdict in the middle of the launch animation, to learn nothing.
      */
-    if (useWorkoutHistory.getState().loadFailed) useWorkoutHistory.getState().reloadHistory();
+    if (MOUNTS.history && useWorkoutHistory.getState().loadFailed) {
+      useWorkoutHistory.getState().reloadHistory();
+    }
     /*
      * Once, on the first launch after upgrading. In an effect rather than at module
      * scope because it is async and it touches two storage systems, and a side
      * effect that size hiding inside an import is how a launch crash becomes hard
-     * to place.
+     * to place. Only the Workout app has a 0.10-era log to bring across: it is the
+     * one install that ever ran 0.10.
      */
-    void migrateHistoryIfNeeded();
+    if (MOUNTS.history) void migrateHistoryIfNeeded();
 
     /*
      * Back in front: the timer alerts in the shade are stale news — the session
@@ -201,8 +222,8 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <Reminders />
-      <BudgetAlerts />
+      {MOUNTS.reminders ? <Reminders /> : null}
+      {MOUNTS.budgetAlerts ? <BudgetAlerts /> : null}
       <Themed>
         {(themeKey) => (
           <>
@@ -310,7 +331,7 @@ function Root() {
   if (asking && !chosen) return <LanguageChoiceScreen />;
   return (
     <>
-      <SessionClock />
+      {MOUNTS.sessionClock ? <SessionClock /> : null}
       <AppShell />
       {/* Above the shell, so it outlives whichever route is on top. */}
       <DebriefHost />
@@ -334,8 +355,10 @@ function Reminders() {
 
 /**
  * The budget alerts (M1), mounted beside the reminders for the same reason: an
- * amount saved anywhere — the landing's quick add, a confirmed recurring
- * payment — can be the one that crosses 80%. Off unless a budget opted in.
+ * amount saved anywhere — the keypad, a confirmed recurring payment — can be
+ * the one that crosses 80%. Off unless a budget opted in. Expenses only: the
+ * Workout app keeps the old money on disk, and an alert about it would be for
+ * an app the user is not in.
  */
 function BudgetAlerts() {
   useBudgetAlerts();
@@ -347,7 +370,7 @@ function BudgetAlerts() {
  *
  * The shell renders only the top of its stack, so anything mounted inside the
  * session screen stops the moment `Add an exercise` is pushed over it or the user
- * backs out to Home mid-rest. Two things cannot afford that: the pocket alarms
+ * backs out to the section mid-rest. Two things cannot afford that: the pocket alarms
  * (`useTimerAlerts`), the boxing round chain (`useAutoRounds`) and the bell that
  * logs a countdown set (`useSetTimerCommit`) — all read the store and the clock
  * and nothing on screen. A sibling rendering nothing rather

@@ -125,13 +125,19 @@ describe('recording an amount', () => {
     expect(amount.value).toBe(401);
   });
 
-  it('answers the Track expenses task by itself', () => {
+  /*
+   * Until 3.0.0 this answered the Track expenses task by itself. Since the split
+   * no app shows both the amounts and the tasks (`settingsScope.autoTickOffered`),
+   * so an amount ticking a task list nobody here can see would only be writing
+   * marks the user never made into the copy a backup carries to the Tasks app.
+   * The tick itself is still `tasksStore.tickAuto`'s, and tested there.
+   */
+  it('no longer answers the Track expenses task: no app holds both logs', () => {
     const money = useTasks.getState().tasks.find((task) => task.auto === 'money');
     if (!money) throw new Error('the seed no longer ships an auto-ticked money task');
 
     useMoney.getState().addAmount(draft);
-    const today = Object.keys(useTasks.getState().log[money.id] ?? {});
-    expect(today).toHaveLength(1);
+    expect(Object.keys(useTasks.getState().log[money.id] ?? {})).toHaveLength(0);
   });
 });
 

@@ -13,10 +13,13 @@
  *
  * ── ONE CHAT PER SECTION, AND IT SAYS WHICH ────────────────────────────────
  *
- * Three chats rather than one, because each is about a different log and the
- * context sent with a question is that log alone. The kicker names the section
- * and the line under it names what is read, so there is never a question about
- * what the assistant can see: the training log, the task answers, or the amounts.
+ * One chat per log, because the context sent with a question is that log alone.
+ * Since 3.0.0 each app is one log (`lib/appVariant.ts`), so each app has exactly
+ * one of these chats — `lib/ai/aiScope.ts` names it, and `state/aiActions.ts`
+ * refuses to ask or apply from any other. The Workout app's store still holds
+ * the 2.x Tasks and Finance chats; they are kept, never opened here. The kicker
+ * names the section and the line under it names what is read, so there is never
+ * a question about what the assistant can see.
  *
  * ── THE SCREEN IS COMPOSITION ──────────────────────────────────────────────
  *

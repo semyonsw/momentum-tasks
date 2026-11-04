@@ -581,8 +581,6 @@ const RU: Record<string, string> = {
   'Keep my history': 'Оставить историю',
   workout: 'тренировка',
   workouts: 'тренировок',
-  'Everything on this screen is about training. Daily tasks and Finance have settings screens of their own, and the backup that carries all three is one row in the general section.':
-    'Всё на этом экране — про тренировки. У ежедневных задач и финансов есть свои экраны настроек, а резервная копия, которая хранит всё сразу, — одна строка в общем разделе.',
 
   /* --- the workout, the library, the log and the sheets ------------ */
   'A day': 'День',
@@ -668,8 +666,6 @@ const RU: Record<string, string> = {
     'Изменить «{name}»: отдых, значения по умолчанию и цели',
   'Edit {noun}': 'Изменить {noun}',
   'Elbows in, pause at the chest': 'Локти прижаты, пауза у груди',
-  'Every duration, switch, target and default across all three sections goes back to how it shipped, and your bodyweight is cleared. Your exercises, routines, history, tasks and amounts are untouched.':
-    'Все длительности, переключатели, цели и значения по умолчанию во всех трёх разделах вернутся к исходным, а вес тела будет очищен. Упражнения, программы, история, задачи и суммы останутся нетронутыми.',
   'Every other workout renumbers from this one — the ones before it count down, the ones after it count up. Set it once on any session and the whole log lines up, including the sessions you did before this app existed.':
     'Все остальные тренировки перенумеруются от этой: те, что раньше, идут вниз, те, что позже, — вверх. Задайте номер один раз на любой тренировке, и весь журнал выстроится, включая тренировки до появления приложения.',
   'Every set in this workout moves with it': 'Все подходы этой тренировки переедут вместе с ней',
@@ -1055,8 +1051,6 @@ const RU: Record<string, string> = {
   'Timer finished': 'Таймер закончился',
   'Rest is over, or a timed set rang its bell.': 'Отдых окончен или прозвенел подход на время.',
   'A tick {seconds} seconds before a timer ends.': 'Сигнал за {seconds} с до конца таймера.',
-  'A task, or a workout, at the time you asked to be reminded.':
-    'Задача или тренировка — в то время, о котором вы просили напомнить.',
   'Add to workout': 'Добавить в тренировку',
   'Add to that workout': 'Добавить в ту тренировку',
   'Show the log or the graphs': 'Показать журнал или графики',
@@ -1109,8 +1103,6 @@ const RU: Record<string, string> = {
   'makes this phone look like the file, so export first if there is anything here you would miss. A backup written by an older version carries no tasks and no amounts, and restoring one leaves both of those exactly where they are rather than emptying them. A workout in progress is not part of a backup: it carries a running clock.':
     'делает телефон таким, как файл, — поэтому сначала выгрузите то, что жалко потерять. В копии из старой версии нет ни задач, ни сумм, и восстановление такой копии оставит и то и другое как есть, а не очистит. Идущая тренировка в копию не входит: в ней работают часы.',
   'Reset every setting': 'Сбросить все настройки',
-  'puts all three sections’ settings back to their defaults at once. It does not touch a single thing you have logged — not an exercise, not a routine, not an answered day, not an amount.':
-    'разом возвращает настройки всех трёх разделов к исходным. Ничего из записанного это не трогает — ни упражнение, ни программу, ни отвеченный день, ни сумму.',
   'Add a set to {name}': 'Добавить подход — {name}',
   '+ Add a set': '+ Добавить подход',
   '+ Add an exercise': '+ Добавить упражнение',
@@ -1245,8 +1237,8 @@ const RU: Record<string, string> = {
   'Auto-start rest': 'Автостарт отдыха',
   'Rest timer starts when you log a set': 'Таймер отдыха запускается, когда вы отмечаете подход',
   'Back, workout keeps running': 'Назад, тренировка продолжается',
-  'Workout still running — resume it from Home':
-    'Тренировка продолжается — вернуться к ней можно с Главной',
+  'Workout still running — resume it from the Workout tab':
+    'Тренировка продолжается — вернуться к ней можно со вкладки «Тренировка»',
   Volume: 'Объём',
   'Keep training': 'Продолжить тренировку',
   'Changed from the plan': 'Отличается от плана',
@@ -1293,7 +1285,7 @@ const RU: Record<string, string> = {
   Empty: 'Пустая',
   'Start blank and add exercises yourself': 'Начать с нуля и добавить упражнения самому',
   'Random…': 'Случайная…',
-  'Pick muscles and length, Momentum fills it in': 'Выберите мышцы и длину — Momentum заполнит её',
+  'Pick muscles and length, the app fills it in': 'Выберите мышцы и длину — приложение заполнит её',
   Manage: 'Управление',
   'Plates or machine': 'Блины или тренажёр',
   'e.g. barbell squat, leg press, cable row': 'напр. присед со штангой, жим ногами, тяга блока',
@@ -1357,6 +1349,20 @@ const RU: Record<string, string> = {
   accounts: 'счетов',
   'Train · tick · count': 'Тренируйся · отмечай · считай',
 
+  /* --- 3.0.0: three apps. The launch screen's line under each app's name, the
+     reminder channel each app describes in the phone's settings, and the refusal
+     of a file that holds nothing for this app. --- */
+  'Train · log · progress': 'Тренируйся · записывай · расти',
+  'Plan · tick · repeat': 'Планируй · отмечай · повторяй',
+  'Spend · save · count': 'Трать · копи · считай',
+  'A workout, at the time you asked to be reminded.':
+    'Тренировка — в то время, о котором вы просили напомнить.',
+  'A task, at the time you asked to be reminded.':
+    'Задача — в то время, о котором вы просили напомнить.',
+  'A budget nearing or passing its limit.': 'Бюджет подходит к пределу или превысил его.',
+  'That file has no tasks in it.': 'В этом файле нет задач.',
+  'That file has no expenses in it.': 'В этом файле нет расходов.',
+
   /* ── The AI assistant ────────────────────────────────────────────────
      Settings → AI assistant, the key test, the three chats, the routine
      suggestions and their review screen. Gemini answers in the app's own
@@ -1402,8 +1408,6 @@ const RU: Record<string, string> = {
   'Connect a key to see every model it can use.':
     'Подключите ключ, чтобы увидеть все доступные ему модели.',
   'What it reads': 'Что он читает',
-  'Only the section you ask from: your workouts, your tasks or your amounts, summarised on the phone first. Nothing is changed until you press Add or Apply.':
-    'Только раздел, из которого вы спрашиваете: тренировки, задачи или суммы, — и сначала в виде сводки, собранной на телефоне. Ничего не меняется, пока вы не нажмёте «Добавить» или «Применить».',
   'Test & connect': 'Проверить и подключить',
   'Test again': 'Проверить снова',
   'Testing your key': 'Проверяю ключ',
@@ -1644,8 +1648,6 @@ const RU: Record<string, string> = {
   'Pick your own three colours': 'Выберите свои три цвета',
   'The three colours tint the buttons, the rings, the lit cards and the light behind every section. The AI button keeps its own colours so it always stands out.':
     'Три цвета окрашивают кнопки, кольца, подсвеченные карточки и свет за каждым разделом. Кнопка ИИ сохраняет свои цвета, чтобы всегда выделяться.',
-  'A backup is plain JSON, so you can read it, keep it anywhere, and move it to another phone. It holds all three sections — training, the daily tasks and the finance — and every setting.':
-    'Копия — это обычный JSON: её можно прочитать, хранить где угодно и перенести на другой телефон. В ней все три раздела — тренировки, ежедневные задачи и финансы — и все настройки.',
   'Colour {n}': 'Цвет {n}',
   Hue: 'Оттенок',
   'Hex colour': 'Цвет в HEX',
@@ -2127,12 +2129,12 @@ const RU: Record<string, string> = {
   '{n} weekdays': '{n} будних дней',
   Insights: 'Наблюдения',
   'Correlation, not cause.': 'Это связь, а не причина.',
-  'Patterns across your three logs.': 'Закономерности между тремя журналами.',
+  'Patterns in your spending.': 'Закономерности в ваших тратах.',
   'Nothing to show yet': 'Пока нечего показать',
-  'Cards appear here when one log moves with another: tasks done on training days against rest days, and in weeks with 3+ workouts against weeks with fewer; spending on training days, and at weekends against weekdays.':
-    'Карточки появятся, когда один журнал меняется вместе с другим: задачи в дни тренировок и в дни отдыха, в недели с 3+ тренировками и в недели с меньшим числом; траты в дни тренировок, а также в выходные и в будни.',
-  'A card needs at least {days} days in each group ({weeks} weeks for weeks) over the last {window} weeks, and a gap of {points} points in tasks or {relative}% in spending. Smaller gaps are not shown.':
-    'Для карточки нужно хотя бы {days} дней в каждой группе ({weeks} недели для сравнения недель) за последние {window} недель и разница в {points} пунктов по задачам или {relative}% по тратам. Меньшие различия не показываются.',
+  'A card appears here when your spending at weekends differs from your spending on weekdays.':
+    'Карточка появится, когда ваши траты в выходные отличаются от трат в будни.',
+  'It needs at least {days} days in each group over the last {window} weeks, and a gap of {relative}%. Smaller gaps are not shown.':
+    'Для неё нужно хотя бы {days} дней в каждой группе за последние {window} недель и разница в {relative}%. Меньшие различия не показываются.',
   '{n} found': 'найдено: {n}',
   'Not enough data yet': 'Пока мало данных',
   // E1 · achievements (design 19a/19b, Wave 3 — behind the one switch)
@@ -2316,6 +2318,37 @@ const RU: Record<string, string> = {
     'В отмеченных категориях за этот период ничего нет.',
   'Transfers between your accounts are neither spending nor income, so they are not here. A whole-month amount counts only when the period covers its whole month.':
     'Переводы между счетами — не расходы и не доходы, поэтому их здесь нет. Сумма за весь месяц учитывается, только если период охватывает весь этот месяц.',
+  // 3.0.0 · three apps from one tree: each Settings and each AI coach speaks
+  // for its own log (`lib/settingsScope.ts`, `lib/ai/aiScope.ts`)
+  'Vacation pause, history range': 'Пауза на отпуск, период истории',
+  'A backup is plain JSON, so you can read it, keep it anywhere, and move it to another phone. It holds your training and every setting, and still carries the daily tasks and finance this app kept before they became apps of their own — so the Tasks and Expenses apps can be filled from it.':
+    'Копия — это обычный JSON: её можно прочитать, хранить где угодно и перенести на другой телефон. В ней ваши тренировки и все настройки, а также ежедневные задачи и финансы, которые это приложение хранило, пока они не стали отдельными приложениями, — из неё можно заполнить приложения Tasks и Expenses.',
+  'A backup is plain JSON, so you can read it, keep it anywhere, and move it to another phone. It holds your daily tasks and every setting.':
+    'Копия — это обычный JSON: её можно прочитать, хранить где угодно и перенести на другой телефон. В ней ваши ежедневные задачи и все настройки.',
+  'A backup is plain JSON, so you can read it, keep it anywhere, and move it to another phone. It holds your finance and every setting.':
+    'Копия — это обычный JSON: её можно прочитать, хранить где угодно и перенести на другой телефон. В ней ваши финансы и все настройки.',
+  'makes this app look like the file, so export first if there is anything here you would miss. A backup from the Workout app or from Momentum 2.x carries every section; this app reads its own part of it.':
+    'делает приложение точно таким, как в файле, поэтому сначала сделайте экспорт, если здесь есть что-то, что жалко потерять. Копия из приложения Workout или из Momentum 2.x содержит все разделы; это приложение берёт из неё свою часть.',
+  'puts this app’s settings back to their defaults at once. It does not touch a single thing you have logged — not an exercise, not a routine, not a workout.':
+    'разом возвращает настройки этого приложения к исходным. Ничего из записанного это не трогает — ни упражнение, ни программу, ни тренировку.',
+  'puts this app’s settings back to their defaults at once. It does not touch a single thing you have logged — not a task, not an answered day.':
+    'разом возвращает настройки этого приложения к исходным. Ничего из записанного это не трогает — ни задачу, ни отвеченный день.',
+  'puts this app’s settings back to their defaults at once. It does not touch a single thing you have logged — not an account, not an amount.':
+    'разом возвращает настройки этого приложения к исходным. Ничего из записанного это не трогает — ни счёт, ни сумму.',
+  'Every duration, switch, target and default in this app goes back to how it shipped. Your exercises, routines, history, gyms and bodyweight are untouched.':
+    'Все длительности, переключатели, цели и значения по умолчанию в этом приложении вернутся к исходным. Упражнения, программы, история, залы и вес тела останутся нетронутыми.',
+  'Every switch and default in this app goes back to how it shipped. Your tasks and every answered day are untouched.':
+    'Все переключатели и значения по умолчанию в этом приложении вернутся к исходным. Задачи и все отвеченные дни останутся нетронутыми.',
+  'Every default in this app goes back to how it shipped, the currency label included. Your accounts and amounts are untouched.':
+    'Все значения по умолчанию в этом приложении вернутся к исходным, включая обозначение валюты. Счета и суммы останутся нетронутыми.',
+  'Only your training — workouts, routines, exercises and the answers after a workout — summarised on the phone first. Nothing is changed until you press Add or Apply.':
+    'Только ваши тренировки — сами тренировки, программы, упражнения и ответы после тренировки, — и сначала в виде сводки, собранной на телефоне. Ничего не меняется, пока вы не нажмёте «Добавить» или «Применить».',
+  'Only your daily tasks, the days you answered and your notes, summarised on the phone first. Nothing is changed until you press Apply.':
+    'Только ваши ежедневные задачи, отвеченные дни и заметки — и сначала в виде сводки, собранной на телефоне. Ничего не меняется, пока вы не нажмёте «Применить».',
+  'Only your amounts, categories, accounts and budgets, summarised on the phone first. Nothing is changed until you press Apply.':
+    'Только ваши суммы, категории, счета и бюджеты — и сначала в виде сводки, собранной на телефоне. Ничего не меняется, пока вы не нажмёте «Применить».',
+  'Everything on this screen is about training. The look, the language, the backup and the AI coach are on the Settings screen itself.':
+    'Всё на этом экране — о тренировках. Оформление, язык, резервная копия и ИИ-тренер — на самом экране настроек.',
 };
 
 /** Test hook: the strings this build can translate. Not read by the app. */

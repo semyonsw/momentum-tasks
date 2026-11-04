@@ -56,6 +56,7 @@
  * Excel expects.
  */
 
+import type { AppVariant } from './appVariant';
 import { formatRir } from './effort';
 import { setKindOf } from './setType';
 import type { CompletedWorkout, WorkoutNumberAnchor } from './completedWorkout';
@@ -274,15 +275,35 @@ export function workoutsToCsv(
   return csvDocument(SET_COLUMNS, rows);
 }
 
+/** Which log a spreadsheet export reads. */
+export type CsvKind = 'amounts' | 'workouts';
+
+/**
+ * The spreadsheets each app offers: its own log, and only that.
+ *
+ * Workout offers the sets and Expenses the amounts; Tasks has no flat form (a
+ * task log is a grid of days, not a list of rows) and offers none. The Workout
+ * app does NOT offer its legacy amounts, unlike its backup: the backup must
+ * carry them so nothing is lost before it is moved, but a spreadsheet is a view
+ * somebody asks for, and the money is viewed in the Expenses app now.
+ */
+export function csvKinds(variant: AppVariant): readonly CsvKind[] {
+  if (variant === 'workout') return ['workouts'];
+  if (variant === 'expenses') return ['amounts'];
+  return [];
+}
+
 /**
  * `momentum-amounts-2026-10-09-0912` — sortable, and it says what it is.
  *
- * A different stem from the JSON backup's on purpose: a folder holding both must
- * not leave anybody guessing which one restores, and the backup's daily sweep
- * matches its own names exactly (`isBackupFileName` in `lib/autoBackup.ts`), so
- * it can never delete one of these. No extension: SAF appends `.csv` from the MIME type.
+ * A different stem from the JSON backups' on purpose: a folder holding both must
+ * not leave anybody guessing which one restores, and each app's daily sweep
+ * matches its own backup names exactly (`isBackupFileName` in
+ * `lib/autoBackup.ts`, `momentum-<app>-backup-<day>.json`), so it can never
+ * delete one of these — `momentum-workouts-…` is not `momentum-workout-backup-…`.
+ * No extension: SAF appends `.csv` from the MIME type.
  */
-export function csvBaseName(kind: 'amounts' | 'workouts', now: Date = new Date()): string {
+export function csvBaseName(kind: CsvKind, now: Date = new Date()): string {
   const time = `${pad(now.getHours())}${pad(now.getMinutes())}`;
   return `momentum-${kind}-${dayKey(now)}-${time}`;
 }

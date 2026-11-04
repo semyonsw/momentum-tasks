@@ -1,5 +1,5 @@
 /**
- * Wrapped (X1) — a month or a year across the three logs, as story cards.
+ * Wrapped (X1) — a month or a year of this app's log, as story cards.
  *
  *   ▬▬▬▬ ▬▬▬▬ ──── ──── ──── ──── ──── ────     the dash bar: where you are
  *   MOMENTUM · 2 / 8                       ✕
@@ -53,8 +53,18 @@ import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
 import { useWrapped } from '../hooks/useWrapped';
 import { tap } from '../lib/feedback';
+import { APP_VARIANT } from '../lib/appVariant';
+import { launchBrand } from '../lib/launchReady';
 import type { WrappedCard, WrappedPeriod, WrappedSummary } from '../lib/wrapped';
 import { curve, glass, motion, palette, radius, stopTint, tint } from '../theme/tokens';
+
+/*
+ * The name on the story's header and on the summary card is the app's own, the
+ * same untranslated name the launcher and the launch screen show. It said
+ * "Momentum" while one app held all three logs; a Tasks Wrapped signed by a
+ * name that is no longer on the phone would be a card from somewhere else.
+ */
+const APP_NAME = launchBrand(APP_VARIANT).wordmark;
 
 /** The share of the width that steps BACK; the rest steps on. */
 const BACK_ZONE = 0.35;
@@ -158,7 +168,7 @@ export function WrappedScreen({ period, onClose }: { period: WrappedPeriod; onCl
             style={{ flex: 1, fontSize: 12.5, letterSpacing: 1.1, textTransform: 'uppercase' }}
             className="font-semibold text-ink-muted"
           >
-            {`Momentum · ${index + 1} / ${cards.length}`}
+            {`${APP_NAME} · ${index + 1} / ${cards.length}`}
           </Text>
           <Pressable
             onPress={onClose}
@@ -396,7 +406,7 @@ function SummaryFrame({
             style={{ fontSize: 14 }}
             className="font-semibold text-ink"
           >
-            Momentum
+            {APP_NAME}
           </Text>
           <Text
             maxFontSizeMultiplier={1.3}

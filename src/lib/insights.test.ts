@@ -4,7 +4,9 @@ import type { CompletedWorkout } from './completedWorkout';
 import { parseDay, shiftDay, weekdayIndex } from './days';
 import {
   describeInsight,
+  insightIdsFor,
   insights,
+  insightsOffered,
   MIN_DAYS_PER_GROUP,
   MIN_POINTS,
   MIN_RELATIVE,
@@ -378,5 +380,47 @@ describe('the words', () => {
       'В дни тренировок вы выполняете больше задач: 100% против 50% в дни отдыха.',
     );
     expect(ru.sample).toBe('выборка: 32 тренировочных дня и 42 дня отдыха');
+  });
+});
+
+describe('one log per app (3.0.0)', () => {
+  /*
+   * Every comparison but one needs two logs, and no app has two any more. The
+   * Workout app still STORES the 2.x tasks and money — handed the lot, it must
+   * still say nothing, because it has no screen on which to check the claim.
+   */
+  function everything(): InsightsInput {
+    const { input } = trainingScenario({ onTraining: () => 4, onRest: () => 1 });
+    const amounts = daysFrom('2026-05-01').map((day) =>
+      spend(day, isMWF(day) ? 3000 : isWeekend(day) ? 4000 : 500),
+    );
+    return { ...input, amounts };
+  }
+
+  it('the combined reading finds cross-log cards in it (the fixture is worth checking)', () => {
+    // Every week is a 3-workout week, so the busy-weeks comparison has no quiet group.
+    expect(insights(everything()).map((x) => x.id)).toEqual([
+      'tasksOnTrainingDays',
+      'spendOnTrainingDays',
+      'spendOnWeekends',
+    ]);
+  });
+
+  it('Workout and Tasks find nothing, even holding every log', () => {
+    expect(insights({ ...everything(), variant: 'workout' })).toEqual([]);
+    expect(insights({ ...everything(), variant: 'tasks' })).toEqual([]);
+  });
+
+  it('Expenses keeps the one comparison inside its own log', () => {
+    expect(insights({ ...everything(), variant: 'expenses' }).map((x) => x.id)).toEqual([
+      'spendOnWeekends',
+    ]);
+  });
+
+  it('only Expenses has a door to them', () => {
+    expect(insightIdsFor('expenses')).toEqual(['spendOnWeekends']);
+    expect(insightsOffered('workout')).toBe(false);
+    expect(insightsOffered('tasks')).toBe(false);
+    expect(insightsOffered('expenses')).toBe(true);
   });
 });

@@ -1,8 +1,45 @@
-# Building the Android APK
+# Building the Android APKs
 
-A sideloadable, self-contained release APK for a Galaxy S24 (or any arm64 Android
+Sideloadable, self-contained release APKs for a Galaxy S24 (or any arm64 Android
 phone). No Expo account, no cloud build, no Metro server — the JS bundle is
 compiled into the APK, so it runs with the laptop switched off.
+
+## 3.0.0 — three apps, three APKs
+
+Workout, Tasks and Expenses are separate apps now, built from this one tree.
+`EXPO_PUBLIC_APP_VARIANT` picks which: `app.config.js` reads it for the package,
+launcher label, icon and permissions, and Metro inlines it into the bundle
+(`src/lib/appVariant.ts`). Unset means `workout`, which is exactly `app.json`.
+
+| App | APK | Package |
+| --- | --- | --- |
+| Workout | `momentum-workout-<version>.apk` | `com.semyonsw.workouttracker` — the existing install; updates in place |
+| Tasks | `momentum-tasks-<version>.apk` | `com.semyonsw.momentum.tasks` — new, starts empty |
+| Expenses | `momentum-expenses-<version>.apk` | `com.semyonsw.momentum.expenses` — new, starts empty |
+
+All three are signed with the same debug key, so each updates itself in place
+from then on. Workout keeps the 2.x tasks and money on the phone — not shown, not
+deleted, still written into its backups. Tasks and Expenses get their data by
+importing a backup: **Settings → Replace everything from a file**, and pick the
+last combined `momentum-backup-*.json` 2.x wrote (each app's own automatic
+backups are `momentum-<app>-backup-*`, so none of the three sweeps that file
+away). Only Workout carries the Health Connect permission.
+
+From WSL, `tools/release-apk.sh` builds all three in turn (or one:
+`tools/release-apk.sh tasks`) and checks each APK's key, package, version,
+permissions and bundle. By hand, set the variable for BOTH steps — and call the
+Expo CLI through the Linux node, because `npx expo` in this shared tree runs the
+Windows `node.exe`, which never sees a WSL environment variable:
+
+```bash
+export EXPO_PUBLIC_APP_VARIANT=tasks
+node node_modules/expo/bin/cli prebuild -p android --clean   # --clean: the package changed
+cd android && ./gradlew assembleRelease …                     # flags as in CLAUDE.md
+```
+
+Delete Metro's cache between variants (`/tmp/metro-*`): the transform cache is
+not keyed on env values, and a cached `appVariant.ts` would ship the previous
+variant's literal.
 
 ## 1.0.2 — where you are in the workout, and one gesture for reordering
 
@@ -267,15 +304,12 @@ are NOT interchangeable on a phone that has either installed.
 
 ## Install it on the phone
 
-The APK comes from the **[Releases page](../../releases)**. It is built and signed
-in CI on a `v*` tag and attached there
-(`.github/workflows/release.yml`) — it is no longer committed to the repo, because
-30 MB per release in git history, permanently, is an expensive way to host a file
-GitHub will host for free. Same download, same "open it and tap install".
+The current release's APKs are committed at the repo root —
+`momentum-{workout,tasks,expenses}-<version>.apk` — next to the previous ones as
+rollbacks. Install whichever of the three apps you want; each is its own app.
 
-1. On the phone, open the **Releases page**, expand **Assets** on the newest
-   release, and download `workout-tracker-<version>.apk`. (From a laptop instead:
-   download it there and copy it over by USB, Drive, Telegram — anything.)
+1. Copy the APK to the phone (USB, Drive, Telegram — anything), or plug the
+   phone in and let `./install.sh` / `Install.bat` push all three over adb.
 2. Open it in **Files** and tap install. The first time, Android asks to allow
    installs from that app; allow it and tap install again.
 3. Play Protect will warn that the developer is unknown, because the APK is
@@ -308,7 +342,7 @@ $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
 npm ci                                   # NOT `npm install --legacy-peer-deps`, see below
-npx expo prebuild -p android --clean     # when app.json or a native dep changed
+npx expo prebuild -p android --clean     # Windows node: set EXPO_PUBLIC_APP_VARIANT first for Tasks/Expenses
 cd android
 .\gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a
 ```

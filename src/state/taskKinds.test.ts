@@ -17,6 +17,10 @@ import { entryOf, type Task } from '../lib/tasks';
  * losing the task; a backup carries it there and back; a backup written by 2.2.0
  * (which had no such field) imports unchanged; and a cold start over old storage
  * comes up with every task and every mark where it was.
+ *
+ * Since 3.0.0 only the Tasks app restores tasks from a file, so the imports here
+ * name the `'tasks'` variant; the export still runs as Workout, because that app
+ * keeps carrying the 2.x tasks it holds.
  */
 
 const DAY = '2026-09-10';
@@ -92,9 +96,9 @@ describe('old data (every kind)', () => {
       workouts: [],
       tasks: V220_TASKS,
     });
-    const parsed = parseBackup(v220);
+    const parsed = parseBackup(v220, 'en', 'tasks');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'tasks');
     expect(useTasks.getState().tasks).toEqual(V220_TASKS.tasks);
     expect(useTasks.getState().log).toEqual(V220_TASKS.log);
   });
@@ -229,9 +233,9 @@ describe('counted tasks (T1)', () => {
     const text = exportBackupText();
     useTasks.getState().importTasks({ tasks: [stored()], log: {} });
 
-    const parsed = parseBackup(text);
+    const parsed = parseBackup(text, 'en', 'tasks');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'tasks');
     expect(useTasks.getState().tasks[0].target).toEqual({ count: 8, unit: 'glasses' });
     expect(entryOf(useTasks.getState().log, 'water', DAY)).toEqual({
       mark: null,
@@ -286,9 +290,9 @@ describe('N times a week (T2)', () => {
     });
     const text = exportBackupText();
     useTasks.getState().importTasks({ tasks: [stored()], log: {} });
-    const parsed = parseBackup(text);
+    const parsed = parseBackup(text, 'en', 'tasks');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'tasks');
     expect(useTasks.getState().tasks[0].schedule).toEqual({ kind: 'weekly', times: 4 });
     expect(entryOf(useTasks.getState().log, 'water', DAY).mark).toBe('done');
   });
@@ -341,9 +345,9 @@ describe('habits to avoid (T7)', () => {
     useTasks.getState().importTasks({ tasks: [stored({ avoid: true })] });
     const text = exportBackupText();
     useTasks.getState().importTasks({ tasks: [stored()], log: {} });
-    const parsed = parseBackup(text);
+    const parsed = parseBackup(text, 'en', 'tasks');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'tasks');
     expect(useTasks.getState().tasks[0].avoid).toBe(true);
   });
 

@@ -19,46 +19,63 @@
  * REJECTED: generating it from the i18n catalogue. The catalogue has the words
  * but not where they are, and "where" is the whole question.
  *
- * Sent with every section's chat (`aiPrompts.ts`): "where is X" is asked from
- * whichever chat happens to be open. About 22 KB — the price of the answer being
- * right, and paid once per request against a context that is often larger.
+ * ── ONE APP'S MAP, NOT THREE ──────────────────────────────────────────────
+ *
+ * Since 3.0.0 each APK is one section plus Settings (`lib/appVariant.ts`), so
+ * the map is assembled per app: its nav, its section's screens, the Settings it
+ * actually has and what its assistant can do. The Tasks app's assistant does
+ * not know there is a routine editor, because in the Tasks app there is not —
+ * and a guide that described it would send the user hunting for a screen this
+ * APK does not contain. `appGuide.test.ts` walks all three.
+ *
+ * Sent with the chat (`aiPrompts.ts`): "where is X" is asked from the chat. The
+ * Workout map is about 14 KB, the others a fraction of it — the price of the
+ * answer being right, paid once per request against a context often larger.
  */
+
+import type { AppVariant } from '../appVariant';
 
 /** How to use the guide — the rules, kept apart from the map they apply to. */
 export const APP_GUIDE_RULES = `APP GUIDE. Below is a map of this app's screens and controls. Use it whenever the user asks where something is, how to do something in the app, what a button does, what the app can do, or asks for a guide or documentation.
-- Answer "where/how" with the exact path of taps as a short numbered list in one "text" block (e.g. "1. Workout tab (dumbbell). 2. Book icon top-right. 3. ..."), naming icons by how they look. Mention a hold or hidden tap explicitly — those are what users miss.
+- Answer "where/how" with the exact path of taps as a short numbered list in one "text" block (e.g. "1. Settings tab (gear). 2. "AI coach" row. 3. ..."), naming icons by how they look. Mention a hold or hidden tap explicitly — those are what users miss.
 - If the user writes in Russian, describe the controls in Russian; the quoted labels in the map are the English UI text, so translate them naturally rather than quoting English.
-- For "what can this app do" or a full guide: one "summary" block per section with notes (at most 4 notes each, short), then offer to explain any part.
-- If the user could do it through you (log an amount, tick a task, change a setting, fix a set), say so and offer it — but still say where it is in the app.
-- Never describe a screen, button or feature the map does not contain. If it is not there, say the app does not have it.`;
+- For "what can this app do" or a full guide: one "summary" block per part of the map with notes (at most 4 notes each, short), then offer to explain any part.
+- If the user could do it through you (the "AI coach" part of the map lists what you can change), say so and offer it — but still say where it is in the app.
+- Never describe a screen, button or feature the map does not contain. If it is not there, say the app does not have it. This app is one log; it has no screens for anything else.`;
 
-export const APP_GUIDE = `APP MAP
-Conventions: "tap" = short press, "hold" = long-press. Labels in quotes are the exact on-screen English text. Icon-only buttons are described by icon. Every hold has a visible twin (a ⋯ button, a labelled button or a ⋮⋮ grip). Most destructive actions show an "Undo" toast for a few seconds; the rest ask first.
+const CONVENTIONS = `APP MAP
+Conventions: "tap" = short press, "hold" = long-press. Labels in quotes are the exact on-screen English text. Icon-only buttons are described by icon. Every hold has a visible twin (a ⋯ button, a labelled button or a ⋮⋮ grip). Most destructive actions show an "Undo" toast for a few seconds; the rest ask first.`;
 
-## 1. Navigation & Home
+/** Per app: what the nav bar's first item is called, and its top bar's round icons. */
+const NAV: Record<AppVariant, { label: string; corner: string }> = {
+  workout: {
+    label: 'Workout',
+    corner: '"AI coach" (sparkle) · "Routines" (book) · "History" (clock-arrow)',
+  },
+  tasks: { label: 'Tasks', corner: '"AI coach" (sparkle) · "History" (clock-arrow)' },
+  expenses: {
+    label: 'Finance',
+    corner: '"AI coach" (sparkle) · "Accounts" (wallet) · "History" (clock-arrow)',
+  },
+};
+
+function navigation(variant: AppVariant): string {
+  const { label, corner } = NAV[variant];
+  return `## 1. Navigation
 
 ### Bottom nav bar (glass pill, icon + label)
-- Labels under the icons, left to right: "Workout" · "Tasks" · "Home" (raised round button in the middle) · "Finance" · "Settings". The active one is in the accent colour.
-- Hidden on Home, on pushed screens, during a workout and while a sheet is open. Android Back on a pushed screen goes back one screen.
+- Two items: "${label}" (the app's own screen, where it opens) and "Settings". The active one is in the accent colour.
+- Hidden on pushed screens${variant === 'workout' ? ', during a workout' : ''} and while a sheet is open. Android Back on a pushed screen goes back one screen; Back on the "${label}" screen leaves the app.
 
-### Home — the first screen
-- Running-workout card (only while a workout is running): routine name with "· running", elapsed time and the current set, a "Resume" button; tapping the card resumes too.
-- Quick chips: "+ Expense" (amount keypad for a new expense) and the next task (tap = mark it done today; "Undo" toast).
-- Tiles: "Workout" → Workout section, "Tasks" → Tasks section, the "Finance" row → Finance section, the "Settings" row → Settings.
-- Weekly review card (appears on its own): "Ask the AI coach for a summary" (needs an AI key).
-- Month/year wrapped card at the start of a month → Wrapped story (tap right = next card, left = previous, "x" closes).
-
-### Section top bar (Workout / Tasks / Finance)
-- Round icons with captions underneath:
-  - Workout: "AI coach" (sparkle) · "Routines" (book) · "History" (clock-arrow).
-  - Tasks: "AI coach" · "History".
-  - Finance: "AI coach" · "Accounts" (wallet) · "History".
+### Top bar of the "${label}" screen
+- Round icons with captions underneath: ${corner}.
 - Settings has "РУ" / "EN" language letters here instead.
 
 ### First launch
-- Language choice: tap Русский or English.
+- Language choice: tap Русский or English.`;
+}
 
-## 2. Workout
+const WORKOUT_MAP = `## 2. Workout
 
 ### Workout section (nav: "Workout")
 - Hero card "Today · <routine>": the whole card is tappable and holds a labelled "▶ Open <routine>" button. While a workout runs, the floating button reads "Resume <routine>".
@@ -78,7 +95,7 @@ Conventions: "tap" = short press, "hold" = long-press. Labels in quotes are the 
 
 ### Live session screen
 Header:
-- "<" Back: leaves the screen, the workout KEEPS RUNNING (resume from the Home card or the Workout section). The first time, a toast says "Workout still running — resume it from Home" with "Resume".
+- "<" Back: leaves the screen, the workout KEEPS RUNNING (resume it from the Workout section). The first time, a toast says so, with "Resume".
 - Title, sets progress, elapsed clock, workout number.
 - ⋮ captioned "Options" → Session options sheet: "+ Add an exercise", "Auto-start rest" switch ("Rest timer starts when you log a set"), "Restart clock", "Stop and exit…".
 Timer pill under the header (only while running): rest "−15 s" / "+15 s" / pause / "Skip"; timed sets: "Start now", "+15 s", "Stop" (logs), "x" (cancel).
@@ -169,9 +186,9 @@ Bottom dock (after start): "Focus" (viewfinder icon) and "Finish"; when every se
 ### Workout settings (Settings → "Workout settings")
 - Rest between sets / exercises, "Start rest automatically", timer step; get-ready; countdown sounds, vibration, keep screen on, notifications.
 - "Weekly workout goal" row (shown on the Workout section) → workouts a week.
-- "Questions after a workout"; workout reminder; bodyweight; gyms and plates; weekly sets per cluster; units Kilograms | Pounds; Health Connect; "Delete all workout history" (asks).
+- "Questions after a workout"; workout reminder; bodyweight; gyms and plates; weekly sets per cluster; units Kilograms | Pounds; Health Connect; "Delete all workout history" (asks).`;
 
-## 3. Tasks (nav: "Tasks")
+const TASKS_MAP = `## 2. Tasks (nav: "Tasks")
 
 ### Tasks screen
 - Hint at the top: tap the circle to tick a task off; ⋯ or hold for more; "on purpose" means an excused day that doesn't break the streak.
@@ -193,9 +210,9 @@ Bottom dock (after start): "Focus" (viewfinder icon) and "Finish"; when every se
 - "Month | Year | Trend"; tap a day to open it.
 
 ### Daily tasks settings (Settings → "Daily tasks settings")
-- "Let the app tick what it knows"; vacation pause; history range.
+- Vacation pause; history range.`;
 
-## 4. Finance (nav: "Finance")
+const EXPENSES_MAP = `## 2. Finance (nav: "Finance")
 
 ### Finance screen
 - Account chips (e.g. Cash, Card): tap = switch account; hold a chip, or ⋯ on the selected chip → "Edit account". Round "+" = "Add account". "Transfer" (2+ accounts) moves money between accounts.
@@ -222,22 +239,71 @@ Bottom dock (after start): "Focus" (viewfinder icon) and "Finish"; when every se
 - Savings goals: a goal reads one account's balance; fill it with a transfer.
 
 ### Finance settings (Settings → "Finance settings")
-- Currency, opening interval, history range.
+- Currency, opening interval, history range.`;
 
-## 5. Settings (nav: "Settings")
-- "РУ" / "EN" language; appearance presets and custom colours; "Workout settings", "Daily tasks settings", "Finance settings"; "AI coach" row → AI settings.
+const SECTION_MAP: Record<AppVariant, string> = {
+  workout: WORKOUT_MAP,
+  tasks: TASKS_MAP,
+  expenses: EXPENSES_MAP,
+};
+
+/** The section's own settings row on Settings, as it reads there. */
+const SETTINGS_ROW: Record<AppVariant, string> = {
+  workout: '"Workout settings"',
+  tasks: '"Daily tasks settings"',
+  expenses: '"Finance settings"',
+};
+
+function settings(variant: AppVariant): string {
+  // The spreadsheet export is a log's: the Tasks app has none to offer.
+  const csv = variant === 'tasks' ? '' : ', CSV export';
+  return `## 3. Settings (nav: "Settings")
+- "РУ" / "EN" language; appearance presets and custom colours; ${SETTINGS_ROW[variant]}; "AI coach" row → AI settings.
 - "Achievements and levels" switch (levels, badges, streak freezes, milestones) and "Badges".
-- Backups: "Back up automatically", "Export everything", "Replace everything from a file" (asks), CSV export; "Reset every setting" (asks).
+- Backups: "Back up automatically", "Export everything", "Replace everything from a file" (asks)${csv}; "Reset every setting" (asks).`;
+}
 
-## 6. AI coach
+/** What the assistant can write, through a card — per app, because that is all it may write. */
+const CAN: Record<AppVariant, string> = {
+  workout:
+    "suggest or edit routines and the training loop, change exercise and workout settings, log today's body weight, and mark a set in a past workout as a warm-up (or another set type) so it stops counting.",
+  tasks:
+    "add a task, rename it, change its schedule or daily target, archive it, and tick, excuse or clear a task's day.",
+  expenses: "log an amount (spent or received) and set or remove a category's monthly budget.",
+};
+
+function assistant(variant: AppVariant): string {
+  const workout = variant === 'workout';
+  const opening = workout
+    ? '- "AI coach" (sparkle) in the top bar, an AI card\'s prompt chip, or "Ask the AI coach about it" after a debrief. Without a working key it opens AI settings first.'
+    : '- "AI coach" (sparkle) in the top bar, or an AI card\'s prompt chip. Without a working key it opens AI settings first.';
+  const cards = workout
+    ? '- Answer cards: "Suggested routine" or "Suggested edit" → "Review & edit" or "Add to routines"/"Apply changes"; "Suggested changes" → "Apply changes"/"Discard"; "Suggested training loop" → "Apply loop"/"Discard". Nothing changes until Apply; applying shows an Undo toast.'
+    : '- Answer cards: "Suggested changes" → "Apply changes"/"Discard". Nothing changes until Apply; applying shows an Undo toast.';
+  const review = workout
+    ? `
+### AI review (from "Review & edit")
+- Routine name, "Why", exercise rows with steppers, "Add an exercise"; "Discard" and "Add to routines"/"Apply changes".`
+    : '';
+  return `## 4. AI coach
 ### Opening
-- "AI coach" (sparkle) in any section's top bar, an AI card's prompt chip, or "Ask the AI coach about it" after a debrief. Without a working key it opens AI settings first.
+${opening}
 ### AI settings (Settings → "AI coach")
 - Provider (Google Gemini), API key with paste/clear, model, what it reads; "Test & connect"; disconnect (asks).
 ### AI chat
 - Header: "<" Back, clock icon = past chats, "+" = new chat.
 - Starter chips, including "App guide". Type a question or tell it what to do; to talk instead of type, tap the mic on your phone's keyboard.
-- It can, through a card you must Apply: suggest or edit routines and the training loop, change exercise and workout settings, log an amount, tick or excuse a task day, log today's body weight, and mark a set in a past workout as a warm-up (or another set type) so it stops counting.
-- Answer cards: "Suggested routine" or "Suggested edit" → "Review & edit" or "Add to routines"/"Apply changes"; "Suggested changes" → "Apply changes"/"Discard"; "Suggested training loop" → "Apply loop"/"Discard". Nothing changes until Apply; applying shows an Undo toast.
-### AI review (from "Review & edit")
-- Routine name, "Why", exercise rows with steppers, "Add an exercise"; "Discard" and "Add to routines"/"Apply changes".`;
+- It can, through a card you must Apply: ${CAN[variant]}
+${cards}${review}`;
+}
+
+/** The whole map one app's assistant is given. */
+export function appGuide(variant: AppVariant): string {
+  return [
+    CONVENTIONS,
+    navigation(variant),
+    SECTION_MAP[variant],
+    settings(variant),
+    assistant(variant),
+  ].join('\n\n');
+}

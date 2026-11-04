@@ -28,6 +28,12 @@
  * that travel with a question — and the cap keeps a blob that is rewritten on
  * every message from growing for a year.
  *
+ * All three keys stay in every app after the 3.0.0 split, though each app shows
+ * one chat (`lib/ai/aiScope.ts`). The Workout app is the 2.x install, and its
+ * Tasks and Expenses chats are on disk: they ride its backup to the apps that
+ * show them, so this store keeps them rather than dropping the keys it no
+ * longer draws. A Tasks or Expenses app simply has two empty ones.
+ *
  * A proposal lives beside the chats, keyed by id, because it is EDITED: the
  * review screen changes its numbers, and a chat message holding a copy would be
  * a second version of it. The message holds the id. A proposal no message points

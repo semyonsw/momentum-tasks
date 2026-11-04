@@ -414,15 +414,25 @@ describe('what the assistant leaves out of a backup', () => {
     expect(Object.keys(useAi.getState())).not.toContain('key');
     expect(Object.keys(useAi.getState())).not.toContain('apiKey');
 
-    // Restored onto a phone with nothing: both come back, and visible.
+    // Restored onto a phone with nothing: each app gets its own conversation
+    // back, visible — Workout the open chat, Tasks the past one the Workout
+    // app's file still carried from before the split.
     useAi.setState(sanitizeAi({}));
     const parsed = parseBackup(text);
     if (!parsed.ok) throw new Error(parsed.error);
-    expect(parsed.counts.chats).toBe(2);
+    expect(parsed.counts.chats).toBe(1);
     const applied = applyBackup(parsed.envelope);
-    expect(applied.chats).toBe(2);
+    expect(applied.chats).toBe(1);
     expect(useAi.getState().chats.Workout.map((m) => m.id)).toEqual(['m1']);
+    expect(useAi.getState().archive.Tasks).toEqual([]);
+
+    const forTasks = parseBackup(text, 'en', 'tasks');
+    if (!forTasks.ok) throw new Error(forTasks.error);
+    expect(forTasks.counts.chats).toBe(1);
+    expect(applyBackup(forTasks.envelope, 'tasks').chats).toBe(1);
     expect(useAi.getState().archive.Tasks[0].title).toBe(past);
+    // And restoring Tasks left the Workout chat where the Workout restore put it.
+    expect(useAi.getState().chats.Workout.map((m) => m.id)).toEqual(['m1']);
     // The connection is the phone's own, not the file's.
     expect(useAi.getState().status).toBe('off');
     useAi.setState(sanitizeAi({}));
@@ -656,9 +666,9 @@ describe('the money scale (U25)', () => {
         ],
       },
     });
-    const parsed = parseBackup(v220);
+    const parsed = parseBackup(v220, 'en', 'expenses');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'expenses');
 
     expect(useMoney.getState().amounts.map((amount) => amount.value)).toEqual([12500]);
     expect(useMoney.getState().scale).toBeUndefined();
@@ -668,13 +678,13 @@ describe('the money scale (U25)', () => {
     const { useMoney } = await import('./moneyStore');
     useMoney.getState().importMoney({});
     useMoney.getState().pinScale(2);
-    const text = exportBackupText();
+    const text = exportBackupText(undefined, 'expenses');
     useMoney.getState().importMoney({});
     expect(useMoney.getState().scale).toBeUndefined();
 
-    const parsed = parseBackup(text);
+    const parsed = parseBackup(text, 'en', 'expenses');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'expenses');
     expect(useMoney.getState().scale).toBe(2);
   });
 });
@@ -683,13 +693,13 @@ describe('budgets (M1)', () => {
   it('travel in a backup and come back', () => {
     useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
     useMoney.getState().setBudget('food', 80000, true);
-    const text = exportBackupText();
+    const text = exportBackupText(undefined, 'expenses');
     useMoney.getState().importMoney({});
     expect(useMoney.getState().budgets).toBeUndefined();
 
-    const parsed = parseBackup(text);
+    const parsed = parseBackup(text, 'en', 'expenses');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'expenses');
     expect(useMoney.getState().budgets).toEqual([
       { categoryId: 'food', monthly: 80000, alerts: true },
     ]);
@@ -721,9 +731,9 @@ describe('budgets (M1)', () => {
         ],
       },
     });
-    const parsed = parseBackup(v220);
+    const parsed = parseBackup(v220, 'en', 'expenses');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'expenses');
 
     const money = useMoney.getState();
     expect(money.budgets).toBeUndefined();
@@ -752,13 +762,13 @@ describe('recurring payments (M2)', () => {
     useMoney.getState().confirmRecurring(id, '2026-09-05');
     useMoney.getState().skipRecurring(id, '2026-10-05');
     const before = useMoney.getState().recurring;
-    const text = exportBackupText();
+    const text = exportBackupText(undefined, 'expenses');
     useMoney.getState().importMoney({});
     expect(useMoney.getState().recurring).toBeUndefined();
 
-    const parsed = parseBackup(text);
+    const parsed = parseBackup(text, 'en', 'expenses');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'expenses');
     expect(useMoney.getState().recurring).toEqual(before);
     expect(useMoney.getState().amounts).toHaveLength(1);
   });
@@ -772,9 +782,9 @@ describe('recurring payments (M2)', () => {
       workouts: [],
       money: { categories: seedCategories, amounts: [] },
     });
-    const parsed = parseBackup(v220);
+    const parsed = parseBackup(v220, 'en', 'expenses');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'expenses');
     expect(useMoney.getState().recurring).toBeUndefined();
     expect(useMoney.getState().categories.map((c) => c.id)).toEqual(
       seedCategories.map((c) => c.id),
@@ -793,13 +803,13 @@ describe('savings goals (M5)', () => {
       accountId: 'online',
     });
     const before = useMoney.getState().goals;
-    const text = exportBackupText();
+    const text = exportBackupText(undefined, 'expenses');
     useMoney.getState().importMoney({});
     expect(useMoney.getState().goals).toBeUndefined();
 
-    const parsed = parseBackup(text);
+    const parsed = parseBackup(text, 'en', 'expenses');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'expenses');
     expect(useMoney.getState().goals).toEqual(before);
   });
 
@@ -820,9 +830,9 @@ describe('savings goals (M5)', () => {
       workouts: [],
       money: { categories: seedCategories, amounts: [] },
     });
-    const parsed = parseBackup(v220);
+    const parsed = parseBackup(v220, 'en', 'expenses');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    applyBackup(parsed.envelope, 'expenses');
     expect(useMoney.getState().goals).toBeUndefined();
   });
 });

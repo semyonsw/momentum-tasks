@@ -8,13 +8,35 @@ follow-up**. After every change, without being asked:
 
 1. **Bump the version.** `app.json` (`version` and `android.versionCode`, both) and
    `package.json`. Patch bump unless the change is bigger than that.
-2. **Build the APK** (below) and copy it to the repo root as
-   `momentum-<version>.apk` (the app was Workout Tracker until 2.0.0; the older
-   `workout-tracker-*.apk` files are the rollbacks from that era).
+2. **Build the three APKs** (below) and copy them to the repo root as
+   `momentum-{workout,tasks,expenses}-<version>.apk`. `tools/release-apk.sh` does
+   steps 2 and 3, verification included; `tools/release-apk.sh tasks` does one.
 3. **Commit and push to `main`.** Short, plain commit message — one line, no essay.
 
-The point of step 2 is that the user copies that file to the phone and installs it
-over the old one. Leave the previous APK on disk as a rollback; do not delete it.
+The point of step 2 is that the user copies those files to the phone and installs
+each over the old one. Leave the previous APK of each app on disk as a rollback;
+do not delete it. (Workout's rollbacks include the 2.x `momentum-<version>.apk`
+and, before 2.0.0, `workout-tracker-*.apk`: the same app under older names.)
+
+## Three apps, one tree
+
+Since 3.0.0 Workout, Tasks and Expenses are separate apps. One codebase, a
+build-time switch: `EXPO_PUBLIC_APP_VARIANT` = `workout` (also: unset) | `tasks` |
+`expenses`. `app.config.js` turns `app.json` (which IS Workout) into the other
+two; `src/lib/appVariant.ts` is the bundle's copy, which Metro inlines as a
+literal. Decisions take the variant as a parameter, so tests cover all three
+without env tricks — under vitest/jest it is `workout`.
+
+| App | Package | Notes |
+| --- | --- | --- |
+| Workout | `com.semyonsw.workouttracker` | the phone's existing install; updates in place. Its store still holds the 2.x tasks and money: never delete them, just don't show them |
+| Tasks | `com.semyonsw.momentum.tasks` | new install, starts empty |
+| Expenses | `com.semyonsw.momentum.expenses` | new install, starts empty |
+
+Tasks and Expenses are filled by importing a backup in their Settings (a combined
+2.x backup carries every section). Health Connect — permission and plugin — is
+Workout's alone. Icons: `assets/{icon,adaptive-icon}-<variant>.png`; Workout's are
+the 2.x mark, the other two come from `tools/make-icons.py`.
 
 ## Building the APK
 
@@ -24,7 +46,9 @@ points at it). If it is gone, reinstall: cmdline-tools, `platforms;android-35`,
 `ndk;27.1.12297006`, `cmake;3.22.1`.
 
 ```bash
-npx expo prebuild -p android          # app.json changed, so always
+export EXPO_PUBLIC_APP_VARIANT=tasks                  # for BOTH steps
+node node_modules/expo/bin/cli prebuild -p android --clean
+rm -rf /tmp/metro-*                                   # see "variant traps" below
 cd android
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export ANDROID_HOME=/root/android-sdk ANDROID_SDK_ROOT=/root/android-sdk
@@ -33,8 +57,29 @@ export ANDROID_HOME=/root/android-sdk ANDROID_SDK_ROOT=/root/android-sdk
   -PWT_KEY_ALIAS=androiddebugkey -PWT_KEY_PASSWORD=android
 ```
 
-Takes ~10 minutes; run it in the background. Output lands at
-`android/app/build/outputs/apk/release/app-release.apk`.
+Takes ~10 minutes per app; run it in the background. Output lands at
+`android/app/build/outputs/apk/release/app-release.apk`, and the next variant's
+`prebuild --clean` deletes it — copy it out first.
+
+### The variant traps
+
+- **`npx expo` does not see the variant from WSL.** The `.bin/expo` shim in this
+  shared tree execs the Windows `node.exe`, and a Windows process gets none of
+  WSL's environment — so `EXPO_PUBLIC_APP_VARIANT=tasks npx expo prebuild`
+  silently prebuilds Workout. Call `node node_modules/expo/bin/cli`. Check with
+  `EXPO_PUBLIC_APP_VARIANT=tasks node node_modules/expo/bin/cli config --type public`.
+- **`--clean`, every variant.** The package, label, icon and plugin list all
+  change, and prebuild does not take things back out of an existing `android/`.
+  It regenerates `android/app/debug.keystore` — the same stock bytes — and
+  `local.properties`, so re-point that at the Linux SDK after it.
+- **Metro's cache leaks the previous variant.** Its transform cache is not keyed
+  on env values, so a cached `appVariant.ts` ships the last build's literal.
+  Delete `/tmp/metro-*` and pass `--reset-cache` (the script sets
+  `extraPackagerArgs` in the generated `build.gradle`).
+- **Probe the variant, not the variant name.** All three names are in every
+  bundle (`APP_VARIANTS`), so grepping for `tasks` proves nothing. The script
+  sets `EXPO_PUBLIC_BUILD_MARK=momentum-build-<variant>-<version>`, which
+  `appVariant.ts` inlines, and greps the bundle for exactly that.
 
 ### THE OTHER TRAP: one `node_modules`, two operating systems
 
@@ -90,7 +135,9 @@ The same build, with the paths it actually has (installed 2026-08-30): JDK 17 at
 (C: is short on space), and `android/local.properties` holding
 `sdk.dir=E\:\\android-sdk` — Java-properties escaping, so that is a real
 double backslash in the file. Set `JAVA_HOME`/`ANDROID_HOME` per command, since
-neither is on the machine's PATH, and call `gradlew.bat` with the same flags.
+neither is on the machine's PATH, and call `gradlew.bat` with the same flags. There
+`npx expo` is native and does see `$env:EXPO_PUBLIC_APP_VARIANT`; set it per
+variant the same way.
 
 **THE ONE TRAP: `ninja: error: Filename longer than 260 characters`.** The C++
 codegen step writes object paths that embed the project's absolute path twice, and
@@ -106,7 +153,10 @@ Two, and both are config-plugin-driven, so `npx expo prebuild -p android` is wha
 applies them:
 
 - **`react-native-health-connect`** writes a finished workout to Health Connect
-  (`src/lib/healthConnect.ts`). It is `require`d lazily inside a `try`, so the app
+  (`src/lib/healthConnect.ts`). Workout only: `app.config.js` drops its plugin
+  and permission from Tasks and Expenses, and `react-native.config.js` turns off
+  its Android linking there (unset variant = linked, so a missed variable can only
+  cost Tasks an unused library, never cost Workout the one it uses). It is `require`d lazily inside a `try`, so the app
   runs identically in a build that does not contain it — which is what makes it
   removable by deleting the dependency and the plugin entry. It needs
   `android.permission.health.WRITE_EXERCISE` in `app.json`'s `permissions` (the
@@ -148,9 +198,12 @@ line below. That check is the one that can actually fail.
 ```bash
 export PATH="/root/android-sdk/build-tools/36.0.0:$PATH"
 apksigner verify --print-certs <apk> | grep "certificate DN"   # CN=Android Debug
-aapt2 dump badging <apk> | head -1                             # versionCode/Name
-aapt2 dump badging <apk> | grep -E "permission|microphone"     # no RECORD_AUDIO
+aapt2 dump badging <apk> | head -1                             # package name, versionCode/Name
+aapt2 dump badging <apk> | grep -E "permission|microphone"     # no RECORD_AUDIO; health.* in Workout only
 ```
+
+Per APK, the package must be the variant's — one built as the wrong variant
+installs beside the real app instead of over it.
 
 `RECORD_AUDIO` is the one that bites: `expo-audio`'s AAR manifest declares it and
 the merger takes the union, so grepping `AndroidManifest.xml` reports success while
@@ -179,8 +232,8 @@ other half of the proof.
 
 ## `.gitignore` has `*.apk`
 
-The committed APK is force-added. `git add -f momentum-<version>.apk`, or the
-release quietly contains no release.
+The committed APKs are force-added. `git add -f momentum-<variant>-<version>.apk`,
+or the release quietly contains no release.
 
 ## Before committing
 

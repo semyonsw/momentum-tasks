@@ -1,5 +1,6 @@
 /**
- * The four sections, in the nav bar's order.
+ * The four sections, and how an app built from this tree moves between the ones
+ * it has.
  *
  *   Workout · Tasks · Expenses · Settings
  *
@@ -10,41 +11,73 @@
  * nearest-first along it (`lib/stageBuilds.ts`). Two places deciding what comes
  * after `Tasks` is two places for them to disagree, so the order lives here and
  * all of them read it.
+ *
+ * Since 3.0.0 no APK shows all four: each app is ONE content section plus
+ * Settings (`lib/appVariant.ts`), and every decision below takes that pair as a
+ * parameter rather than reading the build's variant, so the tests can walk all
+ * three apps without an env var. `SECTIONS` stays the full list because it is
+ * the vocabulary — the order a subset is drawn in — not what any one bar shows.
  */
+
+import { variantSection, type AppVariant } from './appVariant';
 
 export const SECTIONS = ['Workout', 'Tasks', 'Expenses', 'Settings'] as const;
 
 export type SectionTab = (typeof SECTIONS)[number];
 
 /* ══════════════════════════════════════════════════════════════════════════
-   MOMENTUM — a landing above the four, and the gestures between them.
+   ONE SECTION AND SETTINGS — and the gestures between them.
 
-     Home ──tap tile──▶ Section ──push──▶ Inner screen
-       ▲                  │  ▲                │
-       └──Home btn / back─┘  └──back / edge───┘
-     Section ◀──tap nav──▶ Section
+     Section ◀──tap nav / back──▶ Settings
+        │  ▲
+        push  back / edge
+        ▼  │
+     Inner screen
 
-   Home is not a fifth section: it is not a nav slot (the raised button in the
-   middle of the bar is how you get back to it). That is why it is a separate
-   member of `ShellRoute` rather than an entry in `SECTIONS`.
+   There used to be a landing above the four (2.0–2.10): three tiles and a
+   raised Home button in the middle of the bar, which only made sense while one
+   app held three logs. With one log per app the section IS the landing — the
+   thing you open the app to see — so it is the root, Back on it arms the exit,
+   and a route is exactly a section.
    ══════════════════════════════════════════════════════════════════════════ */
 
-export type ShellRoute = 'Home' | SectionTab;
+export type ShellRoute = SectionTab;
+
+/** Where an app opens, and where Back from anywhere else in it lands. */
+export function shellRoot(variant: AppVariant): SectionTab {
+  return variantSection(variant);
+}
 
 /**
- * The nav bar's four slot centres, as fractions of the bar's width.
+ * The nav bar's slot centres for the sections it shows, as fractions of the
+ * bar's width: evenly spaced, each in the middle of its own share.
  *
- * The design draws them at 44 · 110 | 258 · 324 in a 368 dp bar: two slots
- * either side of the raised Home button, and the gap in the middle is the
- * button's. Fractions, so a 340 dp bar on a small phone keeps the button's gap
- * rather than the slots drifting under it.
+ * Two slots land at 1/4 and 3/4 — the halves of the bar, each glyph centred in
+ * the half it owns. The old layout drew four at 44 · 110 | 258 · 324 of 368 dp
+ * around the raised Home button; reusing two of those positions would leave a
+ * hole in the middle where a button used to be, which reads as something
+ * missing rather than as a two-item bar. Fractions, so a 340 dp bar keeps its
+ * proportions.
  */
-export const NAV_SLOTS: Record<SectionTab, number> = {
-  Workout: 44 / 368,
-  Tasks: 110 / 368,
-  Expenses: 258 / 368,
-  Settings: 324 / 368,
-};
+export function navSlots(sections: readonly SectionTab[]): Partial<Record<SectionTab, number>> {
+  const slots: Partial<Record<SectionTab, number>> = {};
+  sections.forEach((section, i) => {
+    slots[section] = (i + 0.5) / sections.length;
+  });
+  return slots;
+}
+
+/**
+ * Which way a switch slides: +1 when `to` is to the RIGHT of `from` on the bar
+ * the app actually draws, so the screen goes the way the blob does.
+ */
+export function slideDir(
+  sections: readonly SectionTab[],
+  from: SectionTab,
+  to: SectionTab,
+): 1 | -1 {
+  return sections.indexOf(to) < sections.indexOf(from) ? -1 : 1;
+}
 
 /** Half the lit blob's width at rest, in dp. */
 export const BLOB_HALF = 30;
@@ -57,28 +90,32 @@ export function edgeBackCommits(dx: number, vx: number): boolean {
   return dx > 120 || vx > 0.6;
 }
 
-/** How long a first back press on Home keeps the second one armed. */
+/** How long a first back press on the root keeps the second one armed. */
 export const EXIT_WINDOW_MS = 2000;
 
-export type BackAction = 'closeSheet' | 'pop' | 'home' | 'armExit' | 'exit';
+export type BackAction = 'closeSheet' | 'pop' | 'root' | 'armExit' | 'exit';
 
 /**
- * Android back, in the order the design gives it: a sheet closes first, then a
- * pushed screen pops, then a section goes Home, and on Home the first press
- * arms an exit (a toast says so) and a second within two seconds leaves.
+ * Android back, in the design's order: a sheet closes first, then a pushed
+ * screen pops, then Settings goes back to the app's own section (`root`), and
+ * on that section the first press arms an exit (a toast says so) and a second
+ * within two seconds leaves.
  *
- * `exitArmedAt` is when the last press armed it, or null.
+ * `root` is `shellRoot(variant)`, passed in rather than read here so a test can
+ * stand in any of the three apps. `exitArmedAt` is when the last press armed
+ * it, or null.
  */
 export function backAction(state: {
   sheetOpen: boolean;
   stackDepth: number;
   route: ShellRoute;
+  root: ShellRoute;
   exitArmedAt: number | null;
   now: number;
 }): BackAction {
   if (state.sheetOpen) return 'closeSheet';
   if (state.stackDepth > 0) return 'pop';
-  if (state.route !== 'Home') return 'home';
+  if (state.route !== state.root) return 'root';
   if (state.exitArmedAt != null && state.now - state.exitArmedAt <= EXIT_WINDOW_MS) return 'exit';
   return 'armExit';
 }

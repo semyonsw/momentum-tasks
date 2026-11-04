@@ -2,7 +2,7 @@
   "expo": {
     "name": "Momentum",
     "slug": "momentum-app",
-    "version": "2.10.0",
+    "version": "3.0.0",
     "orientation": "portrait",
     "scheme": "workouttracker",
     "platforms": [
@@ -22,7 +22,7 @@
     ],
     "android": {
       "package": "com.semyonsw.workouttracker",
-      "versionCode": 76,
+      "versionCode": 77,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#060807"

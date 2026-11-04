@@ -32,6 +32,18 @@
  * be worth more than a session. Excused days earn nothing: they are not done
  * days, and a perfect day needs something done.
  *
+ * ── ONE LOG PER APP ────────────────────────────────────────────────────────
+ *
+ * Since 3.0.0 each app's level is earned in its own log only: the Workout app
+ * counts sets, workouts and records, the Tasks app ticks and perfect days, the
+ * Expenses app amounts. `xpBreakdown` takes the variant and keeps only that
+ * log's rows, so the level sheet does not list "Tick a task +5" in an app with
+ * no tasks in it, and the Workout app's level is not inflated by the 2.x tasks
+ * it still stores but no longer shows. The weights are unchanged — they were
+ * balanced against each other, and within one log the ratios still hold. The
+ * cost, said plainly: an Expenses level climbs slowly at +3 an amount, which
+ * is the small daily habit the table already called it.
+ *
  * ── THE CURVE ──────────────────────────────────────────────────────────────
  *
  * Level L starts at 50·L·(L−1) XP: 0, 100, 300, 600, 1,000 … each level is 100
@@ -41,21 +53,35 @@
  * into a wall. Level 1 is where everybody starts, at 0.
  */
 
-import type { LogFacts } from './achievements';
+import type { BadgeDomain, LogFacts } from './achievements';
+import type { AppVariant } from './appVariant';
 import { t, type Language } from './i18n';
 import { formatValue } from './money';
+import { variantLog } from './variantScope';
 
 export type XpSource = 'sets' | 'workouts' | 'tasksDone' | 'perfectDays' | 'amounts' | 'records';
 
-/** THE weights table. Order is the level sheet's order. */
-export const XP_WEIGHTS: readonly { source: XpSource; xp: number; label: string }[] = [
-  { source: 'sets', xp: 2, label: 'Log a working set' },
-  { source: 'workouts', xp: 40, label: 'Finish a workout' },
-  { source: 'tasksDone', xp: 5, label: 'Tick a task' },
-  { source: 'perfectDays', xp: 25, label: 'A day with every task done' },
-  { source: 'amounts', xp: 3, label: 'Record an amount' },
-  { source: 'records', xp: 60, label: 'A personal record' },
+/** THE weights table. Order is the level sheet's order; `domain` is the log it counts. */
+export const XP_WEIGHTS: readonly {
+  source: XpSource;
+  xp: number;
+  label: string;
+  domain: BadgeDomain;
+}[] = [
+  { source: 'sets', xp: 2, label: 'Log a working set', domain: 'workout' },
+  { source: 'workouts', xp: 40, label: 'Finish a workout', domain: 'workout' },
+  { source: 'tasksDone', xp: 5, label: 'Tick a task', domain: 'tasks' },
+  { source: 'perfectDays', xp: 25, label: 'A day with every task done', domain: 'tasks' },
+  { source: 'amounts', xp: 3, label: 'Record an amount', domain: 'money' },
+  { source: 'records', xp: 60, label: 'A personal record', domain: 'workout' },
 ];
+
+/** The rows an app's level is made of: its own log's. Absent = every row (2.x). */
+export function xpWeightsFor(variant?: AppVariant): typeof XP_WEIGHTS {
+  if (variant === undefined) return XP_WEIGHTS;
+  const domain = variantLog(variant);
+  return XP_WEIGHTS.filter((row) => row.domain === domain);
+}
 
 /** How many of each source the logs hold — the working sets are summed, the rest counted. */
 function countOf(facts: LogFacts, source: XpSource): number {
@@ -77,17 +103,17 @@ export interface XpLine {
   xp: number;
 }
 
-/** Per source, in the table's order. Every figure ≥ 0. */
-export function xpBreakdown(facts: LogFacts): XpLine[] {
-  return XP_WEIGHTS.map(({ source, xp, label }) => {
+/** Per source, in the table's order, for `variant`'s log. Every figure ≥ 0. */
+export function xpBreakdown(facts: LogFacts, variant?: AppVariant): XpLine[] {
+  return xpWeightsFor(variant).map(({ source, xp, label }) => {
     const count = countOf(facts, source);
     return { source, label, each: xp, count, xp: count * xp };
   });
 }
 
 /** The total. Same facts in, same number out; never below 0. */
-export function totalXp(facts: LogFacts): number {
-  return xpBreakdown(facts).reduce((sum, line) => sum + line.xp, 0);
+export function totalXp(facts: LogFacts, variant?: AppVariant): number {
+  return xpBreakdown(facts, variant).reduce((sum, line) => sum + line.xp, 0);
 }
 
 /** XP at which level `level` starts: 50·L·(L−1). Level 1 at 0. */

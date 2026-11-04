@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   achievements,
+  badgeDomain,
   BADGES,
   describeBadgeProgress,
   describeEarned,
@@ -464,5 +465,60 @@ describe('words', () => {
     const b = badge({ ...EMPTY, workouts: [workout('2026-09-14')] }, 'workouts1');
     expect(describeEarned(b, 'en')).toBe('Earned 14 September 2026');
     expect(describeEarned(b, 'ru')).toBe(t('Earned {date}', 'ru', { date: '14 сентября 2026' }));
+  });
+});
+
+describe('one log per app (3.0.0)', () => {
+  /*
+   * The Workout app is the 2.x install and still stores tasks and money. It
+   * must neither count them nor show their badges; the other two apps show
+   * only their own ladder.
+   */
+  const everything = (): LogsInput => ({
+    ...EMPTY,
+    workouts: [workout('2026-10-01')],
+    tasks: [task('read')],
+    log: { read: marks(['2026-10-01'], 'done') },
+    amounts: [amount('2026-10-01')],
+  });
+
+  it('each app shows its own ladder, and the three together are the whole table', () => {
+    const facts = logFacts(everything());
+    const ids = (['workout', 'tasks', 'expenses'] as const).map((v) =>
+      achievements(facts, v).map((row) => row.domain),
+    );
+    expect(new Set(ids[0])).toEqual(new Set(['workout']));
+    expect(new Set(ids[1])).toEqual(new Set(['tasks']));
+    expect(new Set(ids[2])).toEqual(new Set(['money']));
+    expect(ids.flat().length).toBe(BADGES.length);
+    expect(achievements(facts).length).toBe(BADGES.length);
+  });
+
+  it('maps each app to its log', () => {
+    expect(badgeDomain('workout')).toBe('workout');
+    expect(badgeDomain('tasks')).toBe('tasks');
+    expect(badgeDomain('expenses')).toBe('money');
+  });
+
+  it("counts only the app's own log, whatever the store still holds", () => {
+    const workoutFacts = logFacts({ ...everything(), variant: 'workout' });
+    expect(workoutFacts.workouts.length).toBe(1);
+    expect(workoutFacts.tasksDone).toEqual([]);
+    expect(workoutFacts.amounts).toEqual([]);
+
+    const taskFacts = logFacts({ ...everything(), variant: 'tasks' });
+    expect(taskFacts.workouts).toEqual([]);
+    expect(taskFacts.tasksDone.length).toBe(1);
+    expect(taskFacts.amounts).toEqual([]);
+
+    const moneyFacts = logFacts({ ...everything(), variant: 'expenses' });
+    expect(moneyFacts.workouts).toEqual([]);
+    expect(moneyFacts.tasksDone).toEqual([]);
+    expect(moneyFacts.amounts.length).toBe(1);
+  });
+
+  it("the gallery sentence counts the app's badges, not all thirty-three", () => {
+    const badges = achievements(logFacts({ ...everything(), variant: 'tasks' }), 'tasks');
+    expect(describeGallery(badges, 'en')).toBe(`1 of ${badges.length} earned.`);
   });
 });

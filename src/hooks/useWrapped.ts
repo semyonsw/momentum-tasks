@@ -1,7 +1,8 @@
 /**
- * A Wrapped period, read off the three stores — the one place the screen, the
- * Landing card and the history rows get their numbers from, so the "8 cards" on
- * an entry is the number of cards the screen then shows.
+ * A Wrapped period, read off the stores — the one place the screen and the
+ * history rows get their numbers from, so the "8 cards" on an entry is the
+ * number of cards the screen then shows. Handed `APP_VARIANT`, so it is this
+ * app's log only (`lib/wrapped.ts`, "ONE LOG PER APP").
  *
  * `null` in, `null` out, so a caller with no period to offer can still call it
  * unconditionally. The arithmetic is all `lib/wrapped.ts`.
@@ -9,6 +10,7 @@
 
 import { useMemo } from 'react';
 
+import { APP_VARIANT } from '../lib/appVariant';
 import { bodyweightAt } from '../lib/bodyweightLog';
 import { workoutNumbers } from '../lib/completedWorkout';
 import {
@@ -64,6 +66,7 @@ export function useWrapped(period: WrappedPeriod | null): WrappedView | null {
       amounts,
       categories,
       bodyweightAtDate: (at) => bodyweightAt(bodyweightLog, at),
+      variant: APP_VARIANT,
     });
   }, [
     amounts,

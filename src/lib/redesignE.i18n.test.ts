@@ -16,7 +16,7 @@ describe('2.9 redesign E strings', () => {
       'Empty',
       'Start blank and add exercises yourself',
       'Random…',
-      'Pick muscles and length, Momentum fills it in',
+      'Pick muscles and length, the app fills it in',
       // #17 — library, history, editor
       'Manage',
       'Edit exercise',

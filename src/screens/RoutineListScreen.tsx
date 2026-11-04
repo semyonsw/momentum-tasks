@@ -238,7 +238,7 @@ function AddChoices({ onEmpty, onRandom }: { onEmpty: () => void; onRandom: () =
     {
       key: 'random',
       label: t('Random…'),
-      detail: t('Pick muscles and length, Momentum fills it in'),
+      detail: t('Pick muscles and length, the app fills it in'),
       onPress: onRandom,
     },
   ];

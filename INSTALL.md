@@ -5,7 +5,7 @@ both.
 
 | I want… | What to do |
 |---|---|
-| **the app on my phone** | plug the phone in (USB debugging on) and run the installer — or copy the `.apk` across and tap it |
+| **the apps on my phone** | plug the phone in (USB debugging on) and run the installer — or copy the `.apk` files across and tap each |
 | **the project set up on my computer** | **Windows:** double-click `Install.bat` · **Linux/macOS/WSL:** `./install.sh` |
 
 ---
@@ -20,8 +20,10 @@ both.
 3. **Runs `npm run typecheck` and the whole test suite** (700-odd tests: rep
    ladders, timers, overload maths, cold starts, stores, backups, migrations).
    "Install complete" therefore means the code works on your machine.
-4. Looks for a `momentum-*.apk` (or, before 2.0.0, `workout-tracker-*.apk`) next to it and for `adb`. If a phone is
-   plugged in, it offers to push the APK over USB, and knows what each Android
+4. Looks for the newest `momentum-workout-*`, `momentum-tasks-*` and
+   `momentum-expenses-*.apk` next to it (Workout falls back to its older names,
+   `momentum-<version>.apk` and `workout-tracker-*.apk`) and for `adb`. If a phone
+   is plugged in, it offers to push them over USB, one after another, and knows what each Android
    refusal means (`UPDATE_INCOMPATIBLE`, `VERSION_DOWNGRADE`,
    `INSUFFICIENT_STORAGE`, `unauthorized`).
 5. Checks whether a JDK and the Android SDK are present — **only** needed to
@@ -32,13 +34,14 @@ Everything is logged to `install.log`. Re-running is safe.
 
 ---
 
-## Putting it on the phone by hand
+## Putting them on the phone by hand
 
-No computer setup needed at all:
+Momentum is three apps since 3.0.0 — **Workout**, **Tasks**, **Expenses** — one
+APK each. Install the ones you want. No computer setup needed at all:
 
-1. Download `momentum-<version>.apk` from the
-   [Releases page](../../releases) (on the phone, or copy it across by USB,
-   Drive, Telegram — anything).
+1. Take `momentum-<app>-<version>.apk` from the repo root or the
+   [Releases page](../../releases) and copy it to the phone (USB, Drive,
+   Telegram — anything).
 2. Open it in **Files** and tap install. The first time, Android asks to allow
    installs from that app — allow it and tap install again.
 3. Play Protect will warn that the developer is unknown, because the APK is
@@ -47,6 +50,11 @@ No computer setup needed at all:
    only way either timer reaches you once the app leaves the screen.
 5. On Samsung, also set **Battery → Unrestricted** and keep the app out of
    **Sleeping apps**, or its alarms get dropped.
+6. **Tasks and Expenses start empty.** In each, open **Settings → Replace
+   everything from a file** and pick the last `momentum-backup-*.json` the 2.x app
+   wrote — it carries every section, and each app takes its own. Workout updates
+   the old install in place and keeps everything; it simply no longer shows the
+   tasks and the money.
 
 Minimum Android 8.0 (API 26) — Health Connect needs it. Full detail: **[BUILD_ANDROID.md](BUILD_ANDROID.md)**.
 
@@ -87,7 +95,8 @@ rm -rf node_modules install.log
 
 Nothing about your phone's data is affected — that lives on the phone, in
 SQLite, and only an uninstall removes it. Export a backup from
-**Settings → Export** first if you are about to uninstall.
+Settings first if you are about to uninstall — each of the three apps has its own
+data and its own backup.
 
 ---
 

@@ -1,30 +1,20 @@
 /**
- * ShellStage — the roots (Home and the four sections), and how one becomes
- * another.
+ * ShellStage — the roots (the app's section and Settings), and how one becomes
+ * the other.
  *
- *   open    Home → section   the section GROWS out of the tapped tile: its clip
- *                            rect expands from the tile (radius 28) to the whole
- *                            screen (radius 48) while Home shrinks to .88 and fades
- *   close   section → Home   the reverse — the section shrinks back INTO its tile
- *                            and fades, and Home comes forward from 1.07
  *   slide   section ↔ section the incoming one arrives from ±55% at .94, the
  *                            outgoing one leaves toward ∓32% at .9 and fades
  *
- * Every one is a nav-bar tap (or a tile, or back). There used to be a swipe as
- * well, with the current screen following the finger, and it is gone: the
+ * Every switch is a nav-bar tap, or back from Settings. There used to be a swipe
+ * as well, with the current screen following the finger, and it is gone: the
  * finger's offset came in over the JS thread, one responder event at a time, so
  * the screen trembled whenever a render was running — which, at the start of a
  * switch, it always was.
  *
- * ── A CLIP WITHOUT A MASK ─────────────────────────────────────────────────
- *
- * The design animates a CSS `clip-path`. React Native has none, and
- * `MaskedView` would be a new native dependency for one transition. The same
- * picture comes from two views: an outer one whose rect and radius animate,
- * with `overflow: hidden`, and inside it the full-screen section offset by the
- * outer's own position, so the content stays still on screen while the window
- * onto it grows. Both on the UI thread, so the section's first render cannot
- * stall its own entrance.
+ * There were two more kinds until 3.0 — `open`, a section growing out of its
+ * landing tile through an animated clip, and `close`, the reverse. The landing
+ * went when each log became its own app (`lib/appVariant.ts`), and the clip
+ * went with it: a slide is the only way one root becomes another now.
  *
  * Blur is left out: an animated `filter: blur` repaints the whole screen per
  * frame on Android, and the scale-and-fade reads the same at 640 ms.
@@ -49,7 +39,7 @@
  * incoming section from nothing, a whole screen's render and native commit, and
  * the slide sat still until that was done. That pause was the hitch.
  *
- * So the other sections are built AHEAD, hidden, one at a time while the stage
+ * So the other root is built AHEAD, hidden, one at a time while the stage
  * is at rest (`lib/stageBuilds.ts` keeps the books), and a switch only moves
  * screens that already exist. What keeps that invisible:
  *
@@ -88,15 +78,9 @@ import {
   type GestureResponderEvent,
   type ViewProps,
 } from 'react-native';
-import Animated, {
-  Easing,
-  interpolate,
-  useAnimatedStyle,
-  type SharedValue,
-} from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 
 import { BlurGate } from '../components/glass';
-import type { TileRect } from '../screens/LandingScreen';
 import { Arrived } from '../hooks/useArrived';
 import { SECTIONS, type SectionTab, type ShellRoute } from '../lib/sectionNav';
 import {
@@ -110,17 +94,15 @@ import {
 import { palette } from '../theme/tokens';
 
 export interface ShellTransition {
-  kind: 'open' | 'close' | 'slide';
+  kind: 'slide';
   from: ShellRoute;
   to: ShellRoute;
   /** +1 when the incoming section is to the right of the outgoing one. */
   dir: 1 | -1;
-  /** The tile the section grows out of or shrinks into. */
-  rect: TileRect | null;
 }
 
 /** The order layers are drawn in — stable, so a layer never remounts mid-trip. */
-const ORDER: readonly ShellRoute[] = ['Home', ...SECTIONS];
+const ORDER: readonly ShellRoute[] = SECTIONS;
 
 export const TRANSITION_MS = 640;
 
@@ -138,7 +120,6 @@ const SPARE_QUIET_MS = 1000;
 const SPARE_STUCK_MS = 10_000;
 
 const EASE = Easing.bezierFn(0.22, 1, 0.36, 1);
-const CLIP = Easing.bezierFn(0.3, 1.08, 0.35, 1);
 
 interface ShellStageProps {
   route: ShellRoute;
@@ -148,9 +129,18 @@ interface ShellStageProps {
   /** 0 → 1 as a pushed screen covers the roots: the parallax behind it. */
   covered: SharedValue<number>;
   render: (route: ShellRoute) => ReactElement;
+  /** The roots this app has (`variantSections`) — the only ones built as spares. */
+  sections: readonly SectionTab[];
 }
 
-export function ShellStage({ route, transition, progress, covered, render }: ShellStageProps) {
+export function ShellStage({
+  route,
+  transition,
+  progress,
+  covered,
+  render,
+  sections,
+}: ShellStageProps) {
   const live: ShellRoute[] = transition ? [transition.from, transition.to] : [route];
   const [stored, setStored] = useState(() => initialBuilds(route));
   /* Derived during render, so a spare goes live in the same commit as the
@@ -183,14 +173,13 @@ export function ShellStage({ route, transition, progress, covered, render }: She
     [],
   );
   const idle: IdleTask | null =
-    transition != null ? null : stage.gone.length > 0 ? 'drop' : nextSpare(stage, route);
+    transition != null ? null : stage.gone.length > 0 ? 'drop' : nextSpare(stage, route, sections);
   return (
     <>
       <SpareTimer next={idle} touch={touch} work={work} />
       {layers(stage).map(({ route: key, id, gone }) => (
         <StageLayer
           key={`${key}:${id}`}
-          layer={key}
           role={
             gone ? 'gone' : key === route ? 'current' : live.includes(key) ? 'previous' : 'spare'
           }
@@ -300,7 +289,6 @@ const Spare = memo(
 type LayerRole = 'current' | 'previous' | 'spare' | 'gone';
 
 function StageLayer({
-  layer,
   role,
   transition,
   progress,
@@ -308,7 +296,6 @@ function StageLayer({
   touchHandlers,
   children,
 }: {
-  layer: ShellRoute;
   role: LayerRole;
   transition: ShellTransition | null;
   progress: SharedValue<number>;
@@ -320,18 +307,7 @@ function StageLayer({
   const hidden = waiting || role === 'gone';
   const { width: W, height: H } = useWindowDimensions();
   const kind = transition?.kind ?? null;
-  /* Memoized: both worklets below capture it, and Reanimated treats a captured
-     object that is new on every render as a new worklet — its mapper stopped and
-     restarted on the UI thread on every render of the shell. */
-  const fallbackRect = useMemo(
-    () => ({ x: W * 0.25, y: H * 0.35, width: W * 0.5, height: H * 0.3 }),
-    [H, W],
-  );
-  const rect = transition?.rect ?? fallbackRect;
   const dir = transition?.dir ?? 1;
-  /* The section being clipped: the incoming one on `open`, the outgoing one on `close`. */
-  const clipped =
-    (kind === 'open' && role === 'current') || (kind === 'close' && role === 'previous');
 
   const outer = useAnimatedStyle(() => {
     /* Laid out, so it arrives measured, but not drawn. */
@@ -361,39 +337,7 @@ function StageLayer({
         transform: [{ translateX: -0.26 * W * c }, { scale: 1 - 0.06 * c }],
       };
     }
-    if (clipped) {
-      /* open: 0 → 1 grows the window; close: 0 → 1 shrinks it. */
-      const k = CLIP(kind === 'open' ? t : 1 - t);
-      return {
-        left: interpolate(k, [0, 1], [rect.x, 0]),
-        top: interpolate(k, [0, 1], [rect.y, 0]),
-        width: interpolate(k, [0, 1], [rect.width, W]),
-        height: interpolate(k, [0, 1], [rect.height, H]),
-        borderRadius: interpolate(k, [0, 1], [28, 48]),
-        opacity:
-          kind === 'open'
-            ? interpolate(Math.min(1, t / 0.75), [0, 1], [0.5, 1])
-            : interpolate(Math.min(1, t / 0.75), [0, 1], [1, 0]),
-        transform: [{ translateX: 0 }, { scale: 1 }],
-      };
-    }
     const full = { left: 0, top: 0, width: W, height: H, borderRadius: 0 };
-    if (kind === 'open') {
-      /* Home, behind the growing section. */
-      return {
-        ...full,
-        opacity: 1 - e,
-        transform: [{ translateX: 0 }, { scale: 1 - 0.12 * e }],
-      };
-    }
-    if (kind === 'close') {
-      /* Home, coming forward from 1.07 under the shrinking section. */
-      return {
-        ...full,
-        opacity: e,
-        transform: [{ translateX: 0 }, { scale: 1.07 - 0.07 * e }],
-      };
-    }
     if (role === 'current') {
       return {
         ...full,
@@ -408,19 +352,9 @@ function StageLayer({
     };
   });
 
-  /* The content inside a clip stays still on screen while the window moves. */
-  const inner = useAnimatedStyle(() => {
-    if (!clipped) return { left: 0, top: 0 };
-    const k = CLIP(kind === 'open' ? progress.value : 1 - progress.value);
-    return {
-      left: -interpolate(k, [0, 1], [rect.x, 0]),
-      top: -interpolate(k, [0, 1], [rect.y, 0]),
-    };
-  });
-
   /* An arriving section's content rises 34 dp over D+180, 90 ms late. */
   const rise = useAnimatedStyle(() => {
-    const arriving = kind !== null && role === 'current' && layer !== 'Home';
+    const arriving = kind !== null && role === 'current';
     if (!arriving) return { transform: [{ translateY: 0 }] };
     const total = TRANSITION_MS + 180 + 90;
     const local = Math.min(1, Math.max(0, (progress.value * total - 90) / (TRANSITION_MS + 180)));
@@ -428,7 +362,7 @@ function StageLayer({
   });
 
   /* Static rather than animated: the order only changes between transitions. */
-  const zIndex = hidden ? 0 : clipped ? 3 : kind !== null && role === 'current' ? 2 : 1;
+  const zIndex = hidden ? 0 : kind !== null && role === 'current' ? 2 : 1;
 
   return (
     <Animated.View
@@ -438,7 +372,7 @@ function StageLayer({
       {...touchHandlers}
       style={[styles.outer, { backgroundColor: palette.bg, zIndex }, outer]}
     >
-      <Animated.View style={[{ position: 'absolute', width: W, height: H }, inner]}>
+      <Animated.View style={{ position: 'absolute', left: 0, top: 0, width: W, height: H }}>
         <Animated.View style={[{ flex: 1 }, rise]}>
           <Arrived.Provider value={!waiting}>
             <LayerGate still={role === 'current' && kind === null}>

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sectionVariant } from '../lib/ai/aiScope';
 
 /*
  * THE LOGGING CARD, END TO END — "I spent 12 on lunch", "mark reading done for
@@ -162,7 +163,7 @@ async function ask(
   answer: Answer,
 ): Promise<{ id: string; card: ChangesChatBlock | undefined }> {
   answers.push(answer);
-  await sendMessage(section, 'log this');
+  await sendMessage(section, 'log this', undefined, sectionVariant(section));
   const last = useAi.getState().chats[section].at(-1)!;
   if (last.role !== 'model') throw new Error(`no answer: ${JSON.stringify(last)}`);
   const card = last.blocks.find((b): b is ChangesChatBlock => b.type === 'changes');
@@ -297,7 +298,7 @@ describe('an amount on an Expenses card', () => {
         { target: 'amount', field: 'add', id: 'salary', number: 900, account: 'online' },
       ]),
     );
-    const applied = applyChanges('Expenses', id);
+    const applied = applyChanges('Expenses', id, 'expenses');
     expect(applied?.message).toBe('3 changes applied');
 
     const added = useMoney.getState().amounts.filter((a) => a.note !== 'already here');
@@ -321,22 +322,25 @@ describe('an amount on an Expenses card', () => {
       'Expenses',
       reply([{ target: 'amount', field: 'add', id: 'food', number: 7, account: 'acct_gone' }]),
     );
-    applyChanges('Expenses', id);
+    applyChanges('Expenses', id, 'expenses');
     expect(useMoney.getState().amounts.map((a) => a.accountId)).toEqual(['cash']);
   });
 
-  it('Undo also takes back the Track-expenses tick the amount answered on its own', async () => {
+  /*
+   * Until 3.0.0 the amount ticked the Track-expenses task and the Undo had to take
+   * that tick back. Since the split the Expenses app shows no tasks, so nothing
+   * is ticked (`settingsScope.autoTickOffered`) — and the Undo still has to leave
+   * the task log exactly as it found it.
+   */
+  it('an amount from a card ticks no task, and its Undo leaves the task log as it was', async () => {
     const before = snapshot();
     const { id } = await ask(
       'Expenses',
       reply([{ target: 'amount', field: 'add', id: 'food', number: 12, day: YESTERDAY }]),
     );
-    const applied = applyChanges('Expenses', id)!;
-    // Recording the amount ticked the auto task, on the amount's day.
-    expect(useTasks.getState().log.t_money?.[YESTERDAY]?.mark).toBe('done');
+    const applied = applyChanges('Expenses', id, 'expenses')!;
+    expect(useTasks.getState().log.t_money?.[YESTERDAY]?.mark).toBeUndefined();
 
-    /* `addAmount` ticked the auto task on its own; the Undo has to take that
-       tick back too, or a day stays answered by an amount that is gone. */
     applied.undo();
     expect(useMoney.getState().amounts).toEqual([]);
     // The amount is gone, so the day it answered is unanswered again.
@@ -352,7 +356,7 @@ describe('an amount on an Expenses card', () => {
       ]),
     );
     useMoney.getState().archiveCategory('health');
-    const applied = applyChanges('Expenses', id);
+    const applied = applyChanges('Expenses', id, 'expenses');
     expect(applied?.message).toBe('1 changes applied');
     expect(useMoney.getState().amounts.map((a) => a.categoryId)).toEqual(['food']);
 
@@ -362,7 +366,7 @@ describe('an amount on an Expenses card', () => {
     );
     useMoney.getState().archiveCategory('entertainment');
     const amounts = useMoney.getState().amounts;
-    expect(applyChanges('Expenses', lone.id)).toBeNull();
+    expect(applyChanges('Expenses', lone.id, 'expenses')).toBeNull();
     expect(useMoney.getState().amounts).toEqual(amounts);
     expect(cardOf('Expenses', lone.id)?.status).toBe('pending');
   });
@@ -377,7 +381,7 @@ describe('an amount on an Expenses card', () => {
         { target: 'budget', id: 'health', field: 'monthly', number: 50 },
       ]),
     );
-    const applied = applyChanges('Expenses', id)!;
+    const applied = applyChanges('Expenses', id, 'expenses')!;
     expect(applied.message).toBe('3 changes applied');
     expect(useMoney.getState().budgets).toEqual([
       { categoryId: 'food', monthly: 300, alerts: true },
@@ -698,7 +702,7 @@ describe('a day answered on a Tasks card', () => {
         { target: 'task', id: 't_floss', field: 'excused', day: YESTERDAY },
       ]),
     );
-    const applied = applyChanges('Tasks', id)!;
+    const applied = applyChanges('Tasks', id, 'tasks')!;
     expect(applied.message).toBe('4 changes applied');
 
     const log = useTasks.getState().log;
@@ -720,7 +724,7 @@ describe('a day answered on a Tasks card', () => {
       'Tasks',
       reply([{ target: 'task', id: 't_read', field: 'untick', day: YESTERDAY }]),
     );
-    const applied = applyChanges('Tasks', id)!;
+    const applied = applyChanges('Tasks', id, 'tasks')!;
     expect(useTasks.getState().log.t_read?.[YESTERDAY]).toBeUndefined();
     applied.undo();
     expect(snapshot()).toEqual(before);
@@ -732,7 +736,7 @@ describe('a day answered on a Tasks card', () => {
       'Tasks',
       reply([{ target: 'task', id: 't_stretch', field: 'done', day: YESTERDAY }]),
     );
-    const applied = applyChanges('Tasks', id)!;
+    const applied = applyChanges('Tasks', id, 'tasks')!;
     applied.undo();
     expect(useTasks.getState().log).toEqual({});
   });
@@ -746,14 +750,14 @@ describe('a day answered on a Tasks card', () => {
       ]),
     );
     useTasks.getState().archiveTask('t_floss');
-    const applied = applyChanges('Tasks', id)!;
+    const applied = applyChanges('Tasks', id, 'tasks')!;
     expect(applied.message).toBe('1 changes applied');
     expect(useTasks.getState().log.t_floss).toBeUndefined();
 
     const lone = await ask('Tasks', reply([{ target: 'task', id: 't_read', field: 'done' }]));
     useTasks.getState().archiveTask('t_read');
     const log = useTasks.getState().log;
-    expect(applyChanges('Tasks', lone.id)).toBeNull();
+    expect(applyChanges('Tasks', lone.id, 'tasks')).toBeNull();
     expect(useTasks.getState().log).toEqual(log);
     expect(cardOf('Tasks', lone.id)?.status).toBe('pending');
   });
@@ -771,7 +775,7 @@ describe('a day answered on a Tasks card', () => {
         { target: 'bodyweight', field: 'log', number: 81 },
       ]),
     );
-    const applied = applyChanges('Tasks', id)!;
+    const applied = applyChanges('Tasks', id, 'tasks')!;
     expect(applied.message).toBe('4 changes applied');
     const state = useTasks.getState();
     expect(state.tasks.find((x) => x.id === 't_stretch')?.name).toBe('Stretch 10 min');

@@ -2,13 +2,14 @@
  * WorkoutSettingsScreen — every duration the app counts, and the two switches
  * that decide whether it can be heard.
  *
- * ONE OF THREE, reached from the section row in `SettingsHomeScreen`. Settings
- * used to be one screen holding everything: the rest timers, the plates, the
- * weekly targets, and underneath them eight rows of export and import belonging
- * to three different logs. Nothing on it was wrong and all of it was in one pile,
- * so finding the rest step meant scrolling past the backup folder. Each section
- * now owns its own settings, and the general ones — one export, one import, one
- * reset — are the section list's own screen.
+ * The Workout app's section settings, reached from the one section row in
+ * `SettingsHomeScreen`. Settings used to be one screen holding everything: the
+ * rest timers, the plates, the weekly targets, and underneath them eight rows of
+ * export and import belonging to three different logs. Nothing on it was wrong
+ * and all of it was in one pile, so finding the rest step meant scrolling past
+ * the backup folder. Each section now owns its own settings — and since 3.0.0
+ * each section is its own app, so this screen exists only in the Workout one —
+ * and the general ones (one export, one import, one reset) are Settings itself.
  *
  * What makes a setting belong HERE is that a workout reads it. That is why the
  * sound, the vibration and the screen-on switches are on this screen rather than
@@ -789,8 +790,9 @@ export function WorkoutSettingsScreen({
               match.
 
               The BACKUP rows are not here any more. A backup is not a training
-              setting — it carries the tasks and the money too — so it lives once,
-              in the general section, beside the one export and the one import.
+              setting — it carries the settings, the AI chats and, in this app,
+              the 2.x tasks and money too — so it lives once, on Settings itself,
+              beside the one export and the one import.
               See `screens/SettingsHomeScreen.tsx`. */}
           <View className="mx-lg mt-xxl overflow-hidden rounded-surface border border-hairline bg-surface">
             <SettingRow
@@ -842,7 +844,7 @@ export function WorkoutSettingsScreen({
 
           <Text className="mx-lg mt-md text-label text-ink-faint">
             {t(
-              'Everything on this screen is about training. Daily tasks and Finance have settings screens of their own, and the backup that carries all three is one row in the general section.',
+              'Everything on this screen is about training. The look, the language, the backup and the AI coach are on the Settings screen itself.',
             )}
           </Text>
 

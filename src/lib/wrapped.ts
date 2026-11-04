@@ -1,5 +1,5 @@
 /**
- * Wrapped (X1): a month or a year across the three logs, told as a short run of
+ * Wrapped (X1): a month or a year of one app's log, told as a short run of
  * story cards — one fact a card, then a summary laid out to be kept.
  *
  *   SEPTEMBER 2026        TONNAGE              BEST RECORD           SUMMARY
@@ -37,6 +37,20 @@
  *    period with neither has no card. Ties go to the weekday with more tasks
  *    done, then to the earlier one in a Monday-first week.
  *
+ * ── ONE LOG PER APP ───────────────────────────────────────────────────────
+ *
+ * Written when one app held all three logs; since 3.0.0 each app's Wrapped is
+ * its own log's (`variant` on the input, `scopeLogs` in `lib/variantScope.ts`):
+ *
+ *   Workout   title · tonnage · workouts · best record · busiest weekday
+ *   Tasks     title · longest streak · busiest weekday (by tasks)
+ *   Expenses  title · top category
+ *
+ * — each followed by the summary. No card changed to get there: the other logs
+ * are handed in empty, and an empty log already drew no card. The Workout
+ * app still stores the 2.x tasks and money; its Wrapped says nothing about
+ * them, since it has no screen to show them on.
+ *
  * Rejected: a streak for training (IMPLEMENTATION_DECISIONS row 5 — none), and
  * any "you beat 87% of users": there are no other users, and nothing leaves the
  * phone.
@@ -53,6 +67,7 @@
  * Pure: the stores are read by `hooks/useWrapped.ts` and handed in.
  */
 
+import type { AppVariant } from './appVariant';
 import type { CompletedWorkout } from './completedWorkout';
 import {
   dayKey,
@@ -76,6 +91,7 @@ import {
 } from './records';
 import { asksOn, entryOf, isWeekly, longestRunIn, type Task, type TaskLog } from './tasks';
 import { formatClock, formatWeight, kgToLb, unitLabel } from './units';
+import { maybeScope } from './variantScope';
 import type { ID, UnitSystem } from '../types/models';
 
 /**
@@ -157,6 +173,11 @@ export interface WrappedInput {
   amounts: readonly Amount[];
   categories: readonly MoneyCategory[];
   bodyweightAtDate?: BodyweightLookup;
+  /**
+   * Which app's Wrapped: every other log reads as empty. Absent = all three,
+   * the combined 2.x reading the older tests use; `useWrapped` passes it.
+   */
+  variant?: AppVariant;
 }
 
 export interface WrappedStats {
@@ -356,8 +377,9 @@ function busiestWeekday(
   };
 }
 
-/** The period across the three logs, or null when there is nothing to tell. */
-export function wrappedStats(input: WrappedInput): WrappedStats | null {
+/** The period in the app's log, or null when there is nothing to tell. */
+export function wrappedStats(raw: WrappedInput): WrappedStats | null {
+  const input = maybeScope(raw.variant, raw);
   const range = periodRange(input.period);
   const before = periodRange(previousPeriod(input.period));
   const inPeriod = workoutsIn(input.workouts, range);

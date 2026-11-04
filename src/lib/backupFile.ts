@@ -38,8 +38,10 @@ import {
   padToCover,
   planBackupWrite,
   utf8ByteLength,
+  uriFileName,
   type BackupFileRecord,
 } from './autoBackup';
+import { APP_VARIANT, type AppVariant } from './appVariant';
 import { dayKey } from './days';
 import { t, type Language } from './i18n';
 
@@ -76,9 +78,7 @@ function appFolderUri(): string | null {
 
 /** The name a SAF URI ends in, decoded: `...%2FDownload%2Fbackup.json` → `backup.json`. */
 function displayName(uri: string): string {
-  const decoded = safeDecode(uri);
-  const tail = decoded.split('/').pop() ?? decoded;
-  return tail;
+  return uriFileName(uri);
 }
 
 /** The folder a SAF tree URI points at, in words: "Download", "SD card / backups". */
@@ -193,7 +193,9 @@ export async function overwriteFile(uri: string, contents: string): Promise<void
 
 /**
  * Write the day's backup into the granted folder: overwrite today's file, or
- * create today's and retire the old one. Decisions in `lib/autoBackup.ts`.
+ * create today's and retire the old one. Decisions in `lib/autoBackup.ts`, made
+ * for `variant` — this app's name, and only this app's files retired, because
+ * the other two apps are usually writing into the same folder.
  *
  *   overwrite ok                 → done, same URI
  *   overwrite fails (file gone,  → create a new file, then delete the old URI
@@ -208,9 +210,10 @@ export async function writeDailyBackup(
   current: BackupFileRecord | undefined,
   contents: string,
   now: Date = new Date(),
+  variant: AppVariant = APP_VARIANT,
 ): Promise<{ name: string; file: BackupFileRecord }> {
   const today = dayKey(now);
-  const plan = planBackupWrite(current, today);
+  const plan = planBackupWrite(current, today, variant);
   if (plan.kind === 'overwrite') {
     try {
       await overwriteFile(plan.uri, contents);
@@ -220,8 +223,8 @@ export async function writeDailyBackup(
     }
   }
   const replaces = plan.kind === 'overwrite' ? plan.uri : plan.replaces;
-  const { name, uri } = await writeToFolder(folderUri, backupFileBaseName(now), contents);
-  for (const old of backupFilesToRetire(await listFolder(folderUri), uri, replaces)) {
+  const { name, uri } = await writeToFolder(folderUri, backupFileBaseName(now, variant), contents);
+  for (const old of backupFilesToRetire(await listFolder(folderUri), uri, replaces, variant)) {
     await deleteFile(old);
   }
   return { name, file: { uri, day: today } };
@@ -230,8 +233,8 @@ export async function writeDailyBackup(
 /**
  * Delete one file by URI. Best-effort: a `false` is not worth reporting.
  *
- * Used only by the backup's daily replacement, and only on `momentum-backup-*`
- * files this app wrote itself. A delete that fails leaves one extra copy in a
+ * Used only by the backup's daily replacement, and only on files with this
+ * app's own backup name (`momentum-<app>-backup-*`), which it wrote itself. A delete that fails leaves one extra copy in a
  * folder, which is the mildest possible failure — so it is swallowed rather than
  * surfaced, and the next day's sweep will try the same file again.
  */

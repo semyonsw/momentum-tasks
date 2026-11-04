@@ -1,36 +1,32 @@
 /**
- * NavBar — two icons, a raised Home button, two icons, on one pane of glass.
+ * NavBar — the app's own section and Settings, on one pane of glass.
  *
- *            ╭──────╮
- *   ╭────────│  ⌂   │────────╮
- *   │  🏋   ✓ ╰──────╯  ▣   ⚙ │
- *   │  ▬                      │
- *   ╰─────────────────────────╯
+ *   ╭──────────────────────────────╮
+ *   │      🏋              ⚙       │
+ *   │    Workout        Settings   │
+ *   ╰──────────────────────────────╯
  *
- * It replaces `TabBar`'s four words. Momentum put a landing above the four
- * sections, and the way back to it has to be one tap from anywhere and
- * findable without reading — so it is the one raised, gradient-filled thing on
- * the bar, and the four sections became glyphs either side of it. The glyphs
- * are the same four as the Home tiles, which is what makes them learnable: you
- * have already tapped the big version of each one.
+ * ── TWO ITEMS, EACH IN ITS OWN HALF (3.0) ─────────────────────────────────
+ *
+ * From 2.0 to 2.10 the bar was four glyphs around a raised, gradient-filled
+ * Home button: Momentum put a landing above three logs, and the way back to it
+ * had to be one tap from anywhere. Each log is its own app now
+ * (`lib/appVariant.ts`), the section is the landing, and the bar holds exactly
+ * what the app has — its section and Settings (`variantSections`). They sit at
+ * the quarter points (`lib/sectionNav.navSlots`), each centred in the half it
+ * owns. Rejected: keeping two of the old four positions (a hole in the middle
+ * where a button used to be reads as something missing) and dropping the bar
+ * for a gear in the corner (Settings would stop being one tap from the root,
+ * and the blob would have nowhere to go).
  *
  * ── EVERY ITEM IS NAMED (2.9, redesign #10) ───────────────────────────────
  *
- *            ╭──────╮
- *   ╭────────│  ⌂   │────────────╮
- *   │  🏋     ✓ ╰──────╯  ▣     ⚙  │
- *   │ Workout Tasks Home Finance Settings │
- *   ╰─────────────────────────────╯
- *
  * Each glyph has its section's name under it, 12.5 px, and the active one is
  * `acc` — the word and the glyph together, so the lit item is said twice and
- * the others are still legible. "Learnable from the Home tiles" held for a user
- * who had been to Home; a user who has not yet is guessing between a wallet and
- * a box. The label replaced the small dot that used to mark the active item: the
- * blob and the lit word already say which one, and a third mark is noise. The
- * raised Home circle lifted 4 dp so its own `Home` fits under it on the same line
- * as the others. Rejected: labels only on the active item (the inactive four are
- * the ones a newcomer needs named).
+ * the other is still legible. The label replaced the small dot that used to
+ * mark the active item: the blob and the lit word already say which one, and a
+ * third mark is noise. Rejected: labels only on the active item (the inactive
+ * one is the one a newcomer needs named).
  *
  * ── THE BLOB IS LIQUID ────────────────────────────────────────────────────
  *
@@ -39,9 +35,9 @@
  * on an overshooting curve — so for a moment it is wider than itself and then it
  * lands, and the pane reads as liquid rather than a rectangle being slid.
  *
- * Hidden on Home and on every pushed screen: it drops away in 380 ms, and comes
- * back up on an overshoot 160 ms after a section arrives, so the section is on
- * screen before the chrome is.
+ * Hidden on every pushed screen: it drops away in 380 ms, and comes back up on
+ * an overshoot 160 ms after a section arrives, so the section is on screen
+ * before the chrome is.
  *
  * All of it is Reanimated, on the UI thread — the blob moves while the incoming
  * section renders, and a JS-thread animation there is a nav bar that stutters
@@ -58,17 +54,15 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { BubblePressable } from './bubbles';
 import { BlurGate, GlassBar } from './glass';
 import { useOverlayOpen } from './overlay';
 import { MaterialSymbol, type SymbolName } from './MaterialSymbol';
 import { useT } from '../hooks/useT';
-import { BLOB_HALF, NAV_SLOTS, SECTIONS, type SectionTab } from '../lib/sectionNav';
-import { gradientFill, palette, tint } from '../theme/tokens';
+import { BLOB_HALF, navSlots, type SectionTab } from '../lib/sectionNav';
+import { palette, tint } from '../theme/tokens';
 
 const GLYPH: Record<SectionTab, SymbolName> = {
   Workout: 'fitness_center',
@@ -96,19 +90,20 @@ const LABEL_BOTTOM = 8;
 const LABEL_LINE = 16;
 
 interface NavBarProps {
+  /** The sections this app has, in bar order (`variantSections`). */
+  sections: readonly SectionTab[];
   active: SectionTab;
   /**
-   * False on Home and under a pushed screen. A sheet being up hides it too, but
+   * False under a pushed screen. A sheet being up hides it too, but
    * that is read here rather than passed in: the overlay count is subscribed to
    * by THIS component, so a sheet opening re-renders the pill and not the shell
    * and the whole screen under it.
    */
   visible: boolean;
   onSelect: (tab: SectionTab) => void;
-  onHome: () => void;
 }
 
-function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarProps) {
+function NavBarComponent({ sections, active, visible: onRoute, onSelect }: NavBarProps) {
   const insets = useSafeAreaInsets();
   const t = useT();
   const [width, setWidth] = useState(0);
@@ -119,7 +114,7 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarP
    * WHETHER THE BLUR IS MOUNTED — true from the moment the bar is asked for until
    * its drop has finished. A hidden bar is only at opacity 0, and a Dimezis blur
    * at opacity 0 still redraws the whole window into its bitmap on every frame:
-   * on Home, under every pushed screen, for the whole of a workout. Set during
+   * under every pushed screen, for the whole of a workout. Set during
    * render on the way up, so the blur is there before the 160 ms delay ends.
    */
   const [blurLive, setBlurLive] = useState(visible);
@@ -135,10 +130,11 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarP
   }, [shown, visible]);
 
   /* The blob's two edges, each on its own clock. See the file header. */
-  const centre = NAV_SLOTS[active] * width;
+  const slots = useMemo(() => navSlots(sections), [sections]);
+  const centre = (slots[active] ?? 0) * width;
   const left = useSharedValue(centre - BLOB_HALF);
   const right = useSharedValue(centre + BLOB_HALF);
-  const activeIndex = SECTIONS.indexOf(active);
+  const activeIndex = sections.indexOf(active);
   const previous = useSharedValue(activeIndex);
   const placed = useRef(false);
   useEffect(() => {
@@ -163,7 +159,10 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarP
     previous.value = activeIndex;
   }, [activeIndex, centre, left, previous, right, width]);
 
-  const centres = useMemo(() => SECTIONS.map((s) => NAV_SLOTS[s] * width), [width]);
+  const centres = useMemo(
+    () => sections.map((s) => (slots[s] ?? 0) * width),
+    [sections, slots, width],
+  );
 
   const barStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, shown.value * 1.4),
@@ -224,7 +223,7 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarP
       </View>
 
       {width > 0
-        ? SECTIONS.map((section, i) => (
+        ? sections.map((section, i) => (
             <NavItem
               key={section}
               section={section}
@@ -235,15 +234,12 @@ function NavBarComponent({ active, visible: onRoute, onSelect, onHome }: NavBarP
             />
           ))
         : null}
-
-      <HomeLabel label={t('Home')} />
-      <HomeButton label={t('Home')} onPress={onHome} />
     </Animated.View>
   );
 }
 
 /**
- * Memoized, and handed the section rather than a bound closure, so the four
+ * Memoized, and handed the section rather than a bound closure, so the
  * items only re-render when one of them changes state.
  */
 export const NavBar = memo(NavBarComponent);
@@ -307,9 +303,8 @@ const NavItem = memo(function NavItem({
 
 /**
  * The name under a glyph. Wider than the 64 dp item (the Russian `Тренировка`
- * is ~70 dp at 12.5) and centred on it: the slots are 66 apart and their
- * neighbours' words are short, so a long one may spill into the gap without
- * touching the next. Not clipped, not shrunk — 12.5 is the floor.
+ * is ~70 dp at 12.5) and centred on it: with two slots half a bar apart there
+ * is room for far longer. Not clipped, not shrunk — 12.5 is the floor.
  */
 function NavLabel({ label, active }: { label: string; active: boolean }) {
   return (
@@ -330,90 +325,5 @@ function NavLabel({ label, active }: { label: string; active: boolean }) {
     >
       {label}
     </Text>
-  );
-}
-
-/**
- * The raised 66 dp gradient circle. A 6 dp ring of the bar's own near-black
- * separates it from the glass it rises out of, and a soft highlight sits in its
- * upper left. The highlight used to drift on a six-second loop; it is still now,
- * because a chrome element that never stops animating keeps the UI thread
- * producing frames on a screen that is otherwise at rest.
- */
-function HomeButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <View
-      style={{
-        position: 'absolute',
-        top: -28,
-        left: '50%',
-        marginLeft: -33,
-        width: 66,
-        height: 66,
-        borderRadius: 9999,
-        boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 0, spreadDistance: 6, color: '#0B0F0E' }],
-      }}
-    >
-      <BubblePressable
-        onPress={onPress}
-        radius="pill"
-        bubbleColor={palette.ink}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={{
-          width: 66,
-          height: 66,
-          borderRadius: 9999,
-          overflow: 'hidden',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.22)',
-        }}
-      >
-        <LinearGradient
-          {...gradientFill()}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-        />
-        <Animated.View
-          pointerEvents="none"
-          style={{ position: 'absolute', top: 6, left: 6, right: 6, bottom: 6 }}
-        >
-          <Svg width="100%" height="100%" viewBox="0 0 54 54">
-            <Defs>
-              <RadialGradient id="homeBlob" cx="35%" cy="25%" r="60%">
-                <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.35} />
-                <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
-              </RadialGradient>
-            </Defs>
-            <Rect x={0} y={0} width={54} height={54} rx={27} fill="url(#homeBlob)" />
-          </Svg>
-        </Animated.View>
-        <MaterialSymbol name="home" size={32} color={palette.onAcc} filled />
-      </BubblePressable>
-    </View>
-  );
-}
-
-/**
- * `Home`, under the raised circle, on the same line as the four section names.
- * Never lit: the bar is hidden on Home, so whenever it is on screen Home is the
- * one place you are NOT. Not a target of its own — the circle above is.
- */
-function HomeLabel({ label }: { label: string }) {
-  return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        bottom: LABEL_BOTTOM,
-        left: '50%',
-        marginLeft: -42,
-        width: 84,
-        alignItems: 'center',
-      }}
-    >
-      <NavLabel label={label} active={false} />
-    </View>
   );
 }

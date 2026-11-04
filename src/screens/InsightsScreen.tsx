@@ -1,15 +1,20 @@
 /**
- * InsightsScreen — patterns across the three logs (X2, design 18).
+ * InsightsScreen — patterns in the spending log (X2, design 18).
  *
  *   ‹ INSIGHTS
- *   Patterns across your three logs. Correlation, not cause.
+ *   Patterns in your spending. Correlation, not cause.
  *   ╭──────────────────────────────────────────╮
- *   │ On training days you finish more of your │
- *   │ tasks: 82% vs 61% on rest days.          │
- *   │ Training days  ██████████████░░░   82%   │
- *   │ Rest days      ██████████░░░░░░░   61%   │
- *   │ based on 41 training days and 47 rest days│
+ *   │ You spend more at weekends:              │
+ *   │ 4 200 a day against 2 600 on weekdays.   │
+ *   │ Weekends       ██████████████░░░         │
+ *   │ Weekdays       ██████████░░░░░░░         │
+ *   │ based on 16 weekend days and 40 weekdays │
  *   ╰──────────────────────────────────────────╯
+ *
+ * EXPENSES APP ONLY, since 3.0.0. Three of the four cards compared two of the
+ * old app's logs — tasks against training, spending against training — and no
+ * app holds two logs any more, so `insights.insightIdsFor` leaves the weekend
+ * card alone and the shell opens this screen only where `insightsOffered`.
  *
  * Every card is a sentence the numbers under it prove, with its sample in
  * micro text — the thresholds that decide whether a card exists at all are in
@@ -33,9 +38,7 @@ import {
   describeInsight,
   INSIGHT_WINDOW_DAYS,
   MIN_DAYS_PER_GROUP,
-  MIN_POINTS,
   MIN_RELATIVE,
-  MIN_WEEKS_PER_GROUP,
   type InsightCard,
 } from '../lib/insights';
 import { useSettings } from '../state/settingsStore';
@@ -62,7 +65,7 @@ export function InsightsScreen({ onBack }: { onBack: () => void }) {
         showsVerticalScrollIndicator={false}
       >
         <Text maxFontSizeMultiplier={1.3} className="mx-lg mb-md mt-md text-body text-ink-muted">
-          {`${t('Patterns across your three logs.')} ${t('Correlation, not cause.')}`}
+          {`${t('Patterns in your spending.')} ${t('Correlation, not cause.')}`}
         </Text>
 
         {cards.length > 0 ? (
@@ -85,17 +88,15 @@ export function InsightsScreen({ onBack }: { onBack: () => void }) {
             <Kicker>{t('Nothing to show yet')}</Kicker>
             <Text maxFontSizeMultiplier={1.3} className="mt-sm text-body text-ink-muted">
               {t(
-                'Cards appear here when one log moves with another: tasks done on training days against rest days, and in weeks with 3+ workouts against weeks with fewer; spending on training days, and at weekends against weekdays.',
+                'A card appears here when your spending at weekends differs from your spending on weekdays.',
               )}
             </Text>
             <Text maxFontSizeMultiplier={1.3} className="mt-sm text-label text-ink-faint">
               {t(
-                'A card needs at least {days} days in each group ({weeks} weeks for weeks) over the last {window} weeks, and a gap of {points} points in tasks or {relative}% in spending. Smaller gaps are not shown.',
+                'It needs at least {days} days in each group over the last {window} weeks, and a gap of {relative}%. Smaller gaps are not shown.',
                 {
                   days: MIN_DAYS_PER_GROUP,
-                  weeks: MIN_WEEKS_PER_GROUP,
                   window: INSIGHT_WINDOW_DAYS / 7,
-                  points: MIN_POINTS,
                   relative: MIN_RELATIVE * 100,
                 },
               )}

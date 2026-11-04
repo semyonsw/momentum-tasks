@@ -1,5 +1,6 @@
 /**
- * The seven stores a backup carries, watched for the changes that matter.
+ * The stores this app's backup carries — up to seven, in the Workout app —
+ * watched for the changes that matter.
  *
  * `lib/backupWatch.ts` decides what counts as a change; this is the wiring that
  * applies it to the live stores, kept out of the hook so it can be tested against
@@ -8,15 +9,19 @@
  * these stores, not about a fixture.
  *
  * Not watched: the workout in progress (not in a backup; finishing it lands in
- * the history store, which is).
+ * the history store, which is), and the stores this app's file never carries
+ * (`watchedStores`).
  */
 
+import { APP_VARIANT, type AppVariant } from '../lib/appVariant';
 import {
   BACKED_UP_FIELDS,
   pickFields,
   settingsSlice,
   sliceChanged,
+  watchedStores,
   type BackupSlice,
+  type WatchedStore,
 } from '../lib/backupWatch';
 import { useAi } from './aiStore';
 import { useDebriefs } from './debriefStore';
@@ -31,15 +36,19 @@ interface Watchable {
   subscribe: (listener: (state: object) => void) => () => void;
 }
 
-const WATCHED: readonly { store: Watchable; slice: (state: object) => BackupSlice }[] = [
-  { store: useSettings, slice: settingsSlice },
-  { store: useLibrary, slice: (s) => pickFields(s, BACKED_UP_FIELDS.library) },
-  { store: useWorkoutHistory, slice: (s) => pickFields(s, BACKED_UP_FIELDS.workoutHistory) },
-  { store: useTasks, slice: (s) => pickFields(s, BACKED_UP_FIELDS.tasks) },
-  { store: useMoney, slice: (s) => pickFields(s, BACKED_UP_FIELDS.money) },
-  { store: useDebriefs, slice: (s) => pickFields(s, BACKED_UP_FIELDS.debriefs) },
-  { store: useAi, slice: (s) => pickFields(s, BACKED_UP_FIELDS.ai) },
-];
+const WATCHABLE: Record<WatchedStore, { store: Watchable; slice: (state: object) => BackupSlice }> =
+  {
+    settings: { store: useSettings, slice: settingsSlice },
+    library: { store: useLibrary, slice: (s) => pickFields(s, BACKED_UP_FIELDS.library) },
+    workoutHistory: {
+      store: useWorkoutHistory,
+      slice: (s) => pickFields(s, BACKED_UP_FIELDS.workoutHistory),
+    },
+    tasks: { store: useTasks, slice: (s) => pickFields(s, BACKED_UP_FIELDS.tasks) },
+    money: { store: useMoney, slice: (s) => pickFields(s, BACKED_UP_FIELDS.money) },
+    debriefs: { store: useDebriefs, slice: (s) => pickFields(s, BACKED_UP_FIELDS.debriefs) },
+    ai: { store: useAi, slice: (s) => pickFields(s, BACKED_UP_FIELDS.ai) },
+  };
 
 /**
  * Have the AsyncStorage stores finished reading from disk?
@@ -64,8 +73,12 @@ export function storesHydrated(): boolean {
  * than reported: hydration replaces each store wholesale, and that is the data
  * ARRIVING, not the user changing it.
  */
-export function watchBackedUpStores(onChange: () => void): () => void {
-  const stops = WATCHED.map(({ store, slice }) => {
+export function watchBackedUpStores(
+  onChange: () => void,
+  variant: AppVariant = APP_VARIANT,
+): () => void {
+  const stops = watchedStores(variant).map((key) => {
+    const { store, slice } = WATCHABLE[key];
     let previous = slice(store.getState());
     return store.subscribe((state) => {
       const next = slice(state);

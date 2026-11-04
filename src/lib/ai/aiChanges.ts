@@ -196,6 +196,16 @@ const SECTION_OF: Record<AiChange['target'], AiSection> = {
   workout_set: 'Workout',
 };
 
+/**
+ * The section a change writes into. `validateChanges` keeps only the chat's own;
+ * `state/aiActions.ts` asks again at the write, against the APP's section
+ * (`aiScope.aiServes`), so a card from a chat this app should not have — a 2.x
+ * Tasks chat still on disk in the Workout app — cannot reach the hidden log.
+ */
+export function changeSection(target: AiChange['target']): AiSection {
+  return SECTION_OF[target];
+}
+
 /* ------------------------------------------------------------------ */
 /* Reading the model's items                                           */
 /* ------------------------------------------------------------------ */

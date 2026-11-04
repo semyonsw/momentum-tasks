@@ -7,23 +7,25 @@
  *   │                ╭──────╮                      │  ← r 78: a third per store
  *   │                │ ◠ 🏋 │                      │  ← r 70: a gradient arc, spinning
  *   │                ╰──────╯                      │  ← the mark: squeezes, morphs
- *   │                  Momentum                    │  ← letter by letter
- *   │            TRAIN · TICK · COUNT              │
+ *   │                  Workout                     │  ← the app's name, letter by letter
+ *   │            TRAIN · LOG · PROGRESS            │
  *   │                                              │
- *   │  (✓ 92 workouts)(◌ 0 tasks)(◌ 0 accounts)    │  ← each ticks when ITS store has
+ *   │                (✓ 92 workouts)               │  ← ticks when ITS store has
  *   └──────────────────────────────────────────────┘
  *
  * ── THE MARK IS THE APP, IN ONE BEAT ──────────────────────────────────────
  *
- * An 86 dp gradient circle in the theme's three colours, and inside it the three
- * logs take turns: `fitness_center` → `payments` → `task_alt`, each spinning in,
- * holding and spinning out on a 2.7 s loop, a third of a loop apart. The circle
- * squeezes on the same 0.9 s beat, so every hand-over lands on a squeeze and the
- * swap reads as the mark changing its mind rather than as three icons fading.
- * Every loop is transform or opacity on the native driver: this runs while the
- * JS thread is busiest, hydrating three stores, and a JS-driven morph would
- * stutter exactly then. The keyframes are CSS in the handoff; each is rebuilt
- * as an `Animated.sequence` of its segments, with the handoff's easing on each.
+ * An 86 dp gradient circle in the theme's three colours, and inside it the
+ * app's own glyph (`lib/launchReady.launchBrand`). Until 3.0.0 it held all three
+ * logs taking turns — `fitness_center` → `payments` → `task_alt`, each spinning
+ * in, holding and spinning out on a 2.7 s loop — because Momentum WAS the three
+ * logs. Each app is one log now, so its mark holds one glyph and keeps it; the
+ * morph machinery stays for a list of one, which simply never hands over. The
+ * circle squeezes on a 0.9 s beat. Every loop is transform or opacity on the
+ * native driver: this runs while the JS thread is busiest, hydrating the stores,
+ * and a JS-driven animation would stutter exactly then. The keyframes are CSS in
+ * the handoff; each is rebuilt as an `Animated.sequence` of its segments, with
+ * the handoff's easing on each.
  *
  * It starts on a page-coloured frame with the mark at rest and every glyph at
  * opacity 0, which is the closest this screen can come to the native splash's
@@ -32,14 +34,16 @@
  *
  * ── THE CHIPS ARE THE TRUTH ───────────────────────────────────────────────
  *
- * Three chips, three stores: the workout log (SQLite), the tasks and the money
- * (both persisted). Each spins until THAT store has really finished, then ticks
- * and counts up to what it holds, and the ring round the mark fills a third per
- * store. The order they tick in is the order the stores finished —
- * `lib/launchReady.ts` paces them so three stores that finish together still
- * read as three, and decides when the screen may leave: all three ready and 2.3 s
- * gone, or 6 s gone whatever happened. A store that never reports ready ends the
- * launch at the ceiling and the screen behind it shows its own error state.
+ * One chip per store this app is built on (`launchReady.launchStores`): the
+ * workout log (SQLite) in Workout, the tasks in Tasks, the money in Expenses.
+ * It spins until THAT store has really finished, then ticks and counts up to
+ * what it holds, and the ring round the mark fills as it does. The Workout app's
+ * old tasks and money are still on disk and still hydrate, but its screens never
+ * read them, so they get no chip and the launch does not wait for them.
+ * `lib/launchReady.ts` paces the ticks and decides when the screen may leave:
+ * every store ready and 2.3 s gone, or 6 s gone whatever happened. A store that
+ * never reports ready ends the launch at the ceiling and the screen behind it
+ * shows its own error state.
  *
  * It shows on a COLD START only. It is mounted once, by `App`, for the life of the
  * JS process; coming back to the app from the background resumes that process,
@@ -54,7 +58,15 @@ import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-na
 
 import { useMotionScale } from '../hooks/useMotionScale';
 import { usePlural, useT } from '../hooks/useT';
-import { LAUNCH_CEILING_MS, launchReady, launchTicks, type LaunchStore } from '../lib/launchReady';
+import { APP_VARIANT, BUILD_MARK } from '../lib/appVariant';
+import {
+  LAUNCH_CEILING_MS,
+  launchBrand,
+  launchReady,
+  launchStores,
+  launchTicks,
+  type LaunchStore,
+} from '../lib/launchReady';
 import { mixSrgb } from '../lib/theme';
 import { useMoney } from '../state/moneyStore';
 import { useTasks } from '../state/tasksStore';
@@ -70,8 +82,11 @@ const EASE = curve(motion.ease);
 /** The glyph morph's curve, and the squeeze's — both from the handoff. */
 const MORPH_EASE = Easing.bezier(0.34, 1.3, 0.64, 1);
 const SQUEEZE_EASE = curve(motion.pop);
-/** A name, not a sentence: `Momentum` in both languages. */
-const WORDMARK = 'Momentum';
+/** This app's name, glyph and line — a name, not a sentence, in both languages. */
+const BRAND = launchBrand(APP_VARIANT);
+const WORDMARK = BRAND.wordmark;
+/** The stores this app waits for, in chip order. */
+const STORES = launchStores(APP_VARIANT);
 
 /** The mark, and the box the waves and both rings sit in. */
 const MARK = 86;
@@ -82,9 +97,11 @@ const PROGRESS_STROKE = 3;
 const PROGRESS_LENGTH = 2 * Math.PI * PROGRESS_R;
 const SPIN_R = 70;
 
-/** One morph loop, and the three glyphs it deals out a third of a loop apart. */
+/** One morph loop, and the glyphs it deals out evenly across it — one, since 3.0. */
 const MORPH_MS = 2700;
-const GLYPHS: readonly SymbolName[] = ['fitness_center', 'payments', 'task_alt'];
+const GLYPHS: readonly SymbolName[] = [BRAND.glyph];
+/** A single glyph holds still: there is nothing to hand over to. */
+const MORPHS = GLYPHS.length > 1;
 const SQUEEZE_MS = 900;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -95,7 +112,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
   const scale = useMotionScale();
   const reduced = scale === 0;
 
-  /* --- the three stores, and when each became ready ------------------- */
+  /* --- the stores, and when each became ready ------------------------- */
   const started = useRef(Date.now()).current;
   const historyReady = useWorkoutHistory((s) => s.ready);
   const workoutCount = useWorkoutHistory((s) => s.workouts.length);
@@ -143,13 +160,8 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
         tasks: readyAt.current.tasks != null,
         money: readyAt.current.money != null,
       }
-    : launchTicks(readyAt.current, elapsed);
-  const state = launchReady({
-    historyReady: ticked.history,
-    tasksReady: ticked.tasks,
-    moneyReady: ticked.money,
-    elapsedMs: elapsed,
-  });
+    : launchTicks(readyAt.current, elapsed, STORES);
+  const state = launchReady({ stores: STORES, ready: ticked, elapsedMs: elapsed });
   /*
    * A TAP SKIPS THE WAIT, once the data is actually in. The floor is there for the
    * choreography, and the choreography is for the first look, not the fortieth
@@ -157,12 +169,17 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
    * splash would be leaving onto screens with nothing in them yet.
    */
   const [skipped, setSkipped] = useState(false);
-  const allLoaded = historyReady && tasksReady && moneyReady;
+  const loaded: Record<LaunchStore, boolean> = {
+    history: historyReady,
+    tasks: tasksReady,
+    money: moneyReady,
+  };
+  const allLoaded = STORES.every((store) => loaded[store]);
   /* Reduced motion has no choreography to wait for: leave once the data is in. */
   const exit =
     state.exit ||
     (skipped && allLoaded) ||
-    (reduced && (state.stage === 3 || elapsed >= LAUNCH_CEILING_MS));
+    (reduced && (state.stage === STORES.length || elapsed >= LAUNCH_CEILING_MS));
 
   /* --- the exit ------------------------------------------------------- */
   const leave = useRef(new Animated.Value(0)).current;
@@ -188,7 +205,11 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
   const tagline = useRef(new Animated.Value(reduced ? 1 : 0)).current;
   /* Each glyph has an IN and an OUT value, so both halves get the overshoot. */
   const glyphs = useRef(
-    GLYPHS.map(() => ({ enter: new Animated.Value(0), exit: new Animated.Value(0) })),
+    GLYPHS.map(() => ({
+      /* A lone glyph with reduced motion is simply drawn: no spin-in will run. */
+      enter: new Animated.Value(!MORPHS && reduced ? 1 : 0),
+      exit: new Animated.Value(0),
+    })),
   ).current;
 
   useEffect(() => {
@@ -220,20 +241,27 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
 
     run(Animated.loop(step(spin, 1, 1100, Easing.linear)));
 
-    // `morph`: 0–10 % in, hold to 27 %, out by 35 %, gone for the rest.
-    glyphs.forEach((glyph, index) =>
-      run(
-        Animated.loop(
-          Animated.sequence([
-            step(glyph.enter, 1, MORPH_MS * 0.1, MORPH_EASE),
-            Animated.delay(MORPH_MS * 0.17),
-            step(glyph.exit, 1, MORPH_MS * 0.08, MORPH_EASE),
-            Animated.delay(MORPH_MS * 0.65),
-          ]),
+    // `morph`: 0–10 % in, hold to 27 %, out by 35 %, gone for the rest. A lone
+    // glyph spins in once, from the splash-matching empty mark, and stays — on
+    // the loop it would be gone two thirds of the time.
+    if (!MORPHS) {
+      timers.push(
+        setTimeout(() => step(glyphs[0].enter, 1, MORPH_MS * 0.1, MORPH_EASE).start(), 240),
+      );
+    } else
+      glyphs.forEach((glyph, index) =>
+        run(
+          Animated.loop(
+            Animated.sequence([
+              step(glyph.enter, 1, MORPH_MS * 0.1, MORPH_EASE),
+              Animated.delay(MORPH_MS * 0.17),
+              step(glyph.exit, 1, MORPH_MS * 0.08, MORPH_EASE),
+              Animated.delay(MORPH_MS * 0.65),
+            ]),
+          ),
+          (index * MORPH_MS) / GLYPHS.length,
         ),
-        (index * MORPH_MS) / GLYPHS.length,
-      ),
-    );
+      );
 
     const wave = (v: Animated.Value, delay: number) => run(Animated.loop(step(v, 1, 2400)), delay);
     wave(wave1, 700);
@@ -254,16 +282,16 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* The ring round the mark: a third per ticked store, 700 ms a step. */
+  /* The ring round the mark: its share per ticked store, 700 ms a step. */
   const progress = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(progress, {
-      toValue: state.stage / 3,
+      toValue: state.fraction,
       duration: 700 * scale,
       easing: EASE,
       useNativeDriver: false,
     }).start();
-  }, [progress, scale, state.stage]);
+  }, [progress, scale, state.fraction]);
 
   /*
    * Every interpolation built once. The 100 ms clock re-renders this whole tree
@@ -294,7 +322,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
     [beat, lamps, leave, progress, spin, tagline],
   );
 
-  const chips: { store: LaunchStore; count: number; label: string }[] = [
+  const allChips: { store: LaunchStore; count: number; label: string }[] = [
     {
       store: 'history',
       count: workoutCount,
@@ -311,10 +339,12 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
       label: plural(accountCount, { one: t('account'), few: 'счёта', many: t('accounts') }),
     },
   ];
+  const chips = allChips.filter((chip) => STORES.includes(chip.store));
 
   return (
     <Animated.View
       accessibilityLabel={t('Loading')}
+      testID={BUILD_MARK || undefined}
       onTouchEnd={() => {
         if (allLoaded) setSkipped(true);
       }}
@@ -363,7 +393,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
         <Wave value={wave1} color={tint(0.5)} />
         <Wave value={wave2} color={stopTint(3, 0.5)} />
 
-        {/* The progress ring: a third per ticked store. */}
+        {/* The progress ring: its share per ticked store. */}
         <Svg
           width={RING_BOX}
           height={RING_BOX}
@@ -462,7 +492,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
           transform: [{ translateY: nodes.taglineY }],
         }}
       >
-        {t('Train · tick · count')}
+        {t(BRAND.tagline)}
       </Animated.Text>
 
       {/* What is actually loading, and what each store holds once it has. */}
@@ -500,7 +530,7 @@ const MARK_BOX = {
 } as const;
 
 /**
- * One of the three glyphs: spins in from −200° at a quarter size, holds, spins
+ * One glyph of the mark: spins in from −200° at a quarter size, holds, spins
  * out to +200°. `enter` and `exit` are separate values so each half overshoots
  * on its own curve; opacity is their product, rotation their sum.
  */

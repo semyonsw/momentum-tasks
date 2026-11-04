@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { APP_VARIANTS, variantSections } from './appVariant';
 import { addSpare, dropGone, initialBuilds, nextSpare, reconcileBuilds } from './stageBuilds';
 
 /**
@@ -42,8 +43,8 @@ describe('reconcileBuilds', () => {
 
   it('builds a live root that has no spare, and leaves unseen spares alone', () => {
     const stage = addSpare(initialBuilds('Workout'), 'Settings');
-    const opened = reconcileBuilds(stage, ['Workout', 'Home']);
-    expect(opened.builds.Home?.seen).toBe(true);
+    const opened = reconcileBuilds(stage, ['Workout', 'Tasks']);
+    expect(opened.builds.Tasks?.seen).toBe(true);
     expect(opened.builds.Settings).toEqual({ id: stage.builds.Settings?.id, seen: false });
   });
 
@@ -55,8 +56,8 @@ describe('reconcileBuilds', () => {
   it('never hands two builds the same id', () => {
     let stage = initialBuilds('Workout');
     stage = addSpare(stage, 'Tasks');
-    stage = reconcileBuilds(stage, ['Workout', 'Home']);
-    stage = addSpare(stage, 'Expenses');
+    stage = reconcileBuilds(stage, ['Workout', 'Expenses']);
+    stage = addSpare(stage, 'Settings');
     const ids = Object.values(stage.builds).map((build) => build?.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -70,13 +71,25 @@ describe('nextSpare', () => {
     expect(nextSpare(withBoth, 'Expenses')).toBe('Workout');
   });
 
-  it('goes left to right from Home, and stops when all four are built', () => {
-    let stage = initialBuilds('Home');
-    expect(nextSpare(stage, 'Home')).toBe('Workout');
-    for (const section of ['Workout', 'Tasks', 'Expenses', 'Settings'] as const) {
+  it('stops when all four are built', () => {
+    let stage = initialBuilds('Workout');
+    for (const section of ['Tasks', 'Expenses', 'Settings'] as const) {
       stage = addSpare(stage, section);
     }
-    expect(nextSpare(stage, 'Home')).toBeNull();
+    expect(nextSpare(stage, 'Workout')).toBeNull();
+  });
+
+  /* 3.0: one app, one section and Settings — the others are never built. */
+  it('builds only the sections the app’s bar shows', () => {
+    for (const variant of APP_VARIANTS) {
+      const sections = variantSections(variant);
+      const root = sections[0];
+      let stage = initialBuilds(root);
+      expect(nextSpare(stage, root, sections)).toBe('Settings');
+      stage = addSpare(stage, 'Settings');
+      expect(nextSpare(stage, root, sections)).toBeNull();
+      expect(nextSpare(initialBuilds('Settings'), 'Settings', sections)).toBe(root);
+    }
   });
 
   it('does not rebuild a section that is already mounted', () => {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sectionVariant } from '../lib/ai/aiScope';
 
 /*
  * A SETTINGS CARD, END TO END — from a scripted Gemini reply to the stores and
@@ -138,7 +139,7 @@ async function ask(
   answer: Answer,
 ): Promise<{ id: string; card: ChangesChatBlock | undefined }> {
   answers.push(answer);
-  await sendMessage(section, 'change some settings');
+  await sendMessage(section, 'change some settings', undefined, sectionVariant(section));
   const last = useAi.getState().chats[section].at(-1)!;
   if (last.role !== 'model') throw new Error(`no answer: ${JSON.stringify(last)}`);
   const card = last.blocks.find((b): b is ChangesChatBlock => b.type === 'changes');
@@ -447,7 +448,7 @@ describe('a Tasks card', () => {
   it('Apply adds, renames, retargets, reschedules and archives; Undo restores the list exactly', async () => {
     const before = snapshot();
     const { id } = await ask('Tasks', reply(ITEMS));
-    const applied = applyChanges('Tasks', id);
+    const applied = applyChanges('Tasks', id, 'tasks');
     expect(applied?.message).toBe('6 changes applied');
 
     const list = useTasks.getState().tasks;
@@ -474,7 +475,7 @@ describe('a Tasks card', () => {
       reply([{ target: 'task', id: 't_run', field: 'rename', text: 'Jog' }]),
     );
     useTasks.getState().archiveTask('t_run');
-    expect(applyChanges('Tasks', id)).toBeNull();
+    expect(applyChanges('Tasks', id, 'tasks')).toBeNull();
   });
 });
 
@@ -500,7 +501,7 @@ describe('an Expenses card', () => {
       ['Health', true, true],
     ]);
 
-    const applied = applyChanges('Expenses', id)!;
+    const applied = applyChanges('Expenses', id, 'expenses')!;
     expect(useMoney.getState().budgets).toEqual([
       { categoryId: 'food', monthly: 300, alerts: true },
       { categoryId: 'health', monthly: 50 },
@@ -517,7 +518,7 @@ describe('an Expenses card', () => {
       'Expenses',
       reply([{ target: 'budget', id: 'food', field: 'monthly', number: 0 }]),
     );
-    const applied = applyChanges('Expenses', id)!;
+    const applied = applyChanges('Expenses', id, 'expenses')!;
     expect(useMoney.getState().budgets ?? []).toEqual([]);
     applied.undo();
     expect(snapshot()).toEqual(before);
@@ -530,7 +531,7 @@ describe('an Expenses card', () => {
       'Expenses',
       reply([{ target: 'budget', id: 'food', field: 'monthly', number: 250 }]),
     );
-    const applied = applyChanges('Expenses', id)!;
+    const applied = applyChanges('Expenses', id, 'expenses')!;
     expect(useMoney.getState().budgets).toEqual([{ categoryId: 'food', monthly: 250 }]);
     applied.undo();
     expect(snapshot()).toEqual(before);

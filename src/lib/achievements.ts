@@ -1,7 +1,8 @@
 /**
  * Achievements (E1, Wave 3, behind the one switch in `lib/engagement.ts`):
  * thirty-three quiet badges across the three logs, and the facts they are read
- * off.
+ * off. Each app shows the ladder of its own log only — sixteen in Workout,
+ * eight in Tasks, nine in Expenses — see "ONE LOG PER APP" below.
  *
  *   100 workouts        ● Gold     earned 14 Sep 2026
  *   1 tonne in a session ● Bronze  earned 2 Mar 2026
@@ -48,6 +49,16 @@
  *    A savings goal is reached on the first day, from the day it was set, that
  *    its subsection's balance stood at the target.
  *
+ * ── ONE LOG PER APP ───────────────────────────────────────────────────────
+ *
+ * Since 3.0.0 the three logs are three apps (`lib/appVariant.ts`), and a badge
+ * belongs to the app whose log earns it: `logFacts` is handed the variant and
+ * reads only that log (`scopeLogs`), and `achievements` returns only that
+ * log's badges. The Workout app still stores the 2.x tasks and money — it
+ * neither counts them nor shows a "First amount" it has no screen to earn.
+ * The thirty-three stay defined here as one table so the order, the tiers and
+ * the words cannot drift between apps.
+ *
  * ── TIERS ─────────────────────────────────────────────────────────────────
  *
  * Bronze, silver and gold are drawn in the THEME's three stops — c3, c2, c1 —
@@ -55,6 +66,7 @@
  * of whatever theme is on, so a badge never clashes with the app around it.
  */
 
+import type { AppVariant } from './appVariant';
 import { recordMoments, type BodyweightLookup } from './records';
 import type { Budget } from './budgets';
 import { inMonth, monthKey, spentInMonth, daysInMonth } from './budgets';
@@ -75,6 +87,7 @@ import {
   type Task,
   type TaskLog,
 } from './tasks';
+import { maybeScope, variantLog, type LogSection } from './variantScope';
 
 /* ------------------------------------------------------------------ */
 /* The facts                                                           */
@@ -93,6 +106,11 @@ export interface LogsInput {
   accounts?: readonly MoneyAccount[];
   /** For bodyweight work's records, as the exercise screen weighs them. */
   bodyweightAtDate?: BodyweightLookup;
+  /**
+   * Which app is counting: every other log reads as empty. Absent = all three,
+   * the combined 2.x reading the older tests use; `useEngagement` passes it.
+   */
+  variant?: AppVariant;
 }
 
 /** One dated event and its size: a session's kilograms, a run's length, or 1. */
@@ -134,7 +152,8 @@ const byDay = (a: FactPoint, b: FactPoint) => (a.day < b.day ? -1 : a.day > b.da
 /** A full week needs this many perfect days (so a weekday-only list can earn it). */
 export const FULL_WEEK_DAYS = 5;
 
-export function logFacts(input: LogsInput): LogFacts {
+export function logFacts(raw: LogsInput): LogFacts {
+  const input = maybeScope(raw.variant, raw);
   const { today } = input;
   return {
     ...workoutFacts(input.workouts, today, input.bodyweightAtDate),
@@ -340,7 +359,12 @@ const signed = (amount: Amount) => (amount.direction === 'expense' ? -amount.val
 /* The badges                                                          */
 /* ------------------------------------------------------------------ */
 
-export type BadgeDomain = 'workout' | 'tasks' | 'money';
+export type BadgeDomain = LogSection;
+
+/** The badges an app shows: its own log's. */
+export function badgeDomain(variant: AppVariant): BadgeDomain {
+  return variantLog(variant);
+}
 /** 1 bronze (c3) · 2 silver (c2) · 3 gold (c1). */
 export type BadgeTier = 1 | 2 | 3;
 
@@ -781,9 +805,13 @@ export interface Badge {
   what: string;
 }
 
-/** Every badge, earned or not, in `BADGES` order. Same facts in, same badges out. */
-export function achievements(facts: LogFacts): Badge[] {
-  return BADGES.map((def) => {
+/**
+ * Every badge, earned or not, in `BADGES` order. Same facts in, same badges out.
+ * With a variant, only that app's log's badges (absent = all thirty-three).
+ */
+export function achievements(facts: LogFacts, variant?: AppVariant): Badge[] {
+  const domain = variant === undefined ? null : badgeDomain(variant);
+  return BADGES.filter((def) => domain === null || def.domain === domain).map((def) => {
     const series = facts[def.series];
     let have = 0;
     let earnedOn: string | null = null;

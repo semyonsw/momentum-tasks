@@ -20,6 +20,14 @@
  * NOTHING IS WRITTEN WITHOUT A TAP. A proposal arrives in the chat as a card and
  * sits there; `applyProposal` is reached only from `Add to routines` or `Apply
  * changes`, on the card or on the review screen.
+ *
+ * NOTHING IS WRITTEN OUTSIDE THIS APP'S LOG. Each APK is one section since 3.0.0
+ * (`lib/appVariant.ts`), and the Workout app's store still holds the tasks and
+ * the money from 2.x — kept for the backup, never shown. Every entry point that
+ * asks or writes takes the app's variant (defaulting to the build's) and does
+ * nothing for a section that app's assistant does not serve (`aiScope.ts`), and
+ * every change is checked against it once more as it is written. The parameter
+ * is there so the tests can be each of the three apps; the screens never pass it.
  */
 
 import {
@@ -32,8 +40,10 @@ import {
   withBriefs,
   workoutBrief,
 } from '../lib/ai/aiContext';
+import { aiServes, briefedSections } from '../lib/ai/aiScope';
 import {
   applyExerciseChange,
+  changeSection,
   describeChanges,
   validateChanges,
   type AiChange,
@@ -42,7 +52,8 @@ import {
 } from '../lib/ai/aiChanges';
 import { suggestionNote, systemPrompt, type SuggestionFate } from '../lib/ai/aiPrompts';
 import { normalizeProposal, planApply, type Library } from '../lib/ai/aiProposal';
-import { AI_SECTIONS, validateBlocks, type AiSection } from '../lib/ai/aiSchema';
+import { validateBlocks, type AiSection } from '../lib/ai/aiSchema';
+import { APP_VARIANT, type AppVariant } from '../lib/appVariant';
 import { keepSteps } from '../lib/ai/sequenceCursor';
 import {
   CHAT_TIMEOUT_MS,
@@ -169,8 +180,16 @@ export async function disconnect(): Promise<void> {
 /* Context                                                             */
 /* ------------------------------------------------------------------ */
 
-/** What one section's chat reads, and how much of it — for "Reading 91 workouts…". */
-export function sectionContext(section: AiSection): {
+/**
+ * What one section's chat reads, and how much of it — for "Reading 91 workouts…".
+ *
+ * The section's own log, and other sections only as `briefedSections` allows —
+ * which since the split is none (`aiScope.ts` has the why).
+ */
+export function sectionContext(
+  section: AiSection,
+  variant: AppVariant = APP_VARIANT,
+): {
   json: string;
   count: number;
   routineIds: Set<string>;
@@ -192,7 +211,8 @@ export function sectionContext(section: AiSection): {
   });
   const routineIds = new Set(library.routines.map((r) => r.id));
 
-  /* What the OTHER two sections look like, briefly — see `withBriefs`. */
+  /* What other sections look like, briefly — see `withBriefs`. Only those
+     `briefedSections` names are built: none, in every app since the split. */
   const briefs = {
     Workout: () =>
       workoutBrief({
@@ -211,10 +231,18 @@ export function sectionContext(section: AiSection): {
         today,
       }),
   };
-  const others = (skip: AiSection) =>
+  const others = (asked: AiSection) =>
     Object.fromEntries(
-      AI_SECTIONS.filter((s) => s !== skip).map((s) => [s.toLowerCase(), briefs[s]()]),
+      briefedSections(variant, asked)
+        .filter((s) => s !== asked)
+        .map((s) => [s.toLowerCase(), briefs[s]()]),
     );
+  /* No briefs is no `otherSections` key at all, rather than an empty one the
+     model would read as "the other logs are empty". */
+  const brief = (json: string, asked: AiSection) => {
+    const extra = others(asked);
+    return Object.keys(extra).length > 0 ? withBriefs(json, extra) : json;
+  };
 
   if (section === 'Workout') {
     const built = buildWorkoutContext({
@@ -236,7 +264,7 @@ export function sectionContext(section: AiSection): {
       lang: language,
     });
     return {
-      json: withBriefs(built.json, others('Workout')),
+      json: brief(built.json, 'Workout'),
       count: built.workoutCount,
       routineIds,
       routineNames: new Map(library.routines.map((r) => [r.id, r.name])),
@@ -245,7 +273,7 @@ export function sectionContext(section: AiSection): {
   if (section === 'Tasks') {
     const built = buildTasksContext({ tasks, log, today, lang: language });
     return {
-      json: withBriefs(built.json, others('Tasks')),
+      json: brief(built.json, 'Tasks'),
       count: built.dayCount,
       routineIds: new Set(),
     };
@@ -261,7 +289,7 @@ export function sectionContext(section: AiSection): {
     lang: language,
   });
   return {
-    json: withBriefs(built.json, others('Expenses')),
+    json: brief(built.json, 'Expenses'),
     count: built.monthCount,
     routineIds: new Set(),
   };
@@ -320,15 +348,17 @@ function fail(section: AiSection, text: string, retry: string, asked = () => tru
  *
  * `retryOf` is the id of an error message being retried: it is removed, and the
  * user's question — already in the chat above it — is not appended a second time.
+ * A section this app's assistant does not serve is not asked at all.
  */
 export async function sendMessage(
   section: AiSection,
   text: string,
   retryOf?: string,
+  variant: AppVariant = APP_VARIANT,
 ): Promise<void> {
   const question = text.trim();
   const store = useAi.getState();
-  if (question === '' || store.pending[section]) return;
+  if (!aiServes(variant, section) || question === '' || store.pending[section]) return;
   const language = lang();
 
   if (retryOf) store.removeMessage(section, retryOf);
@@ -368,7 +398,7 @@ export async function sendMessage(
       return;
     }
 
-    const context = sectionContext(section);
+    const context = sectionContext(section, variant);
     const chosen = useAi.getState().model;
     // Read now, not when the question was typed: Apply may have been pressed since.
     const note = suggestionNote(fatesOf(earlier));
@@ -531,7 +561,9 @@ export interface Applied {
  * `Add to routines` / `Apply changes`. Null when there is nothing to apply it to
  * — the routine an edit targets was deleted since, or every row was removed.
  */
-export function applyProposal(id: string): Applied | null {
+export function applyProposal(id: string, variant: AppVariant = APP_VARIANT): Applied | null {
+  // A routine is the training log's: no other app's assistant writes one.
+  if (!aiServes(variant, 'Workout')) return null;
   const stored = useAi.getState().proposals[id];
   if (!stored || stored.status !== 'pending') return null;
   const library = useLibrary.getState();
@@ -573,7 +605,13 @@ export function discardProposal(id: string): void {
  * apply: the message is gone, it was already decided, or every routine it named
  * has been deleted since.
  */
-export function applySequence(section: AiSection, messageId: string): Applied | null {
+export function applySequence(
+  section: AiSection,
+  messageId: string,
+  variant: AppVariant = APP_VARIANT,
+): Applied | null {
+  // The loop is the training log's, and only from this app's own chat.
+  if (section !== 'Workout' || !aiServes(variant, section)) return null;
   const message = useAi.getState().chats[section].find((m) => m.id === messageId);
   const block =
     message?.role === 'model' ? message.blocks.find((b) => b.type === 'sequence') : undefined;
@@ -667,7 +705,12 @@ function currentValues(): CurrentValues {
  * the store as it is NOW: an exercise deleted between the answer and the tap is
  * skipped rather than resurrected.
  */
-export function applyChanges(section: AiSection, messageId: string): Applied | null {
+export function applyChanges(
+  section: AiSection,
+  messageId: string,
+  variant: AppVariant = APP_VARIANT,
+): Applied | null {
+  if (!aiServes(variant, section)) return null;
   const message = useAi.getState().chats[section].find((m) => m.id === messageId);
   const block =
     message?.role === 'model' ? message.blocks.find((b) => b.type === 'changes') : undefined;
@@ -706,6 +749,9 @@ export function applyChanges(section: AiSection, messageId: string): Applied | n
   );
   let applied = 0;
   for (const change of ordered) {
+    // The validator already kept only the chat's own section; this is the wall
+    // between a card and a log this app does not show (`aiScope.ts`).
+    if (!aiServes(variant, changeSection(change.target))) continue;
     if (applyOne(change, written)) applied += 1;
   }
   if (applied === 0) return null;

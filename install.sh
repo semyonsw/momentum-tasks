@@ -5,7 +5,7 @@
 #      ./install.sh
 #
 #  Sets the project up (Node, npm ci), proves it works (TypeScript + 700-odd
-#  tests), and offers to push the .apk onto a phone plugged in over USB.
+#  tests), and offers to push the three APKs onto a phone plugged in over USB.
 #  On Windows, double-click Install.bat instead.
 # ---------------------------------------------------------------------------
 
@@ -339,8 +339,8 @@ NEXT_STEPS=(
     'npm run typecheck         TypeScript'
     'npm run lint              what CI runs on every push'
     ''
-    'On the phone: copy the .apk across and tap it, or plug the phone in and'
-    'run ./install.sh again to have it pushed over USB.'
+    'On the phone: copy the three .apk files across and tap each, or plug the'
+    'phone in and run ./install.sh again to have them pushed over USB.'
     ''
     'Building a signed APK yourself: BUILD_ANDROID.md'
 )
@@ -372,55 +372,70 @@ else
     warn 'some tests failed.' 'The install itself is fine; the output is at the end of install.log.'
 fi
 
-step 'Putting the app on your phone'
+step 'Putting the apps on your phone'
+# Since 3.0.0 Momentum is three apps - momentum-{workout,tasks,expenses}-<v>.apk -
+# so the newest APK of EACH is installed, not the newest file in the folder.
 # `sort -V`, not `sort`: plain sort puts 1.10.0 BEFORE 1.9.0 and would push the
 # older APK to the phone the first time a minor version reached double digits.
-# `momentum-*` first: the app was called Workout Tracker until 2.0.0, and the
-# older APKs stay beside the new one as rollbacks.
-APK="$(ls -1 "$ROOT"/momentum-*.apk 2>/dev/null | sort -V | tail -1)"
-[ -z "${APK:-}" ] && APK="$(ls -1 "$ROOT"/workout-tracker-*.apk 2>/dev/null | sort -V | tail -1)"
-if [ -z "${APK:-}" ]; then
+# Workout falls back to the 2.x `momentum-<v>.apk` and, before 2.0.0,
+# `workout-tracker-<v>.apk`: the same app under its older names.
+newest() { for pat in "$@"; do
+    f="$(ls -1 "$ROOT"/$pat 2>/dev/null | sort -V | tail -1)"
+    [ -n "$f" ] && { printf '%s\n' "$f"; return; }
+done; }
+APKS=()
+for found in "$(newest 'momentum-workout-*.apk' 'momentum-[0-9]*.apk' 'workout-tracker-*.apk')" \
+             "$(newest 'momentum-tasks-*.apk')" "$(newest 'momentum-expenses-*.apk')"; do
+    [ -n "$found" ] && APKS+=("$found")
+done
+
+install_apk() {   # install_apk <path>  - one adb install, its outcome explained
+    info "installing $(basename "$1") over USB - keep the phone unlocked..."
+    if run adb adb install -r "$1"; then
+        case "$RUN_OUT" in
+            *Success*) fixed "$(basename "$1") is on your phone" ;;
+            *) warn 'adb finished but did not say Success.' 'See the end of install.log.' ;;
+        esac
+    else
+        case "$RUN_OUT" in
+            *INSTALL_FAILED_UPDATE_INCOMPATIBLE*|*"signatures do not match"*)
+                warn 'the phone already has a copy signed with a different key.' \
+                     'Export a backup from inside the app, uninstall it on the phone, then run ./install.sh again.' ;;
+            *INSTALL_FAILED_VERSION_DOWNGRADE*)
+                warn "the phone has a NEWER version than $(basename "$1")." 'Nothing to do - the phone is ahead.' ;;
+            *INSTALL_FAILED_INSUFFICIENT_STORAGE*)
+                warn 'the phone is out of space.' 'Free up ~100 MB on the phone and try again.' ;;
+            *unauthorized*)
+                warn 'the phone has not authorised this computer.' \
+                     'Unlock it, accept the "Allow USB debugging?" prompt, then run ./install.sh again.' ;;
+            *)
+                warn "$(basename "$1") could not be installed over USB." \
+                     'Copy it to the phone and tap it instead - see BUILD_ANDROID.md.' ;;
+        esac
+    fi
+}
+
+if [ ${#APKS[@]} -eq 0 ]; then
     info 'no .apk in this folder - the signed build lives on the GitHub Releases page.'
     ok 'skipping the phone step (nothing to install from here)'
 elif ! have adb; then
-    warn 'adb was not found, so the APK cannot be pushed over USB.' \
-         "Copy the .apk to the phone instead and tap it - see BUILD_ANDROID.md. To get adb: $(pkg_hint android-tools-adb)"
+    warn 'adb was not found, so the APKs cannot be pushed over USB.' \
+         "Copy the .apk files to the phone instead and tap each one - see BUILD_ANDROID.md. To get adb: $(pkg_hint android-tools-adb)"
 else
-    info "found $(basename "$APK")"
+    for a in "${APKS[@]}"; do info "found $(basename "$a")"; done
     if [ "$(adb devices 2>/dev/null | grep -cE '^[^ ]+[[:space:]]+device$')" = "0" ]; then
         info 'no phone is plugged in (or USB debugging is off), so nothing was installed.'
-        warn 'the app was not put on a phone.' \
-             'Plug the phone in with USB debugging on and run ./install.sh again, or copy the .apk across by hand.'
+        warn 'the apps were not put on a phone.' \
+             'Plug the phone in with USB debugging on and run ./install.sh again, or copy the .apk files across by hand.'
     else
-        printf '      Install %s on the connected phone now? [Y/n] ' "$(basename "$APK")"
+        printf '      Install %d app(s) on the connected phone now? [Y/n] ' "${#APKS[@]}"
         read -r answer || answer=y
         case "${answer:-y}" in
             n|N|no|NO) ok 'skipped' ;;
             *)
-                info 'installing over USB - keep the phone unlocked...'
-                if run adb adb install -r "$APK"; then
-                    case "$RUN_OUT" in
-                        *Success*) fixed 'the app is on your phone'
-                                   info 'on first launch, ALLOW NOTIFICATIONS - it is the only way the timers reach you off screen.' ;;
-                        *) warn 'adb finished but did not say Success.' 'See the end of install.log.' ;;
-                    esac
-                else
-                    case "$RUN_OUT" in
-                        *INSTALL_FAILED_UPDATE_INCOMPATIBLE*|*"signatures do not match"*)
-                            warn 'the phone already has a copy signed with a different key.' \
-                                 'Export a backup from inside the app, uninstall it on the phone, then run ./install.sh again.' ;;
-                        *INSTALL_FAILED_VERSION_DOWNGRADE*)
-                            warn 'the phone has a NEWER version than this .apk.' 'Nothing to do - the phone is ahead.' ;;
-                        *INSTALL_FAILED_INSUFFICIENT_STORAGE*)
-                            warn 'the phone is out of space.' 'Free up ~100 MB on the phone and try again.' ;;
-                        *unauthorized*)
-                            warn 'the phone has not authorised this computer.' \
-                                 'Unlock it, accept the "Allow USB debugging?" prompt, then run ./install.sh again.' ;;
-                        *)
-                            warn 'the APK could not be installed over USB.' \
-                                 'Copy it to the phone and tap it instead - see BUILD_ANDROID.md.' ;;
-                    esac
-                fi ;;
+                for a in "${APKS[@]}"; do install_apk "$a"; done
+                info 'on first launch, ALLOW NOTIFICATIONS - it is the only way the timers reach you off screen.'
+                info 'Tasks and Expenses start empty: in each, Settings > Replace everything from a file, and pick the last Momentum backup.' ;;
         esac
     fi
 fi

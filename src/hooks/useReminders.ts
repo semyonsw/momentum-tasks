@@ -1,5 +1,7 @@
 /**
- * Keep Android's notification queue matching the tasks.
+ * Keep Android's notification queue matching the tasks (in the Tasks app) or
+ * the workout schedule (in the Workout app) — `notificationScope` decides which,
+ * and `planReminders` is handed `APP_VARIANT` so it plans only that half.
  *
  * Mounted once, at the top of the app, beside `useAutoBackup`: launch is the only
  * moment a sideloaded app can reliably run anything, so the work that has to
@@ -37,18 +39,31 @@
 import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
+import { APP_VARIANT } from '../lib/appVariant';
+import { notificationScope } from '../lib/notificationScope';
 import { planKey, planReminders } from '../lib/reminders';
 import { syncReminders } from '../lib/notify';
 import { useSettings } from '../state/settingsStore';
 import { useTasks } from '../state/tasksStore';
+import type { Task, TaskLog } from '../lib/tasks';
 
 /** Long enough to swallow a burst of edits, short enough to feel immediate. */
 const DEBOUNCE_MS = 500;
 
+/*
+ * Outside the Tasks app the task store is not this hook's business: the
+ * Workout app still HOLDS the 2.x tasks, but plans none of them. Selecting a
+ * constant there means a write into that store does not even wake the hook.
+ * `APP_VARIANT` is fixed for the bundle, so the selector never changes shape.
+ */
+const TASKS_ARMED = notificationScope(APP_VARIANT).taskReminders;
+const NO_TASKS: readonly Task[] = [];
+const NO_LOG: TaskLog = {};
+
 export function useReminders(): void {
-  const tasks = useTasks((s) => s.tasks);
+  const tasks = useTasks((s) => (TASKS_ARMED ? s.tasks : NO_TASKS));
   /* The log too: ticking a task is what cancels the rest of its follow-ups. */
-  const log = useTasks((s) => s.log);
+  const log = useTasks((s) => (TASKS_ARMED ? s.log : NO_LOG));
   const language = useSettings((s) => s.language);
   const workoutReminderEnabled = useSettings((s) => s.workoutReminderEnabled);
   const workoutReminderDays = useSettings((s) => s.workoutReminderDays);
@@ -76,6 +91,7 @@ export function useReminders(): void {
         lang: language,
         now: new Date(),
         log,
+        variant: APP_VARIANT,
       });
       const key = `${language}|${planKey(plan)}`;
       if (key === lastKey.current) return;
@@ -107,6 +123,7 @@ export function useReminders(): void {
         },
         lang: settings.language,
         now: new Date(),
+        variant: APP_VARIANT,
       });
       // Always synced, whatever the key says: this is the pass that catches
       // what only the clock changed, and the one that re-arms after a reboot

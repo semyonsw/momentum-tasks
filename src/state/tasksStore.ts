@@ -35,6 +35,8 @@ import { persistedStorage } from './persistStorage';
 import { clampHour, clampMinute, dayKey } from '../lib/days';
 import { t } from '../lib/i18n';
 import { toggledMark } from '../lib/taskTap';
+import { APP_VARIANT, type AppVariant } from '../lib/appVariant';
+import { autoTickOffered } from '../lib/settingsScope';
 import { useSettings } from './settingsStore';
 import {
   asksOn,
@@ -575,8 +577,22 @@ export const useTasks = create<TasksState>()(
   ),
 );
 
-/** Read path for code outside React — the auto-tick callers. */
-export function tickTaskSource(source: TaskAutoSource, day?: string): void {
+/**
+ * Read path for code outside React — the auto-tick callers.
+ *
+ * THE APP IS ASKED FIRST, then the switch. Since the split no app holds both a
+ * task list it shows and a log that could tick it (`settingsScope.autoTickOffered`),
+ * so a Finish in the Workout app or an amount in the Expenses app would only be
+ * writing marks into a task list nobody can see — the Workout app's 2.x leftovers,
+ * which its backups still carry to the Tasks app, ticked days the user never
+ * answered. The variant is a parameter so the tests can still drive the tick.
+ */
+export function tickTaskSource(
+  source: TaskAutoSource,
+  day?: string,
+  variant: AppVariant = APP_VARIANT,
+): void {
+  if (!autoTickOffered(variant)) return;
   useTasks.getState().tickAuto(source, day);
 }
 

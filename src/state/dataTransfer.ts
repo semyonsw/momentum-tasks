@@ -22,11 +22,20 @@
  * on the phone is a prefix of a valid restore rather than a log referring to
  * exercises that were never written.
  *
- * ── ONE WAY OUT AND ONE WAY IN ─────────────────────────────────────────────
+ * ── ONE WAY OUT AND ONE WAY IN, PER APP ────────────────────────────────────
  *
- * `applyBackup` REPLACES: exercises, routines, the sequence, both other logs and
- * the settings all become what the file says. That is what a restore is, and it
- * is now the only restore there is.
+ * Since 3.0.0 this tree builds three apps (`lib/appVariant.ts`), and both
+ * directions go through the variant's SLICES (`lib/backup.ts`): an export
+ * carries what this app owns — plus, in Workout, the tasks and money its store
+ * still holds from before the split — and `applyBackup` REPLACES this app's own
+ * slice and the settings with what the file says, and touches nothing else. In
+ * the Workout app that means a combined 2.x file restores the training and
+ * leaves the hidden tasks and money exactly where they are: they are never
+ * deleted, and a restore of the app you can see is not the place to swap out
+ * data you cannot. That is what a restore is, and it is the only one there is.
+ *
+ * The variant is a parameter defaulting to `APP_VARIANT` so the tests can play
+ * all three apps against the same stores.
  *
  * There used to be four more: a merge that added only the workouts this phone did
  * not have, a CSV reader for training that predated the app, and a per-section
@@ -37,20 +46,34 @@
  * everything; putting it back puts everything back.
  */
 
-import { serializeBackup, type BackupCounts, type BackupPayload } from '../lib/backup';
-import { amountsToCsv, workoutsToCsv } from '../lib/csv';
+import { APP_VARIANT, type AppVariant } from '../lib/appVariant';
+import {
+  backupSlices,
+  carriedSlices,
+  countPayload,
+  holdsLegacy,
+  mergeAiChats,
+  nothingForThisApp,
+  ownSlice,
+  serializeBackup,
+  slicePayload,
+  type BackupCounts,
+  type BackupPayload,
+  type LegacyHeld,
+} from '../lib/backup';
+import { amountsToCsv, workoutsToCsv, type CsvKind } from '../lib/csv';
 import { logIsEmpty, moneyScale } from '../lib/moneyUnits';
 import { t } from '../lib/i18n';
 import { chatsForBackup, useAi } from './aiStore';
 import { useDebriefs } from './debriefStore';
 import { useLibrary } from './libraryStore';
-import { sanitizeMoney, useMoney } from './moneyStore';
+import { sanitizeMoney, seedAccounts, useMoney } from './moneyStore';
 import { sanitizeSettings, useSettings } from './settingsStore';
-import { sanitizeTasks, useTasks } from './tasksStore';
+import { sanitizeTasks, seedTasks, useTasks } from './tasksStore';
 import { useWorkoutHistory } from './workoutHistoryStore';
 
-/** Everything on this phone that a backup carries, straight out of the stores. */
-export function currentSnapshot(): BackupPayload {
+/** Every store a backup can carry, straight out of the stores, before slicing. */
+function wholeSnapshot(): BackupPayload {
   const library = useLibrary.getState();
   return {
     // Sanitized rather than spread: the live store carries its action functions
@@ -70,6 +93,34 @@ export function currentSnapshot(): BackupPayload {
     debriefs: useDebriefs.getState().debriefs,
     aiChats: chatsForBackup(useAi.getState()),
   };
+}
+
+/**
+ * Does this phone still hold tasks or money beyond the seed? Only ever true in
+ * practice in the Workout app — the old install — and what keeps those logs in
+ * its backups until they have been moved (`backupSlices`).
+ */
+export function legacyHeld(snapshot: BackupPayload = wholeSnapshot()): LegacyHeld {
+  return holdsLegacy(snapshot, {
+    taskIds: seedTasks().map((task) => task.id),
+    accountIds: seedAccounts.map((account) => account.id),
+  });
+}
+
+/** What this app's backup carries, straight out of the stores. */
+export function currentSnapshot(variant: AppVariant = APP_VARIANT): BackupPayload {
+  const whole = wholeSnapshot();
+  return slicePayload(whole, backupSlices(variant, legacyHeld(whole)));
+}
+
+/**
+ * What a restore in this app would replace, counted the way a file is: this
+ * app's own slice and nothing else. The confirmation sheet's "this phone has…"
+ * — in the Workout app that is the training, not the hidden tasks and money a
+ * restore leaves alone.
+ */
+export function restorableCounts(variant: AppVariant = APP_VARIANT): BackupCounts {
+  return countPayload(slicePayload(wholeSnapshot(), [ownSlice(variant)]));
 }
 
 /* ------------------------------------------------------------------ */
@@ -114,9 +165,12 @@ export class UnreadableLogError extends Error {
  * so it is closed here rather than warned about: a backup nobody can trust is worse
  * than no backup, because the whole point of one is being trusted later.
  */
-export function exportBackupText(now?: Date): string {
-  if (useWorkoutHistory.getState().loadFailed) throw new UnreadableLogError();
-  return serializeBackup(currentSnapshot(), now);
+export function exportBackupText(now?: Date, variant: AppVariant = APP_VARIANT): string {
+  // Only where the training is IN the file: a Tasks backup is not missing a log
+  // it never carried, and refusing it would leave the tasks unprotected.
+  const carriesTraining = backupSlices(variant).includes('workout');
+  if (carriesTraining && useWorkoutHistory.getState().loadFailed) throw new UnreadableLogError();
+  return serializeBackup(currentSnapshot(variant), now);
 }
 
 /**
@@ -127,7 +181,7 @@ export function exportBackupText(now?: Date): string {
  * "I exported it, it was empty" is a belief worth not creating. The money scale is
  * the same rule `useMoneyScale` applies, read once rather than subscribed to.
  */
-export function exportCsvText(kind: 'amounts' | 'workouts'): string {
+export function exportCsvText(kind: CsvKind): string {
   const settings = useSettings.getState();
   if (kind === 'workouts') {
     const history = useWorkoutHistory.getState();
@@ -157,7 +211,13 @@ export interface AppliedCounts extends BackupCounts {
 }
 
 /**
- * Write a parsed backup into the stores, replacing what is there.
+ * Write a parsed backup into the stores, replacing THIS APP'S SLICE and the
+ * settings, and nothing else.
+ *
+ * Throws, applying nothing, when the file carries nothing for this app —
+ * `parseBackup` refuses such a file first, so this is the guard for a caller that
+ * skipped it, and it runs before the settings so another app's settings cannot
+ * arrive alone.
  *
  * Returns what survived each store's own validation. The counts a file states in its
  * envelope are what the exporting phone had; these are what this phone now has, and
@@ -165,16 +225,40 @@ export interface AppliedCounts extends BackupCounts {
  * malformed workouts and says "42 restored" is how a user learns not to trust the
  * feature.
  */
-export function applyBackup(payload: BackupPayload): AppliedCounts {
+export function applyBackup(
+  payload: BackupPayload,
+  variant: AppVariant = APP_VARIANT,
+): AppliedCounts {
+  const own = ownSlice(variant);
+  if (!carriedSlices(payload).includes(own)) {
+    throw new Error(nothingForThisApp(variant, useSettings.getState().language));
+  }
+  const slices = [own];
+  const training = own === 'workout';
+
   /*
    * THE LOG FIRST. It is the one step that can realistically throw (a SQLite
    * write), and it is transactional — so a failure here leaves the phone exactly
    * as it was. Last, it used to throw after the file's settings and library had
    * already replaced this phone's, leaving a mix of the two.
    */
-  const workouts = useWorkoutHistory.getState().importWorkouts(payload.workouts, payload.numbering);
+  const workouts = training
+    ? useWorkoutHistory.getState().importWorkouts(payload.workouts ?? [], payload.numbering)
+    : undefined;
 
-  const settingsApplied = payload.settings != null;
+  /*
+   * Only a settings object WITH something in it counts: `importSettings({})` is a
+   * reset to defaults, and a file that says nothing about the settings — no
+   * block, an empty one, or something that is not an object at all — must not
+   * clobber them with nothing.
+   */
+  const fromFile =
+    typeof payload.settings === 'object' &&
+    payload.settings !== null &&
+    !Array.isArray(payload.settings)
+      ? (payload.settings as Record<string, unknown>)
+      : {};
+  const settingsApplied = Object.keys(fromFile).length > 0;
   if (settingsApplied) {
     /*
      * The file's settings, except what belongs to THIS PHONE: the backup folder
@@ -191,44 +275,50 @@ export function applyBackup(payload: BackupPayload): AppliedCounts {
       lastBackupAt: here.lastBackupAt,
       shareToHealthConnect: here.shareToHealthConnect,
     };
-    const fromFile =
-      typeof payload.settings === 'object' && payload.settings !== null
-        ? (payload.settings as Record<string, unknown>)
-        : {};
     useSettings.getState().importSettings({ ...fromFile, ...local });
   }
 
-  const library = useLibrary.getState().importLibrary({
-    exercises: payload.exercises,
-    routines: payload.routines,
-    sequence: payload.sequence,
-  });
+  const applied: AppliedCounts = { settingsApplied };
+
+  if (training) {
+    const library = useLibrary.getState().importLibrary({
+      exercises: payload.exercises ?? [],
+      routines: payload.routines ?? [],
+      sequence: payload.sequence,
+    });
+    if (payload.debriefs != null) useDebriefs.getState().importDebriefs(payload.debriefs);
+    let sets = 0;
+    for (const workout of useWorkoutHistory.getState().workouts) sets += workout.sets.length;
+    applied.exercises = library.exercises;
+    applied.routines = library.routines;
+    applied.workouts = workouts;
+    applied.sets = sets;
+  }
 
   /*
-   * ABSENT IS NOT EMPTY. A version-1 file carries neither log, and importing one
-   * must leave the tasks and the amounts exactly where they are — replacing them
-   * with nothing would turn "restore my training from last year's backup" into
-   * deleting a year of answered days, silently, in the same tap.
+   * ABSENT IS NOT EMPTY, and NOT MINE IS NOT MINE. Only this app's own log is
+   * replaced: a Workout restore of a combined file leaves the tasks and the
+   * amounts exactly where they are, as a version-1 file always did — replacing
+   * them would turn "restore my training" into swapping out a log the user cannot
+   * even see from here, silently, in the same tap.
    */
-  const tasksApplied = payload.tasks != null;
-  if (tasksApplied) useTasks.getState().importTasks(payload.tasks);
-  const moneyApplied = payload.money != null;
-  if (moneyApplied) useMoney.getState().importMoney(payload.money);
-  if (payload.debriefs != null) useDebriefs.getState().importDebriefs(payload.debriefs);
-  const chatsApplied = payload.aiChats != null;
-  const chats = chatsApplied ? useAi.getState().importChats(payload.aiChats) : undefined;
+  if (own === 'tasks') {
+    useTasks.getState().importTasks(payload.tasks);
+    applied.tasks = useTasks.getState().tasks.length;
+  }
+  if (own === 'money') {
+    useMoney.getState().importMoney(payload.money);
+    applied.amounts = useMoney.getState().amounts.length;
+  }
 
-  let sets = 0;
-  for (const workout of useWorkoutHistory.getState().workouts) sets += workout.sets.length;
+  // This app's conversations from the file; every other section's stay put.
+  const chats = mergeAiChats(chatsForBackup(useAi.getState()), payload.aiChats, slices);
+  if (chats !== undefined) {
+    useAi.getState().importChats(chats);
+    applied.chats = countPayload(
+      slicePayload({ settings: null, aiChats: chatsForBackup(useAi.getState()) }, slices),
+    ).chats;
+  }
 
-  return {
-    exercises: library.exercises,
-    routines: library.routines,
-    workouts,
-    sets,
-    tasks: tasksApplied ? useTasks.getState().tasks.length : undefined,
-    amounts: moneyApplied ? useMoney.getState().amounts.length : undefined,
-    chats,
-    settingsApplied,
-  };
+  return applied;
 }

@@ -1201,6 +1201,11 @@ export function buildExpensesContext(input: ExpensesContextInput): ExpensesConte
  * often about both, so every context also carries a short brief of the other two
  * sections: a few numbers and the newest things the user wrote. Small on
  * purpose — the section being asked about keeps the room.
+ *
+ * THAT WAS ONE APP (2.x). Since 3.0.0 each app is one log and its assistant
+ * reads that log alone (`aiScope.briefedSections` is empty): the Workout app's
+ * hidden tasks and money are not quoted back by the one voice in it that could.
+ * The briefs stay, tested, for the decision to be revisited rather than rebuilt.
  */
 export function workoutBrief(input: {
   workouts: readonly CompletedWorkout[];
@@ -1285,6 +1290,10 @@ export function expensesBrief(input: {
  * Add the other sections' briefs to a context, if they fit under the cap —
  * notes first to go, then the brief whole. The section asked about is never cut
  * to make room.
+ *
+ * Unused by the chat since 3.0.0: each app is one log, and `aiScope.briefedSections`
+ * says no other section rides along. Kept, with the briefs, for the day an app
+ * holds two logs again.
  */
 export function withBriefs(json: string, briefs: Record<string, Record<string, unknown>>): string {
   const base = JSON.parse(json) as Record<string, unknown>;

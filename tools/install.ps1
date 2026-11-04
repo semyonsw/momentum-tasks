@@ -61,25 +61,34 @@ $App = @{
                }
            } },
 
-        @{ Title  = 'Putting the app on your phone'
+        @{ Title  = 'Putting the apps on your phone'
            Action = {
                param($PyExe)
-               # Sorted as VERSIONS and not as names: by name, 1.9.0 sorts after
-               # 1.10.0 and the phone would be handed the older APK.
-               # `momentum-*` first: the app was Workout Tracker until 2.0.0, and
-               # the older APKs stay beside the new one as rollbacks.
-               $apk = @('momentum-*.apk', 'workout-tracker-*.apk') | ForEach-Object {
-                          Get-ChildItem -Path (Join-Path $Root $_) -ErrorAction SilentlyContinue |
-                          Sort-Object { [version]($_.BaseName -replace '^(momentum|workout-tracker)-', '') } -Descending |
-                          Select-Object -First 1
-                      } | Select-Object -First 1
-               if (-not $apk) {
+               # Since 3.0.0 Momentum is three apps, momentum-<app>-<version>.apk,
+               # so the newest APK of EACH is installed. Sorted as VERSIONS and
+               # not as names: by name, 1.9.0 sorts after 1.10.0 and the phone
+               # would be handed the older APK. Workout falls back to its older
+               # names - momentum-<version>.apk (2.x), workout-tracker-* (1.x).
+               $families = @(
+                   @('momentum-workout-*.apk', 'momentum-[0-9]*.apk', 'workout-tracker-*.apk'),
+                   @('momentum-tasks-*.apk'),
+                   @('momentum-expenses-*.apk'))
+               $apks = @(foreach ($family in $families) {
+                   $family | ForEach-Object {
+                       Get-ChildItem -Path (Join-Path $Root $_) -ErrorAction SilentlyContinue |
+                       Sort-Object { [version]($_.BaseName -replace '^.*?-(?=\d)', '') } -Descending |
+                       Select-Object -First 1
+                   } | Select-Object -First 1
+               })
+               if ($apks.Count -eq 0) {
                    Info 'no .apk in this folder - the signed build lives on the GitHub Releases page.'
                    OK 'skipping the phone step (nothing to install from here)'
                    return
                }
-               $mb = [math]::Round($apk.Length / 1MB, 1)
-               Info ('found ' + $apk.Name + '  (' + $mb + ' MB)')
+               foreach ($apk in $apks) {
+                   $mb = [math]::Round($apk.Length / 1MB, 1)
+                   Info ('found ' + $apk.Name + '  (' + $mb + ' MB)')
+               }
 
                $adb = Have 'adb'
                if (-not $adb) {
@@ -91,8 +100,8 @@ $App = @{
                    }
                }
                if (-not $adb) {
-                   Warn 'adb was not found, so the APK cannot be pushed over USB.' `
-                        'Copy the .apk to the phone instead (USB, Drive, Telegram), open it in Files and tap install. Full steps: BUILD_ANDROID.md'
+                   Warn 'adb was not found, so the APKs cannot be pushed over USB.' `
+                        'Copy the .apk files to the phone instead (USB, Drive, Telegram), open each in Files and tap install. Full steps: BUILD_ANDROID.md'
                    return
                }
                OK ('adb found: ' + $adb)
@@ -101,35 +110,38 @@ $App = @{
                $devices = @(($r.Output -split "`n") | Where-Object { $_ -match '^\S+\s+device\s*$' })
                if ($devices.Count -eq 0) {
                    Info 'no phone is plugged in (or USB debugging is off), so nothing was installed.'
-                   Warn 'the app was not put on a phone.' `
-                        'Either plug the phone in with USB debugging on and run Install again, or copy the .apk across by hand - see BUILD_ANDROID.md.'
+                   Warn 'the apps were not put on a phone.' `
+                        'Either plug the phone in with USB debugging on and run Install again, or copy the .apk files across by hand - see BUILD_ANDROID.md.'
                    return
                }
                OK ($devices.Count.ToString() + ' phone(s) connected')
 
-               if (-not (Ask ('Install ' + $apk.Name + ' on the connected phone now?'))) {
-                   OK 'skipped - copy the .apk across by hand whenever you like'
+               if (-not (Ask ('Install ' + $apks.Count + ' app(s) on the connected phone now?'))) {
+                   OK 'skipped - copy the .apk files across by hand whenever you like'
                    return
                }
-               Info 'installing over USB - keep the phone unlocked...'
-               $r = Run -Exe $adb -Arguments @('install', '-r', $apk.FullName)
-               if ($r.Output -match 'Success') {
-                   Fixed 'the app is on your phone'
-                   Info 'on first launch, ALLOW NOTIFICATIONS - it is the only way the timers reach you with the app off screen.'
-               } elseif ($r.Output -match 'INSTALL_FAILED_UPDATE_INCOMPATIBLE|signatures do not match') {
-                   Warn 'the phone already has a copy signed with a different key.' `
-                        'Android refuses to replace it. Uninstall the old app on the phone first (your data goes with it - export a backup from inside the app), then run Install again.'
-               } elseif ($r.Output -match 'INSTALL_FAILED_VERSION_DOWNGRADE') {
-                   Warn 'the phone has a NEWER version than this .apk.' 'Nothing to do - the phone is already ahead.'
-               } elseif ($r.Output -match 'INSTALL_FAILED_INSUFFICIENT_STORAGE') {
-                   Warn 'the phone is out of space.' 'Free up ~100 MB on the phone and run Install again.'
-               } elseif ($r.Output -match 'device unauthorized|unauthorized') {
-                   Warn 'the phone has not authorised this computer.' `
-                        'Unlock the phone, accept the "Allow USB debugging?" prompt, then run Install again.'
-               } else {
-                   Warn 'the APK could not be installed over USB.' `
-                        'Copy it to the phone and tap it instead - see BUILD_ANDROID.md. adb output is at the end of install.log.'
+               foreach ($apk in $apks) {
+                   Info ('installing ' + $apk.Name + ' over USB - keep the phone unlocked...')
+                   $r = Run -Exe $adb -Arguments @('install', '-r', $apk.FullName)
+                   if ($r.Output -match 'Success') {
+                       Fixed ($apk.Name + ' is on your phone')
+                   } elseif ($r.Output -match 'INSTALL_FAILED_UPDATE_INCOMPATIBLE|signatures do not match') {
+                       Warn 'the phone already has a copy signed with a different key.' `
+                            'Android refuses to replace it. Uninstall the old app on the phone first (your data goes with it - export a backup from inside the app), then run Install again.'
+                   } elseif ($r.Output -match 'INSTALL_FAILED_VERSION_DOWNGRADE') {
+                       Warn ('the phone has a NEWER version than ' + $apk.Name + '.') 'Nothing to do - the phone is already ahead.'
+                   } elseif ($r.Output -match 'INSTALL_FAILED_INSUFFICIENT_STORAGE') {
+                       Warn 'the phone is out of space.' 'Free up ~100 MB on the phone and run Install again.'
+                   } elseif ($r.Output -match 'device unauthorized|unauthorized') {
+                       Warn 'the phone has not authorised this computer.' `
+                            'Unlock the phone, accept the "Allow USB debugging?" prompt, then run Install again.'
+                   } else {
+                       Warn ($apk.Name + ' could not be installed over USB.') `
+                            'Copy it to the phone and tap it instead - see BUILD_ANDROID.md. adb output is at the end of install.log.'
+                   }
                }
+               Info 'on first launch, ALLOW NOTIFICATIONS - it is the only way the timers reach you with the app off screen.'
+               Info 'Tasks and Expenses start empty: in each, Settings > Replace everything from a file, and pick the last Momentum backup.'
            } },
 
         @{ Title  = 'The Android build toolchain (only needed to build an APK)'
@@ -200,10 +212,13 @@ if not exist "%ADB%" if not "%ADB%"=="adb" (
     exit /b 1
 )
 
-set "APK="
-for /f "delims=" %%f in ('dir /b /o-n "momentum-*.apk" 2^>nul') do if not defined APK set "APK=%%f"
-if not defined APK for /f "delims=" %%f in ('dir /b /o-n "workout-tracker-*.apk" 2^>nul') do if not defined APK set "APK=%%f"
-if not defined APK (
+rem Three apps since 3.0.0 - momentum-workout/tasks/expenses-<version>.apk.
+rem Each is installed in turn. dir /o-n lists newest-named first, which is the
+rem newest version only while every part is one digit; Install.bat itself
+rem sorts by version, so prefer it when the two disagree.
+set "FOUND="
+for %%p in (workout tasks expenses) do call :one %%p
+if not defined FOUND (
     echo.
     echo  [ERROR] No momentum-*.apk in this folder.
     echo          Download the signed build from the GitHub Releases page.
@@ -211,21 +226,33 @@ if not defined APK (
     pause
     exit /b 1
 )
-
-echo  Installing %APK% - keep the phone unlocked...
-"%ADB%" install -r "%APK%"
 echo.
-echo  If that said Success: on first launch, ALLOW NOTIFICATIONS. It is the only
-echo  way the rest timer reaches you once the app is off screen.
+echo  Tasks and Expenses start empty: in each, Settings ^> Replace everything
+echo  from a file, and pick the last Momentum backup.
+echo  If those said Success: on first launch, ALLOW NOTIFICATIONS. It is the
+echo  only way the rest timer reaches you once the app is off screen.
 echo.
 pause
+exit /b 0
+
+:one
+set "APK="
+for /f "delims=" %%f in ('dir /b /o-n "momentum-%1-*.apk" 2^>nul') do if not defined APK set "APK=%%f"
+rem Workout's older names: momentum-<version>.apk (2.x), workout-tracker-* (1.x).
+if "%1"=="workout" if not defined APK for /f "delims=" %%f in ('dir /b /o-n "momentum-2.*.apk" 2^>nul') do if not defined APK set "APK=%%f"
+if "%1"=="workout" if not defined APK for /f "delims=" %%f in ('dir /b /o-n "workout-tracker-*.apk" 2^>nul') do if not defined APK set "APK=%%f"
+if not defined APK exit /b 0
+set "FOUND=1"
+echo  Installing %APK% - keep the phone unlocked...
+"%ADB%" install -r "%APK%"
+exit /b 0
 '@ }
     )
 
     Shortcut = $null
 
     NextSteps = @(
-        'On the phone   :  "Install on phone.bat"  (USB), or copy the .apk across and tap it.',
+        'On the phone   :  "Install on phone.bat"  (USB), or copy the three .apk files across and tap each.',
         'Developing     :  "Start Dev Server.bat"  (or: npx expo start)',
         '',
         'npm test                  the full test suite',

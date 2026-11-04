@@ -62,9 +62,17 @@
  * The settings that shape a section (rest times, the trend range, the default
  * direction) were reachable only from Settings → a row. The history is where
  * you notice one of them is wrong, so its foot carries `Settings ›`.
+ *
+ * ── ONE APP, ONE SECTION'S DOORS (3.0.0) ──────────────────────────────────
+ *
+ * Each APK is one section plus Settings now (`lib/appVariant.ts`), so Settings
+ * leads with ONE section row, and only that section's hold surfaces exist to be
+ * found. Both are asked of the variant here (`settingsRoutes`, `holdSurfaces`)
+ * rather than assumed by a screen, so the tests can walk all three apps.
  */
 
 import type { AiSection } from './ai/aiSchema';
+import { variantSection, type AppVariant } from './appVariant';
 
 /** The three sections with a history and a settings screen of their own. */
 type Section = AiSection;
@@ -120,6 +128,25 @@ export type HoldAction =
 export interface HoldContext {
   /** Live accounts. No hold row depends on it now; see `canArchiveAccount`. */
   liveAccounts?: number;
+}
+
+/** The hold surfaces an app actually draws: its own section's, and no other's. */
+export function holdSurfaces(variant: AppVariant): readonly HoldSurface[] {
+  const section = variantSection(variant);
+  return HOLD_SURFACES.filter((surface) => surfaceSection(surface) === section);
+}
+
+function surfaceSection(surface: HoldSurface): Section {
+  switch (surface) {
+    case 'moneyAccount':
+    case 'moneyCategory':
+      return 'Expenses';
+    case 'exerciseCard':
+    case 'routineDie':
+      return 'Workout';
+    case 'taskRow':
+      return 'Tasks';
+  }
 }
 
 /** What holding the surface offers, in menu order. */
@@ -219,4 +246,14 @@ export function sectionSettingsRoute(section: Section): SectionSettingsRoute {
     case 'Expenses':
       return 'moneySettings';
   }
+}
+
+/**
+ * The section rows Settings leads with, in order — one, the app's own. The
+ * other two sections' settings screens are not reachable in an app that does
+ * not show those sections: a currency picker for amounts nobody can see is a
+ * setting with nothing to set.
+ */
+export function settingsRoutes(variant: AppVariant): readonly SectionSettingsRoute[] {
+  return [sectionSettingsRoute(variantSection(variant))];
 }

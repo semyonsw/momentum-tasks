@@ -62,6 +62,7 @@ import {
 } from '../lib/gyms';
 import { formatClockTime, parseClockTime, parseDay, weekStart } from '../lib/days';
 import { AI_SECTIONS, type AiSection } from '../lib/ai/aiSchema';
+import { hasSection, type AppVariant } from '../lib/appVariant';
 import { usableLanguage, type Language } from '../lib/i18n';
 import { INTERVALS, type Direction, type Interval } from '../lib/money';
 import type { Weekday } from '../lib/tasks';
@@ -447,6 +448,52 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 /**
+ * The settings that belong to ONE section — read only by that section's screens.
+ * Everything not listed is shared (the look, the language, the backup, the game
+ * layer) or a record the reset never touches anyway (the gyms, the logs).
+ */
+export const SECTION_SETTING_KEYS: Record<AiSection, readonly (keyof Settings)[]> = {
+  Workout: [
+    'restSecondsBetweenSets',
+    'restSecondsBetweenExercises',
+    'prepareSeconds',
+    'beepSeconds',
+    'adjustStepSeconds',
+    'autoStartRest',
+    'soundEnabled',
+    'hapticsEnabled',
+    'keepAwakeEnabled',
+    'notifyOnTimerEnd',
+    'askAfterWorkout',
+    'ladderAllExercises',
+    'unitSystem',
+    'weeklySetTargets',
+    'workoutReminderEnabled',
+    'workoutReminderDays',
+    'workoutReminderTime',
+    'seenSetTypeTip',
+    'seenLeaveRunningTip',
+    'shareToHealthConnect',
+    'weeklyWorkoutGoal',
+  ],
+  Tasks: ['autoTickTasks', 'tasksTrendRange'],
+  Expenses: ['currencyCode', 'moneyDefaultInterval', 'moneyDefaultDirection', 'moneyTrendRange'],
+};
+
+/**
+ * Which section settings a reset pressed in `variant` keeps: every section that
+ * app does not show. Since 3.0.0 each APK is one section (`lib/appVariant.ts`),
+ * and the Workout app still holds the 2.x tasks and money with their settings —
+ * hidden, kept, and carried by its backup to the app that shows them. A reset
+ * pressed to fix a rest timer must not quietly reprint those amounts in AMD.
+ */
+export function sectionSettingsKept(variant: AppVariant): (keyof Settings)[] {
+  return AI_SECTIONS.filter((section) => !hasSection(variant, section)).flatMap((section) => [
+    ...SECTION_SETTING_KEYS[section],
+  ]);
+}
+
+/**
  * Allowed range per numeric setting, and the step the settings screen nudges by.
  * The ceilings are not arbitrary: a rest longer than 15 minutes is a different
  * workout, and a get-ready longer than a minute is a nap.
@@ -807,7 +854,13 @@ interface SettingsState extends Settings {
   /** E4: a Finish sheet that showed milestone `n` was saved. Never lowers it. */
   recordMilestone: (n: number) => void;
 
-  resetToDefaults: () => void;
+  /**
+   * `Reset every setting`. With a variant — as Settings calls it — only that
+   * app's settings and the shared ones go back; every other section's are kept
+   * (`sectionSettingsKept`). Without one, everything goes, which is what the
+   * tests mean by a clean slate.
+   */
+  resetToDefaults: (variant?: AppVariant) => void;
   /**
    * Replace every setting from a restored backup.
    *
@@ -986,7 +1039,7 @@ export const useSettings = create<SettingsState>()(
       setWeekExcused: (day, excused, today) =>
         set({ excusedWeeks: setWeekExcused(get().excusedWeeks, day, excused, today) }),
 
-      resetToDefaults: () =>
+      resetToDefaults: (variant) =>
         /*
          * The gyms, the bodyweight log and the granted folder are NOT settings in
          * the sense this button means. "Reset settings to defaults" is about the
@@ -1000,15 +1053,15 @@ export const useSettings = create<SettingsState>()(
          * pressed a button in English — and defaulting `languageChosen` with it
          * would drop them onto the first-launch picker, which is a launch screen
          * arriving in the middle of a session. The reset is about the durations
-         * and the toggles inside the three sections; which language those words
+         * and the toggles inside the app's section; which language those words
          * are in is not one of them, and the РУ / EN toggle is right there.
          */
         set({
           ...DEFAULT_SETTINGS,
           language: get().language,
           languageChosen: get().languageChosen,
-          // Appearance is not a section setting either: the reset says "every
-          // duration, switch, target and default across all three sections".
+          // Appearance is not a section setting either: the reset is about
+          // "every duration, switch, target and default in this app".
           themeId: get().themeId,
           customColors: get().customColors,
           bodyweightKg: get().bodyweightKg,
@@ -1030,6 +1083,10 @@ export const useSettings = create<SettingsState>()(
           // An excused week is a record of a week that happened, not a switch.
           // The goal itself IS a target, and goes back to three with the rest.
           excusedWeeks: get().excusedWeeks,
+          // Another app's settings, hidden here — see `sectionSettingsKept`.
+          ...(variant
+            ? Object.fromEntries(sectionSettingsKept(variant).map((key) => [key, get()[key]]))
+            : {}),
         }),
 
       importSettings: (raw) =>

@@ -172,3 +172,18 @@ describe('the watch lists cover every persisted field', () => {
     expect(sliceChanged(before, after)).toBe(true);
   });
 });
+
+describe('only the stores this app’s file carries', () => {
+  it('the Tasks app does not write for a routine, but does for a task', () => {
+    stop();
+    const tasksChange = vi.fn();
+    const stopTasks = watchBackedUpStores(tasksChange, 'tasks');
+    useLibrary.getState().duplicateRoutine(useLibrary.getState().routines[0].id);
+    useMoney.getState().pinScale(3);
+    expect(tasksChange).not.toHaveBeenCalled();
+    useTasks.getState().importTasks({ tasks: [], log: {} });
+    expect(tasksChange).toHaveBeenCalled();
+    stopTasks();
+    stop = watchBackedUpStores(onChange);
+  });
+});

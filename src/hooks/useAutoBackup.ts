@@ -9,8 +9,8 @@
  * It used to run once, on launch, if the last copy was a week old — so the copy
  * was by design up to a week behind the phone. The folder is granted once and
  * writing the file is cheap, so now every PERSISTED change rewrites it:
- * `state/backupWatch.ts` watches the seven stores a backup carries and reports a
- * change only when a field the file holds moved (`lib/backupWatch.ts`), and
+ * `state/backupWatch.ts` watches the stores this app's backup carries and
+ * reports a change only when a field the file holds moved (`lib/backupWatch.ts`), and
  * `lib/backupScheduler.ts` turns a burst into one write and never runs two at
  * once. When the app goes to the background a waiting write is flushed straight
  * away, because Android may kill a background process at any moment and the
@@ -31,6 +31,7 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
+import { APP_VARIANT } from '../lib/appVariant';
 import { classifyBackupError, type BackupFailure } from '../lib/autoBackup';
 import { writeDailyBackup } from '../lib/backupFile';
 import { BackupScheduler, serialized } from '../lib/backupScheduler';
@@ -62,8 +63,15 @@ export const runBackupNow = serialized(async (manual = false): Promise<BackupRun
 
   try {
     const now = new Date();
-    const text = exportBackupText(now);
-    const { name, file } = await writeDailyBackup(folderUri, settings.autoBackupFile, text, now);
+    // This app's slices, under this app's file name — see `lib/appVariant.ts`.
+    const text = exportBackupText(now, APP_VARIANT);
+    const { name, file } = await writeDailyBackup(
+      folderUri,
+      settings.autoBackupFile,
+      text,
+      now,
+      APP_VARIANT,
+    );
     /*
      * Stamped only after the write resolved. And only if the folder is still the
      * one written into: a re-pick while this write was in flight makes `file` a
@@ -98,7 +106,7 @@ export function useAutoBackup(): void {
       // Cheap gate: with nowhere to write, or switched off, a change asks nothing.
       const { autoBackupEnabled, autoBackupFolderUri } = useSettings.getState();
       if (autoBackupEnabled && autoBackupFolderUri) scheduler.request();
-    });
+    }, APP_VARIANT);
     const sub = AppState.addEventListener('change', (next) => {
       if ((next === 'background' || next === 'inactive') && scheduler.pending) {
         void scheduler.flush();

@@ -25,6 +25,8 @@
  * Tasks, and the ready screen's button is `Open Tasks AI` — it opens that
  * section's chat, and asks the chip's question if a chip was what was tapped.
  * Connecting a key is a detour on the way to a question, not a destination.
+ * Reached from Settings instead, the button opens THIS app's chat — one per
+ * app since 3.0.0 (`lib/ai/aiScope.ts`), so there is no other to default to.
  *
  * Only Google is live. OpenAI and Claude are drawn, disabled, with `soon`: the
  * control is where it will be, and a screen that grew a provider row later would
@@ -49,6 +51,8 @@ import { useLanguage, useT } from '../hooks/useT';
 import { DEFAULT_MODEL, checkKeyShape, maskKey } from '../lib/ai/gemini';
 import { getKey } from '../lib/ai/secureKey';
 import type { AiSection } from '../lib/ai/aiSchema';
+import { aiReadsNote, aiSection } from '../lib/ai/aiScope';
+import { APP_VARIANT } from '../lib/appVariant';
 import { clipboardAvailable, readClipboard } from '../lib/clipboard';
 import { formatClockTime } from '../lib/days';
 import { tap } from '../lib/feedback';
@@ -405,11 +409,7 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
         </BubblePressable>
 
         <Kicker className="mx-lg mb-sm mt-xl">{t('What it reads')}</Kicker>
-        <Text className="mx-lg text-label text-ink-muted">
-          {t(
-            'Only the section you ask from: your workouts, your tasks or your amounts, summarised on the phone first. Nothing is changed until you press Add or Apply.',
-          )}
-        </Text>
+        <Text className="mx-lg text-label text-ink-muted">{t(aiReadsNote(APP_VARIANT))}</Text>
       </KeyboardAwareScrollView>
 
       <FloatingAction
@@ -483,8 +483,8 @@ export function AiSettingsScreen({ from, onBack, onOpenChat }: AiSettingsScreenP
           maskedKey={tested.masked}
           model={model}
           latencyMs={tested.latencyMs}
-          ctaLabel={t(CTA[from ?? 'Workout'])}
-          onCta={() => onOpenChat(from ?? 'Workout')}
+          ctaLabel={t(CTA[from ?? aiSection(APP_VARIANT)])}
+          onCta={() => onOpenChat(from ?? aiSection(APP_VARIANT))}
           onDismiss={() => setPhase('form')}
         />
       ) : null}

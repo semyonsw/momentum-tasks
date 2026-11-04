@@ -470,3 +470,68 @@ describe('the words', () => {
     expect(cards.workouts.line).toBe('На 1 больше, чем месяцем раньше.');
   });
 });
+
+describe('one log per app (3.0.0)', () => {
+  const keys = (input: WrappedInput) => {
+    const stats = wrappedStats(input);
+    return stats ? wrappedCards(stats, EN).map((card) => card.key) : [];
+  };
+
+  it('the combined fixture has every card (so the cuts below are real)', () => {
+    expect(keys(fixture())).toEqual([
+      'title',
+      'tonnage',
+      'workouts',
+      'record',
+      'streak',
+      'category',
+      'weekday',
+      'summary',
+    ]);
+  });
+
+  it('Workout: training only — no streak, no money, even though the store holds them', () => {
+    expect(keys({ ...fixture(), variant: 'workout' })).toEqual([
+      'title',
+      'tonnage',
+      'workouts',
+      'record',
+      'weekday',
+      'summary',
+    ]);
+    const stats = wrappedStats({ ...fixture(), variant: 'workout' });
+    expect(stats?.tasks).toBeNull();
+    expect(stats?.spending).toBeNull();
+    expect(stats?.weekday?.tasksPercent).toBeNull();
+    expect(wrappedCards(stats!, EN)[0].line).toBe('3 workouts.');
+    expect(wrappedSummary(stats!, EN).cells.map((cell) => cell.key)).toEqual([
+      'workouts',
+      'tonnage',
+    ]);
+  });
+
+  it('Tasks: the streak and the tasks, nothing about training or money', () => {
+    const stats = wrappedStats({ ...fixture(), variant: 'tasks' });
+    expect(stats?.workouts).toBeNull();
+    expect(stats?.tonnage).toBeNull();
+    expect(stats?.record).toBeNull();
+    expect(stats?.spending).toBeNull();
+    expect(keys({ ...fixture(), variant: 'tasks' })).toEqual([
+      'title',
+      'streak',
+      'weekday',
+      'summary',
+    ]);
+    expect(stats?.weekday?.workouts).toBe(0);
+  });
+
+  it('Expenses: the money only', () => {
+    expect(keys({ ...fixture(), variant: 'expenses' })).toEqual(['title', 'category', 'summary']);
+    const stats = wrappedStats({ ...fixture(), variant: 'expenses' });
+    expect(wrappedSummary(stats!, EN).cells.map((cell) => cell.key)).toEqual(['spent']);
+  });
+
+  it('an app whose own log is empty in the period has no Wrapped at all', () => {
+    expect(wrappedStats({ ...fixture(), amounts: [], variant: 'expenses' })).toBeNull();
+  });
+});

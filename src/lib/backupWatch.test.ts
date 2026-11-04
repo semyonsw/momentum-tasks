@@ -6,6 +6,7 @@ import {
   pickFields,
   settingsSlice,
   sliceChanged,
+  watchedStores,
 } from './backupWatch';
 
 /**
@@ -76,5 +77,24 @@ describe('the settings slice', () => {
     expect(SETTINGS_NOT_BACKED_UP).toContain('autoBackupIntervalDays');
     const after = { ...base, autoBackupIntervalDays: 7 };
     expect(sliceChanged(settingsSlice(base), settingsSlice(after))).toBe(false);
+  });
+});
+
+describe('which stores each app watches', () => {
+  it('settings and the assistant everywhere, plus the app’s own log', () => {
+    expect(watchedStores('tasks')).toEqual(['settings', 'tasks', 'ai']);
+    expect(watchedStores('expenses')).toEqual(['settings', 'money', 'ai']);
+  });
+
+  it('Workout watches its legacy tasks and money too, since its file may carry them', () => {
+    expect(watchedStores('workout')).toEqual([
+      'settings',
+      'library',
+      'workoutHistory',
+      'debriefs',
+      'tasks',
+      'money',
+      'ai',
+    ]);
   });
 });

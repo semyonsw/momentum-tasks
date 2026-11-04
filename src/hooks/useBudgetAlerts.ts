@@ -9,18 +9,27 @@
  * nag, which is the thing this app promises not to be.
  *
  * Nothing here can notify unless a budget's own switch is on (`alerts`), and
- * every budget is created with it off.
+ * every budget is created with it off — and nothing here runs at all outside
+ * the Expenses app (`notificationScope`). The Workout app still holds the 2.x
+ * budgets, some with that switch on; a "Food is at 80%" from an app that no
+ * longer shows the money would be an alert nobody can act on, and a duplicate
+ * of the one the Expenses app sends once the money is imported there.
  */
 
 import { useEffect } from 'react';
 
+import { APP_VARIANT } from '../lib/appVariant';
 import { budgetAlertsDue, describeBudgetAlert } from '../lib/budgets';
 import { parseDay } from '../lib/days';
+import { notificationScope } from '../lib/notificationScope';
 import { presentBudgetAlert } from '../lib/notify';
 import { useMoney } from '../state/moneyStore';
 import { useSettings } from '../state/settingsStore';
 import { useMoneyScale } from './useMoneyScale';
 import { useToday } from './useToday';
+
+/** Fixed for the bundle, so the effect below is a no-op in two apps of three. */
+const ARMED = notificationScope(APP_VARIANT).budgetAlerts;
 
 export function useBudgetAlerts(): void {
   const amounts = useMoney((s) => s.amounts);
@@ -32,7 +41,7 @@ export function useBudgetAlerts(): void {
   const today = useToday();
 
   useEffect(() => {
-    if (!budgets?.some((budget) => budget.alerts)) return;
+    if (!ARMED || !budgets?.some((budget) => budget.alerts)) return;
     const date = parseDay(today);
     if (!date) return;
     const year = date.getFullYear();

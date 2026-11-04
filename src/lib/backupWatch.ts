@@ -17,7 +17,14 @@
  *
  * The workout in progress is not watched at all: it is not in a backup (see
  * `state/dataTransfer.ts`), and finishing it lands in the history store, which is.
+ *
+ * Nor is a store this app's file never carries (`watchedStores`): the Tasks app
+ * has a library store in it, seeded and untouched, and a change there would be a
+ * write of a file that does not contain it.
  */
+
+import type { AppVariant } from './appVariant';
+import { backupSlices, type PayloadSlice } from './backup';
 
 /**
  * The fields each store contributes to a backup, mirroring `currentSnapshot`.
@@ -44,6 +51,30 @@ export const BACKED_UP_FIELDS = {
   debriefs: ['debriefs'],
   ai: ['chats', 'archive', 'proposals'],
 } as const;
+
+export type WatchedStore = 'settings' | keyof typeof BACKED_UP_FIELDS;
+
+const STORES_OF: Record<PayloadSlice, readonly WatchedStore[]> = {
+  workout: ['library', 'workoutHistory', 'debriefs'],
+  tasks: ['tasks'],
+  money: ['money'],
+};
+
+/**
+ * The stores whose changes can change this app's file: the settings and the
+ * assistant always, plus each slice the file can carry. Workout's legacy tasks
+ * and money are watched too — asked as if held — because they are in its file
+ * while they are held, and nothing on screen edits them any more, so watching
+ * costs nothing.
+ */
+export function watchedStores(variant: AppVariant): readonly WatchedStore[] {
+  const out: WatchedStore[] = ['settings'];
+  for (const slice of backupSlices(variant, { tasks: true, money: true })) {
+    out.push(...STORES_OF[slice]);
+  }
+  out.push('ai');
+  return out;
+}
 
 /** Settings fields that describe the backup itself, not the user's data. */
 export const SETTINGS_NOT_BACKED_UP: readonly string[] = [

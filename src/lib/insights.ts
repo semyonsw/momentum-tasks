@@ -15,6 +15,19 @@
  *  3. Tasks done % in weeks with 3+ workouts vs weeks with fewer.
  *  4. Spending per day on training days vs rest days.
  *
+ * ── AND WHAT IS LEFT OF THEM IN THREE APPS ────────────────────────────────
+ *
+ * Three of the four compare two logs, and since 3.0.0 no app has two (each APK
+ * is one log, `lib/appVariant.ts`). The Workout app does still STORE the 2.x
+ * tasks and money, but a card about them from an app that cannot show them is
+ * a claim the user has no way to check — so those three are gone everywhere,
+ * and the one comparison inside a single log, spending on weekends, is the
+ * Expenses app's (`insightIdsFor`). The Workout and Tasks apps have no
+ * insights at all, and `insightsOffered` is what lets their histories leave
+ * the door out rather than show one that can only ever say "not enough data".
+ * The cross-log arithmetic stays below, unchanged and tested, for the day the
+ * apps can read each other's logs.
+ *
  * Rejected for now: the design's "bench sets after 20:00" (a per-exercise,
  * per-hour cut has samples of a dozen sets — below any honest threshold for most
  * people) and per-category spending (one category splits a small sample again).
@@ -48,12 +61,14 @@
  * states its sample under its bars.
  */
 
+import type { AppVariant } from './appVariant';
 import type { CompletedWorkout } from './completedWorkout';
 import { dayKey, parseDay, shiftDay, weekdayIndex, weekStart } from './days';
 import { plural, t, type Language } from './i18n';
 import { formatMoney, type Amount } from './money';
 import { isSpending } from './moneyCalendar';
 import { dayProgress, type Task, type TaskLog } from './tasks';
+import { maybeScope } from './variantScope';
 
 export const INSIGHT_WINDOW_DAYS = 182;
 export const MIN_DAYS_PER_GROUP = 14;
@@ -93,6 +108,22 @@ export interface InsightsInput {
   tasks: readonly Task[];
   log: TaskLog;
   amounts: readonly Amount[];
+  /**
+   * Which app is asking: every other log reads as empty, and only its own
+   * comparisons are made. Absent = all four over all three logs, the combined
+   * 2.x reading the older tests use; `useInsights` passes it.
+   */
+  variant?: AppVariant;
+}
+
+/** The comparisons an app can make honestly: the ones inside its own log. */
+export function insightIdsFor(variant: AppVariant): readonly InsightId[] {
+  return variant === 'expenses' ? ['spendOnWeekends'] : [];
+}
+
+/** Whether an app has an Insights screen at all — the door's condition. */
+export function insightsOffered(variant: AppVariant): boolean {
+  return insightIdsFor(variant).length > 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -155,7 +186,8 @@ function moneyComparison(id: InsightId, a: SpendTally, b: SpendTally): Insight |
  * The comparisons that pass both thresholds, in a fixed order (the two task
  * comparisons, then the two money ones). Empty when nothing does — the empty state.
  */
-export function insights(input: InsightsInput): Insight[] {
+export function insights(raw: InsightsInput): Insight[] {
+  const input = maybeScope(raw.variant, raw);
   const last = shiftDay(input.today, -1);
   const windowStart = shiftDay(input.today, -INSIGHT_WINDOW_DAYS);
 
@@ -259,7 +291,9 @@ export function insights(input: InsightsInput): Insight[] {
     if (found) out.push(found);
   }
 
-  return out;
+  if (raw.variant === undefined) return out;
+  const allowed = insightIdsFor(raw.variant);
+  return out.filter((insight) => allowed.includes(insight.id));
 }
 
 /* ------------------------------------------------------------------ */

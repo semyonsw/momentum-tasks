@@ -3,18 +3,21 @@
  * Wave 3 switch.
  *
  *   ‹ BADGES
- *   12 of 33 earned.
+ *   12 of 16 earned.
  *   Worked out from your logs, so days before the switch count too.
  *   WORKOUT
  *   ( ◉ )        ( ◉ )        ( ┆ )
  *   First        10           50
  *   workout      workouts     workouts
  *   Bronze       Bronze       27 / 50 workouts
- *   TASKS …      MONEY …
  *   ● Bronze  ● Silver  ● Gold
  *
- * One section per log, each a LADDER from its first step to its last, so the
- * next one up is always beside the last one earned. A locked badge is a dashed
+ * One LADDER, from its first step to its last, so the next one up is always
+ * beside the last one earned. Since 3.0.0 it is this app's log's ladder only
+ * (`badgeDomain`, `lib/achievements.ts`) — the Workout app shows the workout
+ * badges, Tasks the task ones, Expenses the money ones — so the gallery is one
+ * kicker and one grid; the per-domain loop stays because the kicker is still
+ * the right heading for it. A locked badge is a dashed
  * outline with where the log stands under it — progress, never a lock icon or a
  * "you have not" sentence. Tapping any badge opens `BadgeSheet`.
  *
@@ -36,8 +39,10 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { Kicker } from '../components/primitives';
 import { pressedStyle } from '../components/motion';
 import { useBadges } from '../hooks/useEngagement';
+import { APP_VARIANT } from '../lib/appVariant';
 import { useLanguage, useT } from '../hooks/useT';
 import {
+  badgeDomain,
   describeBadgeProgress,
   describeGallery,
   tierName,
@@ -48,11 +53,14 @@ import {
 import { tap } from '../lib/feedback';
 import { glass, palette, radius } from '../theme/tokens';
 
-const DOMAINS: { domain: BadgeDomain; label: string }[] = [
+const ALL_DOMAINS: { domain: BadgeDomain; label: string }[] = [
   { domain: 'workout', label: 'Workout' },
   { domain: 'tasks', label: 'Tasks' },
   { domain: 'money', label: 'Finance' },
 ];
+
+/** This app's one ladder — `useBadges` already returns only its badges. */
+const DOMAINS = ALL_DOMAINS.filter(({ domain }) => domain === badgeDomain(APP_VARIANT));
 
 /** Rows of three; the last row padded so its tiles keep a third each. */
 function rowsOf<T>(list: readonly T[]): (T | null)[][] {

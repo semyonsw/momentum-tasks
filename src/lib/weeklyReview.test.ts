@@ -345,3 +345,30 @@ describe('when the card is shown', () => {
     expect(weeklyReviewShown('2027-01-04', '2026-12-28')).toBe(true);
   });
 });
+
+describe('one log per app (3.0.0)', () => {
+  const everything = () =>
+    input({
+      workouts: [workout('2026-09-29'), workout('2026-10-01')],
+      tasks: [task('read', 'Reading')],
+      log: { read: marks('2026-09-28', 'ddddddd') },
+      amounts: [spend('2026-09-30', 5000)],
+    });
+
+  it('each app reviews its own log, whatever the store still holds', () => {
+    const columns = (variant?: 'workout' | 'tasks' | 'expenses') => {
+      const review = weeklyReview({ ...everything(), variant });
+      return review
+        ? describeWeeklyReview(review, { currency: 'AMD', scale: 0 }, 'en').map((c) => c.key)
+        : [];
+    };
+    expect(columns()).toEqual(['workouts', 'tasks', 'spent']);
+    expect(columns('workout')).toEqual(['workouts']);
+    expect(columns('tasks')).toEqual(['tasks']);
+    expect(columns('expenses')).toEqual(['spent']);
+  });
+
+  it('no card in an app whose own log said nothing last week', () => {
+    expect(weeklyReview({ ...everything(), amounts: [], variant: 'expenses' })).toBeNull();
+  });
+});

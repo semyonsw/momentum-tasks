@@ -1,6 +1,9 @@
 /**
- * The weekly review (X3): last week, Monday to Sunday, across the three logs —
- * one figure and one plain sentence per log, on the landing.
+ * The weekly review (X3): last week, Monday to Sunday — one figure and one
+ * plain sentence per log. Written for the 2.x landing, which held all three
+ * logs; since 3.0.0 each app is one log, and `variant` on the input narrows
+ * the review to that app's column (`scopeLogs`, `lib/variantScope.ts`) — the
+ * Workout app stores the 2.x tasks and money but says nothing about them.
  *
  *   LAST WEEK · 28 SEPTEMBER – 04 OCTOBER                    ✕
  *   Workouts          Tasks                  Spent
@@ -43,12 +46,14 @@
  * arithmetic on dates and a daylight-saving jump has nothing to move.
  */
 
+import type { AppVariant } from './appVariant';
 import type { CompletedWorkout } from './completedWorkout';
 import { dayKey, shiftDay, weekStart } from './days';
 import { plural, t, type Language } from './i18n';
 import { formatValue, formatWeek, type Amount, type MoneyCategory } from './money';
 import { isSpending } from './moneyCalendar';
 import { asksOn, dayProgress, entryOf, isWeekly, type Task, type TaskLog } from './tasks';
+import { maybeScope } from './variantScope';
 
 /** Monday to Sunday, inclusive. */
 export interface ReviewWeek {
@@ -100,6 +105,8 @@ export interface WeeklyReviewInput {
   log: TaskLog;
   amounts: readonly Amount[];
   categories: readonly MoneyCategory[];
+  /** Which app's review: every other log reads as empty. Absent = all three (2.x). */
+  variant?: AppVariant;
 }
 
 function workoutsIn(
@@ -186,8 +193,9 @@ function spentIn(
   return { total, top: name ? { name, share: topValue / total } : null };
 }
 
-/** Last week across the three logs, or null when there is nothing to say at all. */
-export function weeklyReview(input: WeeklyReviewInput): WeeklyReview | null {
+/** Last week in the app's log (all three without a variant), or null when there is nothing to say. */
+export function weeklyReview(raw: WeeklyReviewInput): WeeklyReview | null {
+  const input = maybeScope(raw.variant, raw);
   const week = reviewedWeek(input.today);
   const before = reviewedWeek(week.from);
   const review: WeeklyReview = {

@@ -7,6 +7,7 @@ import {
   SET_COLUMNS,
   amountsToCsv,
   csvBaseName,
+  csvKinds,
   csvDocument,
   csvField,
   csvMoney,
@@ -405,5 +406,13 @@ describe('csvBaseName', () => {
     const now = new Date(2026, 9, 9, 9, 5);
     expect(csvBaseName('amounts', now)).toBe('momentum-amounts-2026-10-09-0905');
     expect(csvBaseName('workouts', now)).toBe('momentum-workouts-2026-10-09-0905');
+  });
+});
+
+describe('which spreadsheets each app offers', () => {
+  it('its own log only', () => {
+    expect(csvKinds('workout')).toEqual(['workouts']);
+    expect(csvKinds('expenses')).toEqual(['amounts']);
+    expect(csvKinds('tasks')).toEqual([]);
   });
 });
