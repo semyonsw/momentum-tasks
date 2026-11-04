@@ -23,7 +23,7 @@ param([switch]$NonInteractive)
 
 $App = @{
     Name          = 'Momentum'
-    Blurb         = 'A local-first Android workout tracker. One tap to log a repeat set.'
+    Blurb         = 'A local-first Android daily-tasks app. One circle per task per day.'
     Repo          = 'https://github.com/semyonsw/momentum-app.git'
     Issues        = 'https://github.com/semyonsw/momentum-app/issues'
     WindowsOnly   = $false
@@ -61,18 +61,14 @@ $App = @{
                }
            } },
 
-        @{ Title  = 'Putting the apps on your phone'
+        @{ Title  = 'Putting the app on your phone'
            Action = {
                param($PyExe)
-               # Since 3.0.0 Momentum is three apps, momentum-<app>-<version>.apk,
-               # so the newest APK of EACH is installed. Sorted as VERSIONS and
-               # not as names: by name, 1.9.0 sorts after 1.10.0 and the phone
-               # would be handed the older APK. Workout falls back to its older
-               # names - momentum-<version>.apk (2.x), workout-tracker-* (1.x).
+               # The newest momentum-tasks-<version>.apk is installed. Sorted as
+               # VERSIONS and not as names: by name, 3.9.0 sorts after 3.10.0 and
+               # the phone would be handed the older APK.
                $families = @(
-                   @('momentum-workout-*.apk', 'momentum-[0-9]*.apk', 'workout-tracker-*.apk'),
-                   @('momentum-tasks-*.apk'),
-                   @('momentum-expenses-*.apk'))
+                   ,@('momentum-tasks-*.apk'))
                $apks = @(foreach ($family in $families) {
                    $family | ForEach-Object {
                        Get-ChildItem -Path (Join-Path $Root $_) -ErrorAction SilentlyContinue |
@@ -212,25 +208,22 @@ if not exist "%ADB%" if not "%ADB%"=="adb" (
     exit /b 1
 )
 
-rem Three apps since 3.0.0 - momentum-workout/tasks/expenses-<version>.apk.
-rem Each is installed in turn. dir /o-n lists newest-named first, which is the
-rem newest version only while every part is one digit; Install.bat itself
+rem momentum-tasks-<version>.apk. dir /o-n lists newest-named first, which is
+rem the newest version only while every part is one digit; Install.bat itself
 rem sorts by version, so prefer it when the two disagree.
 set "FOUND="
-for %%p in (workout tasks expenses) do call :one %%p
+call :one tasks
 if not defined FOUND (
     echo.
-    echo  [ERROR] No momentum-*.apk in this folder.
+    echo  [ERROR] No momentum-tasks-*.apk in this folder.
     echo          Download the signed build from the GitHub Releases page.
     echo.
     pause
     exit /b 1
 )
 echo.
-echo  Tasks and Expenses start empty: in each, Settings ^> Replace everything
-echo  from a file, and pick the last Momentum backup.
-echo  If those said Success: on first launch, ALLOW NOTIFICATIONS. It is the
-echo  only way the rest timer reaches you once the app is off screen.
+echo  If that said Success: on first launch, ALLOW NOTIFICATIONS. It is the
+echo  only way a task reminder reaches you once the app is off screen.
 echo.
 pause
 exit /b 0
@@ -238,9 +231,6 @@ exit /b 0
 :one
 set "APK="
 for /f "delims=" %%f in ('dir /b /o-n "momentum-%1-*.apk" 2^>nul') do if not defined APK set "APK=%%f"
-rem Workout's older names: momentum-<version>.apk (2.x), workout-tracker-* (1.x).
-if "%1"=="workout" if not defined APK for /f "delims=" %%f in ('dir /b /o-n "momentum-2.*.apk" 2^>nul') do if not defined APK set "APK=%%f"
-if "%1"=="workout" if not defined APK for /f "delims=" %%f in ('dir /b /o-n "workout-tracker-*.apk" 2^>nul') do if not defined APK set "APK=%%f"
 if not defined APK exit /b 0
 set "FOUND=1"
 echo  Installing %APK% - keep the phone unlocked...

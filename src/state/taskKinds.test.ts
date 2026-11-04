@@ -2,10 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { applyBackup, exportBackupText } from './dataTransfer';
-import { useSettings } from './settingsStore';
 import { sanitizeTasks, seedTasks, useTasks } from './tasksStore';
 import { parseBackup } from '../lib/backup';
-import { shiftDay } from '../lib/days';
 import { entryOf, type Task } from '../lib/tasks';
 
 /**

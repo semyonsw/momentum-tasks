@@ -10,7 +10,7 @@
 # ---------------------------------------------------------------------------
 
 APP_NAME='Momentum'
-APP_BLURB='A local-first Android workout tracker. One tap to log a repeat set.'
+APP_BLURB='A local-first Android daily-tasks app. One circle per task per day.'
 APP_ISSUES='https://github.com/semyonsw/momentum-app/issues'
 
 # ===========================================================================
@@ -372,20 +372,16 @@ else
     warn 'some tests failed.' 'The install itself is fine; the output is at the end of install.log.'
 fi
 
-step 'Putting the apps on your phone'
-# Since 3.0.0 Momentum is three apps - momentum-{workout,tasks,expenses}-<v>.apk -
-# so the newest APK of EACH is installed, not the newest file in the folder.
-# `sort -V`, not `sort`: plain sort puts 1.10.0 BEFORE 1.9.0 and would push the
-# older APK to the phone the first time a minor version reached double digits.
-# Workout falls back to the 2.x `momentum-<v>.apk` and, before 2.0.0,
-# `workout-tracker-<v>.apk`: the same app under its older names.
+step 'Putting the app on your phone'
+# The newest momentum-tasks-<v>.apk is installed. `sort -V`, not `sort`: plain
+# sort puts 3.10.0 BEFORE 3.9.0 and would push the older APK to the phone the
+# first time a minor version reached double digits.
 newest() { for pat in "$@"; do
     f="$(ls -1 "$ROOT"/$pat 2>/dev/null | sort -V | tail -1)"
     [ -n "$f" ] && { printf '%s\n' "$f"; return; }
 done; }
 APKS=()
-for found in "$(newest 'momentum-workout-*.apk' 'momentum-[0-9]*.apk' 'workout-tracker-*.apk')" \
-             "$(newest 'momentum-tasks-*.apk')" "$(newest 'momentum-expenses-*.apk')"; do
+for found in "$(newest 'momentum-tasks-*.apk')"; do
     [ -n "$found" ] && APKS+=("$found")
 done
 

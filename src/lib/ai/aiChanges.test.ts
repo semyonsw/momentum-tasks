@@ -197,9 +197,7 @@ describe('what the card says', () => {
   });
 
   it('draws no row for something that is not there', () => {
-    expect(
-      rows([{ target: 'task', id: 't_nope', field: 'archive', value: true }]),
-    ).toEqual([]);
+    expect(rows([{ target: 'task', id: 't_nope', field: 'archive', value: true }])).toEqual([]);
   });
 
   it('is translated', () => {
@@ -212,4 +210,3 @@ describe('what the card says', () => {
     expect(row.subject).toBe('Read');
   });
 });
-

@@ -186,20 +186,19 @@ describe('what the queue is handed', () => {
    * them" months later.
    */
   it('gives every alert an id of its own', () => {
-    const alerts = plan(
-      [
-        task({
-          id: 'a',
-          schedule: { kind: 'weekdays', days: [0, 1, 2, 3, 4, 5, 6] },
-          reminder: { hour: 7, minute: 0 },
-        }),
-        task({ id: 'b', reminder: { hour: 8, minute: 0 } }),
-        task({
-          id: 'c',
-          schedule: { kind: 'once', day: '2026-09-20' },
-          startedOn: '2026-09-20',
-          reminder: { hour: 9, minute: 0 },
-        }),
+    const alerts = plan([
+      task({
+        id: 'a',
+        schedule: { kind: 'weekdays', days: [0, 1, 2, 3, 4, 5, 6] },
+        reminder: { hour: 7, minute: 0 },
+      }),
+      task({ id: 'b', reminder: { hour: 8, minute: 0 } }),
+      task({
+        id: 'c',
+        schedule: { kind: 'once', day: '2026-09-20' },
+        startedOn: '2026-09-20',
+        reminder: { hour: 9, minute: 0 },
+      }),
     ]);
     const ids = alerts.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);

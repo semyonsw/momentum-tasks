@@ -37,7 +37,6 @@ import { t } from '../lib/i18n';
 import { toggledMark } from '../lib/taskTap';
 import { useSettings } from './settingsStore';
 import {
-  asksOn,
   clearExcused,
   COUNT_MAX,
   entryOf,
@@ -56,7 +55,6 @@ import {
   REMIND_AGAIN_MINUTES,
   reorderWithinVisible,
   type Task,
-  type TaskAutoSource,
   type TaskLog,
   type TaskMark,
   type TaskReminder,

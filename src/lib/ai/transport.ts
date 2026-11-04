@@ -1,8 +1,7 @@
 /**
  * The one `fetch` the assistant makes, wrapped so it cannot throw.
  *
- * It sits beside `lib/healthConnect.ts` and `lib/notify.ts` for the same reason
- * they exist: a side effect that can fail in half a dozen ordinary ways — no
+ * It sits beside `lib/notify.ts` for the same reason that exists: a side effect that can fail in half a dozen ordinary ways — no
  * signal, a captive portal, Google slow to answer — must come back as a VALUE the
  * caller can turn into a sentence, never as an exception that reaches a render.
  *

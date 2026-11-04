@@ -66,18 +66,18 @@ export const TASK_DAY_FIELDS: readonly TaskField[] = ['done', 'excused', 'clear'
  * stored card carries, so a chat filed by Momentum 3.0.0 reads back unchanged.
  */
 export interface AiChange {
-      target: 'task';
-      /** Absent for `add`. */
-      id?: ID;
-      field: TaskField;
-      /** The name for `name` and `add`; the count for `target`; true for `archive`. */
-      value: string | number | boolean | null;
-      /** For `schedule` and `add`. */
-      schedule?: TaskSchedule;
-      /** For `target`: what is counted ("glasses"). */
-      unit?: string;
-      /** For `done` / `excused` / `clear`: the day answered, `YYYY-MM-DD`. */
-      day?: string;
+  target: 'task';
+  /** Absent for `add`. */
+  id?: ID;
+  field: TaskField;
+  /** The name for `name` and `add`; the count for `target`; true for `archive`. */
+  value: string | number | boolean | null;
+  /** For `schedule` and `add`. */
+  schedule?: TaskSchedule;
+  /** For `target`: what is counted ("glasses"). */
+  unit?: string;
+  /** For `done` / `excused` / `clear`: the day answered, `YYYY-MM-DD`. */
+  day?: string;
 }
 
 /** What the validator needs to know about the stores. */

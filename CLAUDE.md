@@ -8,35 +8,37 @@ follow-up**. After every change, without being asked:
 
 1. **Bump the version.** `app.json` (`version` and `android.versionCode`, both) and
    `package.json`. Patch bump unless the change is bigger than that.
-2. **Build the three APKs** (below) and copy them to the repo root as
-   `momentum-{workout,tasks,expenses}-<version>.apk`. `tools/release-apk.sh` does
-   steps 2 and 3, verification included; `tools/release-apk.sh tasks` does one.
+2. **Build the APK** (below) and copy it to the repo root as
+   `momentum-tasks-<version>.apk`. `tools/release-apk.sh` does steps 2 and 3,
+   verification included.
 3. **Commit and push to `main`.** Short, plain commit message — one line, no essay.
 
-The point of step 2 is that the user copies those files to the phone and installs
-each over the old one. Leave the previous APK of each app on disk as a rollback;
-do not delete it. (Workout's rollbacks include the 2.x `momentum-<version>.apk`
-and, before 2.0.0, `workout-tracker-*.apk`: the same app under older names.)
+The point of step 2 is that the user copies that file to the phone and installs
+it over the old one. Leave the previous APK on disk as a rollback; do not delete
+it.
 
-## Three apps, one tree
+## One app
 
-Since 3.0.0 Workout, Tasks and Expenses are separate apps. One codebase, a
-build-time switch: `EXPO_PUBLIC_APP_VARIANT` = `workout` (also: unset) | `tasks` |
-`expenses`. `app.config.js` turns `app.json` (which IS Workout) into the other
-two; `src/lib/appVariant.ts` is the bundle's copy, which Metro inlines as a
-literal. Decisions take the variant as a parameter, so tests cover all three
-without env tricks — under vitest/jest it is `workout`.
+This is **Tasks**, package `com.semyonsw.momentum.tasks` — the phone's existing
+install, which updates in place. Until 3.0.0 it was one section of Momentum; at
+3.0.0 Momentum was split into three apps from one tree (Workout, Tasks,
+Expenses), and at 3.0.1 this tree was cut down to Tasks alone. There is no
+variant switch any more: `app.json` IS the app.
 
-| App | Package | Notes |
-| --- | --- | --- |
-| Workout | `com.semyonsw.workouttracker` | the phone's existing install; updates in place. Its store still holds the 2.x tasks and money: never delete them, just don't show them |
-| Tasks | `com.semyonsw.momentum.tasks` | new install, starts empty |
-| Expenses | `com.semyonsw.momentum.expenses` | new install, starts empty |
+What the split leaves behind is on the phone, and it has to keep reading:
 
-Tasks and Expenses are filled by importing a backup in their Settings (a combined
-2.x backup carries every section). Health Connect — permission and plugin — is
-Workout's alone. Icons: `assets/{icon,adaptive-icon}-<variant>.png`; Workout's are
-the 2.x mark, the other two come from `tools/make-icons.py`.
+- **Every persisted key is the 3.0.0 Tasks build's, byte for byte**: the zustand
+  stores `tasks`, `settings` and `ai`; the keystore entry `ai.google.apiKey`; the
+  automatic backups' `momentum-tasks-backup-` prefix. Rename one and the update
+  opens empty.
+- **The AI chat is filed under `Tasks`** on disk and in a backup
+  (`{ chats: { Tasks } }`, `FILED_AS` in `src/state/aiStore.ts`), because that is
+  the shape 3.0.0 wrote. The store holds one chat; only the file keeps the name.
+- **Backups stay `workout-tracker-backup`, version 2.** A combined 2.x backup
+  carries every section; importing one takes the tasks, the Tasks chats and the
+  settings, and nothing else (`dataTransfer.test.ts`).
+
+Icons: `assets/icon.png` and `assets/adaptive-icon.png`, the Tasks checkmark.
 
 ## Building the APK
 
@@ -46,9 +48,9 @@ points at it). If it is gone, reinstall: cmdline-tools, `platforms;android-35`,
 `ndk;27.1.12297006`, `cmake;3.22.1`.
 
 ```bash
-export EXPO_PUBLIC_APP_VARIANT=tasks                  # for BOTH steps
+export EXPO_PUBLIC_BUILD_MARK=momentum-tasks-build-<version>   # for BOTH steps
 node node_modules/expo/bin/cli prebuild -p android --clean
-rm -rf /tmp/metro-*                                   # see "variant traps" below
+rm -rf /tmp/metro-*                                   # see "the cache trap" below
 cd android
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export ANDROID_HOME=/root/android-sdk ANDROID_SDK_ROOT=/root/android-sdk
@@ -57,29 +59,24 @@ export ANDROID_HOME=/root/android-sdk ANDROID_SDK_ROOT=/root/android-sdk
   -PWT_KEY_ALIAS=androiddebugkey -PWT_KEY_PASSWORD=android
 ```
 
-Takes ~10 minutes per app; run it in the background. Output lands at
-`android/app/build/outputs/apk/release/app-release.apk`, and the next variant's
+Takes ~10 minutes; run it in the background. Output lands at
+`android/app/build/outputs/apk/release/app-release.apk`, and the next
 `prebuild --clean` deletes it — copy it out first.
 
-### The variant traps
+### The cache trap
 
-- **`npx expo` does not see the variant from WSL.** The `.bin/expo` shim in this
-  shared tree execs the Windows `node.exe`, and a Windows process gets none of
-  WSL's environment — so `EXPO_PUBLIC_APP_VARIANT=tasks npx expo prebuild`
-  silently prebuilds Workout. Call `node node_modules/expo/bin/cli`. Check with
-  `EXPO_PUBLIC_APP_VARIANT=tasks node node_modules/expo/bin/cli config --type public`.
-- **`--clean`, every variant.** The package, label, icon and plugin list all
-  change, and prebuild does not take things back out of an existing `android/`.
-  It regenerates `android/app/debug.keystore` — the same stock bytes — and
-  `local.properties`, so re-point that at the Linux SDK after it.
-- **Metro's cache leaks the previous variant.** Its transform cache is not keyed
-  on env values, so a cached `appVariant.ts` ships the last build's literal.
-  Delete `/tmp/metro-*` and pass `--reset-cache` (the script sets
-  `extraPackagerArgs` in the generated `build.gradle`).
-- **Probe the variant, not the variant name.** All three names are in every
-  bundle (`APP_VARIANTS`), so grepping for `tasks` proves nothing. The script
-  sets `EXPO_PUBLIC_BUILD_MARK=momentum-build-<variant>-<version>`, which
-  `appVariant.ts` inlines, and greps the bundle for exactly that.
+- **`npx expo` does not see WSL's environment** in a tree shared with Windows:
+  the `.bin/expo` shim execs the Windows `node.exe`, and a Windows process gets
+  none of WSL's variables — so `EXPO_PUBLIC_BUILD_MARK` silently never reaches
+  the bundle. Call `node node_modules/expo/bin/cli`.
+- **`--clean`, every build.** Prebuild does not take things back out of an
+  existing `android/`. It regenerates `android/app/debug.keystore` — the same
+  stock bytes — and `local.properties`, so re-point that at the Linux SDK after it.
+- **Metro's cache leaks the previous build.** Its transform cache is not keyed
+  on env values, so a cached `src/lib/buildMark.ts` ships the last build's
+  literal. Delete `/tmp/metro-*` and pass `--reset-cache` (the script sets
+  `extraPackagerArgs` in the generated `build.gradle`), then grep the bundle for
+  exactly `momentum-tasks-build-<version>` — the mark only this build can carry.
 
 ### THE OTHER TRAP: one `node_modules`, two operating systems
 
@@ -136,8 +133,8 @@ The same build, with the paths it actually has (installed 2026-08-30): JDK 17 at
 `sdk.dir=E\:\\android-sdk` — Java-properties escaping, so that is a real
 double backslash in the file. Set `JAVA_HOME`/`ANDROID_HOME` per command, since
 neither is on the machine's PATH, and call `gradlew.bat` with the same flags. There
-`npx expo` is native and does see `$env:EXPO_PUBLIC_APP_VARIANT`; set it per
-variant the same way.
+`npx expo` is native and does see `$env:EXPO_PUBLIC_BUILD_MARK`; set it the
+same way.
 
 **THE ONE TRAP: `ninja: error: Filename longer than 260 characters`.** The C++
 codegen step writes object paths that embed the project's absolute path twice, and
@@ -149,24 +146,12 @@ it as `ninja-1.10.2.exe.bak`. Reinstalling the SDK's cmake package undoes it.
 
 ## Native dependencies
 
-Two, and both are config-plugin-driven, so `npx expo prebuild -p android` is what
-applies them:
-
-- **`react-native-health-connect`** writes a finished workout to Health Connect
-  (`src/lib/healthConnect.ts`). Workout only: `app.config.js` drops its plugin
-  and permission from Tasks and Expenses, and the shell only writes from Workout.
-  The library itself is still LINKED into all three: unlinking it with a
-  `react-native.config.js` was tried and breaks the build, because the package
-  also ships an Expo module (`react-native-health-connect-expo`) that Expo
-  autolinks anyway and that cannot configure without the RN project. It is `require`d lazily inside a `try`, so the app
-  runs identically in a build that does not contain it — which is what makes it
-  removable by deleting the dependency and the plugin entry. It needs
-  `android.permission.health.WRITE_EXERCISE` in `app.json`'s `permissions` (the
-  plugin adds the rationale intent-filters but NOT the permission itself) and it
-  forces `minSdkVersion` 26.
-- **`expo-build-properties`** exists only to set that `minSdkVersion`. Check
-  `android/gradle.properties` says `android.minSdkVersion=26` after a prebuild;
-  Health Connect will not compile below it.
+No hand-written native code. `expo-notifications` (reminders), `expo-secure-store`
+(the AI key), and `expo-build-properties` (only `useLegacyPackaging`) are all
+config-plugin-driven, so `prebuild -p android` is what applies them. The
+Momentum-era extras are gone with the sections that needed them:
+`react-native-health-connect` (Workout's), and `expo-audio` with the
+`withoutMicrophone` plugin that stripped its `RECORD_AUDIO`.
 
 `android/app/debug.keystore` is the key the phone's install is signed with
 (SHA-256 `FA:C6:17:45…`, `CN=Android Debug`) — and it is NOT a unique file. This
@@ -183,13 +168,13 @@ updates the phone normally. Proof, on any machine, in two commands:
 ```bash
 keytool -list -v -keystore android/app/debug.keystore -storepass android \
   -alias androiddebugkey | grep SHA256                    # FA:C6:17:45…
-apksigner verify --print-certs workout-tracker-1.6.0.apk  # the same digest
+apksigner verify --print-certs momentum-tasks-3.0.0.apk  # the same digest
 ```
 
 What this does NOT mean is that the signing key stops mattering. Android
 identifies an app by package name + key, so an APK signed with anything else
 still cannot update the install, and the uninstall that would let it through
-still deletes the training log. It means the failure mode is a build configured
+still deletes the task log. It means the failure mode is a build configured
 to sign with the WRONG key — `plugins/withReleaseSigning.js` reaching for
 `WT_STORE_FILE`, or a real release keystore appearing later — not a lost file.
 So check the fingerprint on the built APK, every release, with the `apksigner`
@@ -201,16 +186,13 @@ line below. That check is the one that can actually fail.
 export PATH="/root/android-sdk/build-tools/36.0.0:$PATH"
 apksigner verify --print-certs <apk> | grep "certificate DN"   # CN=Android Debug
 aapt2 dump badging <apk> | head -1                             # package name, versionCode/Name
-aapt2 dump badging <apk> | grep -E "permission|microphone"     # no RECORD_AUDIO; health.* in Workout only
+aapt2 dump badging <apk> | grep -E "permission|microphone"     # no RECORD_AUDIO, no health.*
 ```
 
-Per APK, the package must be the variant's — one built as the wrong variant
-installs beside the real app instead of over it.
-
-`RECORD_AUDIO` is the one that bites: `expo-audio`'s AAR manifest declares it and
-the merger takes the union, so grepping `AndroidManifest.xml` reports success while
-the APK asks for the mic. `plugins/withoutMicrophone.js` removes it at merge time,
-and the only honest check reads the built file.
+The package must be `com.semyonsw.momentum.tasks` — an APK with any other
+installs beside the real app instead of over it. And no permission should be
+there that the app does not use: the merger takes the union of every library's
+manifest, so only the built file is an honest answer.
 
 Worth also grepping `assets/index.android.bundle` inside the APK for a string your
 change introduced — it is the one proof the JS that shipped is the JS you wrote.
@@ -234,7 +216,7 @@ other half of the proof.
 
 ## `.gitignore` has `*.apk`
 
-The committed APKs are force-added. `git add -f momentum-<variant>-<version>.apk`,
+The committed APKs are force-added. `git add -f momentum-tasks-<version>.apk`,
 or the release quietly contains no release.
 
 ## Before committing
@@ -245,7 +227,7 @@ happened once.
 
 Plus the render suite, `node node_modules/jest/bin/jest.js` (`jest.config.js`,
 `*.render.test.tsx`): the few bugs that only exist between React and the screen
-— a rolling digit pinned half a cell off, a DONE that logged twice. From WSL,
+— the kind no pure function can see. From WSL,
 call vitest and jest through `node node_modules/...` as written: the `.bin`
 shims in this shared tree fall through to the Windows `node.exe`, which then
 dies on rollup's missing win32 binary.

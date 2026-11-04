@@ -25,7 +25,12 @@
  * putting it back puts everything back.
  */
 
-import { countPayload, serializeBackup, type BackupCounts, type BackupPayload } from '../lib/backup';
+import {
+  countPayload,
+  serializeBackup,
+  type BackupCounts,
+  type BackupPayload,
+} from '../lib/backup';
 import { t } from '../lib/i18n';
 import { chatsForBackup, useAi } from './aiStore';
 import { sanitizeSettings, useSettings } from './settingsStore';

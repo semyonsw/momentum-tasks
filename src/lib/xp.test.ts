@@ -113,4 +113,3 @@ describe('the level curve', () => {
     expect(describeNextLevel(levelProgress(1920), 'ru')).toContain('7');
   });
 });
-

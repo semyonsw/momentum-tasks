@@ -61,7 +61,9 @@ const OTHER_PREFIXES = ['momentum-workout-backup-', 'momentum-expenses-backup-']
 describe('the file name', () => {
   it('is the app’s own prefix and the LOCAL date', () => {
     expect(BACKUP_FILE_PREFIX).toBe('momentum-tasks-backup-');
-    expect(backupFileBaseName(new Date(2026, 8, 2, 23, 59))).toBe('momentum-tasks-backup-2026-09-02');
+    expect(backupFileBaseName(new Date(2026, 8, 2, 23, 59))).toBe(
+      'momentum-tasks-backup-2026-09-02',
+    );
     expect(backupFileBaseName(new Date(2026, 0, 5, 0, 1))).toBe('momentum-tasks-backup-2026-01-05');
   });
 

@@ -1,118 +1,44 @@
-# Momentum
+# Momentum Tasks
 
-[![Install](https://img.shields.io/badge/install-one%20double--click-2b8a3e)](INSTALL.md)
-[![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-3ddc84)](INSTALL.md)
+[![Platform](https://img.shields.io/badge/platform-Android-3ddc84)](INSTALL.md)
 [![Stack](https://img.shields.io/badge/stack-Expo%2054%20%C2%B7%20RN%200.81%20%C2%B7%20TS-000020)](#what-it-does)
-[![Tests](https://img.shields.io/badge/tests-700%2B-1f9d55)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1000%2B-1f9d55)](#tests)
 [![Storage](https://img.shields.io/badge/storage-local--first-0b7285)](#what-it-does)
 
-**Train · tick · count.** Three local-first Android apps — **Workout**, **Tasks**
-and **Expenses** — built from this one tree. Until 3.0.0 they were the three
-sections of one app (and until 2.0.0 that app was Workout Tracker); the training
-log is still built around one rule: **logging a set that repeats last session
-costs one tap.**
+**Tasks** — a local-first Android daily-tasks app: one circle per task per day.
+Split out of Momentum at 3.0.0, where it was one of three sections beside Workout
+and Expenses.
 
 > ### Install it
 >
 > | I want… | What to do |
 > |---|---|
-> | **the apps on my phone** | grab `momentum-{workout,tasks,expenses}-<version>.apk` from the [Releases page](../../releases), open each in Files, tap install — or plug the phone in and let the installer push all three over USB |
+> | **the app on my phone** | grab `momentum-tasks-<version>.apk` from the repo root or the [Releases page](../../releases), open it in Files, tap install — or plug the phone in and let the installer push it over USB |
 > | **the project on my computer** | **Windows:** double-click `Install.bat` · **Linux/macOS/WSL:** `./install.sh` |
 >
 > The installer finds Node (and offers to fetch it), installs the locked
-> dependency tree, **runs TypeScript and all 700-odd tests to prove it works
+> dependency tree, **runs TypeScript and the whole test suite to prove it works
 > here**, and — if a phone is plugged in with USB debugging on — offers to
-> install the APKs on it, translating whatever Android says back into plain
-> English. Details and troubleshooting: **[INSTALL.md](INSTALL.md)**.
+> install the APK on it. Details and troubleshooting: **[INSTALL.md](INSTALL.md)**.
 
-- **Stack** — Expo (React Native) + TypeScript + NativeWind + Zustand. The
-  finished-workout log lives in SQLite; the library, routines and settings are a
-  few dozen rows and stay in AsyncStorage. No account, no server, no cloud build.
+- **Stack** — Expo (React Native) + TypeScript + NativeWind + Zustand, every
+  store in AsyncStorage. No account, no server, no cloud build.
 - **Design** — near-black glass, tabular numerals, and a three-colour theme
-  (eight presets plus your own three; Fintech Lime by default) that tints the
-  buttons, rings, lit cards and the light behind every section. The AI keeps its
-  own colours. Dark only; animations always on.
+  (eight presets plus your own three; Fintech Lime by default). Dark only.
 
 ```bash
 npm ci                   # exactly the locked tree — see BUILD_ANDROID.md
 npx expo start           # dev server
-npm test                 # 690+ tests: ladders, timers, overload, cold starts, stores, backups, migration
+npm test                 # vitest: the decisions, the stores, backups, the assistant
+npm run test:render      # jest: the few bugs that live between React and the screen
 npm run typecheck
 npm run lint             # also what CI runs, on every push
 ```
 
 ## What it does
 
-| | |
-| --- | --- |
-| Pick your own workout | every routine is listed on the home screen and one tap from opening. Nothing is imposed |
-| Open ≠ start | opening a routine shows its exercises and records nothing. The workout starts on `Start` inside it (or on the first logged set), and `Stop and exit` leaves without saving. Only `Finish` writes to history |
-| The clock, up top | one very big pill under the session header — an 84 pt countdown with its controls stacked underneath, readable from across the gym floor — shared by the rest countdown and the clock on a timed set. `−15`, `+15`, `⏸` and `Skip`; it names which rest it is running, and inverts to a green slab for the last ten seconds. The ± sets the rest for every set that follows, not just the one you are in |
-| Count-in | the last N seconds of any countdown tick out loud and land on a long tone. Off screen it is a pair of scheduled notifications carrying the app's own WAVs, because a JS interval does not survive Doze |
-| Timed sets | ▶ on the row: a get-ready count, then either a countdown that logs itself at the bell (a 2:00 plank, a boxing round) or an open hold you stop (a dead hang) |
-| Boxing runs itself | a round exercise is the one thing here that advances without a thumb. ▶ buys a lead-in to get the gloves on — fifteen seconds, editable on the exercise — then the round runs, the bell logs it, the rest starts, and when the rest ends the next round starts on its own, all the way to the last one. Both clocks tick their final seconds out loud. ✕ stops the chain, and a hold is deliberately NOT one: a handstand ends when your shoulders say so, so it keeps its `DONE` |
-| Focus mode | the session screen with everything but the work taken away, one swipe deep: the set you are about to do at 56 pt with a 176 dp `DONE` under your thumb, and — the moment you press it — a 120 pt rest countdown with the next exercise, weight and reps named underneath, so you already know what to walk to before the clock runs out. A new machine says so in words and names the one you are leaving. Timed sets keep all four of their phases in here, ± chips change the numbers without leaving, and the rest keeps running if you swipe back out |
-| Rest is an editing screen | the minute before a set is when you decide the set is coming down 10 kg. Tap the `up next` block in focus mode while the clock runs and the same ± chips open under it, against the set the countdown is counting towards |
-| Training sequence | optional, off by default. Build an order — push → pull → push — and the home screen names the next one up and advances when you finish it. Off means invisible |
-| Copy a routine | `Duplicate this routine` in the editor, and the copy opens ready to change. The loop's own version of it: a sequence that trains `back` three times in twelve steps can give any one of those steps its own copy — `make it different` — so the second back day can hold different exercises from the first without the third moving |
-| Routines | add, rename, reorder by long-press-and-slide, remove an exercise with the ✕ on its row, delete the routine |
-| The plan is editable | tap a row in the routine editor and it opens in place: sets, the rep range, and how long to rest, all on ± chips. Rest names which of the two it is using — this exercise's own, or your Settings value — and can be put back to following Settings |
-| One rest, and you can see whose it is | `Between sets` in Settings is the rest for every set of every exercise, and setting it puts every exercise back onto it. Give one movement a rest of its own in its editor — or on its routine row — and only that one leaves. Nothing ships with a rest of its own, and nothing creates one for you |
-| Supersets | one toggle, `with the exercise above`. Members share a green rule down their left edge, no rest fires between them, and rest comes after the last one of the round |
-| Change the plan mid-set | `+ Add set` / `− Remove set` in every card, `Remove exercise` under them for the whole thing at once (it asks first if you have logged into it), `+ Add an exercise` at the bottom (library picker and create screen included), long-press a card and slide to reorder |
-| Edit the exercise from the card | `Edit exercise` in the open card opens the same editor the library does — its rest, its starting weight and count, how many sets it plans, its ladder, its clock. The change lands on the card you are looking at, so the very next rest is the one you just set, and on the library row, so it is still true next week |
-| Today's weight is today's weight | four sets planned at 70 and a first set done at 60 does not mean three sets of 70 are still coming. A ✓ carries its weight down every set below it, and teaches the exercise where it now starts. Logged sets and warm-ups are never touched |
-| …and it learns | on `Finish`, if you did five sets where the routine plans four, one extra tap writes that back. Declining changes nothing and it does not ask twice |
-| Warm-up sets | a chip in the set editor, or generated: `Warm-up` on the card adds `40 × 5 · 60 × 5 · 80 × 3` off the working weight, snapped DOWN onto plates your gym actually has. A warm-up reads `W` instead of a number and counts towards nothing — not the volume, not the set count, not the shorthand, not the suggestions |
-| Exercise library | a muscle tree — `push → chest → dips` — with search, create-from-query, edit in place (a rename keeps every set ever logged) and delete. An exercise carries its own set count, so a routine plans what the movement asks for, and one line of form — `elbows in, pause at the chest` — shown on the card while you do it |
-| Calisthenics is its own group | a front lever is not back work, and filing it under `back` put it in a section that said nothing about it. `skill → calisthenics` is a real branch of the library tree, shipped with handstand, front lever, planche, L-sit and muscle-up — holds counted in seconds by a clock that runs UP, so the set is logged when you say it is |
-| Rep ladder | one number, and the whole session follows. **Max 16 → `16 + 10 + 8 + 8 + 6`** — an all-out top set, backoff sets around half of it, and a total that is always three times your max. Meet every set and one rep is added, bottom set up; three met sessions and the max itself moves. Miss it and the same numbers come back. Hit 18 when the plan said 16 and every set under it re-shapes mid-workout to the ladder for 18 |
-| Overload nudges | derived from your own set history: a weight, a hold or a rep count that has been the same for N days over M sessions, with the suggestion applied to every unlogged set in one tap. Planks and push-ups get the same treatment as the barbell — `3× at 2:00 — try 2:15`. Silent on an exercise running a ladder: two systems prescribing one exercise's reps is one of them being wrong |
-| Plate maths | `20 + 2×10 + 2×2.5` under the weight cell of a barbell lift. It informs and never rounds: a weight your plates cannot make shows no line rather than the nearest one |
-| More than one gym | a plate list per building, one of them active. Switch it in Settings and every plate breakdown redraws for the rack that is actually behind you |
-| Bests | the heaviest set, the most reps, and the best set by load × reps, on the exercise's own screen — and one green line on the card the moment a set in this session beats one. Compared on the load your BODY moved, so `+20 kg` at 82 kg outranks `+20 kg` at 78. No medals, no banners |
-| Back off when it stalls | three sessions at one weight with no extra rep and the card says so, with one loadable session at 85% to reset it. A statement, not a button: cutting a block's weight is not a one-tap decision. Never on a ladder — that scheme answers a missed session itself |
-| History | every finished workout, newest first, by month: date, duration, sets, volume, each exercise in the app's shorthand **and its total** — `+40 kg · 4 4 4` with `12 reps total` under it. Tapping a workout anywhere in the app opens that workout |
-| The log is the log | it lives in SQLite, it is read before the first frame, and it survives the process being killed — `close all` included. If it ever cannot be READ, the app says so and states how many workouts are on disk rather than showing you an empty list, and it refuses to write a backup that would be missing them |
-| Workout numbers | every workout carries an ordinal — `Workout 92`. Pin the number on any one session (`Set the workout number` inside it) and every other workout counts from there, backwards and forwards, so a log that starts at 91 because ninety happened before this app says so |
-| Graphs | `History → Graphs`: reps per workout and kilograms per workout over time, or pick one exercise for its reps per session and top weight per session. Each line states its own direction — `up 34 reps since 11 Jun` — because the shape is visible but the arithmetic isn't |
-| Calendar | `History → Cal`: which days you trained, a month at a time, gaps and all. A filled square is a day with a workout. It runs the way a wall calendar runs — this month at the bottom, older months above it, opening on today — so you climb up to read backwards. No streak, no flame, nothing to break |
-| Sets per cluster | pull 42 · push 31 · legs 8, over 4 weeks, 12 weeks or all of it. Counts and bars, and a zero is the point. Type a weekly target for a cluster and the row reads `14 / 16` and measures against it — your number, not a textbook's |
-| Bodyweight over time | a third line on the graphs, and the reason it is there: a bodyweight set is only readable against what you weighed the day you did it, so the log keeps a reading per day and every past session is priced with its own |
-| How did that go | one tap on the Finish sheet — easy, right, brutal — and it appears on the history row. One number for the session, never one per set |
-| Numbers it will not fake | volume needs a bodyweight to weigh a push-up or an assisted pull-up. Without one the clause is dropped rather than printed short, and no bodyweight is ever guessed |
-| Edit any workout in history | open it and everything about it is editable: correct one logged set on the same ± chips, add a set back, add or remove a whole exercise, rename it, move it to the right day and time, say how long it actually took. Moving a workout drags every set's date with it, because that date is what the suggestions and the charts read. Every number around the edit is recomputed from the rows rather than patched, and removing the last exercise is refused — that is `Delete this workout`, which asks first |
-| Settings | **a screen for the app's own section**, plus the general block that holds the one export, the one import and the one reset. The workout one is every duration the app counts, plus sound, vibration, screen-on and notification switches. Your bodyweight, which is what makes push-ups and assisted work countable. Which plates each gym has. Weekly set targets, if you want them. And what you actually rest, measured, with one tap to adopt it |
-| Export / Import | everything you own — exercises, routines, the sequence, every workout with its set rows, the daily tasks, the expenses and your settings — as one readable JSON file, and back again through the phone's file browser. The pinned workout number travels with it, because it is the one fact that cannot be recomputed. **One export, one import, one reset**, all in the general settings section: there used to be eight rows here (a merge, a CSV either way, and a pair per section) and together they made the one that matters just another thing to be careful about |
-| Backups happen on their own | pick a folder once and the whole log is written into it every week, four copies deep, without being asked. Settings states the age of the last one — `Today`, `12 days ago`, `Never` — because a backup you have to remember is a backup you do not have |
-| Health Connect | off by default. Switch it on and a finished workout is written as one exercise session — start, end, name — so a watch or a health app knows you trained. Nothing is ever read back, and the sets never leave |
-| Русский, and English | the app ships in Russian. `РУ` / `EN` in the top-right corner of Settings, two letters in their own script so the switch is legible to somebody who cannot read the screen it is on. Nothing is stored translated — the tabs, the muscle groups and the section names are identifiers in English underneath — so switching language mid-session moves nothing but the words |
-| A die on the routine editor | tap it and a whole routine appears: five exercises dealt across the library, sets and rests filled in, named after what it actually drew — `Pull + Core`. Hold it to say which muscle groups, how many exercises and how many sets each. The names slide and reshuffle while it draws, and the frame it stops on IS the routine |
-| A workout reminder | days and a time, in the workout settings, on a 24-hour wheel. It is the one notification in the app that speaks first — every other one is a timer you started |
-| The next workout glows | the card the app is suggesting breathes a slow green halo. It says nothing the card was not already saying; it is what makes it findable in a column of cards without reading any of them |
-| An assistant, if you want one | off until you paste your own Google AI key into `Settings → AI assistant`, where it is tested in three named steps before it is kept — in the phone's keystore, never in a backup. Then each section has its own chat behind a ✦ in its corner: summaries, trends and, in the workout section, a suggested routine or an edit to one, every number of it editable before `Add to routines`, and nothing written until that tap. It reads only the section you ask from, summarised on the phone first, and goes straight to Google — there is no server |
-| Bubbles | every button, row, chip and tab opens a ring from the point your thumb landed. It costs nothing at rest and it is the whole app answering a touch the same way |
-| A few questions after a workout | once it is saved: how the weights felt, energy, anything that hurt, the hardest exercise, what to do with the routine, and a note — one per screen, every one skippable, `Later` keeps them waiting on Home. The assistant reads the answers (and every note written on an amount) whenever you ask it about your training or your money |
-| Felt, not only seen | a tick under every button as the ring opens, a rising three-step when something reaches 100% — the last set of a session, the last task of a day, a finished debrief, a backup that landed |
-
-## Three apps, one tree
-
-Each app is one section plus Settings: no landing screen, no tab bar to the other
-two, and back on the section's root leaves the app. Which one a build is comes
-from `EXPO_PUBLIC_APP_VARIANT` (`workout`, the default, `tasks` or `expenses`),
-read by `app.config.js` for the package, label and icon and inlined into the
-bundle by `src/lib/appVariant.ts` — so they share every store, sheet, theme and
-test, and a fix lands in all three at once.
-
-| App | Package | Data |
-| --- | --- | --- |
-| Workout | `com.semyonsw.workouttracker` | the existing install, updated in place. It still holds the 2.x tasks and money — kept, not shown, and still in its backups |
-| Tasks | `com.semyonsw.momentum.tasks` | a new install that starts empty: import the last combined backup in its Settings |
-| Expenses | `com.semyonsw.momentum.expenses` | the same |
-
-`History` is not a section, it is the PAST of one: every section carries a **⟲ in
-its top-right corner** that opens its own history, the same glyph in the same
-place in all three apps.
+The app is the task list plus Settings: no landing screen and no tab bar. The
+**⟲ in the top-right corner** opens its history.
 
 | | |
 | --- | --- |
@@ -122,104 +48,48 @@ place in all three apps.
 | Tasks can speak | a switch and a 24-hour wheel in the task's own editor. The phone asks on the days the task asks and at the minute you set, with the task's name as the headline. Off by default, one task at a time: a habit list that notifies by default is a habit list that gets silenced at the OS level inside a week |
 | Reorder them | long press a row and slide. The day list shows only the tasks that asked for something, so a Mon/Wed/Fri row is genuinely absent on a Tuesday — dragging the third row to the top means the third row you can SEE, and every hidden task keeps its own slot |
 | The month, and the trend | behind the **⟲** in the corner. `Month` is a square per day, filled by how much of that day got done — tap one to open it and answer it. `Trend` is percent-done over a range you pick: week, month, 3 months, year, all time. A day that asked for nothing is left out rather than plotted as a zero |
-| They answer themselves | finishing a workout ticks the training task. Recording an amount ticks the expense one — **on the day the amount is for**, so writing up yesterday's taxi at breakfast ticks yesterday. Neither ever overrules a day you already marked missed on purpose, and the whole behaviour is one switch in the daily-tasks settings |
-| Money | an all-time balance that does not move when the window does, expenses and incomes as a selector rather than a summary, and a grid of categories. **Tap a category and the editor opens on it** — in the direction you are reading, and **on the day you are reading**, so stepping back to the 16th and tapping `Food` records the 16th rather than today. A taxi is Transport, a number, Save. **Long press** for `Edit category`, or for the direction a tap cannot reach |
-| An amount belongs to a day, or to a whole month | rent is not spent on the 3rd. A whole-month amount counts towards the month, the year and the balance, and towards no single day — every screen that shows one says so |
-| Money over time | behind the **⟲** in the corner: a line per day up to three months, per month past that, with the range on chips: what went out, the running balance beside it, and which five categories are the reason. The balance line opens at what you already had rather than at zero |
+| Counted, or N times a week | a task can carry a target — `20 pages` — and is done when the count reaches it; or ask `3× a week` rather than on named days |
+| Settings | the daily-tasks settings, the theme, the language, and the general block that holds the one export, the one import and the one reset |
+| Export / Import | the tasks, their log, the assistant's chats and your settings, as one readable JSON file, and back again through the phone's file browser. A combined backup from Momentum 2.x opens too: the tasks and the settings are taken from it, and the training and the money in it are left alone |
+| Backups happen on their own | pick a folder once and the log is written into it every week, as `momentum-tasks-backup-<day>.json`, without being asked. Settings states the age of the last one — `Today`, `12 days ago`, `Never` |
+| Русский, and English | the app ships in Russian. `РУ` / `EN` in the top-right corner of Settings, two letters in their own script so the switch is legible to somebody who cannot read the screen it is on |
+| An assistant, if you want one | off until you paste your own Google AI key into `Settings → AI assistant`, where it is tested in three named steps before it is kept — in the phone's keystore, never in a backup. Then a ✦ opens a chat about your tasks: how the month went, and changes to the list — a new task, a rename, a schedule, a day answered — on a card that writes nothing until `Apply`, with one Undo after it. It reads a summary built on the phone and goes straight to Google — there is no server |
 
-## The rep ladder
+## Android APK
 
-```
-max 16, five sets   16 + 10 + 8 + 8 + 6      48 reps  = 3 × max
-...met                16 + 10 + 8 + 8 + 7      49
-...met                16 + 10 + 9 + 8 + 7      50
-...met                17 + 10 + 9 + 8 + 7      51      ← a new max
-```
-
-Switched on per exercise, on the create/edit screen, by typing one number: your
-max. Everything else is arithmetic — the top set is all out, the backoffs sit
-around half of it, and the five of them come to three times the max at every max
-there is.
-
-**It is the progression, not a table.** Meet every prescribed set and one rep is
-added on `Finish`, to the lowest set that still needs it; after enough of those
-the plan has arrived exactly at the next max's ladder and the top set moves —
-which in practice is every five to eight workouts, because a session that comes
-up short earns nothing and repeats. Nothing deloads on a miss: a program that
-cuts your numbers because you slept badly is a program you stop trusting.
-
-**It watches the top set.** The max is a guess until the bar says otherwise, so
-logging the first set re-shapes every unlogged set under it — up when you beat the
-plan, down when you don't. A set you edited by hand is yours and is left alone.
-
-The scheme is the pull-up family this app's owner trained on for two years: Pavel
-Tsatsouline's [Fighter Pull-Up
-Program](https://www.strongfirst.com/the-fighter-pullup-program-revisited/) — one
-all-out set, "then add a rep to the last set, then a rep to the set before that" —
-the [Recon Ron](https://thechamplair.com/training/recon-ron-pullup-program/)
-table, and the 50–60%-of-max backoff volume that
-[grease-the-groove](https://www.strongfirst.com/how-to-increase-your-pull-ups-50-percent/)
-prescribes. `src/lib/repLadder.ts` reproduces the reference table exactly — all 26
-rows of it, in the test file, from arithmetic rather than from a lookup — so the
-app runs the program rather than something that resembles it.
-
-## Android APKs
-
-Android-only, sideloaded: three APKs per release,
-`momentum-<app>-<version>.apk`, from the **[Releases page](../../releases)**.
-**[BUILD_ANDROID.md](BUILD_ANDROID.md)** covers installing them on a phone,
-rebuilding locally, and the signing key — which is what decides whether an APK
-updates the install on the phone or is refused by it. The repo root also holds
-the current release's APKs, committed, to copy straight across.
+Android-only, sideloaded: one APK per release, `momentum-tasks-<version>.apk`,
+committed at the repo root next to the previous ones as rollbacks.
+**[BUILD_ANDROID.md](BUILD_ANDROID.md)** covers installing it, rebuilding
+locally, and the signing key — which is what decides whether an APK updates the
+install on the phone or is refused by it.
 
 ```bash
-tools/release-apk.sh --no-push    # all three, built and verified (WSL)
-tools/release-apk.sh tasks --no-push
+tools/release-apk.sh --no-push    # built and verified (WSL)
 ```
+
+## Tests
+
+`npx vitest run` is the project's memory of bugs that already happened once: the
+task log staying sparse, schedules and start days, streaks and excused days,
+backups in both directions (Momentum 2.x and 3.0.0 files included), the
+assistant's validator and its cards end to end. `npx jest` runs the render suite.
 
 ## Layout
 
 ```
-App.tsx                     providers, the error boundary, notifications, audio,
-                            and the one-time history migration
-src/navigation/AppShell     the app's one section, Settings, and a stack; which
-                            section is src/lib/appVariant.ts
+App.tsx                     providers, the error boundary, notifications
+src/navigation/             the shell: the task list, Settings, and a stack
 src/screens/                one file per screen, all plain props-and-callbacks
-src/components/             SetRow, ExerciseCard, TimerPill, primitives,
-                            ErrorBoundary, ConfirmSheet…
-src/hooks/                  the two timers, the count-in, and the auto-backup
-src/lib/                    the decisions: overload, deload, set timer, count-in
-                            cue, muscles, draft, routine plan, rest, superset,
-                            balance, rest history, plates, warm-up, records,
-                            reorder, completed workout, gyms, bodyweight log,
-                            calendar, auto-backup, history, trends, shape, units,
-                            backup, section nav, up next, focus plan, set
-                            nudge, summary clamp — all
-                            pure, all tested. Plus beeper/notify/feedback/health
-                            connect, the wrappers around native side effects that
-                            must
-                            never throw mid-set
-src/state/                  the live session, the finished workouts, the library
-                            (+ the sequence), the settings — zustand, every one
-                            validated on the way in. restSync.ts is the one
-                            policy that spans three of them: setting the global
-                            rest, everywhere it has to land. historyDb.ts is the SQLite
-                            schema and the migration off AsyncStorage; the other
-                            three stores are a few dozen rows and stay there
-src/data/seed.ts            the starting library and three routines. No history,
-                            no sequence: both are only ever yours
-test/fixtures/history.ts    a real training log, as a test fixture only
-test/*Stub.ts               the three native modules the suite aliases away.
-                            expoSqliteStub is the odd one out: a thin adapter
-                            over Node's own `node:sqlite`, so the schema and the
-                            migration are tested against a real engine
-src/theme/tokens.ts         the values className can't reach
-plugins/                    Expo config plugins (release signing, no microphone)
+src/components/             rows, sheets, primitives, ErrorBoundary, ConfirmSheet…
+src/hooks/                  reminders, the auto-backup, the clock
+src/lib/                    the decisions — tasks, days, streaks, backups,
+                            reminders, the assistant's prompts and validator —
+                            all pure, all tested
+src/state/                  the tasks, the settings and the assistant — zustand,
+                            every one validated on the way in
+plugins/                    Expo config plugin (release signing)
 .github/workflows/          ci.yml on every push (test, typecheck, lint)
 ```
 
 Each file opens with a header explaining what it owns and why it is built the way
-it is; those headers are the design document. Everything the user does persists:
-finished workouts, a started session across a force-quit, and the library,
-routines, sequence and settings across a relaunch. A fresh install starts with no
-history and no sequence at all.
+it is; those headers are the design document.

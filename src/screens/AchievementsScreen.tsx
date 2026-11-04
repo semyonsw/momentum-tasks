@@ -81,32 +81,32 @@ export function AchievementsScreen({ onBack }: { onBack: () => void }) {
         </Text>
 
         <View>
-            <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Tasks')}</Kicker>
-            <View className="mx-lg" style={{ gap: 8 }}>
-              {rowsOf(badges).map((row) => (
-                <View
-                  key={row.map((badge) => badge?.id ?? '-').join()}
-                  className="flex-row"
-                  style={{ gap: 8 }}
-                >
-                  {row.map((badge, i) =>
-                    badge ? (
-                      <Tile
-                        key={badge.id}
-                        badge={badge}
-                        onPress={() => {
-                          tap();
-                          setOpen(badge);
-                        }}
-                      />
-                    ) : (
-                      <View key={`pad${i}`} className="flex-1" />
-                    ),
-                  )}
-                </View>
-              ))}
-            </View>
+          <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Tasks')}</Kicker>
+          <View className="mx-lg" style={{ gap: 8 }}>
+            {rowsOf(badges).map((row) => (
+              <View
+                key={row.map((badge) => badge?.id ?? '-').join()}
+                className="flex-row"
+                style={{ gap: 8 }}
+              >
+                {row.map((badge, i) =>
+                  badge ? (
+                    <Tile
+                      key={badge.id}
+                      badge={badge}
+                      onPress={() => {
+                        tap();
+                        setOpen(badge);
+                      }}
+                    />
+                  ) : (
+                    <View key={`pad${i}`} className="flex-1" />
+                  ),
+                )}
+              </View>
+            ))}
           </View>
+        </View>
 
         <View className="mx-lg mt-lg flex-row" style={{ gap: 14 }}>
           {([1, 2, 3] as BadgeTier[]).map((tier) => (

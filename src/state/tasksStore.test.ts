@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { dayKey, shiftDay } from '../lib/days';
-import { asksOn, entryOf } from '../lib/tasks';
-import { useSettings } from './settingsStore';
+import { entryOf } from '../lib/tasks';
 import { renameSeedTasks, sanitizeTasks, seedTasks, useTasks } from './tasksStore';
 
 /**
@@ -130,17 +129,6 @@ describe('answering a day', () => {
     });
   });
 });
-
-/**
- * A day the seeded "Gym / Boxing" task asks: it trains Mon/Wed/Fri from the day
- * the store was seeded, and the automatic tick only answers a day that asks.
- */
-const ASKED = (() => {
-  const gym = seedTasks().find((task) => task.auto === 'workout');
-  let day = dayKey(new Date());
-  while (gym && !asksOn(gym, day)) day = shiftDay(day, 1);
-  return day;
-})();
 
 describe('a log written while the tap still cycled', () => {
   const OLD = {

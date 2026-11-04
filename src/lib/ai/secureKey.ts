@@ -14,7 +14,7 @@
  *
  * ── IT NEVER THROWS ────────────────────────────────────────────────────────
  *
- * The module is `require`d lazily inside a `try`, the way `lib/healthConnect.ts`
+ * The module is `require`d lazily inside a `try`, the way `lib/clipboard.ts`
  * loads its native module: a native module missing from the binary throws at
  * import time, and a throw at module scope is a launch crash with no screen to
  * report it on. Every call resolves — `null` for "no key", `false` for "could

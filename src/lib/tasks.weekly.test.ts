@@ -249,7 +249,6 @@ describe('the day, the month and the year never count an unanswered day against 
     const one = yearPixels([weekly], {}, 2026, '2026-09-30', 'stretch');
     expect(one.months[8].cells[8].kind).toBe('blank');
   });
-
 });
 
 describe('habit strength, stepped by the week', () => {

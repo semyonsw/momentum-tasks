@@ -126,13 +126,7 @@ interface ShellStageProps {
   render: (route: ShellRoute) => ReactElement;
 }
 
-export function ShellStage({
-  route,
-  transition,
-  progress,
-  covered,
-  render,
-}: ShellStageProps) {
+export function ShellStage({ route, transition, progress, covered, render }: ShellStageProps) {
   const live: ShellRoute[] = transition ? [transition.from, transition.to] : [route];
   const [stored, setStored] = useState(() => initialBuilds(route));
   /* Derived during render, so a spare goes live in the same commit as the

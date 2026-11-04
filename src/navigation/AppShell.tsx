@@ -33,7 +33,15 @@
  * plain component taking props and callbacks — they port without edits.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { BackHandler, Text, View } from 'react-native';
 import { runOnJS, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';

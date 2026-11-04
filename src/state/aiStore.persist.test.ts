@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { sanitizeAi, useAi, type AiMessage } from './aiStore';
-import type { ReviewProposal } from '../lib/ai/aiProposal';
 import { DEFAULT_MODEL } from '../lib/ai/gemini';
 
 /**
@@ -12,46 +11,35 @@ import { DEFAULT_MODEL } from '../lib/ai/gemini';
  * builds by hand. This file puts the store's OWN write down through the persist
  * middleware and reads it back, because the conversation history is the one thing
  * here a user would miss: the key lives in the keystore and can be pasted again,
- * a month of questions and the routines they produced cannot.
+ * a month of questions and the changes they produced cannot.
  */
 
 const user = (id: string, text = id): AiMessage => ({ id, role: 'user', text, at: '2026-10-14' });
 
-const model = (id: string, proposalId: string): AiMessage => ({
+const model = (id: string, status: 'pending' | 'accepted' = 'pending'): AiMessage => ({
   id,
   role: 'model',
-  blocks: [{ type: 'proposal', proposalId }],
+  blocks: [
+    {
+      type: 'changes',
+      changes: [{ target: 'task', field: 'add', value: 'Stretch', schedule: { kind: 'daily' } }],
+      rows: [{ subject: 'Stretch', label: 'New task', from: '', to: 'Every day' }],
+      why: 'Because.',
+      status,
+    },
+  ],
   raw: '{}',
   at: '2026-10-14',
 });
 
-const proposal: ReviewProposal = {
-  kind: 'new',
-  name: 'Legs',
-  why: 'Because.',
-  rows: [
-    {
-      key: 'k1',
-      exerciseId: 'ex_squat',
-      name: 'Squat',
-      sets: 4,
-      reps: 6,
-      weightKg: 80,
-      was: null,
-      removed: false,
-      repsLocked: false,
-      weightLocked: false,
-      baseWeightKg: null,
-    },
-  ],
+/** What a relaunch must bring back: everything but the question in flight. */
+const kept = () => {
+  const { pending: _p, retrying: _r, ...rest } = useAi.getState();
+  return JSON.parse(JSON.stringify(rest));
 };
 
 beforeEach(async () => {
-  useAi.setState({
-    ...sanitizeAi({}),
-    pending: { Workout: false, Tasks: false, Expenses: false },
-    retrying: { Workout: false, Tasks: false, Expenses: false },
-  });
+  useAi.setState({ ...sanitizeAi({}), pending: false, retrying: false });
   await AsyncStorage.removeItem('ai');
 });
 
@@ -99,123 +87,98 @@ describe('the connection state', () => {
 
 describe('a question in flight', () => {
   it('ending it ends the retry caption with it', () => {
-    useAi.getState().setPending('Workout', true);
-    useAi.getState().setRetrying('Workout', true);
-    useAi.getState().setPending('Workout', false);
-    expect(useAi.getState().retrying.Workout).toBe(false);
-  });
-
-  it('starting one leaves another section alone', () => {
-    useAi.getState().setPending('Tasks', true);
-    expect(useAi.getState().pending).toEqual({ Workout: false, Tasks: true, Expenses: false });
+    useAi.getState().setPending(true);
+    useAi.getState().setRetrying(true);
+    useAi.getState().setPending(false);
+    expect(useAi.getState().retrying).toBe(false);
   });
 
   it('is not written to disk — a killed app is not waiting for anything', async () => {
-    useAi.getState().appendMessage('Workout', user('q'));
-    useAi.getState().setPending('Workout', true);
+    useAi.getState().appendMessage(user('q'));
+    useAi.getState().setPending(true);
     const blob = JSON.parse((await AsyncStorage.getItem('ai')) ?? '{}');
     expect(blob.state.pending).toBeUndefined();
     expect(blob.state.retrying).toBeUndefined();
   });
 
   it('blocks reopening a past chat, so the answer cannot land in the wrong one', () => {
-    useAi.getState().appendMessage('Tasks', user('old', 'Old'));
-    useAi.getState().clearChat('Tasks');
-    const id = useAi.getState().archive.Tasks[0].id;
-    useAi.getState().appendMessage('Tasks', user('now', 'Now'));
-    useAi.getState().setPending('Tasks', true);
-    useAi.getState().openArchived('Tasks', id);
-    expect(useAi.getState().chats.Tasks.map((m) => m.id)).toEqual(['now']);
-    expect(useAi.getState().archive.Tasks).toHaveLength(1);
+    useAi.getState().appendMessage(user('old', 'Old'));
+    useAi.getState().clearChat();
+    const id = useAi.getState().archive[0].id;
+    useAi.getState().appendMessage(user('now', 'Now'));
+    useAi.getState().setPending(true);
+    useAi.getState().openArchived(id);
+    expect(useAi.getState().chat.map((m) => m.id)).toEqual(['now']);
+    expect(useAi.getState().archive).toHaveLength(1);
   });
 });
 
-describe('messages and the suggestions they point at', () => {
-  it('removing the message that carried a suggestion drops the suggestion', () => {
-    useAi.getState().putProposal('p1', proposal);
-    useAi.getState().appendMessage('Workout', model('a1', 'p1'));
-    useAi.getState().removeMessage('Workout', 'a1');
-    expect(useAi.getState().proposals.p1).toBeUndefined();
+describe('removing a message', () => {
+  it('takes out that one and leaves the rest', () => {
+    useAi.getState().appendMessage(user('q1'));
+    useAi.getState().appendMessage(model('a1'));
+    useAi.getState().removeMessage('q1');
+    expect(useAi.getState().chat.map((m) => m.id)).toEqual(['a1']);
   });
 
-  it('removing an unrelated message keeps it', () => {
-    useAi.getState().appendMessage('Workout', user('q1'));
-    useAi.getState().putProposal('p1', proposal);
-    useAi.getState().appendMessage('Workout', model('a1', 'p1'));
-    useAi.getState().removeMessage('Workout', 'q1');
-    expect(useAi.getState().proposals.p1).toBeDefined();
-  });
-
-  it('a status for a suggestion that is not there writes nothing', () => {
-    useAi.getState().setProposalStatus('nope', 'accepted');
-    useAi.getState().updateProposal('nope', proposal);
-    expect(useAi.getState().proposals).toEqual({});
-  });
-});
-
-describe('the AI pill on a routine', () => {
-  it('is added once and cleared on open', () => {
-    useAi.getState().markRoutineAi('r1');
-    useAi.getState().markRoutineAi('r1');
-    useAi.getState().markRoutineAi('r2');
-    expect(useAi.getState().unseenRoutineIds).toEqual(['r1', 'r2']);
-    useAi.getState().markRoutineSeen('r1');
-    expect(useAi.getState().unseenRoutineIds).toEqual(['r2']);
-  });
-
-  it('opening a routine already seen does not touch the store', () => {
-    const before = useAi.getState().unseenRoutineIds;
-    useAi.getState().markRoutineSeen('r9');
-    expect(useAi.getState().unseenRoutineIds).toBe(before);
+  it('a status for a message that is not there writes nothing', () => {
+    useAi.getState().appendMessage(model('a1'));
+    const before = useAi.getState().chat;
+    useAi.getState().setChangesStatus('nope', 'accepted');
+    expect(useAi.getState().chat).toEqual(before);
   });
 });
 
 describe('restoring from a backup', () => {
-  it('replaces the chats and keeps the phone’s own model and connection', () => {
+  it('replaces the chat and keeps the phone’s own model and connection', () => {
     useAi.getState().setModel('gemini-mine');
     useAi.getState().markReady(100);
-    useAi.getState().appendMessage('Workout', user('here'));
+    useAi.getState().appendMessage(user('here'));
     const count = useAi.getState().importChats({
       model: 'gemini-theirs',
       status: 'error',
-      chats: { Tasks: [user('there')] },
-      archive: { Expenses: [{ id: 'c1', messages: [user('past')] }] },
+      chats: { Tasks: [user('there')], Workout: [user('not ours')] },
+      archive: {
+        Tasks: [{ id: 'c1', messages: [user('past')] }],
+        Expenses: [{ id: 'c2', messages: [user('not ours either')] }],
+      },
     });
     expect(count).toBe(2);
     const state = useAi.getState();
-    expect(state.chats.Workout).toEqual([]);
-    expect(state.chats.Tasks.map((m) => m.id)).toEqual(['there']);
-    expect(state.archive.Expenses.map((c) => c.id)).toEqual(['c1']);
+    expect(state.chat.map((m) => m.id)).toEqual(['there']);
+    expect(state.archive.map((c) => c.id)).toEqual(['c1']);
     expect(state).toMatchObject({ model: 'gemini-mine', status: 'ready' });
   });
 
-  it('a backup with nothing readable in it empties the chats and says 0', () => {
-    useAi.getState().appendMessage('Workout', user('here'));
+  it('a backup with nothing readable in it empties the chat and says 0', () => {
+    useAi.getState().appendMessage(user('here'));
     expect(useAi.getState().importChats('junk')).toBe(0);
-    expect(useAi.getState().chats.Workout).toEqual([]);
+    expect(useAi.getState().chat).toEqual([]);
   });
 });
 
 describe('the conversations survive a relaunch', () => {
-  it('open chats, past chats, suggestions and their status come back exactly', async () => {
+  it('the open chat, past chats and their cards’ status come back exactly', async () => {
     useAi.getState().setModel('gemini-x');
     useAi.getState().markReady(321, new Date('2026-10-14T08:00:00Z'));
-    useAi.getState().appendMessage('Workout', user('q1', 'Suggest legs'));
-    useAi.getState().putProposal('p1', proposal);
-    useAi.getState().setProposalStatus('p1', 'accepted');
-    useAi.getState().appendMessage('Workout', model('a1', 'p1'));
-    useAi.getState().clearChat('Workout');
-    useAi.getState().appendMessage('Workout', user('q2', 'And arms?'));
-    useAi.getState().putProposal('p2', proposal);
-    useAi.getState().appendMessage('Workout', model('a2', 'p2'));
-    useAi.getState().appendMessage('Expenses', user('q3', 'Where did it go?'));
-    useAi.getState().markRoutineAi('r1');
+    useAi.getState().appendMessage(user('q1', 'Add stretching'));
+    useAi.getState().appendMessage(model('a1', 'accepted'));
+    useAi.getState().clearChat();
+    useAi.getState().appendMessage(user('q2', 'And reading?'));
+    useAi.getState().appendMessage(model('a2'));
 
-    const before = sanitizeAi(useAi.getState());
+    const before = kept();
     await relaunch();
-    expect(sanitizeAi(useAi.getState())).toEqual(before);
-    expect(useAi.getState().proposals.p1.status).toBe('accepted');
-    expect(useAi.getState().proposals.p2.status).toBe('pending');
+    expect(kept()).toEqual(before);
+  });
+
+  it('is written in the shape 3.0.0 filed it under, so either build reads the other', async () => {
+    useAi.getState().appendMessage(user('q1'));
+    const blob = JSON.parse((await AsyncStorage.getItem('ai')) ?? '{}');
+    expect(blob.version).toBe(1);
+    expect(blob.state.chats.Tasks.map((m: AiMessage) => m.id)).toEqual(['q1']);
+    expect(blob.state.archive).toEqual({ Tasks: [] });
+    expect(blob.state.chat).toBeUndefined();
   });
 
   it('a first launch with nothing stored comes up empty and off', async () => {
@@ -223,8 +186,8 @@ describe('the conversations survive a relaunch', () => {
     expect(useAi.getState()).toMatchObject({
       model: DEFAULT_MODEL,
       status: 'off',
-      chats: { Workout: [], Tasks: [], Expenses: [] },
-      proposals: {},
+      chat: [],
+      archive: [],
     });
   });
 });

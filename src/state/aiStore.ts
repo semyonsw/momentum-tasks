@@ -302,7 +302,6 @@ const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null && !
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
-
 /**
  * A stored changes card out of anything. The changes were checked against the
  * stores when the answer arrived; what is checked here is only that each is
@@ -311,8 +310,7 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
  */
 function sanitizeChangesBlock(raw: Rec): ChangesChatBlock | null {
   const changes = (Array.isArray(raw.changes) ? raw.changes : []).filter(
-    (c): c is AiChange =>
-      isRec(c) && c.target === 'task' && typeof c.field === 'string',
+    (c): c is AiChange => isRec(c) && c.target === 'task' && typeof c.field === 'string',
   );
   const rows = (Array.isArray(raw.rows) ? raw.rows : []).flatMap((r): ChangeRow[] =>
     isRec(r) && typeof r.label === 'string' && typeof r.to === 'string'

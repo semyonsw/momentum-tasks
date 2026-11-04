@@ -268,4 +268,3 @@ describe('words', () => {
     expect(describeEarned(b, 'ru')).toBe(t('Earned {date}', 'ru', { date: '14 сентября 2026' }));
   });
 });
-

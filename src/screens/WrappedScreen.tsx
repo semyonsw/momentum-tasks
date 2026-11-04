@@ -202,11 +202,7 @@ export function WrappedScreen({ period, onClose }: { period: WrappedPeriod; onCl
 /** What TalkBack reads for the card on screen. */
 function spoken(card: WrappedCard, summary: WrappedSummary): string {
   if (card.key === 'summary') {
-    return [
-      summary.kicker,
-      summary.title,
-      ...summary.cells.map((c) => `${c.label} ${c.value}`),
-    ]
+    return [summary.kicker, summary.title, ...summary.cells.map((c) => `${c.label} ${c.value}`)]
       .filter(Boolean)
       .join('. ');
   }

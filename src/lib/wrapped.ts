@@ -34,7 +34,15 @@
  * Pure: the stores are read by `hooks/useWrapped.ts` and handed in.
  */
 
-import { formatMonth, formatShortDay, pad, parseDay, shiftDay, weekdayIndex, weekdayNames } from './days';
+import {
+  formatMonth,
+  formatShortDay,
+  pad,
+  parseDay,
+  shiftDay,
+  weekdayIndex,
+  weekdayNames,
+} from './days';
 import { formatWhole } from './formatNumber';
 import { plural, t, type Language } from './i18n';
 import { asksOn, entryOf, isWeekly, longestRunIn, type Task, type TaskLog } from './tasks';

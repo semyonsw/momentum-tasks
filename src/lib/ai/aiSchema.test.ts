@@ -30,26 +30,22 @@ describe('a valid reply', () => {
   });
 
   it('reads a bare array of blocks too', () => {
-    expect(validateBlocks([{ type: 'text', text: 'Hi' }])).toEqual([
-      { type: 'text', text: 'Hi' },
-    ]);
+    expect(validateBlocks([{ type: 'text', text: 'Hi' }])).toEqual([{ type: 'text', text: 'Hi' }]);
   });
 });
 
 describe('malformed shapes are dropped', () => {
   it('unknown types, missing fields and non-objects', () => {
-    const blocks = validateBlocks(
-      {
-        blocks: [
-          { type: 'image', url: 'x' },
-          { type: 'text' },
-          { type: 'text', text: '   ' },
-          { type: 'summary', title: 'Only a title' },
-          null,
-          { type: 'text', text: 'kept' },
-        ],
-      }
-    );
+    const blocks = validateBlocks({
+      blocks: [
+        { type: 'image', url: 'x' },
+        { type: 'text' },
+        { type: 'text', text: '   ' },
+        { type: 'summary', title: 'Only a title' },
+        null,
+        { type: 'text', text: 'kept' },
+      ],
+    });
     expect(blocks).toEqual([{ type: 'text', text: 'kept' }]);
   });
 
@@ -78,9 +74,9 @@ describe('near-misses are read as what they meant', () => {
   });
 
   it('a list serialised into a string', () => {
-    expect(
-      validateBlocks({ blocks: JSON.stringify([{ type: 'text', text: 'Inside.' }]) }),
-    ).toEqual([{ type: 'text', text: 'Inside.' }]);
+    expect(validateBlocks({ blocks: JSON.stringify([{ type: 'text', text: 'Inside.' }]) })).toEqual(
+      [{ type: 'text', text: 'Inside.' }],
+    );
   });
 
   it('one block with no wrapper, or under another key', () => {
@@ -91,9 +87,9 @@ describe('near-misses are read as what they meant', () => {
   });
 
   it('numbers where strings go', () => {
-    const [summary] = validateBlocks(
-      { blocks: [{ type: 'summary', title: 'Week', stats: [{ label: 'Sets', value: 42 }] }] }
-    );
+    const [summary] = validateBlocks({
+      blocks: [{ type: 'summary', title: 'Week', stats: [{ label: 'Sets', value: 42 }] }],
+    });
     expect(summary).toEqual({
       type: 'summary',
       title: 'Week',
@@ -116,22 +112,20 @@ describe('near-misses are read as what they meant', () => {
 
 describe('malformed parts of a good block are dropped', () => {
   it('rows and stats missing their label or value, and negative bars', () => {
-    const [summary] = validateBlocks(
-      {
-        blocks: [
-          {
-            type: 'summary',
-            title: 'T',
-            stats: [{ label: 'a' }, { label: 'b', value: '2' }],
-            rows: [{ value: 'x' }, { label: 'r', value: 'v', trend: 'sideways' }],
-            bars: [
-              { label: 'Jan', value: -3 },
-              { label: 'Feb', value: 'NaN' },
-            ],
-          },
-        ],
-      }
-    );
+    const [summary] = validateBlocks({
+      blocks: [
+        {
+          type: 'summary',
+          title: 'T',
+          stats: [{ label: 'a' }, { label: 'b', value: '2' }],
+          rows: [{ value: 'x' }, { label: 'r', value: 'v', trend: 'sideways' }],
+          bars: [
+            { label: 'Jan', value: -3 },
+            { label: 'Feb', value: 'NaN' },
+          ],
+        },
+      ],
+    });
     expect(summary).toEqual({
       type: 'summary',
       title: 'T',
@@ -145,26 +139,23 @@ describe('caps and clamps', () => {
   it('cuts arrays to what the card was designed for and trims strings', () => {
     const many = (n: number) =>
       Array.from({ length: n }, (_, i) => ({ label: `l${i}`, value: 'v' }));
-    const [summary] = validateBlocks(
-      {
-        blocks: [
-          {
-            type: 'summary',
-            title: '  padded  ',
-            stats: many(9),
-            rows: many(20),
-            notes: ['a', 'b', 'c', 'd', 'e'],
-          },
-        ],
-      }
-    );
+    const [summary] = validateBlocks({
+      blocks: [
+        {
+          type: 'summary',
+          title: '  padded  ',
+          stats: many(9),
+          rows: many(20),
+          notes: ['a', 'b', 'c', 'd', 'e'],
+        },
+      ],
+    });
     expect(summary).toMatchObject({ title: 'padded' });
     if (summary.type !== 'summary') throw new Error('expected a summary');
     expect(summary.stats).toHaveLength(3);
     expect(summary.rows).toHaveLength(8);
     expect(summary.notes).toHaveLength(4);
   });
-
 });
 
 /* ------------------------------------------------------------------ */
@@ -194,9 +185,9 @@ describe('a changes_proposal block', () => {
 
   it('drops non-object items and caps the list', () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ ...item, number: i }));
-    const [block] = validateBlocks(
-      [{ type: 'changes_proposal', changes: { items: ['x', null, 3, ...many], why: 'y' } }]
-    );
+    const [block] = validateBlocks([
+      { type: 'changes_proposal', changes: { items: ['x', null, 3, ...many], why: 'y' } },
+    ]);
     expect(block.type === 'changes_proposal' && block.changes.items).toHaveLength(12);
     expect(block.type === 'changes_proposal' && block.changes.items[0]).toEqual({
       ...item,
@@ -206,26 +197,19 @@ describe('a changes_proposal block', () => {
 
   it('a bad shape still says its reason; nothing at all says nothing', () => {
     expect(
-      validateBlocks(
-        [{ type: 'changes_proposal', changes: { items: [], why: 'Rest less.' } }]
-      ),
+      validateBlocks([{ type: 'changes_proposal', changes: { items: [], why: 'Rest less.' } }]),
     ).toEqual([{ type: 'text', text: 'Rest less.' }]);
     expect(
-      validateBlocks(
-        [{ type: 'changes_proposal', changes: { items: 'rest', why: 'Rest less.' } }]
-      ),
+      validateBlocks([{ type: 'changes_proposal', changes: { items: 'rest', why: 'Rest less.' } }]),
     ).toEqual([{ type: 'text', text: 'Rest less.' }]);
     expect(validateBlocks([{ type: 'changes_proposal' }])).toEqual([]);
   });
 
   it('one per reply: a second is said as its reason', () => {
-    const blocks = validateBlocks(
-      [
-        { type: 'changes_proposal', changes: { items: [item], why: 'First.' } },
-        { type: 'changes_proposal', changes: { items: [item], why: 'Second.' } },
-      ]
-    );
+    const blocks = validateBlocks([
+      { type: 'changes_proposal', changes: { items: [item], why: 'First.' } },
+      { type: 'changes_proposal', changes: { items: [item], why: 'Second.' } },
+    ]);
     expect(blocks.map((b) => b.type)).toEqual(['changes_proposal', 'text']);
   });
-
 });

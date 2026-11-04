@@ -56,9 +56,9 @@ describe('readDay', () => {
 
 describe("answering a task's day", () => {
   it('ticks a task done, today by default', () => {
-    expect(
-      validateChanges([{ target: 'task', id: 't_read', field: 'done' }], ctx()),
-    ).toEqual([{ target: 'task', id: 't_read', field: 'done', value: null, day: TODAY }]);
+    expect(validateChanges([{ target: 'task', id: 't_read', field: 'done' }], ctx())).toEqual([
+      { target: 'task', id: 't_read', field: 'done', value: null, day: TODAY },
+    ]);
   });
 
   it('reads the words a model uses: tick, skip, untick', () => {

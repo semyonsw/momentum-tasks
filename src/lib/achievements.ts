@@ -97,11 +97,7 @@ export function logFacts({ tasks, log, today }: LogsInput): LogFacts {
   return taskFacts(tasks, log, today);
 }
 
-function taskFacts(
-  tasks: readonly Task[],
-  log: TaskLog,
-  today: string,
-): LogFacts {
+function taskFacts(tasks: readonly Task[], log: TaskLog, today: string): LogFacts {
   const tasksDone: FactPoint[] = [];
   for (const task of tasks) {
     for (const [day, entry] of Object.entries(log[task.id] ?? {})) {

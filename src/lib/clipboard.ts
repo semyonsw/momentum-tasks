@@ -2,7 +2,7 @@
  * Reading the clipboard, for the one field in the app that is pasted rather than
  * typed: a 39-character API key copied out of Google AI Studio.
  *
- * Loaded lazily and defensively, like `lib/healthConnect.ts`: `expo-clipboard`
+ * Loaded lazily and defensively: `expo-clipboard`
  * is a native module, and a build without it must still open the settings
  * screen — it simply has no `Paste` button, which is what `clipboardAvailable`
  * tells the screen. Nothing here throws.

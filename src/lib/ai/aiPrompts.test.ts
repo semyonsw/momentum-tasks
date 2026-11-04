@@ -25,7 +25,16 @@ describe('the system prompt', () => {
 
   it('names every field the parser reads', () => {
     const prompt = systemPrompt('en');
-    for (const field of ['add', 'name', 'schedule', 'target', 'archive', 'done', 'excused', 'clear']) {
+    for (const field of [
+      'add',
+      'name',
+      'schedule',
+      'target',
+      'archive',
+      'done',
+      'excused',
+      'clear',
+    ]) {
       expect(prompt).toContain(`"${field}"`);
     }
     expect(prompt).toContain('0 = Monday');

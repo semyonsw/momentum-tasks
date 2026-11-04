@@ -221,7 +221,9 @@ export function AiSettingsScreen({ fromTasks, onBack, onOpenChat }: AiSettingsSc
           <GlassSurface tier="well" radius={radius.row} flat className="mx-lg mt-lg">
             <View className="flex-row items-center px-lg py-md">
               <Icon name="sparkle" size={16} color={palette.greenBright} />
-              <Text className="ml-sm flex-1 text-label text-ink">{t('Connect a Google AI key to use AI in your daily tasks.')}</Text>
+              <Text className="ml-sm flex-1 text-label text-ink">
+                {t('Connect a Google AI key to use AI in your daily tasks.')}
+              </Text>
             </View>
           </GlassSurface>
         ) : null}
@@ -393,9 +395,11 @@ export function AiSettingsScreen({ fromTasks, onBack, onOpenChat }: AiSettingsSc
         </BubblePressable>
 
         <Kicker className="mx-lg mb-sm mt-xl">{t('What it reads')}</Kicker>
-        <Text className="mx-lg text-label text-ink-muted">{t(
+        <Text className="mx-lg text-label text-ink-muted">
+          {t(
             'Only your daily tasks, the days you answered and your notes, summarised on the phone first. Nothing is changed until you press Apply.',
-          )}</Text>
+          )}
+        </Text>
       </KeyboardAwareScrollView>
 
       <FloatingAction

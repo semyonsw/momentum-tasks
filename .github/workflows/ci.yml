@@ -25,12 +25,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # 22, NOT 20, and it is load-bearing: `test/expoSqliteStub.ts` is a thin
-          # adapter over Node's OWN `node:sqlite`, which landed in 22.5. On 20 the
-          # two suites that touch the history database — `workoutHistoryStore` and
-          # `dataTransfer`, the migration and the backup round trip — fail to load
-          # with "No such built-in module: node:sqlite", and this job has been red
-          # since history moved to SQLite in 0.12.0 for exactly that reason.
+          # 22: the LTS the project is developed on. (It was load-bearing while
+          # Momentum's training log lived in SQLite and the suite ran it on
+          # Node's own `node:sqlite`; the Tasks app has no database.)
           node-version: '22'
           # `npm ci` re-downloads the whole locked tree otherwise, which is most
           # of this job's wall clock.

@@ -1,11 +1,11 @@
-# Installing Momentum
+# Installing Momentum Tasks
 
 There are two different things called "installing" here. The installer does
 both.
 
 | I want… | What to do |
 |---|---|
-| **the apps on my phone** | plug the phone in (USB debugging on) and run the installer — or copy the `.apk` files across and tap each |
+| **the app on my phone** | plug the phone in (USB debugging on) and run the installer — or copy the `.apk` file across and tap it |
 | **the project set up on my computer** | **Windows:** double-click `Install.bat` · **Linux/macOS/WSL:** `./install.sh` |
 
 ---
@@ -17,13 +17,11 @@ both.
 2. Installs the dependency tree with `npm ci` — the exact locked versions —
    falling back to `npm install`, then `--legacy-peer-deps`, and explaining the
    difference if it has to.
-3. **Runs `npm run typecheck` and the whole test suite** (700-odd tests: rep
-   ladders, timers, overload maths, cold starts, stores, backups, migrations).
+3. **Runs `npm run typecheck` and the whole test suite** (a thousand-odd tests:
+   schedules, streaks, stores, backups, the assistant).
    "Install complete" therefore means the code works on your machine.
-4. Looks for the newest `momentum-workout-*`, `momentum-tasks-*` and
-   `momentum-expenses-*.apk` next to it (Workout falls back to its older names,
-   `momentum-<version>.apk` and `workout-tracker-*.apk`) and for `adb`. If a phone
-   is plugged in, it offers to push them over USB, one after another, and knows what each Android
+4. Looks for the newest `momentum-tasks-*.apk` next to it and for `adb`. If a
+   phone is plugged in, it offers to push it over USB, and knows what each Android
    refusal means (`UPDATE_INCOMPATIBLE`, `VERSION_DOWNGRADE`,
    `INSUFFICIENT_STORAGE`, `unauthorized`).
 5. Checks whether a JDK and the Android SDK are present — **only** needed to
@@ -34,29 +32,28 @@ Everything is logged to `install.log`. Re-running is safe.
 
 ---
 
-## Putting them on the phone by hand
+## Putting it on the phone by hand
 
-Momentum is three apps since 3.0.0 — **Workout**, **Tasks**, **Expenses** — one
-APK each. Install the ones you want. No computer setup needed at all:
+No computer setup needed at all:
 
-1. Take `momentum-<app>-<version>.apk` from the repo root or the
+1. Take `momentum-tasks-<version>.apk` from the repo root or the
    [Releases page](../../releases) and copy it to the phone (USB, Drive,
    Telegram — anything).
 2. Open it in **Files** and tap install. The first time, Android asks to allow
-   installs from that app — allow it and tap install again.
+   installs from that app — allow it and tap install again. An install of
+   Momentum's 3.0.0 Tasks app is updated in place and keeps everything.
 3. Play Protect will warn that the developer is unknown, because the APK is
    signed with a personal key. **More details → Install anyway.**
 4. On first launch, **allow notifications**. This is not a nicety: it is the
-   only way either timer reaches you once the app leaves the screen.
+   only way a task reminder reaches you once the app leaves the screen.
 5. On Samsung, also set **Battery → Unrestricted** and keep the app out of
    **Sleeping apps**, or its alarms get dropped.
-6. **Tasks and Expenses start empty.** In each, open **Settings → Replace
-   everything from a file** and pick the last `momentum-backup-*.json` the 2.x app
-   wrote — it carries every section, and each app takes its own. Workout updates
-   the old install in place and keeps everything; it simply no longer shows the
-   tasks and the money.
+6. **A fresh install starts empty.** Open **Settings → Replace everything from a
+   file** and pick a `momentum-tasks-backup-*.json` — or the last combined
+   `momentum-backup-*.json` Momentum 2.x wrote, from which it takes the tasks and
+   the settings.
 
-Minimum Android 8.0 (API 26) — Health Connect needs it. Full detail: **[BUILD_ANDROID.md](BUILD_ANDROID.md)**.
+Full detail: **[BUILD_ANDROID.md](BUILD_ANDROID.md)**.
 
 ---
 
@@ -93,10 +90,9 @@ rm -rf node_modules install.log
 ./install.sh
 ```
 
-Nothing about your phone's data is affected — that lives on the phone, in
-SQLite, and only an uninstall removes it. Export a backup from
-Settings first if you are about to uninstall — each of the three apps has its own
-data and its own backup.
+Nothing about your phone's data is affected — that lives on the phone, and only
+an uninstall removes it. Export a backup from Settings first if you are about to
+uninstall.
 
 ---
 
@@ -106,4 +102,4 @@ On the computer: delete the folder (and the two `.bat` launchers if you copied
 them elsewhere). Nothing was installed system-wide.
 
 On the phone: uninstall as usual — but **export your log first**, because
-uninstalling deletes the database with it.
+uninstalling deletes it.

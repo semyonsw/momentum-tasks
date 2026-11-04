@@ -52,7 +52,6 @@ const DAY_MS = 86_400_000;
  */
 export const CONTEXT_CAP = 400_000;
 
-
 export const LANGUAGE_NAME: Record<Language, string> = { ru: 'Russian', en: 'English' };
 
 /* ------------------------------------------------------------------ */

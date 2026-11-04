@@ -235,9 +235,7 @@ export function AiChatScreen({
               // turns after it, and its answer would land at the bottom with no
               // question beside it.
               onRetry={
-                index === messages.length - 1
-                  ? (m) => void sendMessage(m.retry, m.id)
-                  : undefined
+                index === messages.length - 1 ? (m) => void sendMessage(m.retry, m.id) : undefined
               }
               onApplyChanges={() => onApplyChanges(message.id)}
               onDiscardChanges={() => discardChanges(message.id)}

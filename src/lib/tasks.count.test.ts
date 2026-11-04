@@ -186,7 +186,6 @@ describe('every reader treats a counted day as done iff the target was reached',
     expect(year.months[8].cells[28].done).toBe(0);
     expect(year.months[8].cells[28].kind).toBe('score');
   });
-
 });
 
 describe('a pause over a counted day', () => {
@@ -203,4 +202,3 @@ describe('a pause over a counted day', () => {
     expect(clearExcused(paused, written)).toEqual(log);
   });
 });
-

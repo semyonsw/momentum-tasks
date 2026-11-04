@@ -88,13 +88,11 @@ export function dropIndex(params: DropIndexParams): number {
 /**
  * The list with `id` moved to `toIndex`, closing the gap it left behind.
  *
- * ── THE OTHER HALF OF THE REORDER, AND THE HALF BOTH SCREENS SHARE ─────────
+ * ── THE OTHER HALF OF THE REORDER ──────────────────────────────────────────
  *
- * `dropIndex` above does not fit the routine editor: that screen's reorder has no
- * drag geometry at all — a row is lifted and then a TAP on another row chooses
- * where it lands, so there is no finger offset and no midpoint to compare. The
- * SPLICE is the part the two have in common, and it was written out twice: once in
- * `activeWorkoutStore.moveEntry` and once in `RoutineEditorScreen.drop`.
+ * `dropIndex` above says WHERE a dragged row lands; this is the splice that puts
+ * it there, kept apart so the task list's own reorder (`lib/tasks.ts`) can use it
+ * without any drag geometry at all.
  *
  * `toIndex` is a position in the list WITHOUT the moved item, which is what a drop
  * position on screen is — so no off-by-one correction is needed and dropping

@@ -1,379 +1,75 @@
-# Building the Android APKs
+# Building the Android APK
 
-Sideloadable, self-contained release APKs for a Galaxy S24 (or any arm64 Android
+A sideloadable, self-contained release APK for a Galaxy S24 (or any arm64 Android
 phone). No Expo account, no cloud build, no Metro server — the JS bundle is
 compiled into the APK, so it runs with the laptop switched off.
 
-## 3.0.0 — three apps, three APKs
-
-Workout, Tasks and Expenses are separate apps now, built from this one tree.
-`EXPO_PUBLIC_APP_VARIANT` picks which: `app.config.js` reads it for the package,
-launcher label, icon and permissions, and Metro inlines it into the bundle
-(`src/lib/appVariant.ts`). Unset means `workout`, which is exactly `app.json`.
+## One app, one APK
 
 | App | APK | Package |
 | --- | --- | --- |
-| Workout | `momentum-workout-<version>.apk` | `com.semyonsw.workouttracker` — the existing install; updates in place |
-| Tasks | `momentum-tasks-<version>.apk` | `com.semyonsw.momentum.tasks` — new, starts empty |
-| Expenses | `momentum-expenses-<version>.apk` | `com.semyonsw.momentum.expenses` — new, starts empty |
+| Tasks | `momentum-tasks-<version>.apk` | `com.semyonsw.momentum.tasks` |
 
-All three are signed with the same debug key, so each updates itself in place
-from then on. Workout keeps the 2.x tasks and money on the phone — not shown, not
-deleted, still written into its backups. Tasks and Expenses get their data by
-importing a backup: **Settings → Replace everything from a file**, and pick the
-last combined `momentum-backup-*.json` 2.x wrote (each app's own automatic
-backups are `momentum-<app>-backup-*`, so none of the three sweeps that file
-away). Only Workout carries the Health Connect permission.
+Until 3.0.0 this was the Tasks section of Momentum; 3.0.0 split Momentum into
+three apps from one tree (Workout, Tasks, Expenses), and 3.0.1 cut this tree down
+to Tasks alone. The package, the signing key and every persisted key are the
+3.0.0 Tasks app's, so 3.0.1 installs over it and keeps everything. Its own
+automatic backups are `momentum-tasks-backup-*`; a combined `momentum-backup-*`
+from 2.x can still be imported, and only the tasks and the settings are taken
+from it.
 
-From WSL, `tools/release-apk.sh` builds all three in turn (or one:
-`tools/release-apk.sh tasks`) and checks each APK's key, package, version,
-permissions and bundle. By hand, set the variable for BOTH steps — and call the
-Expo CLI through the Linux node, because `npx expo` in this shared tree runs the
-Windows `node.exe`, which never sees a WSL environment variable:
+From WSL, `tools/release-apk.sh` builds it and checks the APK's key, package,
+version, permissions and bundle. By hand, call the Expo CLI through the Linux
+node — `npx expo` in a tree shared with Windows runs the Windows `node.exe`, which
+never sees a WSL environment variable — and delete Metro's cache first
+(`/tmp/metro-*`), because its transform cache is not keyed on env values:
 
 ```bash
-export EXPO_PUBLIC_APP_VARIANT=tasks
-node node_modules/expo/bin/cli prebuild -p android --clean   # --clean: the package changed
+export EXPO_PUBLIC_BUILD_MARK=momentum-tasks-build-<version>
+node node_modules/expo/bin/cli prebuild -p android --clean
 cd android && ./gradlew assembleRelease …                     # flags as in CLAUDE.md
 ```
 
-Delete Metro's cache between variants (`/tmp/metro-*`): the transform cache is
-not keyed on env values, and a cached `appVariant.ts` would ship the previous
-variant's literal.
-
-## 1.0.2 — where you are in the workout, and one gesture for reordering
-
-`versionCode` 15. **It needs a prebuild**, but only because `app.json` carries the
-new version — no native dependency moved, so the set of native modules in this APK
-is identical to 1.0.1's.
-
-- **The set you should do next is ringed in green.** Press `Start workout` and the
-  first exercise's first row is outlined; the ring moves down as you log, and
-  across when an exercise finishes. Exactly one row in the session ever has it, so
-  "which one now" is never a question you answer by counting ✓s.
-- **Exercise cards close.** Tapping the open card's header — it has a `⌄` on it
-  now — shuts it, and you can shut every one of them. The list becomes eight names
-  when what you want is the shape of the session rather than the numbers in it.
-  Tapping any other card still opens that one and closes the last.
-- **The exercise you are on glows while it is shut.** Green name, green ring around
-  the card. With everything closed that is the only thing on screen saying where
-  you were, so closing the list never costs you your place.
-- **The routine editor reorders by dragging.** Long press a row and slide it, the
-  same gesture the exercise cards in a live workout have always had. It used to
-  lift the row and then ask you to TAP where it should go — two deliberate acts for
-  one movement, and a different muscle memory depending on which screen you were
-  on. Both screens now run the same code.
-- **`Settings → Rep ladder → Make every exercise a rep ladder`.** One switch, and
-  every rep-counted exercise in your library gets a ladder, seeded from its own
-  target reps. New exercises you create start with it on.
-  It is **reversible**: switching it off takes back only the ladders the switch
-  added. A max you set yourself, and any ladder that has already earned a rep, stay
-  exactly as they are — a setting does not get to delete a session you trained.
-  Holds, rounds and distances are never touched; a ladder is a rep prescription.
-  Note that an exercise running a ladder does not get progressive-overload nudges —
-  the ladder is the progression — so turning this on quietens those across the
-  board. That is the trade, and it is the same one the per-exercise toggle has
-  always made.
-
-712 tests.
-
-## 1.0.1 — the History tab going empty after "close all"
-
-`versionCode` 14, and it is a fix release: **a log that could not be READ was
-being shown as a log that was EMPTY.**
-
-Clearing the recents list kills the process, so the next launch rebuilds the store
-from disk. The log is read at module scope — during bundle evaluation, before
-anything has mounted — which is the one moment a native module may still be
-resolving in a release build. That read was wrapped (a throw there would be a
-crash with no screen to report it on) and the wrapper returned an empty list and
-said nothing. Every screen renders that as "Nothing finished yet", which is
-indistinguishable from the workouts being gone — while `Finish` kept writing new
-ones to a database the app never managed to read back.
-
-Nothing was ever lost on disk. What changed:
-
-- **The read is retried after mount**, from a point where no native module can be
-  missing. A launch that failed the first read now fills History a frame later
-  instead of never.
-- **`db()` no longer caches a half-opened database.** It used to store the handle
-  and then create the tables, so a throw in the second step left a tableless
-  handle cached for the rest of the process — every query after it failing with
-  "no such table", swallowed into the same empty list.
-- **A failed read is a stated fact, not an empty list.** History says it could not
-  open the log and that nothing is lost; **Settings → `Workouts on disk`** counts
-  the rows in the file, so "94 on disk · 0 loaded" is readable at a glance.
-- **`Export data` refuses to write a backup while the log is unreadable.** That
-  was the one path that could turn a bad read into permanent loss: exporting an
-  empty log and then restoring it over a database that was fine.
-- **The migration off AsyncStorage no longer deletes what is already in the
-  database**, and it no longer trusts its own "done" flag when the log is empty —
-  if the old key is still there and nothing was deleted on purpose, it brings the
-  log back. Deliberate deletions are recorded, so nothing you deleted is ever
-  resurrected.
-- **`PRAGMA synchronous = FULL`**, so a commit survives the phone losing power and
-  not just the app being killed. One fsync per `Finish`.
-
-The suite could not have caught this: `test/expoSqliteStub.ts` opened every
-database as `:memory:`, so "write it, close the handle, read it back" passed
-whatever the code did. The stub is file-backed now and
-`src/state/coldStart.test.ts` kills the process between writes.
-
-## 1.0.0 — what changed on the phone
-
-`versionCode` 13. **It needs a prebuild**, but only because `app.json` carries the
-new version — no native dependency moved, so the set of native modules in this APK
-is identical to 0.12.0's.
-
-- **The rep ladder.** One number per exercise — your max — and the whole session
-  follows it: `max 16 → 16 + 10 + 8 + 8 + 6`. Switch it on in the exercise editor
-  (**Library → an exercise → Edit → Ladder**), set the max with the ± chips, and
-  the preview under them is the session you will be handed.
-- **It adds a rep every time you meet it**, on the lowest set that still needs
-  one, and after enough of those the max itself moves — a personal record, every
-  five to eight workouts in practice, because a session that comes up short earns
-  nothing and repeats unchanged. The finish sheet states the new numbers.
-- **Logging the top set re-shapes the rest of the exercise.** Beat the plan and
-  every set under it moves up to the ladder for what you actually did; miss it and
-  they come down. A row you edited by hand is left alone.
-- **The overload nudge stands down on a laddered exercise** — two systems
-  prescribing one exercise's reps is one of them being wrong. The exercise editor
-  says so where the ladder is switched on, rather than leaving a nudge that
-  silently never appears.
-
-Nothing already on the phone changes: no migration, no schema change, and an
-exercise without a ladder behaves exactly as it did in 0.12.0.
-
-## 0.12.0 — what changed on the phone
-
-`versionCode` 12. **It needs a prebuild**: `expo-sqlite` is a dependency again —
-this time because it is used. The finished-workout log moved out of AsyncStorage
-and into a real database (`src/state/historyDb.ts`), so the set of native modules
-in the APK is different from the previous release's.
-
-**0.11.0 is folded into this release.** The graphs and the workout numbering
-below were built on a branch that was never merged, so no `versionCode` 11 was
-ever published; if you sideloaded that build while it existed, this one is a
-normal upgrade over it.
-
-**Your log is migrated on the first launch, once, and the old copy is not
-deleted.** The migration writes everything into the database in one transaction,
-reads it back and counts it before recording itself as done, and leaves the
-AsyncStorage key exactly where it was. If anything goes wrong it tries again next
-launch from a copy that is still there. Export a backup first anyway — see the
-line at the end of this section.
-
-- **The 250-workout ceiling is gone.** It was a storage limit, not a decision
-  about how much training is worth keeping: every `Finish` used to rewrite the
-  whole log as one string, and 250 was a guess at where that gets too big to
-  write. History is now read straight off disk before the first frame, so the
-  History tab no longer flickers from empty to full on launch.
-- **Volume counts bodyweight work** — once you tell it what you weigh, in
-  **Settings → Body**. A `+40 kg` dip is a body plus forty, an assisted pull-up is
-  a body minus the help (it used to ADD the assistance, so taking more help scored
-  higher), and a push-up is a body. Until you set it, sessions of bodyweight work
-  show no volume figure at all rather than a wrong one.
-- **Sets, reps and rest are editable.** Tap a row in the routine editor and it
-  opens in place with ± chips. Rest says which of the two it is using — this
-  exercise's own, or your Settings value — and can be put back to following
-  Settings. **Supersets**: one toggle, "with the exercise above"; members share a
-  green rule down their left edge, no rest fires between them, and it comes after
-  the last one.
-- **Planks, push-ups and boxing rounds progress now.** The same plateau detection
-  the weighted lifts get, on the count instead of the weight: "3× at 2:00 — try
-  2:15".
-- **Warm-up sets are reachable** — a chip in the set editor. A warm-up reads `W`
-  instead of a number and counts towards nothing: not the volume, not the set
-  count, not the shorthand, and not the suggestions. A heavy warm-up single used
-  to be read as the session's top working weight.
-- **History shows sets per muscle cluster** over 4 weeks / 12 weeks / all, above
-  the month list. Counts and bars, no targets.
-- **A typo no longer costs the workout.** Open a workout in History, tap an
-  exercise, and correct one set with the same ± chips. Everything derived from it
-  is recomputed rather than patched.
-- **Tapping a recent workout opens that workout**, instead of the top of History.
-- **A CSV of every set** beside the JSON backup, for a spreadsheet, and
-  **`Add workouts from a file`** beside `Replace everything` — so a second phone
-  or a replaced one can be reconciled instead of overwritten.
-- **Plate maths under the weight cell** on a barbell lift: `20 + 2×10 + 2×2.5`. It
-  never rounds — an unreachable weight shows no line rather than the nearest one.
-- **Settings tells you what you actually rest**, once there is enough measured,
-  with one tap to adopt it.
-- **Every workout is numbered.** History rows lead with `Workout 92`. Open any
-  workout and tap **`Set the workout number`**: everything before it counts down
-  and everything after it counts up, so telling the app once that your last
-  session was 91 puts the whole log — including the ninety sessions that happened
-  before this app existed — on the right ordinal. The pin travels in your export
-  file, and deleting the session it is pinned to moves the pin instead of losing it.
-- **`History → Graphs`.** A switch at the top of History. `All workouts` draws
-  reps per workout and kilograms per workout over time; picking one exercise draws
-  its reps per session and its top working weight per session. Each graph states
-  its own direction in words — `up 34 reps since 11 Jun`, or `level` — because a
-  plateau is the finding this app exists to surface.
-
-## 0.10.0 — what changed on the phone
-
-
-`versionCode` 10. **It needed a prebuild**: `expo-sqlite` (and the Drizzle
-packages behind it) were unused and are gone, so the set of native modules in the
-APK is different from 0.9.0's.
-
-- **Opening a workout no longer starts it.** A routine opens on its exercise list
-  with nothing timed and nothing dated; the session begins on **`Start the
-  workout`** (or on the first set you log). **`Stop and exit`** leaves without
-  saving — it asks first if anything is logged — and only **`Finish`** writes to
-  history. Backing out of a workout you never started leaves no trace at all.
-- **The timer moved to the top of the screen and got much bigger** — 52 px
-  numerals under the header instead of a small pill over your thumb. It still
-  carries `+15`, `⏸`/`▶` and `Skip`, still names which rest it is running, and
-  still inverts to a green slab for the last ten seconds.
-- **No workout is suggested by default.** Every routine is listed on the home
-  screen and you pick. The old shipped push/boxing/pull split is gone.
-- **`Routines → Training sequence`** is the replacement, and it is **off and
-  empty** until you build one: add steps in any order (push → pull → push),
-  reorder them with ⌃/⌄, tap a step to make it the next one up, and switch it on.
-  When it is on, the home screen names the next routine and advances the queue
-  when you finish that workout. When it is off, nothing about it is shown.
-- **✕ on any row of the routine editor removes that exercise from the routine.**
-  It asks first, and the exercise itself stays in the library with all its
-  history.
-- **History states a total per exercise**: `+40 kg · 4 4 4` now carries
-  `12 reps total` under it (or `4:00 total` for holds). Workouts logged before
-  0.10.0 get their totals computed from the set rows already in the file, so old
-  sessions show them too.
-- **Dates are the phone's, not UTC.** A workout finished after midnight used to be
-  listed under the previous day.
-
-Before installing anything, open **Settings → `Export data`** and put that file
-somewhere off the phone. That is the seatbelt for every install below.
-
-## ⚠️ An APK built without the release keystore cannot update your install
-
-> **Superseded.** The install on the phone today is signed with the stock React
-> Native debug keystore (`CN=Android Debug`, SHA-256 `FA:C6:17:45…`), which
-> `npx expo prebuild` regenerates identically on any machine — so a fresh clone
-> CAN build an APK that updates the phone. `CLAUDE.md` is the current authority
-> on signing; the text below is the history of the release-keystore era.
-
-Android identifies an app by **package name + signing key**. The release keystore
-lives on the Windows machine (see [Signing](#signing--read-this-before-you-lose-it)),
-NOT in this repo — so a build made anywhere else falls back to the debug key and
-Android refuses to install it over the real app
-(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`, worded "app not installed" on Samsung).
-
-Two ways through, and they are both fine:
-
-1. **Rebuild on the machine that has the keystore** (three commands below) and
-   install straight over the top, keeping everything.
-2. **Install the debug-signed APK** as a fresh app: `Export data` first, uninstall
-   Workout Tracker, install, then `Import data` from the file. Costs ten minutes
-   and nothing else — this is exactly what the export/import pair is for.
-
-Check which key an APK carries before trusting it:
-
-```bash
-$ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs \
-  android/app/build/outputs/apk/release/app-release.apk
-```
-
-`CN=Workout Tracker` updates in place. `CN=Android Debug` needs route 2.
-
-**Which key the committed APK actually carries: the DEBUG one.** Both APKs ever
-committed to this repo — 0.10.0 and 0.12.0 — are signed `CN=Android Debug`
-(`FA:C6:17:45…`), so that is what the phone has installed and that is the key the
-next one has to keep, or route 2 is the only way in. `workout-tracker-1.0.0.apk`
-is therefore signed with `android/app/debug.keystore` on purpose:
-
-```bash
-cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a \
-  -PWT_STORE_FILE="$PWD/app/debug.keystore" -PWT_STORE_PASSWORD=android \
-  -PWT_KEY_ALIAS=androiddebugkey -PWT_KEY_PASSWORD=android
-```
-
-The `-P` flags override `~/.gradle/gradle.properties` for that one build, which is
-the whole reason this is a Gradle property rather than a file path in
-`plugins/withReleaseSigning.js`. The debug keystore is the fixed one the Expo
-template ships, identical on every machine, which is why two builds a release apart
-could update each other at all.
-
-**Moving to the real release key is a one-time route 2**, and worth doing before
-this app holds a second year of training: `Export data`, uninstall, install a
-release-signed build, `Import data`. Until then the CI-built APK on the Releases
-page (release-signed, `CN=Workout Tracker`) and the committed one (debug-signed)
-are NOT interchangeable on a phone that has either installed.
-
 ## Install it on the phone
 
-The current release's APKs are committed at the repo root —
-`momentum-{workout,tasks,expenses}-<version>.apk` — next to the previous ones as
-rollbacks. Install whichever of the three apps you want; each is its own app.
+The current release's APK is committed at the repo root —
+`momentum-tasks-<version>.apk` — next to the previous ones as rollbacks.
 
 1. Copy the APK to the phone (USB, Drive, Telegram — anything), or plug the
-   phone in and let `./install.sh` / `Install.bat` push all three over adb.
+   phone in and let `./install.sh` / `Install.bat` push it over adb.
 2. Open it in **Files** and tap install. The first time, Android asks to allow
    installs from that app; allow it and tap install again.
 3. Play Protect will warn that the developer is unknown, because the APK is
    signed with a personal key rather than one Google has seen. **More details →
    Install anyway.**
-4. On first launch, **allow notifications**. This is not a nicety: it is the ONLY
-   way either timer reaches you once the app leaves the screen — the in-app beep
-   is a JS timer, and Android stops those in the background. You get a tick five
-   seconds before the deadline and the long tone at zero, both in the app's own
-   voice. While the app is open, nothing is posted; the pill and its beeps do the
-   work.
-   On Samsung, also set **Battery → Unrestricted** for the app and make sure it is
-   not in **Sleeping apps** — a restricted app's alarms are dropped.
-5. Check the beep once, in **Settings → Countdown → Test the beep**. It plays the
-   real 3 · 2 · 1 · go. If it's silent, the phone's media volume is down — the
-   cue plays on the media stream so it can be heard over music, which also means
-   it obeys the media slider rather than the ringer.
-
-Minimum Android 8.0 (API 26), set by Health Connect; the S24 ships far newer.
+4. On first launch, **allow notifications**. It is the ONLY way a task reminder
+   reaches you once the app leaves the screen. On Samsung, also set **Battery →
+   Unrestricted** for the app and make sure it is not in **Sleeping apps** — a
+   restricted app's alarms are dropped.
 
 ## Rebuild after a code change
 
-On the Windows machine (PowerShell), with the portable toolchain under
-`C:\Users\user\dev-tools`:
+On the Windows machine (PowerShell), with the JDK and SDK paths CLAUDE.md lists:
 
 ```powershell
-$env:JAVA_HOME  = "C:\Users\user\dev-tools\jdk17"
-$env:ANDROID_HOME = "C:\Users\user\dev-tools\android-sdk"
+$env:JAVA_HOME  = "C:\Program Files\Microsoft\jdk-17.0.20.101-hotspot"
+$env:ANDROID_HOME = "E:\android-sdk"
 $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
-$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
 npm ci                                   # NOT `npm install --legacy-peer-deps`, see below
-npx expo prebuild -p android --clean     # Windows node: set EXPO_PUBLIC_APP_VARIANT first for Tasks/Expenses
+npx expo prebuild -p android --clean
 cd android
-.\gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a
+.\gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a `
+  -PWT_STORE_FILE="$PWD\app\debug.keystore" -PWT_STORE_PASSWORD=android `
+  -PWT_KEY_ALIAS=androiddebugkey -PWT_KEY_PASSWORD=android
 ```
 
-On Linux the same three lines are `export JAVA_HOME=…`, `export ANDROID_HOME=…`,
-`./gradlew assembleRelease …`.
+On Linux the same lines are `export JAVA_HOME=…`, `export ANDROID_HOME=…`,
+`./gradlew assembleRelease …` — or just `tools/release-apk.sh`.
 
 The APK lands at `android/app/build/outputs/apk/release/app-release.apk`. Copy it
-somewhere with a version in the name before installing it — a Downloads folder
-with four files called `app-release.apk` in it is four files nobody can tell
-apart. This is what a tagged release does automatically; a local build is for
-trying a change before it is worth tagging.
-
-### Or let CI build it
-
-Push a tag and the same APK is built, signed and attached to a draft GitHub
-Release:
-
-```bash
-git tag v1.0.0 && git push origin v1.0.0
-```
-
-⚠️ That APK is signed with the RELEASE keystore, which is not the key the
-committed APKs carry — see the warning above before installing one over the other.
-
-`.github/workflows/release.yml` runs the suite first, prebuilds from `app.json`,
-signs with the keystore out of repository secrets (see
-[Signing in CI](#signing-in-ci--the-four-secrets-the-release-workflow-needs)), and
-leaves the release as a **draft** — the notes are the "what changed on the phone"
-section at the top of this file, written by somebody who knows what changed, and a
-tag should not publish prose nobody wrote.
+to `momentum-tasks-<version>.apk` before installing it — a Downloads folder with
+four files called `app-release.apk` in it is four files nobody can tell apart.
 
 `arm64-v8a` is the only ABI built — every phone from roughly 2017 on is arm64,
 and a single-ABI APK is ~40 MB smaller than a universal one. Drop the
@@ -428,32 +124,21 @@ not.
 
 ### Verify permissions on the APK, never on the source manifest
 
-`expo-audio` ships recording and playback in one module, and its AAR manifest
-declares `RECORD_AUDIO`. Android's manifest merger takes the **union** of every
-library's permissions, so that line reaches the APK no matter what
-`android/app/src/main/AndroidManifest.xml` says — `recordAudioAndroid: false`
-only stops expo-audio's own plugin from adding it to the *app* manifest, which is
-a different file from the one that ships.
-
-`plugins/withoutMicrophone.js` is what actually removes it, via
-`tools:node="remove"`. Because this is a merge-time behaviour, the only honest
-check reads the built artifact:
+Android's manifest merger takes the **union** of every library's permissions, so
+a permission a dependency's AAR declares reaches the APK no matter what
+`android/app/src/main/AndroidManifest.xml` says. The only honest check reads the
+built artifact:
 
 ```bash
 aapt2 dump badging android/app/build/outputs/apk/release/app-release.apk \
   | grep -E "permission|microphone"
 ```
 
-Expect **no** `RECORD_AUDIO` and **no** `uses-implied-feature ... microphone`.
-`FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK` are expected and
-left in place: same library manifest, but they grant no hardware or personal-data
-access and prompt for nothing.
-
-Also expect `USE_EXACT_ALARM` and `POST_NOTIFICATIONS` — those are what make a
-timer alert land on time with the app off screen.
-
-Grepping the source manifest proves nothing and will happily report success while
-the APK asks for the mic.
+Expect `POST_NOTIFICATIONS`, `SCHEDULE_EXACT_ALARM` and `USE_EXACT_ALARM` — what
+makes a reminder land on time with the app off screen — and **no**
+`RECORD_AUDIO` and no `health.*`. Momentum needed `plugins/withoutMicrophone.js`
+to strip the microphone `expo-audio` brought in; Tasks has no `expo-audio`, and
+`tools/release-apk.sh` still fails a build that asks for either.
 
 ## Shipping an update to a phone that already has it
 
@@ -463,108 +148,25 @@ and install over the top. The install keeps existing data.
 `versionName` (`"version"` in `app.json`) is the human string and can be
 anything; `versionCode` is what Android compares.
 
-## Signing — read this before you lose it
+## Signing
 
-> **Superseded.** The install on the phone today is signed with the stock React
-> Native debug keystore (`CN=Android Debug`, SHA-256 `FA:C6:17:45…`), which
-> `npx expo prebuild` regenerates identically on any machine — so a fresh clone
-> CAN build an APK that updates the phone. `CLAUDE.md` is the current authority
-> on signing; the text below is the history of the release-keystore era.
+Android identifies an app by **package name + signing key**; an APK signed with
+any other key is refused as an update (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`,
+worded "app not installed" on Samsung), and the uninstall that would let it
+through deletes the task log.
 
-An APK signed with a different key than the one already installed **cannot update
-it** — see the box at the top of this file. That is not hypothetical: it is
-exactly what happened between 0.3.0 and 0.4.0, and it cost an uninstall.
+The install on the phone is signed with the stock React Native debug keystore
+(`CN=Android Debug`, SHA-256 `FA:C6:17:45…`), which `expo prebuild` regenerates
+identically on any machine — so a fresh clone CAN build an APK that updates the
+phone. The `-PWT_*` flags above point `plugins/withReleaseSigning.js` at it for
+that one build. What can go wrong is a build signed with the WRONG key, so check
+the artifact every release:
 
-This app's key:
-
-| | |
-| --- | --- |
-| Keystore | `C:\Users\user\.workout-tracker-signing\workout-tracker-release.keystore` |
-| Alias | `workout-tracker` |
-| Store / key password | `workouttracker` |
-| Valid until | 2056 (11 000 days) |
-| Package | `com.semyonsw.workouttracker` |
-
-Recreate it, if it is ever lost, with:
-
-```powershell
-& "$env:JAVA_HOME\bin\keytool.exe" -genkeypair -v `
-  -keystore "$env:USERPROFILE\.workout-tracker-signing\workout-tracker-release.keystore" `
-  -alias workout-tracker -keyalg RSA -keysize 2048 -validity 11000 `
-  -storepass workouttracker -keypass workouttracker `
-  -dname "CN=Workout Tracker, OU=Personal, O=semyonsw, L=Yerevan, C=AM"
+```bash
+$ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs momentum-tasks-<version>.apk
 ```
 
-…knowing that a recreated key is a NEW key, and costs another uninstall.
-
-**Back that keystore file up somewhere off that machine.** It is deliberately
-outside the repo and `.gitignore`d — a keystore in git is a keystore anyone with
-repo access can ship updates with. Gradle reads its location and passwords from
-`~/.gradle/gradle.properties`:
-
-```properties
-WT_STORE_FILE=C:/Users/user/.workout-tracker-signing/workout-tracker-release.keystore
-WT_STORE_PASSWORD=workouttracker
-WT_KEY_ALIAS=workout-tracker
-WT_KEY_PASSWORD=workouttracker
-```
-
-Those four properties are consumed by `plugins/withReleaseSigning.js`. Without
-them the release build still succeeds but falls back to the debug key and prints a
-warning — which is the wrong key to hand a phone, for the reason above.
-
-> **Windows trap: write that file WITHOUT a BOM.** `Set-Content -Encoding utf8`
-> and `>` in PowerShell 5.1 both prepend a UTF-8 BOM, and Java's `Properties`
-> loader reads the file as raw bytes — so the BOM becomes part of the FIRST key
-> name and `WT_STORE_FILE` silently does not exist. The build then succeeds, signs
-> with the debug key, and produces an APK that cannot update the real app. Write it
-> with
-> `[System.IO.File]::WriteAllLines($path, $lines, (New-Object System.Text.UTF8Encoding($false)))`,
-> and verify the key **on the artifact** with the `apksigner` command at the top of
-> this file.
-
-The password is weak on purpose: it protects a key for a personal app that is
-never published, and it lives on the same machine as the keystore. Change both if
-this app ever goes anywhere near a store.
-
-### Signing in CI — the four secrets the release workflow needs
-
-Everything above is about building on the Windows machine, and none of it changes.
-`.github/workflows/release.yml` builds the same APK on a `v*` tag, which means the
-runner needs the same keystore — as **repository secrets**, under
-*Settings → Secrets and variables → Actions*:
-
-| Secret | What goes in it |
-| --- | --- |
-| `ANDROID_KEYSTORE_BASE64` | the keystore FILE, base64-encoded |
-| `ANDROID_STORE_PASSWORD` | the store password (`WT_STORE_PASSWORD` above) |
-| `ANDROID_KEY_ALIAS` | the alias (`WT_KEY_ALIAS` above) |
-| `ANDROID_KEY_PASSWORD` | the key password (`WT_KEY_PASSWORD` above) |
-
-Encode the file on the machine that has it:
-
-```powershell
-[Convert]::ToBase64String(
-  [IO.File]::ReadAllBytes("$env:USERPROFILE\.workout-tracker-signing\workout-tracker-release.keystore")
-) | Set-Content keystore.b64
-```
-
-…then paste the contents of `keystore.b64` into `ANDROID_KEYSTORE_BASE64` and
-delete the file. The workflow decodes it to a path outside the workspace and hands
-Gradle the same four `WT_*` properties `plugins/withReleaseSigning.js` reads, so
-there is one signing path and not two.
-
-**Without the secrets the release job fails**, deliberately, at the point where it
-would otherwise fall back to the debug key. That fallback is right for a local
-build — a fresh clone still produces a runnable APK — and exactly wrong for a
-release: an APK that looks shippable and cannot update anybody's install is worse
-than no APK at all.
-
-Putting the keystore in a secret does mean GitHub holds a copy of it. That is a
-real trade against the alternative, which is that only one Windows machine can ever
-ship an update; the passwords above are already weak on purpose for the same
-reason, and the note about changing both if this ever goes near a store covers this
-too.
+`CLAUDE.md` is the authority on signing.
 
 ## Why `android/` is not in git
 

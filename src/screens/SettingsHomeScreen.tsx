@@ -71,7 +71,6 @@
 
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { Pressable } from '../components/Pressable';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -108,13 +107,7 @@ import { SparkleCircle } from '../components/AiEntryCard';
 import { useAi } from '../state/aiStore';
 import { requestBackup, runBackupNow, type BackupRun } from '../hooks/useAutoBackup';
 import { describeBackupAge, failureNeedsFolder } from '../lib/autoBackup';
-import {
-  countPayload,
-  describeCounts,
-  parseBackup,
-  type BackupCounts,
-  type BackupEnvelope,
-} from '../lib/backup';
+import { describeCounts, parseBackup, type BackupCounts, type BackupEnvelope } from '../lib/backup';
 import {
   describeError,
   folderLabel,
@@ -593,13 +586,11 @@ export function SettingsHomeScreen({
           <Text className="mx-lg mt-md text-label text-ink-faint">
             {t(BACKUP_HOLDS)}{' '}
             {t('Your AI chats and past chats travel with it too; the AI key never does.')}{' '}
-            <Text className="text-ink-muted">{t('Replace everything')}</Text>{' '}
-            {t(REPLACE_NOTE)}
+            <Text className="text-ink-muted">{t('Replace everything')}</Text> {t(REPLACE_NOTE)}
           </Text>
 
           <Text className="mx-lg mt-md text-label text-ink-faint">
-            <Text className="text-ink-muted">{t('Reset every setting')}</Text>{' '}
-            {t(RESET_NOTE)}
+            <Text className="text-ink-muted">{t('Reset every setting')}</Text> {t(RESET_NOTE)}
           </Text>
 
           {/* THE FOOT OF THE SCREEN (U19): the one action here that cannot be
@@ -702,32 +693,6 @@ export function SettingsHomeScreen({
 /* ------------------------------------------------------------------ */
 /* Appearance                                                          */
 /* ------------------------------------------------------------------ */
-
-/** One choice in the spreadsheet sheet: what it writes, and what a row of it is. */
-function ExportRow({
-  label,
-  detail,
-  onPress,
-}: {
-  label: string;
-  detail: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${label}. ${detail}`}
-      style={pressedStyle}
-      className="h-row-lg justify-center px-lg"
-    >
-      <Text className="text-body text-ink">{label}</Text>
-      <Text numberOfLines={1} className="mt-[2px] text-label text-ink-faint">
-        {detail}
-      </Text>
-    </Pressable>
-  );
-}
 
 /** A list in twos, for the two-column preset grid. */
 function pairs<T>(list: readonly T[]): T[][] {

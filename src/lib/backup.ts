@@ -212,8 +212,7 @@ export function parseBackup(text: string, lang: Language = 'en'): ParseResult {
     return { ok: false, error: t('That file holds something other than a backup.', lang) };
   }
 
-  const version =
-    typeof raw.version === 'number' && Number.isFinite(raw.version) ? raw.version : 1;
+  const version = typeof raw.version === 'number' && Number.isFinite(raw.version) ? raw.version : 1;
   if (version > BACKUP_VERSION) {
     return {
       ok: false,
