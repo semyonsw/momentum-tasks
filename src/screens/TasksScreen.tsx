@@ -732,7 +732,7 @@ export function TasksScreen({
             one thing to do there. */}
         {lifted || liveTasks === 0 ? null : (
           <View className="mt-xs">
-            <AiEntryCard section="Tasks" ready={aiReady} onOpen={onOpenAi} />
+            <AiEntryCard ready={aiReady} onOpen={onOpenAi} />
           </View>
         )}
       </ScrollView>

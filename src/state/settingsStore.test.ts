@@ -1,14 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { BODYWEIGHT_LIMITS, clampBodyweightKg } from '../lib/bodyweightLog';
-import { clampPlates } from '../lib/gyms';
 import {
   DEFAULT_SETTINGS,
-  SETTING_LIMITS,
-  clampSetting,
+  aiCardDismissed,
   currentSettings,
-  platesInForce,
   sanitizeSettings,
   useSettings,
   type Settings,
@@ -16,326 +12,109 @@ import {
 
 afterEach(() => {
   /*
-   * `importSettings`, not `resetToDefaults`. The reset button deliberately KEEPS the
-   * gyms, the bodyweight log and the granted backup folder — it is about durations
-   * and toggles, not about destroying data — so it is the wrong tool for isolating
-   * tests from each other. This replaces every key.
+   * `importSettings`, not `resetToDefaults`. The reset button deliberately KEEPS
+   * the language, the look and the granted backup folder, so it is the wrong tool
+   * for isolating tests from each other. This replaces every key.
    */
   useSettings.getState().importSettings(DEFAULT_SETTINGS);
 });
 
-/*
- * These are all guarding one thing: a duration that reaches a timer must be a
- * usable whole number of seconds. `endsAt = Date.now() + NaN * 1000` is a
- * countdown that never ends and a pill that never leaves, and it can arrive from a
- * half-written persisted blob just as easily as from a text field.
- */
-
-describe('clampSetting', () => {
-  it('holds each setting inside its own range', () => {
-    for (const key of Object.keys(SETTING_LIMITS) as (keyof typeof SETTING_LIMITS)[]) {
-      const { min, max } = SETTING_LIMITS[key];
-      expect(clampSetting(key, -9999)).toBe(min);
-      expect(clampSetting(key, 9999)).toBe(max);
-    }
-  });
-
-  it('rounds to whole seconds', () => {
-    expect(clampSetting('prepareSeconds', 5.6)).toBe(6);
-    expect(clampSetting('beepSeconds', 4.2)).toBe(4);
-  });
-
-  it('falls back to the default for anything unusable', () => {
-    for (const bad of [NaN, Infinity, -Infinity, undefined, null, 'abc', {}, []]) {
-      expect(clampSetting('restSecondsBetweenSets', bad)).toBe(
-        DEFAULT_SETTINGS.restSecondsBetweenSets,
-      );
-    }
-  });
-});
-
 describe('sanitizeSettings', () => {
   it('returns a complete object from nothing at all', () => {
-    for (const input of [undefined, null, {}]) {
-      expect(sanitizeSettings(input)).toEqual(DEFAULT_SETTINGS);
-    }
-  });
-
-  it('fills keys a persisted blob from an older build would not have', () => {
-    const old = { restSecondsBetweenSets: 90 } as never;
-    const result = sanitizeSettings(old);
-
-    expect(result.restSecondsBetweenSets).toBe(90);
-    expect(result.beepSeconds).toBe(DEFAULT_SETTINGS.beepSeconds);
-    expect(result.adjustStepSeconds).toBe(DEFAULT_SETTINGS.adjustStepSeconds);
-    expect(Object.keys(result).sort()).toEqual(Object.keys(DEFAULT_SETTINGS).sort());
+    expect(sanitizeSettings(undefined)).toEqual(sanitizeSettings(DEFAULT_SETTINGS));
+    expect(sanitizeSettings(null)).toEqual(sanitizeSettings({}));
   });
 
   it('repairs a corrupt blob rather than passing it through', () => {
-    const result = sanitizeSettings({
-      restSecondsBetweenSets: NaN,
-      prepareSeconds: -40,
-      beepSeconds: 9999,
-      unitSystem: 'furlongs',
-    } as never);
-
-    expect(result.restSecondsBetweenSets).toBe(DEFAULT_SETTINGS.restSecondsBetweenSets);
-    expect(result.prepareSeconds).toBe(SETTING_LIMITS.prepareSeconds.min);
-    expect(result.beepSeconds).toBe(SETTING_LIMITS.beepSeconds.max);
-    expect(result.unitSystem).toBe('metric');
+    const clean = sanitizeSettings({
+      tasksTrendRange: 'decade',
+      autoBackupEnabled: 'yes',
+      lastBackupAt: 'not a date',
+      autoBackupFolderUri: '   ',
+      autoBackupFile: { uri: 3 },
+    } as unknown as Partial<Settings>);
+    expect(clean.tasksTrendRange).toBe('month');
+    // Only an explicit false is off.
+    expect(clean.autoBackupEnabled).toBe(true);
+    expect(clean.lastBackupAt).toBeUndefined();
+    expect(clean.autoBackupFolderUri).toBeUndefined();
+    expect(clean.autoBackupFile).toBeUndefined();
+    expect(sanitizeSettings({ autoBackupEnabled: false }).autoBackupEnabled).toBe(false);
   });
 
-  it('keeps booleans, treating only an explicit false as off', () => {
-    expect(sanitizeSettings({ soundEnabled: false } as never).soundEnabled).toBe(false);
-    expect(sanitizeSettings({ soundEnabled: undefined } as never).soundEnabled).toBe(true);
-  });
-});
-
-describe('the store', () => {
-  it("bumps by the setting's own step and stops at the ceiling", () => {
-    const { bumpNumber } = useSettings.getState();
-    const step = SETTING_LIMITS.restSecondsBetweenSets.step;
-    const start = useSettings.getState().restSecondsBetweenSets;
-
-    bumpNumber('restSecondsBetweenSets', step);
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(start + step);
-
-    for (let i = 0; i < 200; i += 1) bumpNumber('restSecondsBetweenSets', step);
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(
-      SETTING_LIMITS.restSecondsBetweenSets.max,
-    );
-  });
-
-  it('cannot be nudged below its floor', () => {
-    const { bumpNumber } = useSettings.getState();
-    for (let i = 0; i < 200; i += 1) bumpNumber('beepSeconds', -1);
-    expect(useSettings.getState().beepSeconds).toBe(SETTING_LIMITS.beepSeconds.min);
-  });
-
-  it('rejects a bad direct set', () => {
-    useSettings.getState().setNumber('prepareSeconds', NaN);
-    expect(useSettings.getState().prepareSeconds).toBe(DEFAULT_SETTINGS.prepareSeconds);
-  });
-
-  it('currentSettings reads the live values outside React', () => {
-    useSettings.getState().setNumber('restSecondsBetweenSets', 45);
-    expect(currentSettings().restSecondsBetweenSets).toBe(45);
-  });
-
-  it('resets everything, not just the numbers', () => {
-    const s = useSettings.getState();
-    s.setNumber('beepSeconds', 1);
-    s.setFlag('soundEnabled', false);
-    s.setUnitSystem('imperial');
-
-    s.resetToDefaults();
-    expect(currentSettings()).toEqual(DEFAULT_SETTINGS);
+  it('keeps a range this build knows', () => {
+    expect(sanitizeSettings({ tasksTrendRange: 'year' }).tasksTrendRange).toBe('year');
   });
 });
 
-/* ------------------------------------------------------------------ */
-
-/**
- * The bodyweight is the one setting with no default, and that is the point.
- *
- * It is the multiplier on every bodyweight and assisted set the user has ever
- * logged, so a fallback number would quietly invent a year of volume figures.
- * `undefined` is a fact the app acts on: `effectiveLoadKg` returns null, session
- * volume leaves those sets out, and the history line drops its volume clause.
+/*
+ * MOMENTUM'S BLOB. The `settings` key on a phone that ran Momentum 3.0.0's Tasks
+ * app — and the settings in any Momentum backup — carry the training's and the
+ * money's settings beside these. They are read past and dropped; what this app
+ * keeps comes through unchanged.
  */
-describe('the bodyweight', () => {
-  it('is unset by default, and stays unset through a sanitize', () => {
-    expect(DEFAULT_SETTINGS.bodyweightKg).toBeUndefined();
-    expect(sanitizeSettings(undefined).bodyweightKg).toBeUndefined();
-    expect(sanitizeSettings({}).bodyweightKg).toBeUndefined();
+describe('a settings blob written by Momentum', () => {
+  const momentum = {
+    ...DEFAULT_SETTINGS,
+    language: 'en',
+    languageChosen: true,
+    themeId: 'custom',
+    tasksTrendRange: 'quarter',
+    aiCardsDismissed: ['Workout', 'Tasks'],
+    engagement: true,
+    autoBackupFolderUri: 'content://tree/primary%3ADownload',
+    restSecondsBetweenSets: 90,
+    gyms: [{ id: 'g', name: 'Gym', platesKg: [20] }],
+    currencyCode: 'USD',
+    shareToHealthConnect: true,
+    autoTickTasks: false,
+    autoBackupIntervalDays: 7,
+  } as unknown as Partial<Settings>;
+
+  it('keeps every field this app has, under the same name', () => {
+    const clean = sanitizeSettings(momentum);
+    expect(clean).toMatchObject({
+      language: 'en',
+      languageChosen: true,
+      themeId: 'custom',
+      tasksTrendRange: 'quarter',
+      aiCardsDismissed: ['Tasks'],
+      engagement: true,
+      autoBackupFolderUri: 'content://tree/primary%3ADownload',
+    });
   });
 
-  it('is a declared key, so a device that upgraded gets it filled', () => {
-    // Rule 2 of this store: it rehydrates TOTAL. A key missing from
-    // DEFAULT_SETTINGS is a key `merge` never fills.
-    expect(Object.keys(DEFAULT_SETTINGS)).toContain('bodyweightKg');
-  });
-
-  it('holds a real weight inside a believable range', () => {
-    expect(clampBodyweightKg(82)).toBe(82);
-    expect(clampBodyweightKg(82.4)).toBe(82.4);
-    expect(clampBodyweightKg(1)).toBe(BODYWEIGHT_LIMITS.min);
-    expect(clampBodyweightKg(5000)).toBe(BODYWEIGHT_LIMITS.max);
-  });
-
-  it('reads one decimal place, so a pound round-trip is not a paragraph', () => {
-    expect(clampBodyweightKg(82.34567)).toBe(82.3);
-  });
-
-  it('takes a numeric string, because a text field hands one over', () => {
-    expect(clampBodyweightKg('82.5')).toBe(82.5);
-  });
-
-  it('is UNSET rather than defaulted for anything unusable', () => {
-    // Unlike `clampSetting`, which has a number to fall back to. Every one of
-    // these would pass through `Number()` as a finite 0.
-    for (const bad of [undefined, null, NaN, 0, -5, '', '  ', [], false, {}]) {
-      expect(clampBodyweightKg(bad)).toBeUndefined();
+  it('drops the other apps’ settings and the retired ones', () => {
+    const clean = sanitizeSettings(momentum) as unknown as Record<string, unknown>;
+    for (const key of [
+      'restSecondsBetweenSets',
+      'gyms',
+      'currencyCode',
+      'shareToHealthConnect',
+      'autoTickTasks',
+      'autoBackupIntervalDays',
+    ]) {
+      expect(clean, key).not.toHaveProperty(key);
     }
   });
 
-  it('can be set and cleared through the store', () => {
-    useSettings.getState().setBodyweightKg(82);
-    expect(currentSettings().bodyweightKg).toBe(82);
+  it('hydrates from it on disk, under the key Momentum used', async () => {
+    await AsyncStorage.setItem('settings', JSON.stringify({ state: momentum, version: 1 }));
+    await useSettings.persist.rehydrate();
+    const state = useSettings.getState() as unknown as Record<string, unknown>;
+    expect(state.tasksTrendRange).toBe('quarter');
+    expect(state.restSecondsBetweenSets).toBeUndefined();
+    expect(useSettings.persist.hasHydrated()).toBe(true);
+  });
 
-    // Clearing is a real choice: "I would rather the app said nothing than guessed".
-    useSettings.getState().setBodyweightKg(undefined);
-    expect(currentSettings().bodyweightKg).toBeUndefined();
+  it('imports through importSettings without a throw', () => {
+    useSettings.getState().importSettings(momentum);
+    expect(useSettings.getState().language).toBe('en');
   });
 });
 
-/* ------------------------------------------------------------------ */
-
-/**
- * The gym's plates.
- *
- * A fact about the gym rather than about any one lift — which is why the bar
- * weight is on the exercise and this is here. Read only by `platesFor`, and only
- * for an exercise that declares a bar.
- */
-describe('the plate list', () => {
-  it('defaults to what most gyms have, heaviest first', () => {
-    expect(platesInForce(DEFAULT_SETTINGS)).toEqual([25, 20, 15, 10, 5, 2.5, 1.25]);
-  });
-
-  it('sorts and deduplicates whatever comes off disk', () => {
-    // Sorted here so the greedy walk in `platesFor` always gets a canonical list,
-    // and deduplicated because two 20s in the list is one entry written twice, not
-    // two plates in the gym.
-    expect(clampPlates([2.5, 25, 25, 10])).toEqual([25, 10, 2.5]);
-  });
-
-  it('drops entries that are not usable plates', () => {
-    expect(clampPlates([20, 0, -5, NaN, 'heavy', null, 10])).toEqual([20, 10]);
-  });
-
-  it('falls back to the default rather than to an empty list', () => {
-    // `[]` means every target is unreachable, so every plate label silently
-    // disappears — which looks exactly like the feature being broken.
-    for (const bad of [[], undefined, null, 'plates', [0, -1], {}]) {
-      expect(clampPlates(bad)).toEqual(platesInForce(DEFAULT_SETTINGS));
-    }
-  });
-
-  it('caps a corrupt blob at a believable number of sizes', () => {
-    const absurd = Array.from({ length: 500 }, (_, i) => i + 1);
-    expect(clampPlates(absurd)).toHaveLength(16);
-  });
-
-  it('survives a round trip through sanitizeSettings', () => {
-    /*
-     * `availablePlatesKg` is the LEGACY key — every device installed before gyms
-     * existed has one, and it is the plates of the one place they train. It has to
-     * come back as that device's first gym, or the plate label under every barbell
-     * weight changes on update.
-     */
-    expect(platesInForce(sanitizeSettings({ availablePlatesKg: [10, 20] } as never))).toEqual([
-      20, 10,
-    ]);
-    expect(platesInForce(sanitizeSettings(undefined))).toEqual(platesInForce(DEFAULT_SETTINGS));
-  });
-});
-
-/* ------------------------------------------------------------------ */
-
-/**
- * GYMS. One plate list per building, one of them active.
- *
- * The rule that matters is that nothing below `platesInForce` can ever see an empty
- * list or a dangling pointer: a plate label that silently disappears reads as a
- * broken feature rather than as an unset setting.
- */
-describe('gyms', () => {
-  it('migrates a single legacy plate list into one gym, losing nothing', () => {
-    const migrated = sanitizeSettings({ availablePlatesKg: [20, 10, 5] } as never);
-    expect(migrated.gyms).toHaveLength(1);
-    expect(migrated.gyms[0].platesKg).toEqual([20, 10, 5]);
-    expect(platesInForce(migrated)).toEqual([20, 10, 5]);
-  });
-
-  it('ignores the legacy key once a device has gyms of its own', () => {
-    const settings = sanitizeSettings({
-      availablePlatesKg: [20],
-      gyms: [{ id: 'g1', name: 'Home', platesKg: [10, 5] }],
-      activeGymId: 'g1',
-    } as never);
-    expect(settings.gyms).toHaveLength(1);
-    expect(platesInForce(settings)).toEqual([10, 5]);
-  });
-
-  it('resolves an active id that points at nothing', () => {
-    const settings = sanitizeSettings({
-      gyms: [{ id: 'g1', name: 'Home', platesKg: [10] }],
-      activeGymId: 'deleted',
-    } as never);
-    expect(settings.activeGymId).toBe('g1');
-    expect(platesInForce(settings)).toEqual([10]);
-  });
-
-  it('adds a gym seeded from the active one, and switches to it', () => {
-    useSettings.getState().addGym('Hotel');
-    const { gyms, activeGymId } = useSettings.getState();
-    expect(gyms).toHaveLength(2);
-    // Seeded, because a second rack is nearly always the same one minus the heavy
-    // plates — re-picking seven sizes to say that would be the wrong default.
-    expect(gyms[1].platesKg).toEqual(gyms[0].platesKg);
-    expect(activeGymId).toBe(gyms[1].id);
-  });
-
-  it('edits the plates of the ACTIVE gym only', () => {
-    useSettings.getState().addGym('Hotel');
-    const hotelId = useSettings.getState().activeGymId;
-    useSettings.getState().togglePlate(25);
-
-    const { gyms } = useSettings.getState();
-    const home = gyms.find((g) => g.id !== hotelId);
-    const hotel = gyms.find((g) => g.id === hotelId);
-    expect(hotel?.platesKg).not.toContain(25);
-    expect(home?.platesKg).toContain(25);
-  });
-
-  it('refuses to remove the last gym — there is always somewhere you train', () => {
-    const only = useSettings.getState().gyms[0].id;
-    useSettings.getState().removeGym(only);
-    expect(useSettings.getState().gyms).toHaveLength(1);
-  });
-
-  it('moves the active pointer when the active gym is removed', () => {
-    useSettings.getState().addGym('Hotel');
-    const hotelId = useSettings.getState().activeGymId;
-    useSettings.getState().removeGym(hotelId);
-
-    const { gyms, activeGymId } = useSettings.getState();
-    expect(gyms.some((g) => g.id === hotelId)).toBe(false);
-    expect(gyms.some((g) => g.id === activeGymId)).toBe(true);
-    expect(platesInForce(useSettings.getState())).toEqual(gyms[0].platesKg);
-  });
-
-  it('keeps the gyms through Reset settings to defaults', () => {
-    /*
-     * "Reset settings" means the durations and the toggles. It does not mean
-     * deleting the plate lists of three buildings — the button that destroys data
-     * is `Delete all workout history`, and it says so.
-     */
-    useSettings.getState().addGym('Hotel');
-    useSettings.getState().resetToDefaults();
-    expect(useSettings.getState().gyms).toHaveLength(2);
-  });
-});
-
-/* ------------------------------------------------------------------ */
-
-/**
- * AUTOMATIC BACKUP, from the store's side. The decisions are tested in
- * `lib/autoBackup.test.ts`; these are the facts the store has to keep straight.
- */
 describe('the backup stamp', () => {
-  const file = { uri: 'content://f/momentum-backup-2026-09-02.json', day: '2026-09-02' };
+  const file = { uri: 'content://f/momentum-tasks-backup-2026-09-02.json', day: '2026-09-02' };
 
   it('records when a backup landed and which file it is in', () => {
     useSettings.getState().recordBackup('2026-09-02T10:00:00.000Z', file);
@@ -369,181 +148,28 @@ describe('the backup stamp', () => {
     useSettings.getState().setAutoBackupFolder('content://tree/here');
     useSettings.getState().recordBackup('2026-09-02T10:00:00.000Z', file);
     useSettings.getState().resetToDefaults();
+    expect(useSettings.getState().autoBackupFolderUri).toBe('content://tree/here');
     expect(useSettings.getState().autoBackupFile).toEqual(file);
   });
 });
 
-/*
- * THE RETIRED INTERVAL. Every phone that ran 2.5.x has `autoBackupIntervalDays`
- * and `autoBackupUris` in its settings blob, and so does every backup file it
- * wrote. Neither may break hydration or an import — the key is read past and
- * dropped, and the switch and the folder beside it survive.
- */
-describe('settings from a build with the weekly backup', () => {
-  const old = {
-    ...DEFAULT_SETTINGS,
-    autoBackupEnabled: true,
-    autoBackupFolderUri: 'content://tree/primary%3ADownload',
-    autoBackupIntervalDays: 7,
-    autoBackupUris: ['content://tree/primary%3ADownload/workout-tracker-auto-2026-09-01.json'],
-    lastBackupAt: '2026-09-01T10:00:00.000Z',
-  } as unknown as Partial<Settings>;
-
-  it('sanitizes to the current shape, dropping the retired keys', () => {
-    const clean = sanitizeSettings(old) as unknown as Record<string, unknown>;
-    expect(clean).not.toHaveProperty('autoBackupIntervalDays');
-    expect(clean).not.toHaveProperty('autoBackupUris');
-    expect(clean.autoBackupEnabled).toBe(true);
-    expect(clean.autoBackupFolderUri).toBe('content://tree/primary%3ADownload');
-    expect(clean.lastBackupAt).toBe('2026-09-01T10:00:00.000Z');
-    expect(clean.autoBackupFile).toBeUndefined();
+describe('the reset', () => {
+  it('puts the switches and defaults back', () => {
+    useSettings.getState().setTasksTrendRange('year');
+    useSettings.getState().setAutoBackupEnabled(false);
+    useSettings.getState().resetToDefaults();
+    expect(useSettings.getState().tasksTrendRange).toBe('month');
+    expect(useSettings.getState().autoBackupEnabled).toBe(true);
   });
 
-  it('hydrates from the old blob on disk', async () => {
-    await AsyncStorage.setItem('settings', JSON.stringify({ state: old, version: 1 }));
-    await useSettings.persist.rehydrate();
-    const state = useSettings.getState() as unknown as Record<string, unknown>;
-    expect(state.autoBackupFolderUri).toBe('content://tree/primary%3ADownload');
-    expect(state.autoBackupIntervalDays).toBeUndefined();
-    expect(useSettings.persist.hasHydrated()).toBe(true);
-  });
-
-  it('imports through importSettings without a throw', () => {
-    useSettings.getState().importSettings(old);
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(
-      DEFAULT_SETTINGS.restSecondsBetweenSets,
-    );
+  it('keeps the look — appearance is not what "every switch and default" means', () => {
+    useSettings.getState().setCustomColor(0, '#FF0000');
+    useSettings.getState().resetToDefaults();
+    expect(useSettings.getState().themeId).toBe('custom');
   });
 });
 
-/*
- * The one flag that defaults OFF, which makes `!== false` — the test every other
- * flag in `sanitizeSettings` uses — exactly the wrong one for it. A device that
- * upgraded has no such key, and reading that absence as "on" would have it rewrite
- * its whole exercise library on first launch.
- */
-describe('make every exercise a rep ladder', () => {
-  it('is off by default and off when the key is missing', () => {
-    expect(DEFAULT_SETTINGS.ladderAllExercises).toBe(false);
-    expect(sanitizeSettings({}).ladderAllExercises).toBe(false);
-    expect(sanitizeSettings(undefined).ladderAllExercises).toBe(false);
-  });
-
-  it('is on only for a literal true', () => {
-    expect(sanitizeSettings({ ladderAllExercises: true }).ladderAllExercises).toBe(true);
-    for (const value of [1, 'true', {}, []]) {
-      expect(
-        sanitizeSettings({ ladderAllExercises: value } as unknown as Partial<Settings>)
-          .ladderAllExercises,
-      ).toBe(false);
-    }
-  });
-
-  it('round-trips through the store', () => {
-    useSettings.getState().setFlag('ladderAllExercises', true);
-    expect(currentSettings().ladderAllExercises).toBe(true);
-
-    useSettings.getState().setFlag('ladderAllExercises', false);
-    expect(currentSettings().ladderAllExercises).toBe(false);
-  });
-});
-
-/* ------------------------------------------------------------------ */
-
-/**
- * The two sections that are not the training log.
- *
- * Every setting in this store used to belong to a workout, which is why they all
- * sat on one screen. The daily tasks and the expenses have their own now, and the
- * rules worth pinning are the two that can be got wrong silently: a flag that
- * defaults ON must survive a device upgrading from a build that had no such key,
- * and the currency LABEL must never come back empty — a bare number on one screen
- * and a labelled one on another are two totals nobody can compare.
- */
-describe('the daily tasks settings', () => {
-  it('ticks automatically by default, including on a blob that predates the key', () => {
-    expect(DEFAULT_SETTINGS.autoTickTasks).toBe(true);
-    expect(sanitizeSettings({}).autoTickTasks).toBe(true);
-    expect(sanitizeSettings(undefined).autoTickTasks).toBe(true);
-  });
-
-  it('is off only for a literal false', () => {
-    expect(sanitizeSettings({ autoTickTasks: false }).autoTickTasks).toBe(false);
-    expect(
-      sanitizeSettings({ autoTickTasks: 0 } as unknown as Partial<Settings>).autoTickTasks,
-    ).toBe(true);
-  });
-
-  it('round-trips through the store', () => {
-    useSettings.getState().setFlag('autoTickTasks', false);
-    expect(currentSettings().autoTickTasks).toBe(false);
-    useSettings.getState().setFlag('autoTickTasks', true);
-    expect(currentSettings().autoTickTasks).toBe(true);
-  });
-
-  it('falls back to a range this build knows', () => {
-    expect(sanitizeSettings({ tasksTrendRange: 'year' }).tasksTrendRange).toBe('year');
-    expect(
-      sanitizeSettings({ tasksTrendRange: 'fortnight' } as unknown as Partial<Settings>)
-        .tasksTrendRange,
-    ).toBe('month');
-  });
-});
-
-describe('the expenses settings', () => {
-  it('trims, uppercases and caps the currency label', () => {
-    useSettings.getState().setCurrencyCode('  usd ');
-    expect(currentSettings().currencyCode).toBe('USD');
-
-    useSettings.getState().setCurrencyCode('points');
-    expect(currentSettings().currencyCode).toBe('POIN');
-  });
-
-  it('never lands empty — a bare number is not a total anybody can compare', () => {
-    useSettings.getState().setCurrencyCode('   ');
-    expect(currentSettings().currencyCode).toBe('AMD');
-    expect(sanitizeSettings({ currencyCode: '' }).currencyCode).toBe('AMD');
-    expect(
-      sanitizeSettings({ currencyCode: 42 } as unknown as Partial<Settings>).currencyCode,
-    ).toBe('AMD');
-  });
-
-  it('keeps the window and the direction to values the screen can render', () => {
-    expect(sanitizeSettings({ moneyDefaultInterval: 'week' }).moneyDefaultInterval).toBe('week');
-    expect(
-      sanitizeSettings({ moneyDefaultInterval: 'decade' } as unknown as Partial<Settings>)
-        .moneyDefaultInterval,
-      // The DEFAULT, which is the day — the expenses section opens on "what did
-      // I spend today", not on a month total. See `DEFAULT_SETTINGS`.
-    ).toBe('day');
-    expect(sanitizeSettings({ moneyDefaultDirection: 'income' }).moneyDefaultDirection).toBe(
-      'income',
-    );
-    expect(
-      sanitizeSettings({ moneyDefaultDirection: 'both' } as unknown as Partial<Settings>)
-        .moneyDefaultDirection,
-    ).toBe('expense');
-  });
-
-  it('round-trips through the store', () => {
-    useSettings.getState().setMoneyDefaultInterval('day');
-    useSettings.getState().setMoneyDefaultDirection('income');
-    useSettings.getState().setMoneyTrendRange('quarter');
-    expect(currentSettings().moneyDefaultInterval).toBe('day');
-    expect(currentSettings().moneyDefaultDirection).toBe('income');
-    expect(currentSettings().moneyTrendRange).toBe('quarter');
-  });
-});
-
-/**
- * The language and the workout reminder, through the sanitizer.
- *
- * Both are read OUTSIDE React by the reminder scheduler (`useReminders` reads
- * the store directly when the app comes back to the foreground), so a value that
- * rehydrates wrong is an alarm at the wrong hour or on the wrong day, with
- * nothing on any screen to show for it.
- */
-describe('the language and the workout reminder', () => {
+describe('the language', () => {
   it('ships in Russian and falls back to it for anything unreadable', () => {
     expect(DEFAULT_SETTINGS.language).toBe('ru');
     expect(sanitizeSettings({ language: 'en' }).language).toBe('en');
@@ -561,15 +187,14 @@ describe('the language and the workout reminder', () => {
   it('treats an unanswered language as unanswered, however it arrives', () => {
     expect(DEFAULT_SETTINGS.languageChosen).toBe(false);
     expect(sanitizeSettings({}).languageChosen).toBe(false);
-    // A build before the picker stored a language and no flag. Still unanswered.
     expect(sanitizeSettings({ language: 'ru' }).languageChosen).toBe(false);
     expect(sanitizeSettings({ languageChosen: true }).languageChosen).toBe(true);
   });
 
-  it('counts any write of the language as the answer', () => {
+  it('counts any write of the language as the answer, the default included', () => {
     useSettings.setState({ language: 'ru', languageChosen: false });
-    // The РУ / EN toggle in Settings goes through this too — somebody who used
-    // it has plainly chosen, and must not meet the picker on the next launch.
+    useSettings.getState().setLanguage('ru');
+    expect(useSettings.getState().languageChosen).toBe(true);
     useSettings.getState().setLanguage('en');
     expect(useSettings.getState()).toMatchObject({ language: 'en', languageChosen: true });
   });
@@ -577,196 +202,43 @@ describe('the language and the workout reminder', () => {
   /*
    * A reset that defaulted these would flip the app to Russian under somebody
    * who pressed an English button, and then drop them onto the first-launch
-   * picker mid-session. Same carve-out as the gyms and the bodyweight log.
+   * picker mid-session.
    */
   it('keeps the language, and the answer, across a reset to defaults', () => {
-    useSettings.setState({ language: 'en', languageChosen: true, restSecondsBetweenSets: 45 });
+    useSettings.setState({ language: 'en', languageChosen: true, tasksTrendRange: 'week' });
     useSettings.getState().resetToDefaults();
     expect(useSettings.getState()).toMatchObject({ language: 'en', languageChosen: true });
-    // And it really did reset the things it is for.
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(
-      DEFAULT_SETTINGS.restSecondsBetweenSets,
-    );
-  });
-
-  // Even picking the language it already shows: the tap is still an answer.
-  it('counts choosing the default as the answer', () => {
-    useSettings.setState({ language: 'ru', languageChosen: false });
-    useSettings.getState().setLanguage('ru');
-    expect(useSettings.getState().languageChosen).toBe(true);
-  });
-
-  // `=== true`, not `!== false`: a device upgrading from a build with no such
-  // key must not wake up notifying somebody who never asked to be notified.
-  it('keeps the reminder off unless it was explicitly on', () => {
-    expect(DEFAULT_SETTINGS.workoutReminderEnabled).toBe(false);
-    expect(sanitizeSettings({}).workoutReminderEnabled).toBe(false);
-    expect(sanitizeSettings({ workoutReminderEnabled: true }).workoutReminderEnabled).toBe(true);
-  });
-
-  it('drops a weekday nobody could have meant and sorts what is left', () => {
-    expect(
-      sanitizeSettings({ workoutReminderDays: [4, 9, 0, 4, -1] } as unknown as Partial<Settings>)
-        .workoutReminderDays,
-    ).toEqual([0, 4]);
-  });
-
-  it('normalises a legal time and falls back on an illegal one', () => {
-    expect(sanitizeSettings({ workoutReminderTime: '7:05' }).workoutReminderTime).toBe('07:05');
-    expect(sanitizeSettings({ workoutReminderTime: '25:00' }).workoutReminderTime).toBe(
-      DEFAULT_SETTINGS.workoutReminderTime,
-    );
-    expect(
-      sanitizeSettings({ workoutReminderTime: 700 } as unknown as Partial<Settings>)
-        .workoutReminderTime,
-    ).toBe(DEFAULT_SETTINGS.workoutReminderTime);
-  });
-
-  /*
-   * Turning it on with no days picked would arm a reminder that can never fire,
-   * which on screen is a switch that does nothing. Taking the last day away
-   * while it is on is the same state reached from the other side.
-   */
-  it('cannot be armed with no days, from either direction', () => {
-    const s = useSettings.getState();
-    s.setWorkoutReminderEnabled(false);
-    for (const day of [...useSettings.getState().workoutReminderDays]) {
-      s.toggleWorkoutReminderDay(day);
-    }
-    expect(useSettings.getState().workoutReminderDays).toEqual([]);
-
-    s.setWorkoutReminderEnabled(true);
-    expect(useSettings.getState().workoutReminderDays.length).toBeGreaterThan(0);
-    expect(useSettings.getState().workoutReminderEnabled).toBe(true);
-
-    for (const day of [...useSettings.getState().workoutReminderDays]) {
-      s.toggleWorkoutReminderDay(day);
-    }
-    expect(useSettings.getState().workoutReminderEnabled).toBe(false);
+    expect(useSettings.getState().tasksTrendRange).toBe('month');
   });
 });
 
-describe('the assistant cards that were closed (U2)', () => {
-  it('is absent by default and on a blob from 2.2.0, which had no such key', () => {
+describe('the assistant card that was closed (U2)', () => {
+  it('is absent by default and on a blob that never closed it', () => {
     expect(DEFAULT_SETTINGS.aiCardsDismissed).toBeUndefined();
     expect(sanitizeSettings({}).aiCardsDismissed).toBeUndefined();
-    expect(sanitizeSettings(undefined).aiCardsDismissed).toBeUndefined();
-  });
-
-  it('keeps known sections once each and drops anything else', () => {
     expect(
-      sanitizeSettings({
-        aiCardsDismissed: ['Expenses', 'Tasks', 'Tasks', 'Garden'],
-      } as unknown as Partial<Settings>).aiCardsDismissed,
-    ).toEqual(['Tasks', 'Expenses']);
-    expect(
-      sanitizeSettings({ aiCardsDismissed: 'Tasks' } as unknown as Partial<Settings>)
+      sanitizeSettings({ aiCardsDismissed: ['Workout'] } as unknown as Partial<Settings>)
         .aiCardsDismissed,
     ).toBeUndefined();
+    expect(aiCardDismissed(sanitizeSettings({}))).toBe(false);
   });
 
-  it('persists a ✕ per section, and a second ✕ changes nothing', () => {
-    useSettings.getState().dismissAiCard('Tasks');
-    useSettings.getState().dismissAiCard('Tasks');
+  it('is written the way Momentum wrote it, and a second ✕ changes nothing', () => {
+    useSettings.getState().dismissAiCard();
+    useSettings.getState().dismissAiCard();
     expect(currentSettings().aiCardsDismissed).toEqual(['Tasks']);
-    useSettings.getState().dismissAiCard('Workout');
-    expect(currentSettings().aiCardsDismissed).toEqual(['Workout', 'Tasks']);
+    expect(aiCardDismissed(currentSettings())).toBe(true);
   });
 
-  it('survives Reset settings to defaults — a closed card is not a timer', () => {
-    useSettings.getState().dismissAiCard('Expenses');
+  it('survives Reset settings to defaults — a closed card is not a switch', () => {
+    useSettings.getState().dismissAiCard();
     useSettings.getState().resetToDefaults();
-    expect(currentSettings().aiCardsDismissed).toEqual(['Expenses']);
+    expect(aiCardDismissed(currentSettings())).toBe(true);
   });
 });
 
-describe('the weekly review closed this week (X3)', () => {
-  it('is absent by default and on a blob from 2.2.0, which had no such key', () => {
-    expect(DEFAULT_SETTINGS.weeklyReviewDismissed).toBeUndefined();
-    expect(sanitizeSettings({}).weeklyReviewDismissed).toBeUndefined();
-    expect(sanitizeSettings(undefined).weeklyReviewDismissed).toBeUndefined();
-  });
-
-  it('keeps only a real Monday', () => {
-    const keep = (value: unknown) =>
-      sanitizeSettings({ weeklyReviewDismissed: value } as unknown as Partial<Settings>)
-        .weeklyReviewDismissed;
-    expect(keep('2026-10-05')).toBe('2026-10-05');
-    expect(keep('2026-10-06')).toBeUndefined(); // a Tuesday
-    expect(keep('2026-02-30')).toBeUndefined();
-    expect(keep(20261005)).toBeUndefined();
-  });
-
-  it('stamps the Monday of the week it was closed in', () => {
-    useSettings.getState().dismissWeeklyReview('2026-10-08');
-    expect(currentSettings().weeklyReviewDismissed).toBe('2026-10-05');
-    useSettings.getState().dismissWeeklyReview('2027-01-03'); // Sunday, week of 28 Dec
-    expect(currentSettings().weeklyReviewDismissed).toBe('2026-12-28');
-  });
-
-  it('survives Reset settings to defaults', () => {
-    useSettings.getState().dismissWeeklyReview('2026-10-05');
-    useSettings.getState().resetToDefaults();
-    expect(currentSettings().weeklyReviewDismissed).toBe('2026-10-05');
-  });
-});
-
-describe('body measurements (W9)', () => {
-  it('are absent by default and on a blob from 2.2.0, which had no such key', () => {
-    expect(DEFAULT_SETTINGS.bodyMeasurements).toBeUndefined();
-    expect(sanitizeSettings({}).bodyMeasurements).toBeUndefined();
-    expect(sanitizeSettings(undefined).bodyMeasurements).toBeUndefined();
-  });
-
-  it('go through the sanitizer on the way in', () => {
-    const raw = {
-      bodyMeasurements: {
-        waist: [
-          { day: '2026-10-05', cm: 82.5 },
-          { day: 'nope', cm: 80 },
-        ],
-        tail: [{ day: '2026-10-05', cm: 30 }],
-      },
-    } as unknown as Partial<Settings>;
-    expect(sanitizeSettings(raw).bodyMeasurements).toEqual({
-      waist: [{ day: '2026-10-05', cm: 82.5 }],
-    });
-    expect(
-      sanitizeSettings({ bodyMeasurements: 'junk' } as unknown as Partial<Settings>)
-        .bodyMeasurements,
-    ).toBeUndefined();
-  });
-
-  it('record, replace on the same day, and go absent when the last one is removed', () => {
-    useSettings.getState().recordMeasurement('waist', '2026-10-05', 83);
-    useSettings.getState().recordMeasurement('waist', '2026-10-05', 82.5);
-    expect(currentSettings().bodyMeasurements).toEqual({
-      waist: [{ day: '2026-10-05', cm: 82.5 }],
-    });
-    useSettings.getState().removeMeasurement('waist', '2026-10-05');
-    expect(currentSettings().bodyMeasurements).toBeUndefined();
-  });
-
-  it('do not touch the bodyweight log, and it does not touch them', () => {
-    useSettings.getState().setBodyweightKg(80);
-    useSettings.getState().recordMeasurement('arm', '2026-10-05', 37);
-    expect(currentSettings().bodyweightKg).toBe(80);
-    expect(currentSettings().bodyweightLog).toHaveLength(1);
-    useSettings.getState().setBodyweightKg(undefined);
-    expect(currentSettings().bodyMeasurements?.arm).toHaveLength(1);
-  });
-
-  it('survive Reset settings to defaults — a record is not a duration', () => {
-    useSettings.getState().recordMeasurement('chest', '2026-10-05', 103);
-    useSettings.getState().resetToDefaults();
-    expect(currentSettings().bodyMeasurements).toEqual({
-      chest: [{ day: '2026-10-05', cm: 103 }],
-    });
-  });
-});
-
-describe('the engagement switch (Wave 3)', () => {
-  it('is off by default and on a 2.2.0 blob, which had no such key', () => {
+describe('the engagement switch', () => {
+  it('is off by default and on a blob with no such key', () => {
     expect(DEFAULT_SETTINGS.engagement).toBeUndefined();
     expect(sanitizeSettings({}).engagement).toBeUndefined();
     expect(sanitizeSettings(undefined).engagement).toBeUndefined();
@@ -793,84 +265,5 @@ describe('the engagement switch (Wave 3)', () => {
     useSettings.getState().setEngagement(true);
     useSettings.getState().resetToDefaults();
     expect(currentSettings().engagement).toBeUndefined();
-  });
-});
-
-describe('the milestone stamp (E4)', () => {
-  it('is absent by default and on a 2.2.0 blob', () => {
-    expect(DEFAULT_SETTINGS.milestoneShown).toBeUndefined();
-    expect(sanitizeSettings({}).milestoneShown).toBeUndefined();
-  });
-
-  it('keeps only a real milestone', () => {
-    expect(sanitizeSettings({ milestoneShown: 100 }).milestoneShown).toBe(100);
-    for (const junk of [99, '100', -1, null]) {
-      expect(
-        sanitizeSettings({ milestoneShown: junk } as unknown as Partial<Settings>).milestoneShown,
-      ).toBeUndefined();
-    }
-  });
-
-  it('records upward only', () => {
-    useSettings.getState().recordMilestone(100);
-    expect(currentSettings().milestoneShown).toBe(100);
-    useSettings.getState().recordMilestone(50);
-    expect(currentSettings().milestoneShown).toBe(100);
-    useSettings.getState().recordMilestone(99);
-    expect(currentSettings().milestoneShown).toBe(100);
-    useSettings.getState().recordMilestone(250);
-    expect(currentSettings().milestoneShown).toBe(250);
-  });
-
-  it('survives Reset every setting — a celebration is not a switch', () => {
-    useSettings.getState().recordMilestone(100);
-    useSettings.getState().resetToDefaults();
-    expect(currentSettings().milestoneShown).toBe(100);
-  });
-});
-
-describe('the weekly training goal (W8)', () => {
-  it('is absent by default and on a blob from 2.2.0, which had neither key', () => {
-    expect(DEFAULT_SETTINGS.weeklyWorkoutGoal).toBeUndefined();
-    expect(DEFAULT_SETTINGS.excusedWeeks).toBeUndefined();
-    expect(sanitizeSettings({}).weeklyWorkoutGoal).toBeUndefined();
-    expect(sanitizeSettings(undefined).excusedWeeks).toBeUndefined();
-  });
-
-  it('goes through the sanitizer on the way in', () => {
-    const raw = {
-      weeklyWorkoutGoal: 12,
-      excusedWeeks: ['2026-10-05', '2026-10-06', '2026-10-05'],
-    } as unknown as Partial<Settings>;
-    expect(sanitizeSettings(raw).weeklyWorkoutGoal).toBe(7);
-    expect(sanitizeSettings(raw).excusedWeeks).toEqual(['2026-10-05']);
-    expect(
-      sanitizeSettings({ weeklyWorkoutGoal: 'three' } as unknown as Partial<Settings>)
-        .weeklyWorkoutGoal,
-    ).toBeUndefined();
-  });
-
-  it('steps the goal from three, inside 1–7', () => {
-    useSettings.getState().stepWeeklyWorkoutGoal(1);
-    expect(currentSettings().weeklyWorkoutGoal).toBe(4);
-    for (let i = 0; i < 10; i += 1) useSettings.getState().stepWeeklyWorkoutGoal(-1);
-    expect(currentSettings().weeklyWorkoutGoal).toBe(1);
-  });
-
-  it('excuses this week and un-excuses it; a week ahead is refused', () => {
-    useSettings.getState().setWeekExcused('2026-10-08', true, '2026-10-08');
-    expect(currentSettings().excusedWeeks).toEqual(['2026-10-05']);
-    useSettings.getState().setWeekExcused('2026-10-15', true, '2026-10-08');
-    expect(currentSettings().excusedWeeks).toEqual(['2026-10-05']);
-    useSettings.getState().setWeekExcused('2026-10-05', false, '2026-10-08');
-    expect(currentSettings().excusedWeeks).toBeUndefined();
-  });
-
-  it('Reset puts the goal back to three and keeps the excused weeks', () => {
-    useSettings.getState().stepWeeklyWorkoutGoal(2);
-    useSettings.getState().setWeekExcused('2026-10-08', true, '2026-10-08');
-    useSettings.getState().resetToDefaults();
-    expect(currentSettings().weeklyWorkoutGoal).toBeUndefined();
-    expect(currentSettings().excusedWeeks).toEqual(['2026-10-05']);
   });
 });

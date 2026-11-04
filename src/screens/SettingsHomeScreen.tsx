@@ -10,9 +10,9 @@
  *   │ │          [▓▓ …     ] [▓▓ …      ]        │ │
  *   │ │ Custom · pick your own three   ● ● ●     │ │
  *   │ └──────────────────────────────────────────┘ │
- *   │ WORKOUT                                      │  ← this app's section
+ *   │ TASKS                                        │
  *   │ ┌──────────────────────────────────────────┐ │
- *   │ │ ▣ Workout settings                     › │ │
+ *   │ │ ▣ Daily tasks settings                 › │ │
  *   │ └──────────────────────────────────────────┘ │
  *   │ AI · EVERYTHING, IN ONE FILE · reset         │
  *   └──────────────────────────────────────────────┘
@@ -26,25 +26,18 @@
  * the whole app, and a picker that wrote per tap would close itself under the
  * thumb. The theme names are data in `lib/theme.ts` and go through `t()` here.
  *
- * ── ONE SECTION ROW, AND WHY IT IS THE WHOLE STRUCTURE ────────────────────
+ * ── THE TASKS' OWN ROW ────────────────────────────────────────────────────
  *
- * Settings used to be one scroll holding every log's preferences in whatever
- * order they were added, so the rest step and the plate list sat between the
- * user and anything about their money. A row per section fixed that: "where do
- * I change this" got the same answer as "which part of the app is it about".
- *
- * Since 3.0.0 each APK is ONE log (`lib/appVariant.ts`), so this screen leads
- * with that log's row and no other — `settingsRoutes` in `lib/discoverability`
- * and the copy in `lib/settingsScope.ts` decide which, by variant. The Workout
- * app still holds the 2.x tasks and money and their settings; they are not
- * offered here, and not deleted either. Everything below the row is shared by
- * all three apps: the assistant's key, the game layer, the backup, the reset.
+ * The settings that shape the tasks (the vacation pause, the history's range)
+ * live on their own screen, behind one row here — the same screen the foot of
+ * the history leads to. Everything below the row is about the whole app: the
+ * assistant's key, the game layer, the backup, the reset.
  *
  * ── AND ONE OF EACH, UNDERNEATH ────────────────────────────────────────────
  *
- * There were eight data rows across this screen and three more elsewhere: a
- * whole-phone export, a CSV export, a replace, a merge, a CSV import, and an
- * export-and-import pair for each of the three sections. Every one of them
+ * There used to be eight data rows across this screen and more elsewhere: a
+ * whole-phone export, CSV exports, a replace, a merge, a CSV import, and an
+ * export-and-import pair per section. Every one of them
  * worked. Together they made the one that matters — everything, out to a file
  * you can read — just another row in a list of things to be careful about, and a
  * backup you have to choose between is a backup you put off.
@@ -52,27 +45,18 @@
  * So: one file holds the log and the settings. `Export everything` writes it,
  * `Replace everything from a file` reads it back, and `Reset every setting` puts
  * the preferences back to their defaults WITHOUT touching a single logged row.
- * The reset is here rather than in the section because it also resets the
- * shared ones — and, in a split app, it leaves every OTHER section's settings
- * exactly as they were (`settingsStore.resetToDefaults(variant)`).
- *
- * ONE QUIET ROW MORE, for spreadsheets (M7): `Export a spreadsheet (CSV)` opens
- * a sheet offering this app's log (`csvExports`: the workouts, or the amounts;
- * the Tasks app has no CSV and so no row). One row and a sheet rather than a row
- * per log, so the data card still reads as one export, one import; muted rather
- * than green, because it is a way to READ the log in a spreadsheet, not a way to
- * keep it — a CSV restores nothing, and there is no CSV import (`lib/csv.ts`).
+ * The reset is here rather than on the tasks' screen because it also resets the
+ * shared ones.
  *
  * The automatic backup stays, above them, because it is not an export — it is the
  * thing that makes remembering to export optional, and `lib/backup.ts` is right
  * that protection depending on the user's memory of a menu is not protection.
  *
- * ── ONE SWITCH FOR THE GAME LAYER (Wave 3) ────────────────────────────────
+ * ── ONE SWITCH FOR THE GAME LAYER ─────────────────────────────────────────
  *
  * `Achievements and levels` sits under the assistant, off by default, as one
  * switch rather than one per piece (`lib/engagement.ts` has the argument). It
- * is here and not in the section because it is about the whole app, not one of
- * its settings screens. The badge gallery's door appears under it only while it
+ * is here and not on the tasks' screen because it is about the whole app. The badge gallery's door appears under it only while it
  * is on.
  *
  * ── AND THE LANGUAGE IS IN THE CORNER, NOT IN A ROW ────────────────────────
@@ -81,8 +65,8 @@
  * read the screen it is on. A row saying `Язык` is invisible to exactly the
  * person who needs it, and so is one saying `Language`. Two letters in the
  * corner, each in its own script, are legible either way — and they are in the
- * corner rather than in the list because the corner is the same place on every
- * section root, which is where somebody who cannot read the app will look.
+ * corner rather than in the list because the corner is the same place on both
+ * roots, which is where somebody who cannot read the app will look.
  */
 
 import { useState } from 'react';
@@ -96,7 +80,6 @@ import { ConfirmSheet } from '../components/ConfirmSheet';
 import { Icon } from '../components/Icon';
 import { MaterialSymbol, type SymbolName } from '../components/MaterialSymbol';
 import { FADE_ON, RunningText } from '../components/RunningText';
-import { Sheet } from '../components/Sheet';
 import { LanguageToggle, SectionTopBar } from '../components/SectionTopBar';
 import { BubblePressable } from '../components/bubbles';
 import {
@@ -117,7 +100,7 @@ import {
 } from '../components/primitives';
 import { LevelSheet } from '../components/LevelSheet';
 import { useBadges, useLevel } from '../hooks/useEngagement';
-import { formatValue } from '../lib/money';
+import { formatWhole } from '../lib/formatNumber';
 import { describeNextLevel } from '../lib/xp';
 import { describeGallery } from '../lib/achievements';
 import { engagementOn, engagementView } from '../lib/engagement';
@@ -138,29 +121,11 @@ import {
   pickFolder,
   pickJsonFile,
   readTextFile,
-  saveCsvFile,
 } from '../lib/backupFile';
-import { csvBaseName } from '../lib/csv';
-import { APP_VARIANT } from '../lib/appVariant';
-import { settingsRoutes, type SectionSettingsRoute } from '../lib/discoverability';
-import {
-  backupHoldsNote,
-  csvExports,
-  replaceNote,
-  resetConfirmBody,
-  resetNote,
-  sectionRowCopy,
-  type CsvKind,
-} from '../lib/settingsScope';
 import { useLanguage, useT } from '../hooks/useT';
 import { commit, tap } from '../lib/feedback';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_NAMES, type Language } from '../lib/i18n';
-import {
-  applyBackup,
-  currentSnapshot,
-  exportCsvText,
-  restorableCounts,
-} from '../state/dataTransfer';
+import { applyBackup, restorableCounts } from '../state/dataTransfer';
 import { SuccessPopup } from '../components/SuccessPopup';
 import { useSettings } from '../state/settingsStore';
 import { THEME_PRESETS, themeColors, themeName, type ThemePreset } from '../lib/theme';
@@ -184,59 +149,36 @@ interface Status {
  *
  * Read at the moment it is needed rather than subscribed to: it is only ever used
  * inside a sentence about something the user just did, and a count that re-rendered
- * this screen on every logged set would be a subscription bought for nothing.
- *
- * Two countings, because a backup and a restore no longer cover the same ground:
- * the Workout app's file still carries the 2.x tasks and money (`backupSlices`),
- * but a restore replaces only this app's own section. "Backed up …" counts what
- * went into the file; "This phone has …, and all of it goes" counts only what
- * the import would actually replace.
+ * this screen on every tick would be a subscription bought for nothing.
  */
 function onThisPhone(): BackupCounts {
-  return countPayload(currentSnapshot());
+  return restorableCounts();
 }
 
-function replacedByImport(): BackupCounts {
-  return restorableCounts(APP_VARIANT);
-}
-
-/** Each section's settings row: its label and the nav bar's own glyph for it. */
-const SECTION_ROW: Record<SectionSettingsRoute, { label: string; symbol: SymbolName }> = {
-  workoutSettings: { label: 'Workout settings', symbol: 'fitness_center' },
-  taskSettings: { label: 'Daily tasks settings', symbol: 'task_alt' },
-  moneySettings: { label: 'Finance settings', symbol: 'account_balance_wallet' },
-};
-
-/** The CSV sheet's rows, drawn only for the kinds this app offers. */
-const CSV_ROW: Record<CsvKind, { label: string; detail: string }> = {
-  amounts: {
-    label: 'Export amounts (CSV)',
-    detail: 'One row per amount, transfers included.',
-  },
-  workouts: {
-    label: 'Export workouts (CSV)',
-    detail: 'One row per set, warm-ups marked.',
-  },
-};
+/** What a backup holds, said under the backup rows. */
+const BACKUP_HOLDS =
+  'A backup is plain JSON, so you can read it, keep it anywhere, and move it to another phone. It holds your daily tasks and every setting.';
+/** The sentence after `Replace everything`. */
+const REPLACE_NOTE =
+  'makes this app look like the file, so export first if there is anything here you would miss. A backup from the Workout app or from Momentum 2.x carries every section; this app reads its own part of it.';
+/** The sentence after `Reset every setting`. */
+const RESET_NOTE =
+  'puts this app’s settings back to their defaults at once. It does not touch a single thing you have logged — not a task, not an answered day.';
+/** The reset's confirmation. */
+const RESET_CONFIRM =
+  'Every switch and default in this app goes back to how it shipped. Your tasks and every answered day are untouched.';
 
 interface SettingsHomeScreenProps {
-  /**
-   * All three stay in the props so one shell can wire every app the same way;
-   * only the one `settingsRoutes(APP_VARIANT)` names is ever drawn.
-   */
-  onOpenWorkoutSettings: () => void;
+  /** `Daily tasks settings` — the pause and the history's range. */
   onOpenTaskSettings: () => void;
-  onOpenMoneySettings: () => void;
   /** `AI assistant` — the key, the model, the test. */
   onOpenAiSettings: () => void;
-  /** E1: the badge gallery. Only reachable while the Wave 3 switch is on. */
+  /** E1: the badge gallery. Only reachable while the engagement switch is on. */
   onOpenAchievements: () => void;
 }
 
 export function SettingsHomeScreen({
-  onOpenWorkoutSettings,
   onOpenTaskSettings,
-  onOpenMoneySettings,
   onOpenAiSettings,
   onOpenAchievements,
 }: SettingsHomeScreenProps) {
@@ -244,13 +186,6 @@ export function SettingsHomeScreen({
   const t = useT();
   const language = useLanguage();
   const bars = useBarInsets();
-  const open: Record<SectionSettingsRoute, () => void> = {
-    workoutSettings: onOpenWorkoutSettings,
-    taskSettings: onOpenTaskSettings,
-    moneySettings: onOpenMoneySettings,
-  };
-  const rowCopy = sectionRowCopy(APP_VARIANT);
-  const csvKinds = csvExports(APP_VARIANT);
 
   const [status, setStatus] = useState<Status | null>(null);
   /**
@@ -272,8 +207,6 @@ export function SettingsHomeScreen({
   const level = useLevel();
   /** Which of Custom's three dots has its picker open. */
   const [picking, setPicking] = useState<0 | 1 | 2 | null>(null);
-  /** The two spreadsheet exports' sheet. */
-  const [choosingCsv, setChoosingCsv] = useState(false);
   /** A picker is open or a file is being read. Stops a second tap racing it. */
   const [busy, setBusy] = useState(false);
 
@@ -282,7 +215,7 @@ export function SettingsHomeScreen({
    *
    * Both used to be different: the export opened the folder picker on every tap
    * and wrote a new timestamped file each time. Now there is one backup file
-   * (`momentum-backup-<day>.json`, `lib/autoBackup.ts`) and one place it goes, so
+   * (`momentum-tasks-backup-<day>.json`, `lib/autoBackup.ts`) and one place it goes, so
    * both buttons write that file straight away through `runBackupNow`, the path
    * the automatic backup uses.
    *
@@ -382,38 +315,6 @@ export function SettingsHomeScreen({
   };
 
   /**
-   * A SPREADSHEET — one log as CSV (`lib/csv.ts`), through the folder picker.
-   *
-   * Not a backup, so none of the backup's bookkeeping: the picker every time
-   * rather than the granted folder, no replacing earlier files, no `lastBackupAt`, no adopting the folder for automatic copies. Saying
-   * "backed up" over a file that cannot be restored would be the one lie this
-   * screen must not tell.
-   */
-  const exportCsv = async (kind: CsvKind) => {
-    setChoosingCsv(false);
-    if (busy) return;
-    tap();
-    setBusy(true);
-    setStatus(null);
-    try {
-      const outcome = await saveCsvFile(csvBaseName(kind), exportCsvText(kind), language);
-      if (!outcome.saved) {
-        setStatus({ tone: 'quiet', text: t('No folder picked, so nothing was saved.') });
-        return;
-      }
-      commit();
-      succeed(
-        t('Export successful'),
-        t('Saved {name} to {where}.', { name: outcome.name, where: outcome.where }),
-      );
-    } catch (error) {
-      setStatus({ tone: 'quiet', text: describeError(error, language) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  /**
    * IMPORT — the phone's own file browser, then a question.
    *
    * Reading the file and APPLYING it are deliberately two steps: this is the only
@@ -469,7 +370,7 @@ export function SettingsHomeScreen({
     );
   };
 
-  const asking = pending != null || confirmingReset || picking != null || choosingCsv;
+  const asking = pending != null || confirmingReset || picking != null;
 
   return (
     <View className="flex-1 bg-bg">
@@ -557,34 +458,26 @@ export function SettingsHomeScreen({
             )}
           </Text>
 
-          <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t(rowCopy.kicker)}</Kicker>
-          {/* The row that IS the app, behind its section's mark — the same
-              Material Symbol the nav bar draws for it. One since 3.0.0: the
-              other two sections are other apps (`settingsRoutes`). Still a
-              list, split by hairlines inset 68 so they start where the words
-              do, in case a variant ever has more than one. */}
+          <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Tasks')}</Kicker>
+          {/* The tasks' own settings, behind the same Material Symbol the nav
+              bar draws for them. */}
           <GlassSurface tier="card" radius={radius.row} shadow="e1" flat className="mx-lg">
-            {settingsRoutes(APP_VARIANT).map((route, index) => (
-              <View key={route}>
-                {index > 0 ? <View className="ml-[68px] h-hairline bg-hairline" /> : null}
-                <SectionRow
-                  label={t(SECTION_ROW[route].label)}
-                  hint={t(rowCopy.hint)}
-                  symbol={SECTION_ROW[route].symbol}
-                  onPress={open[route]}
-                />
-              </View>
-            ))}
+            <SectionRow
+              label={t('Daily tasks settings')}
+              hint={t('Vacation pause, history range')}
+              symbol="task_alt"
+              onPress={onOpenTaskSettings}
+            />
           </GlassSurface>
 
-          {/* THE ASSISTANT, between the section it reads and the general
+          {/* THE ASSISTANT, between the tasks it reads and the general
               block. One row, whose second line is the one fact about it that
               matters — whether a key has passed its test — and a lit dot when
               it has. */}
           <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('AI')}</Kicker>
           <AiSettingsRow onPress={onOpenAiSettings} />
 
-          {/* WAVE 3's ONE SWITCH (lib/engagement.ts), off by default. Off, the
+          {/* THE GAME LAYER'S ONE SWITCH (lib/engagement.ts), off by default. Off, the
               card is this one row and nothing else in the app changes; on, the
               doors to what it turned on open underneath it. */}
           <Kicker className="mx-lg mb-kicker-gap mt-kicker">{t('Achievements and levels')}</Kicker>
@@ -684,21 +577,6 @@ export function SettingsHomeScreen({
               tone="green"
               onPress={() => void importEverything()}
             />
-            <Separator inset={0} />
-            {/* Muted: a way to READ the log elsewhere, not a way to keep it.
-                Absent in an app whose log has no spreadsheet (`csvExports`). */}
-            {csvKinds.length > 0 ? (
-              <>
-                <TextButton
-                  label={t('Export a spreadsheet (CSV)')}
-                  onPress={() => {
-                    tap();
-                    setChoosingCsv(true);
-                  }}
-                />
-                <Separator inset={0} />
-              </>
-            ) : null}
           </GlassSurface>
 
           {status ? (
@@ -713,15 +591,15 @@ export function SettingsHomeScreen({
           ) : null}
 
           <Text className="mx-lg mt-md text-label text-ink-faint">
-            {t(backupHoldsNote(APP_VARIANT))}{' '}
+            {t(BACKUP_HOLDS)}{' '}
             {t('Your AI chats and past chats travel with it too; the AI key never does.')}{' '}
             <Text className="text-ink-muted">{t('Replace everything')}</Text>{' '}
-            {t(replaceNote(APP_VARIANT))}
+            {t(REPLACE_NOTE)}
           </Text>
 
           <Text className="mx-lg mt-md text-label text-ink-faint">
             <Text className="text-ink-muted">{t('Reset every setting')}</Text>{' '}
-            {t(resetNote(APP_VARIANT))}
+            {t(RESET_NOTE)}
           </Text>
 
           {/* THE FOOT OF THE SCREEN (U19): the one action here that cannot be
@@ -773,7 +651,7 @@ export function SettingsHomeScreen({
               counts: describeCounts(pending.counts, language),
             }),
             t('This phone has {counts}, and all of it goes.', {
-              counts: describeCounts(replacedByImport(), language),
+              counts: describeCounts(onThisPhone(), language),
             }),
             t('This cannot be undone.'),
           ].join(' ')}
@@ -788,41 +666,16 @@ export function SettingsHomeScreen({
         <ConfirmSheet
           tone="danger"
           title={t('Reset every setting?')}
-          body={t(resetConfirmBody(APP_VARIANT))}
+          body={t(RESET_CONFIRM)}
           confirmLabel={t('Reset settings')}
           cancelLabel={t('Keep mine')}
           onConfirm={() => {
-            // This app's settings and the shared ones; another section's,
-            // hidden here, are kept (`sectionSettingsKept`).
-            settings.resetToDefaults(APP_VARIANT);
+            settings.resetToDefaults();
             setConfirmingReset(false);
             setStatus({ tone: 'ok', text: t('Every setting is back to its default.') });
           }}
           onCancel={() => setConfirmingReset(false)}
         />
-      ) : null}
-
-      {choosingCsv ? (
-        <Sheet title={t('Export as a spreadsheet')} onDismiss={() => setChoosingCsv(false)}>
-          <View className="overflow-hidden rounded-surface bg-surface-alt">
-            {csvKinds.map((kind, index) => (
-              <View key={kind}>
-                {index > 0 ? <Separator inset={16} /> : null}
-                <ExportRow
-                  label={t(CSV_ROW[kind].label)}
-                  detail={t(CSV_ROW[kind].detail)}
-                  onPress={() => void exportCsv(kind)}
-                />
-              </View>
-            ))}
-          </View>
-          <Text className="mx-xs mt-md text-label text-ink-faint">
-            {t(
-              'A spreadsheet export is for reading a log in Excel or Google Sheets. It is not a backup and cannot be read back in — only the JSON file restores.',
-            )}
-          </Text>
-          <TextButton label={t('Cancel')} onPress={() => setChoosingCsv(false)} />
-        </Sheet>
       ) : null}
 
       {picking != null ? (
@@ -1200,7 +1053,7 @@ function EngagementCard({
           <Separator inset={0} />
           <SectionRow
             label={t('Level {n}', { n: level.progress.level })}
-            hint={`${formatValue(level.progress.xp)} ${describeNextLevel(level.progress, lang)}`}
+            hint={`${formatWhole(level.progress.xp)} ${describeNextLevel(level.progress, lang)}`}
             symbol="center_focus_strong"
             onPress={onOpenLevel}
           />

@@ -1,35 +1,34 @@
 /**
- * The engagement layer's one switch (Wave 3): "Achievements and levels", in
- * Settings, OFF by default (IMPLEMENTATION_DECISIONS row 6).
+ * The engagement layer's one switch: "Achievements and levels", in Settings,
+ * OFF by default.
  *
- * Everything Wave 3 adds — the badges, the level chip, the streak freezes, the
- * milestone card on the Finish sheet — is behind this one flag, and the flag is
+ * Everything the layer adds — the badges, the level, the streak freezes — is
+ * behind this one flag, and the flag is
  * read in ONE place: `engagementView` below says, for a given switch position,
  * which of those pieces may appear. A screen asks it rather than testing the
  * flag itself, so "with the switch off the app is exactly as it was" is one
- * function with one test, not a promise spread across five screens.
+ * function with one test, not a promise spread across several screens.
  *
- * ── WHY ONE SWITCH AND NOT FOUR ────────────────────────────────────────────
+ * ── WHY ONE SWITCH AND NOT THREE ───────────────────────────────────────────
  *
  * The design philosophy is that nothing here keeps score of a person who did not
- * ask it to (ROADMAP §1). Four switches would make each piece a decision the user
+ * ask it to. Three switches would make each piece a decision the user
  * has to understand before they know whether they want any of it; one switch is
  * one question — "do you want the game layer?" — and the answer covers all of it.
  * Rejected: on by default with an off switch (the app would start scoring people
- * who never asked), and a per-section switch (badges for training but not money
- * is a distinction nobody has asked for).
+ * who never asked).
  *
  * ── WHAT IT STORES ─────────────────────────────────────────────────────────
  *
- * `settings.engagement`, an OPTIONAL `true`: absent is off, which is what a 2.2.0
- * phone and its backups say without knowing the key exists. Nothing the layer
- * shows is stored — badges and XP are worked out from the logs every time
+ * `settings.engagement`, an OPTIONAL `true`: absent is off, which is what an old
+ * blob or backup says without knowing the key exists. Nothing the layer shows
+ * is stored — badges and XP are worked out from the log every time
  * (`lib/achievements.ts`, `lib/xp.ts`) — so switching it off and on again loses
  * nothing, and switching it on for the first time a year in shows a year of
  * badges.
  */
 
-/** Off. A 2.2.0 phone, a fresh install, and a reset all read this. */
+/** Off. An old blob, a fresh install, and a reset all read this. */
 export const ENGAGEMENT_DEFAULT = false;
 
 /** The stored flag, read: only a literal `true` is on. */
@@ -42,18 +41,16 @@ export function usableEngagement(value: unknown): true | undefined {
   return value === true ? true : undefined;
 }
 
-/** Which of Wave 3's pieces may appear. All false with the switch off. */
+/** Which of the layer's pieces may appear. All false with the switch off. */
 export interface EngagementView {
   /** The `Badges` door in Settings and the achievements gallery (E1). */
   badges: boolean;
-  /** The level chip beside the Landing greeting and its sheet (E2). */
+  /** The level row in Settings and its sheet (E2). */
   level: boolean;
   /** Streak freezes: the overlay on the streak, the ❄ on the flame, its sheet (E3). */
   freezes: boolean;
-  /** The one-time milestone card on the Finish sheet (E4). */
-  milestones: boolean;
 }
 
 export function engagementView(on: boolean): EngagementView {
-  return { badges: on, level: on, freezes: on, milestones: on };
+  return { badges: on, level: on, freezes: on };
 }

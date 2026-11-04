@@ -41,39 +41,19 @@ import {
   uriFileName,
   type BackupFileRecord,
 } from './autoBackup';
-import { APP_VARIANT, type AppVariant } from './appVariant';
 import { dayKey } from './days';
 import { t, type Language } from './i18n';
 
 /**
- * The backup's type.
- *
- * `saveTextFile` takes the type as a parameter rather than closing over it, because
- * the MIME type is what SAF derives the EXTENSION from — a file written under the
- * wrong one arrives with the wrong suffix holding the right bytes, and every tool
- * that opens it is then wrong about what it is. The CSV exports are the second
- * caller.
+ * The backup's type. The MIME type is what SAF derives the EXTENSION from — a
+ * file written under the wrong one arrives with the wrong suffix holding the
+ * right bytes, and every tool that opens it is then wrong about what it is.
  */
 const JSON_MIME = 'application/json';
-
-/** The spreadsheet exports (`lib/csv.ts`). SAF appends `.csv` from this. */
-const CSV_MIME = 'text/csv';
 
 /** Can this platform show a folder picker at all? SAF is Android-only. */
 function canPickFolder(): boolean {
   return Platform.OS === 'android' && FileSystem.StorageAccessFramework != null;
-}
-
-/**
- * The app's own documents directory, as a fallback destination.
- *
- * Reachable by the app and nobody else, which makes it a weak backup — it dies with
- * an uninstall. It exists so that "export" still produces a file on a platform with
- * no picker, and so the path can be shown to a user who wants to pull it off with
- * `adb` or a desktop file browser.
- */
-function appFolderUri(): string | null {
-  return FileSystem.documentDirectory ?? null;
 }
 
 /** The name a SAF URI ends in, decoded: `...%2FDownload%2Fbackup.json` → `backup.json`. */
@@ -193,9 +173,9 @@ export async function overwriteFile(uri: string, contents: string): Promise<void
 
 /**
  * Write the day's backup into the granted folder: overwrite today's file, or
- * create today's and retire the old one. Decisions in `lib/autoBackup.ts`, made
- * for `variant` — this app's name, and only this app's files retired, because
- * the other two apps are usually writing into the same folder.
+ * create today's and retire the old one. Decisions in `lib/autoBackup.ts` —
+ * this app's name, and only this app's files retired, because the other
+ * Momentum apps are usually writing into the same folder.
  *
  *   overwrite ok                 → done, same URI
  *   overwrite fails (file gone,  → create a new file, then delete the old URI
@@ -210,10 +190,9 @@ export async function writeDailyBackup(
   current: BackupFileRecord | undefined,
   contents: string,
   now: Date = new Date(),
-  variant: AppVariant = APP_VARIANT,
 ): Promise<{ name: string; file: BackupFileRecord }> {
   const today = dayKey(now);
-  const plan = planBackupWrite(current, today, variant);
+  const plan = planBackupWrite(current, today);
   if (plan.kind === 'overwrite') {
     try {
       await overwriteFile(plan.uri, contents);
@@ -223,8 +202,8 @@ export async function writeDailyBackup(
     }
   }
   const replaces = plan.kind === 'overwrite' ? plan.uri : plan.replaces;
-  const { name, uri } = await writeToFolder(folderUri, backupFileBaseName(now, variant), contents);
-  for (const old of backupFilesToRetire(await listFolder(folderUri), uri, replaces, variant)) {
+  const { name, uri } = await writeToFolder(folderUri, backupFileBaseName(now), contents);
+  for (const old of backupFilesToRetire(await listFolder(folderUri), uri, replaces)) {
     await deleteFile(old);
   }
   return { name, file: { uri, day: today } };
@@ -234,7 +213,7 @@ export async function writeDailyBackup(
  * Delete one file by URI. Best-effort: a `false` is not worth reporting.
  *
  * Used only by the backup's daily replacement, and only on files with this
- * app's own backup name (`momentum-<app>-backup-*`), which it wrote itself. A delete that fails leaves one extra copy in a
+ * app's own backup name (`momentum-tasks-backup-*`), which it wrote itself. A delete that fails leaves one extra copy in a
  * folder, which is the mildest possible failure — so it is swallowed rather than
  * surfaced, and the next day's sweep will try the same file again.
  */
@@ -249,68 +228,6 @@ export async function deleteFile(uri: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** Write into the app's own documents directory. Returns the full path. */
-async function writeToAppFolder(
-  baseName: string,
-  contents: string,
-  extension = 'json',
-  lang: Language = 'en',
-): Promise<string> {
-  const folder = appFolderUri();
-  // In the caller's language: this message reaches the screen via `describeError`.
-  if (!folder) throw new Error(t('This device has no writable app folder.', lang));
-  const fileUri = `${folder}${baseName}.${extension}`;
-  await FileSystem.writeAsStringAsync(fileUri, contents);
-  return fileUri.replace('file://', '');
-}
-
-/**
- * What `saveCsvFile` did. `cancelled` is a user decision, not a failure.
- *
- * `folderUri` is present only when the file went into a folder the user granted —
- * i.e. not on the sandbox fallback.
- */
-export type SaveOutcome =
-  | { saved: true; name: string; where: string; folderUri?: string; uri?: string }
-  | { saved: false; cancelled: true };
-
-/**
- * A spreadsheet, somewhere the user picked and can find again: the folder picker,
- * else (no picker on this platform) the app's own documents directory, stated as
- * a path so it is at least reachable over a cable.
- *
- * Always the picker, unlike the backup: a CSV is a snapshot somebody takes to a
- * spreadsheet, not the phone's one restorable copy, so where it goes is asked
- * each time and nothing is rotated — two of them in a folder is two files the
- * user asked for.
- */
-export async function saveCsvFile(
-  baseName: string,
-  contents: string,
-  lang: Language = 'en',
-): Promise<SaveOutcome> {
-  return saveTextFile(baseName, contents, CSV_MIME, 'csv', lang);
-}
-
-async function saveTextFile(
-  baseName: string,
-  contents: string,
-  mimeType: string,
-  extension: string,
-  lang: Language,
-): Promise<SaveOutcome> {
-  if (!canPickFolder()) {
-    const path = await writeToAppFolder(baseName, contents, extension, lang);
-    return { saved: true, name: `${baseName}.${extension}`, where: path };
-  }
-
-  const folder = await pickFolder();
-  if (!folder) return { saved: false, cancelled: true };
-
-  const { name, uri } = await writeToFolder(folder, baseName, contents, mimeType);
-  return { saved: true, name, where: folderLabel(folder, lang), folderUri: folder, uri };
 }
 
 /**

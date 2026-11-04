@@ -4,7 +4,6 @@
  *   Gym / Boxing        Mon · Wed · Fri   07:00   →  3 weekly alerts
  *   Read before sleep   Every day         22:30   →  1 daily alert
  *   Wash the dishes     Once · 14 Sep     09:00   →  1 dated alert
- *   the workout itself  Mon · Wed · Fri   18:00   →  3 weekly alerts
  *
  * ── WHY THE PLAN IS A PURE FUNCTION AND THE SCHEDULING IS NOT HERE ────────
  *
@@ -84,26 +83,15 @@
  * neither during the pause nor for two weeks after it gets silence after
  * that, not a buzz on a day they excused. Silence is the right half to lose.
  *
- * ── EACH APP PLANS ITS OWN HALF ───────────────────────────────────────────
- *
- * The task alerts are the Tasks app's and the workout schedule is the Workout
- * app's (`notificationScope`, `lib/notificationScope.ts`); the Expenses app
- * plans nothing here. `variant` picks the half. The Workout app's store still
- * holds the 2.x tasks, and planning them there would buzz about a list that
- * app cannot show — and buzz twice once the Tasks app has imported them.
- *
- * The budget: Android holds ~500 alarms per app, shared in the Workout app
- * with the rest timer.
+ * The budget: Android holds ~500 alarms per app.
  * Dated plain alerts are capped at `MAX_PAUSED_ALERTS_PER_TASK` each and
  * `MAX_PAUSED_ALERTS` in all (soonest kept), follow-ups at `MAX_FOLLOW_UPS`,
  * and the repeats are one per task-weekday — so the queue stays well under it.
  * Excused days cost nothing, which is why a long pause is cheap.
  */
 
-import type { AppVariant } from './appVariant';
-import { parseClockTime, parseDay, shiftDay } from './days';
+import { parseDay, shiftDay } from './days';
 import { t, type Language } from './i18n';
-import { notificationScope } from './notificationScope';
 import {
   asksOn,
   describeSchedule,
@@ -140,12 +128,6 @@ export interface PlannedReminder {
 
 export interface ReminderInputs {
   tasks: readonly Task[];
-  workout: {
-    enabled: boolean;
-    days: readonly Weekday[];
-    /** `HH:MM`, 24-hour. */
-    time: string;
-  };
   lang: Language;
   /** Now, for deciding which dated alerts have already gone. */
   now: Date;
@@ -155,12 +137,6 @@ export interface ReminderInputs {
    * answered yet.
    */
   log?: TaskLog;
-  /**
-   * Which app is planning: Tasks plans the tasks, Workout the workout schedule,
-   * Expenses neither. Absent = both, the combined 2.x app — what the older
-   * tests were written against; `useReminders` always passes it.
-   */
-  variant?: AppVariant;
 }
 
 /** Anything closer than this is not a cue, it is a notification about the past. */
@@ -179,10 +155,8 @@ export const MAX_FOLLOW_UPS_PER_DAY = 12;
 /**
  * The most follow-ups armed at once, across every task.
  *
- * Android holds about 500 alarms per app and then refuses the next one, and
- * the rest timer's alerts come from the same budget. A rest that ends in
- * silence because twenty tasks were nagging is the wrong trade, so the
- * soonest ones win and the far end of the window waits for a later sync.
+ * Android holds about 500 alarms per app and then refuses the next one, so
+ * the soonest ones win and the far end of the window waits for a later sync.
  */
 export const MAX_FOLLOW_UPS = 120;
 
@@ -197,7 +171,7 @@ export const MAX_PAUSED_ALERTS_PER_TASK = PAUSE_LOOKAHEAD_DAYS + AFTER_PAUSE_DAY
 
 /**
  * The most dated plain alerts across every paused task. With `MAX_FOLLOW_UPS`
- * and the repeats it leaves room under Android's ~500 for the timer's two.
+ * and the repeats it stays well under Android's ~500.
  */
 export const MAX_PAUSED_ALERTS = 200;
 
@@ -251,7 +225,6 @@ export function plainAlarmDays(task: Task, log: TaskLog, today: string): string[
  * that cannot fire.
  */
 export function planReminders(input: ReminderInputs): PlannedReminder[] {
-  const scope = input.variant === undefined ? null : notificationScope(input.variant);
   const plan: PlannedReminder[] = [];
   const followUps: (PlannedReminder & { at: number })[] = [];
   const pausedAlerts: (PlannedReminder & { at: number })[] = [];
@@ -261,7 +234,7 @@ export function planReminders(input: ReminderInputs): PlannedReminder[] {
   // A weekly task (T2) whose week is already met has nothing left to ask that week.
   const weekMet = (task: Task, day: string) => weekProgress(task, log, day)?.met === true;
 
-  for (const task of scope && !scope.taskReminders ? [] : input.tasks) {
+  for (const task of input.tasks) {
     if (task.archivedAt !== null) continue;
     const at = task.reminder;
     if (!at) continue;
@@ -340,21 +313,6 @@ export function planReminders(input: ReminderInputs): PlannedReminder[] {
         body,
         trigger: { kind: 'weekly', weekday, hour: at.hour, minute: at.minute },
       });
-    }
-  }
-
-  const workoutOn = scope ? scope.workoutReminders : true;
-  if (workoutOn && input.workout.enabled && input.workout.days.length > 0) {
-    const at = parseClockTime(input.workout.time);
-    if (at) {
-      for (const weekday of [...input.workout.days].sort((a, b) => a - b)) {
-        plan.push({
-          id: `workout:w${weekday}`,
-          title: t('Time to train', input.lang),
-          body: t('Workout reminder', input.lang),
-          trigger: { kind: 'weekly', weekday, hour: at.hour, minute: at.minute },
-        });
-      }
     }
   }
 

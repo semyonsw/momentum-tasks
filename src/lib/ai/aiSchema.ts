@@ -6,16 +6,16 @@
  *   { "blocks": [
  *       { "type": "text", "text": "Bench has sat at 60 kg for three sessions." },
  *       { "type": "summary", "title": "Last 4 weeks", "stats": [...], "rows": [...] },
- *       { "type": "routine_proposal", "proposal": { "kind": "new", ... } }
+ *       { "type": "changes_proposal", "changes": { "items": [...], "why": "..." } }
  *   ] }
  *
  * ── TYPED BLOCKS, NOT PROSE ────────────────────────────────────────────────
  *
  * A chat that renders free text would be a chat whose numbers sit in sentences
- * the screen cannot lay out: a month of spending as a paragraph, a proposal as a
- * list the user has to retype. So the model answers in three shapes the chat
- * already knows how to draw — a short text, a summary (stats, rows, bars, notes)
- * and, in the workout section only, a routine proposal — and anything else is
+ * the screen cannot lay out: a month of answered days as a paragraph, a change
+ * as a sentence the user has to act on by hand. So the model answers in three
+ * shapes the chat already knows how to draw — a short text, a summary (stats,
+ * rows, bars, notes) and a card of changes to the tasks — and anything else is
  * dropped rather than shown.
  *
  * ── ONE FLAT OBJECT, BECAUSE GEMINI'S SCHEMA HAS NO `oneOf` ────────────────
@@ -31,25 +31,11 @@
  * Everything here runs on a string that came off the network from a model that
  * can be wrong in any way at all. So: unknown types are dropped, blocks missing
  * their fields are dropped, strings are trimmed and capped, arrays are cut to
- * the lengths the screen was designed for, and every number that can reach the
- * library is clamped to a range a real routine could hold. A reply that loses
- * everything to these rules is an EMPTY list, and the caller says so in one
- * sentence — it never throws into a render.
- *
- * One field beyond the handoff: `muscle` on a proposed exercise. A name the
- * library does not know becomes a new exercise only if the user accepts it, and
- * an exercise with no muscle group files under nothing in the library tree — so
- * the model is asked which group it is, and a group the app does not have is
- * simply ignored.
+ * the lengths the screen was designed for, and what a change means is checked
+ * against the stores before it is ever offered (`aiChanges.ts`). A reply that
+ * loses everything to these rules is an EMPTY list, and the caller says so in
+ * one sentence — it never throws into a render.
  */
-
-import { MUSCLE_GROUPS } from '../muscles';
-import { keepSteps } from './sequenceCursor';
-import type { MuscleGroup } from '../../types/models';
-
-export type AiSection = 'Workout' | 'Tasks' | 'Expenses';
-
-export const AI_SECTIONS: readonly AiSection[] = ['Workout', 'Tasks', 'Expenses'];
 
 export interface TextBlock {
   type: 'text';
@@ -72,77 +58,18 @@ export interface SummaryBlock {
   notes?: string[];
 }
 
-export type ProposalChange = 'same' | 'changed' | 'new' | 'removed';
-
-export interface ProposedExercise {
-  exerciseId?: string;
-  name: string;
-  sets: number;
-  reps: number;
-  /** 0 = bodyweight. */
-  weightKg: number;
-  restSeconds?: number;
-  /** The model's own label. Never trusted — `aiProposal` re-derives it. */
-  change?: ProposalChange;
-  /** Where a NEW exercise files in the library tree. See the file header. */
-  muscle?: MuscleGroup;
-  /**
-   * The bottom of a rep range — `8` of `8–10`, with `reps` the top. Absent = one
-   * number, which is what most routines hold.
-   */
-  repsMin?: number;
-  /**
-   * Done as a superset WITH THE EXERCISE ABOVE IT — the editor's one control.
-   * Absent = as it is now; `false` splits it off.
-   */
-  superset?: boolean;
-}
-
-export interface RoutineProposal {
-  kind: 'new' | 'edit';
-  /** Required for `edit`, and it must be a routine the context named. */
-  targetRoutineId?: string;
-  name: string;
-  focus?: string;
-  why: string;
-  exercises: ProposedExercise[];
-}
-
-export interface ProposalBlock {
-  type: 'routine_proposal';
-  proposal: RoutineProposal;
-}
-
 /**
- * A new TRAINING LOOP: the whole list of routine ids in order (repeats allowed —
- * Push at steps 1 and 4 is the point of a loop), and which step is up next.
- * Applied only on a tap, like a routine proposal, and only in the Workout chat.
- */
-export interface SequenceProposal {
-  routineIds: string[];
-  /** 0-based index of the step to train next. */
-  next: number;
-  why: string;
-}
-
-export interface SequenceBlock {
-  type: 'sequence_proposal';
-  sequence: SequenceProposal;
-}
-
-/**
- * A SETTINGS CHANGE: the numbers and switches the user can set by hand outside a
- * routine's rows — an exercise's rest, ladder, cue; the app's rest and weekly
- * goal; a task's schedule; a category's budget. `lib/ai/aiChanges.ts` owns what
- * each one means, how it is checked, and how it is applied (on a tap, with Undo).
- * The block carries them raw; the validator here only keeps the shape.
+ * A CHANGE TO THE TASKS: a task added, renamed, rescheduled, given a target or
+ * stopped, or a day answered. `lib/ai/aiChanges.ts` owns what each one means,
+ * how it is checked, and how it is applied (on a tap, with Undo). The block
+ * carries them raw; the validator here only keeps the shape.
  */
 export interface ChangesBlock {
   type: 'changes_proposal';
   changes: { items: Record<string, unknown>[]; why: string };
 }
 
-export type AiBlock = TextBlock | SummaryBlock | ProposalBlock | SequenceBlock | ChangesBlock;
+export type AiBlock = TextBlock | SummaryBlock | ChangesBlock;
 
 /* ------------------------------------------------------------------ */
 /* The limits                                                          */
@@ -150,34 +77,21 @@ export type AiBlock = TextBlock | SummaryBlock | ProposalBlock | SequenceBlock |
 
 /**
  * The shape the screen was drawn for. A summary card with nine stats is not a
- * summary, and a routine with twenty exercises is not a suggestion anybody can
- * review on a phone — so these are caps, and the rest is cut rather than
- * scrolled.
+ * summary, and a card of forty changes is not a suggestion anybody can review
+ * on a phone — so these are caps, and the rest is cut rather than scrolled.
  */
 const LIMITS = {
   stats: 3,
   rows: 8,
   bars: 12,
   notes: 4,
-  exercises: 12,
   blocks: 8,
   text: 1200,
   label: 60,
   title: 80,
-  name: 40,
   why: 400,
-  /** Steps in a suggested loop. Twelve is a quarter of training; 24 is room. */
-  sequence: 24,
-  /** Settings in one change card — enough for "every exercise of Push", short of a wall. */
+  /** Changes in one card — enough for "every task this week", short of a wall. */
   changes: 12,
-} as const;
-
-/** Every number that can reach the library, and the range it is held to. */
-export const CLAMP = {
-  sets: { min: 1, max: 10 },
-  reps: { min: 1, max: 50 },
-  weightKg: { min: 0, max: 500, step: 0.5 },
-  restSeconds: { min: 0, max: 600 },
 } as const;
 
 /* ------------------------------------------------------------------ */
@@ -202,7 +116,7 @@ export const responseSchema = {
         properties: {
           type: {
             type: 'string',
-            enum: ['text', 'summary', 'routine_proposal', 'sequence_proposal', 'changes_proposal'],
+            enum: ['text', 'summary', 'changes_proposal'],
           },
           text: { type: 'string', description: 'The paragraph, for a "text" block.' },
           title: { type: 'string', description: 'The heading, for a "summary" block.' },
@@ -239,93 +153,21 @@ export const responseSchema = {
             },
           },
           notes: { type: 'array', items: str },
-          proposal: {
-            type: 'object',
-            properties: {
-              kind: { type: 'string', enum: ['new', 'edit'] },
-              targetRoutineId: str,
-              name: str,
-              focus: str,
-              why: str,
-              exercises: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    exerciseId: str,
-                    name: str,
-                    sets: { type: 'integer' },
-                    reps: { type: 'integer' },
-                    weightKg: { type: 'number' },
-                    restSeconds: { type: 'integer' },
-                    change: { type: 'string', enum: ['same', 'changed', 'new', 'removed'] },
-                    muscle: { type: 'string', enum: [...MUSCLE_GROUPS] },
-                    repsMin: {
-                      type: 'integer',
-                      description: 'Bottom of a rep range (8 of 8-10); reps is the top.',
-                    },
-                    superset: {
-                      type: 'boolean',
-                      description: 'true = superset with the exercise above it.',
-                    },
-                  },
-                  required: ['name', 'sets', 'reps', 'weightKg'],
-                },
-              },
-            },
-            required: ['kind', 'name', 'why', 'exercises'],
-          },
-          sequence: {
-            type: 'object',
-            description: 'For a "sequence_proposal" block: the WHOLE training loop.',
-            properties: {
-              routineIds: {
-                type: 'array',
-                description:
-                  'Routine ids from CONTEXT.routines, in training order. Repeats allowed.',
-                items: str,
-              },
-              next: { type: 'integer', description: '0-based index of the step to train next.' },
-              why: str,
-            },
-            required: ['routineIds', 'why'],
-          },
           changes: {
             type: 'object',
-            description: 'For a "changes_proposal" block: settings to change, applied on a tap.',
+            description: 'For a "changes_proposal" block: changes to the tasks, applied on a tap.',
             properties: {
               items: {
                 type: 'array',
                 items: {
                   type: 'object',
                   properties: {
-                    target: {
-                      type: 'string',
-                      enum: [
-                        'exercise',
-                        'setting',
-                        'task',
-                        'budget',
-                        'amount',
-                        'bodyweight',
-                        'workout_set',
-                      ],
-                    },
+                    target: { type: 'string', enum: ['task'] },
                     id: {
                       type: 'string',
-                      description:
-                        'exerciseId, taskId, categoryId or workout id from CONTEXT; omit for setting, a new task and bodyweight.',
-                    },
-                    exerciseId: {
-                      type: 'string',
-                      description: 'For workout_set: the exercise id inside that workout.',
+                      description: 'taskId from CONTEXT; omit for a new task.',
                     },
                     day: { type: 'string', description: 'A date, YYYY-MM-DD; omit for today.' },
-                    account: {
-                      type: 'string',
-                      description:
-                        'For amount: an account id from CONTEXT.accounts, only when named.',
-                    },
                     field: { type: 'string' },
                     number: { type: 'number' },
                     text: { type: 'string' },
@@ -349,8 +191,6 @@ export const responseSchema = {
           'rows',
           'bars',
           'notes',
-          'proposal',
-          'sequence',
           'changes',
         ],
       },
@@ -362,17 +202,6 @@ export const responseSchema = {
 /* ------------------------------------------------------------------ */
 /* The validator                                                       */
 /* ------------------------------------------------------------------ */
-
-export interface ValidateContext {
-  section: AiSection;
-  /** The routine ids the context named. An `edit` must point at one of them. */
-  routineIds: ReadonlySet<string>;
-  /**
-   * Those routines' names, by id — how an edit that names its routine instead of
-   * copying the id still finds it. See `resolveTarget`.
-   */
-  routineNames?: ReadonlyMap<string, string>;
-}
 
 type Rec = Record<string, unknown>;
 
@@ -397,37 +226,6 @@ function finite(value: unknown): number | null {
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 }
 
-/**
- * A number a model wrote as words around it: `"12.5 kg"` → 12.5, `"8-10"` → 10.
- *
- * The context hands a routine's reps over as a label (`"8-10"`) and a model
- * copying them back writes the label, not a number — which used to drop the
- * exercise, and with enough of them the whole proposal. A range reads as its
- * TOP, the number the plan is aiming for; anything else reads as the first
- * number in it.
- */
-function looseNumber(value: unknown): number | null {
-  const plain = finite(value);
-  if (plain != null) return plain;
-  if (typeof value !== 'string') return null;
-  const range = /(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?)/.exec(value);
-  if (range) return Number(range[2].replace(',', '.'));
-  const first = /\d+(?:[.,]\d+)?/.exec(value);
-  return first ? Number(first[0].replace(',', '.')) : null;
-}
-
-/** Into `[min, max]`, rounded to whole numbers — sets, reps, rest. */
-export function clampInt(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-/** Kilograms into `[0, 500]` on a 0.5 grid. A plate that does not exist is not a suggestion. */
-export function clampWeight(value: number): number {
-  const { min, max, step } = CLAMP.weightKg;
-  const snapped = Math.round(value / step) * step;
-  return Math.min(max, Math.max(min, snapped));
-}
-
 function list<T>(value: unknown, max: number, each: (item: unknown) => T | null): T[] {
   if (!Array.isArray(value)) return [];
   const out: T[] = [];
@@ -440,8 +238,6 @@ function list<T>(value: unknown, max: number, each: (item: unknown) => T | null)
 }
 
 const TRENDS = new Set(['up', 'down', 'flat']);
-const CHANGES = new Set(['same', 'changed', 'new', 'removed']);
-const MUSCLES = new Set<string>(MUSCLE_GROUPS);
 
 function validateSummary(raw: Rec): SummaryBlock | null {
   // A summary without a title still has its numbers; the heading is the part
@@ -489,126 +285,6 @@ function validateSummary(raw: Rec): SummaryBlock | null {
   return stats.length || rows.length || bars.length || notes.length ? block : null;
 }
 
-function validateExercise(item: unknown): ProposedExercise | null {
-  if (!isRecord(item)) return null;
-  const name = text(item.name, LIMITS.name);
-  const removed = item.change === 'removed';
-  /*
-   * A row being REMOVED needs no numbers — they are about to stop mattering —
-   * and a missing weight is bodyweight: models leave `weightKg` off dips and
-   * pull-ups as often as they write the 0. Either used to drop the row, and an
-   * edit that lost the row it was ABOUT was rejected as a whole.
-   */
-  const sets = looseNumber(item.sets) ?? (removed ? 1 : null);
-  const reps = looseNumber(item.reps) ?? (removed ? 1 : null);
-  const weight = looseNumber(item.weightKg ?? item.weight) ?? 0;
-  if (!name || sets == null || reps == null) return null;
-
-  const out: ProposedExercise = {
-    name,
-    sets: clampInt(sets, CLAMP.sets.min, CLAMP.sets.max),
-    reps: clampInt(reps, CLAMP.reps.min, CLAMP.reps.max),
-    weightKg: clampWeight(weight),
-  };
-  const id = text(item.exerciseId, 80);
-  if (id) out.exerciseId = id;
-  const rest = finite(item.restSeconds);
-  if (rest != null) {
-    out.restSeconds = clampInt(rest, CLAMP.restSeconds.min, CLAMP.restSeconds.max);
-  }
-  if (typeof item.change === 'string' && CHANGES.has(item.change)) {
-    out.change = item.change as ProposalChange;
-  }
-  if (typeof item.muscle === 'string' && MUSCLES.has(item.muscle)) {
-    out.muscle = item.muscle as MuscleGroup;
-  }
-  /*
-   * A range is the model writing `"reps": "8-10"` properly. `looseNumber` reads
-   * that label's TOP into `reps`; its bottom is the range's other half, so a
-   * label is read both ways rather than losing the 8.
-   */
-  const labelMin =
-    typeof item.reps === 'string' ? /(\d+)\s*[-–—]\s*\d+/.exec(item.reps)?.[1] : undefined;
-  const min = looseNumber(item.repsMin ?? labelMin);
-  if (min != null) {
-    const bottom = clampInt(min, CLAMP.reps.min, CLAMP.reps.max);
-    if (bottom < out.reps) out.repsMin = bottom;
-  }
-  // false is a request too — "split those two up" — so both values are kept.
-  if (typeof item.superset === 'boolean') out.superset = item.superset;
-  return out;
-}
-
-function validateProposal(raw: unknown, ctx: ValidateContext): RoutineProposal | null {
-  if (!isRecord(raw)) return null;
-  const kind = raw.kind === 'new' || raw.kind === 'edit' ? raw.kind : null;
-  const name = text(raw.name, LIMITS.name);
-  const why = text(raw.why, LIMITS.why);
-  if (!kind || !name || !why) return null;
-
-  const exercises = list(raw.exercises, LIMITS.exercises, validateExercise);
-  if (exercises.length === 0) return null;
-
-  const proposal: RoutineProposal = { kind, name, why, exercises };
-  if (kind === 'edit') {
-    const target = resolveTarget(raw, name, ctx);
-    if (target) {
-      proposal.targetRoutineId = target;
-    } else {
-      /*
-       * An edit of a routine the phone cannot find is still a complete routine —
-       * the prompt asks for every row. Offered as a NEW one rather than dropped:
-       * the user gets the card, Review & edit, and Add, instead of a sentence
-       * claiming a change nothing on screen can apply.
-       */
-      proposal.kind = 'new';
-      proposal.exercises = exercises.filter((e) => e.change !== 'removed');
-      if (proposal.exercises.length === 0) return null;
-    }
-  }
-  const focus = text(raw.focus, LIMITS.label);
-  if (focus) proposal.focus = focus;
-  return proposal;
-}
-
-/** Lower case, letters and digits only — how two spellings of one name compare. */
-function nameKey(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
-}
-
-/**
- * The routine an edit means, as an id the phone gave — or null.
- *
- * The id, copied exactly, is what the prompt asks for. What models send instead
- * is the routine's NAME in that field, the id with its case changed, or no id and
- * the routine's name as the proposal's own — all of them unambiguous about which
- * routine, so all of them are read.
- */
-function resolveTarget(raw: Rec, name: string, ctx: ValidateContext): string | null {
-  const given = text(raw.targetRoutineId ?? raw.routineId, 80);
-  if (given && ctx.routineIds.has(given)) return given;
-  const ids = [...ctx.routineIds];
-  if (given) {
-    const folded = ids.find((id) => id.toLowerCase() === given.toLowerCase());
-    if (folded) return folded;
-  }
-  const names = ctx.routineNames;
-  if (!names) return null;
-  for (const candidate of [given, text(raw.targetRoutineName, 80), name]) {
-    if (!candidate) continue;
-    const key = nameKey(candidate);
-    const byName = ids.filter((id) => {
-      const routineName = names.get(id);
-      return routineName != null && nameKey(routineName) === key;
-    });
-    if (byName.length === 1) return byName[0];
-  }
-  return null;
-}
-
 /**
  * The blocks worth drawing out of whatever came back.
  *
@@ -616,12 +292,11 @@ function resolveTarget(raw: Rec, name: string, ctx: ValidateContext): string | n
  * a model that drops the wrapper has still said something readable. Returns an
  * empty list for anything else; see the file header on why this never throws.
  */
-export function validateBlocks(raw: unknown, ctx: ValidateContext): AiBlock[] {
+export function validateBlocks(raw: unknown): AiBlock[] {
   const source = blockList(raw);
   if (!source) return [];
 
   const out: AiBlock[] = [];
-  let proposals = 0;
   for (const item of source) {
     if (out.length >= LIMITS.blocks) break;
     if (typeof item === 'string') {
@@ -632,42 +307,9 @@ export function validateBlocks(raw: unknown, ctx: ValidateContext): AiBlock[] {
     }
     if (!isRecord(item)) continue;
 
-    if (item.type === 'routine_proposal' || (item.type == null && isRecord(item.proposal))) {
-      // Workout only, and one per reply: two suggestions at once is a choice
-      // the model should have made, not the user.
-      const proposal =
-        ctx.section === 'Workout' && proposals === 0 ? validateProposal(item.proposal, ctx) : null;
-      if (proposal) {
-        out.push({ type: 'routine_proposal', proposal });
-        proposals += 1;
-        continue;
-      }
-      // A suggestion that cannot be applied — an edit of a routine id the phone
-      // never named, one in a chat that cannot hold one — still carried its reason.
-      // Said as text, rather than dropped along with everything it explained.
-      // A second one in the same reply is simply the one too many.
-      const why =
-        proposals === 0 && isRecord(item.proposal) ? text(item.proposal.why, LIMITS.text) : null;
-      if (why) out.push({ type: 'text', text: why });
-      continue;
-    }
-
-    if (item.type === 'sequence_proposal' || (item.type == null && isRecord(item.sequence))) {
-      const sequence =
-        ctx.section === 'Workout' && !out.some((b) => b.type === 'sequence_proposal')
-          ? validateSequence(item.sequence, ctx)
-          : null;
-      if (sequence) {
-        out.push({ type: 'sequence_proposal', sequence });
-        continue;
-      }
-      const why = isRecord(item.sequence) ? text(item.sequence.why, LIMITS.text) : null;
-      if (why) out.push({ type: 'text', text: why });
-      continue;
-    }
-
     if (item.type === 'changes_proposal' || (item.type == null && isRecord(item.changes))) {
-      // One per reply, like the other suggestions; its reason survives a bad shape.
+      // One per reply: two cards at once is a choice the model should have made,
+      // not the user. Its reason survives a bad shape.
       const changes = !out.some((b) => b.type === 'changes_proposal')
         ? validateChangesShape(item.changes)
         : null;
@@ -695,18 +337,6 @@ export function validateBlocks(raw: unknown, ctx: ValidateContext): AiBlock[] {
     if (body) out.push({ type: 'text', text: body });
   }
   return out;
-}
-
-function validateSequence(raw: unknown, ctx: ValidateContext): SequenceProposal | null {
-  if (!isRecord(raw) || !Array.isArray(raw.routineIds)) return null;
-  const why = text(raw.why, LIMITS.why);
-  const named = raw.routineIds.map((id) => (typeof id === 'string' ? id.trim() : ''));
-  // A step naming a routine the phone never described is a step into nothing —
-  // dropped, with "next" re-counted on the routine the model meant (`keepSteps`).
-  const kept = keepSteps(named, finite(raw.next) ?? 0, (id) => ctx.routineIds.has(id));
-  const routineIds = kept.routineIds.slice(0, LIMITS.sequence);
-  if (!why || routineIds.length === 0) return null;
-  return { routineIds, next: kept.next < routineIds.length ? kept.next : 0, why };
 }
 
 /**

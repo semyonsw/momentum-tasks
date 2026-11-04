@@ -19,11 +19,6 @@
  * on the nav blob still settling. So it waits, hidden and frozen, in `gone`,
  * and is dropped with the other idle work (`dropGone`) — where it costs a frame
  * nobody is watching.
- *
- * Only the sections the app's bar shows get spares — its own and Settings
- * (`appVariant.variantSections`). Building the other apps' screens hidden would
- * be paying for a mount nobody can ever arrive at, and a hidden Tasks screen
- * inside the Workout app is still a Tasks screen subscribed to a store.
  */
 
 import { SECTIONS, type SectionTab, type ShellRoute } from './sectionNav';
@@ -82,21 +77,15 @@ export function dropGone(stage: StageBuilds): StageBuilds {
 }
 
 /**
- * The section to build next, or null when every one of `sections` is mounted:
- * the nearest to `route` first, since the neighbours are the likeliest taps.
- * `sections` is the bar the app draws; it defaults to all four only so the
- * bookkeeping can be tested on its own.
+ * The section to build next, or null when every one is mounted: the nearest to
+ * `route` first, since the neighbours are the likeliest taps.
  */
-export function nextSpare(
-  stage: StageBuilds,
-  route: ShellRoute,
-  sections: readonly SectionTab[] = SECTIONS,
-): SectionTab | null {
-  const at = Math.max(0, sections.indexOf(route));
-  const missing = sections.filter((section) => !stage.builds[section]);
+export function nextSpare(stage: StageBuilds, route: ShellRoute): SectionTab | null {
+  const at = Math.max(0, SECTIONS.indexOf(route));
+  const missing = SECTIONS.filter((section) => !stage.builds[section]);
   if (missing.length === 0) return null;
   return missing.reduce((best, section) =>
-    Math.abs(sections.indexOf(section) - at) < Math.abs(sections.indexOf(best) - at)
+    Math.abs(SECTIONS.indexOf(section) - at) < Math.abs(SECTIONS.indexOf(best) - at)
       ? section
       : best,
   );

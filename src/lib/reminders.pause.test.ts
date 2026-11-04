@@ -9,7 +9,6 @@ import {
   planKey,
   planReminders,
   plainAlarmDays,
-  type ReminderInputs,
 } from './reminders';
 import { shiftDay } from './days';
 import { excuseRange, type Task, type TaskLog } from './tasks';
@@ -37,13 +36,12 @@ function task(over: Partial<Task> = {}): Task {
   };
 }
 
-const SILENT_WORKOUT: ReminderInputs['workout'] = { enabled: false, days: [], time: '18:00' };
 /** Sunday 13 September 2026, 10:00 local. */
 const NOW = new Date(2026, 8, 13, 10, 0, 0, 0);
 const TODAY = '2026-09-13';
 
 function planWith(tasks: Task[], log: TaskLog = {}) {
-  return planReminders({ tasks, workout: SILENT_WORKOUT, lang: 'en', now: NOW, log });
+  return planReminders({ tasks, lang: 'en', now: NOW, log });
 }
 
 function pause(tasks: Task[], from: string, to: string, log: TaskLog = {}): TaskLog {

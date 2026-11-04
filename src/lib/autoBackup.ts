@@ -35,30 +35,29 @@
  * (`Settings.autoBackupFolderUri`), and asked for again only when Android says the
  * access is actually gone.
  *
- * ── ONE FILE PER APP, NAMED BY THE DAY ─────────────────────────────────────
+ * ── ONE FILE, NAMED BY THE DAY ─────────────────────────────────────────────
  *
- * `momentum-workout-backup-2026-10-15.json` (and `momentum-tasks-backup-…`,
- * `momentum-expenses-backup-…` — `backupPrefix` in `lib/appVariant.ts`). ONE such
- * file per app in the folder: within a day it is overwritten in place (its URI is
+ * `momentum-tasks-backup-2026-10-15.json` (`BACKUP_FILE_PREFIX`). ONE such
+ * file in the folder: within a day it is overwritten in place (its URI is
  * remembered, because SAF finds files by URI, not by name), and the first write
  * of a new day creates the new day's file and then deletes the old one — create
  * first, so the folder never holds zero. The date in the name is what lets
  * somebody looking at the folder see, without opening anything, that the copy is
  * current.
  *
- * THE PREFIX IS PER APP because all three apps are usually granted the SAME
- * folder, and every sweep deletes by name: one shared prefix would have each app
- * deleting the other two's backups every morning. Each app matches only its own.
+ * THE PREFIX IS THIS APP'S OWN, and nothing else is ever swept. This app was
+ * split out of Momentum, whose Workout and Expenses apps are usually granted the
+ * SAME folder and write `momentum-workout-backup-…` and `momentum-expenses-backup-…`
+ * beside it; every sweep deletes by name, so a looser match would delete their
+ * backups every morning.
  *
- * The files earlier builds wrote — `workout-tracker-auto-…`, the manual
+ * The files Momentum wrote before the split — `workout-tracker-auto-…`, the manual
  * `workout-tracker-backup-…` exports, and 2.x's combined `momentum-backup-…` —
- * are left alone by all three. Those names belong to a mechanism that no longer
- * runs, and a cleanup that deletes a user's files on the strength of a naming
- * convention they may have been relying on is not one this app gets to make. The
- * combined one matters most: it is what Tasks and Expenses are filled from.
+ * are left alone too. A cleanup that deletes a user's files on the strength of a
+ * naming convention they may have been relying on is not one this app gets to
+ * make. The combined one matters most: it is what this app is filled from.
  */
 
-import { APP_VARIANT, backupPrefix, type AppVariant } from './appVariant';
 import { dayKey, daysBetween } from './days';
 import { plural, t, type Language } from './i18n';
 
@@ -120,25 +119,28 @@ export function describeBackupAge(
  */
 export const LEGACY_BACKUP_FILE_PREFIX = 'momentum-backup-';
 
-/** `momentum-workout-backup-2026-10-15` — the LOCAL date, because that is the user's day. */
-export function backupFileBaseName(
-  now: Date = new Date(),
-  variant: AppVariant = APP_VARIANT,
-): string {
-  return `${backupPrefix(variant)}${dayKey(now)}`;
+/**
+ * This app's backup files, and the only names any sweep here deletes. The name
+ * Momentum 3.0.0's Tasks app wrote, so a folder that holds its files keeps one.
+ */
+export const BACKUP_FILE_PREFIX = 'momentum-tasks-backup-';
+
+/** `momentum-tasks-backup-2026-10-15` — the LOCAL date, because that is the user's day. */
+export function backupFileBaseName(now: Date = new Date()): string {
+  return `${BACKUP_FILE_PREFIX}${dayKey(now)}`;
 }
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * A file name `backupFileBaseName` produced FOR THIS APP, as SAF wrote it:
- * `.json` appended, and ` (1)` when the create landed beside a same-named file
- * (the overwrite fallback below). Exact, because whatever matches is DELETED —
- * so another app's prefix, or 2.x's `momentum-backup-`, never matches.
+ * A file name `backupFileBaseName` produced, as SAF wrote it: `.json` appended,
+ * and ` (1)` when the create landed beside a same-named file (the overwrite
+ * fallback below). Exact, because whatever matches is DELETED — so another
+ * Momentum app's prefix, or 2.x's `momentum-backup-`, never matches.
  */
-export function isBackupFileName(name: string, variant: AppVariant = APP_VARIANT): boolean {
+export function isBackupFileName(name: string): boolean {
   const pattern = new RegExp(
-    `^${escapeRegExp(backupPrefix(variant))}\\d{4}-\\d{2}-\\d{2}( \\(\\d+\\))?\\.json$`,
+    `^${escapeRegExp(BACKUP_FILE_PREFIX)}\\d{4}-\\d{2}-\\d{2}( \\(\\d+\\))?\\.json$`,
   );
   return pattern.test(name.trim());
 }
@@ -194,29 +196,28 @@ export type BackupWritePlan =
  * other remembered file is the one this write replaces.
  *
  * A remembered file whose name is NOT this app's is neither overwritten nor
- * replaced: it is forgotten. That is the Workout app's first write after 3.0.0,
- * which updates the 2.x install in place and so inherits the record of 2.x's
- * combined `momentum-backup-<day>.json` — the file Tasks and Expenses import
- * from. Overwriting it would put a Workout-only backup under the combined name;
+ * replaced: it is forgotten. A settings record can arrive from elsewhere — a
+ * restored backup is told to keep this phone's, but a hand-edited file or a
+ * future bug could carry Momentum's record of its combined `momentum-backup-<day>.json`
+ * — and overwriting that would put a tasks-only backup under the combined name;
  * replacing it would delete it. A URI with no readable name (a provider that
- * does not end its URIs in the file name) is trusted as before, because the
- * record was written by this app and the alternative is a new file every write.
+ * does not end its URIs in the file name) is trusted, because the record was
+ * written by this app and the alternative is a new file every write.
  */
 export function planBackupWrite(
   current: BackupFileRecord | undefined,
   today: string,
-  variant: AppVariant = APP_VARIANT,
 ): BackupWritePlan {
-  if (current && !rememberedIsOwn(current.uri, variant)) return { kind: 'create' };
+  if (current && !rememberedIsOwn(current.uri)) return { kind: 'create' };
   if (current && current.day === today) return { kind: 'overwrite', uri: current.uri };
   return current ? { kind: 'create', replaces: current.uri } : { kind: 'create' };
 }
 
 /** Is a remembered URI this app's file? Unreadable names count as yes — see above. */
-function rememberedIsOwn(uri: string, variant: AppVariant): boolean {
+function rememberedIsOwn(uri: string): boolean {
   const name = uriFileName(uri);
   if (!name.toLowerCase().endsWith('.json')) return true;
-  return isBackupFileName(name, variant);
+  return isBackupFileName(name);
 }
 
 /**
@@ -225,7 +226,7 @@ function rememberedIsOwn(uri: string, variant: AppVariant): boolean {
  * even for copies the stored URI never saw (a crash between create and delete, a
  * settings restore, the overwrite fallback's ` (1)`).
  *
- * Only this app's names. The other two apps' backups, 2.x's combined
+ * Only this app's names. The other Momentum apps' backups, 2.x's combined
  * `momentum-backup-*`, `workout-tracker-auto-*` and `workout-tracker-backup-*`
  * are not touched. `replaces` comes from `planBackupWrite`, which has already
  * refused to name a file that is not this app's.
@@ -234,12 +235,11 @@ export function backupFilesToRetire(
   files: readonly { uri: string; name: string }[],
   justWritten: string,
   replaces?: string,
-  variant: AppVariant = APP_VARIANT,
 ): string[] {
   const out = new Set<string>();
   if (replaces && replaces !== justWritten) out.add(replaces);
   for (const file of files) {
-    if (file.uri !== justWritten && isBackupFileName(file.name, variant)) out.add(file.uri);
+    if (file.uri !== justWritten && isBackupFileName(file.name)) out.add(file.uri);
   }
   return [...out];
 }

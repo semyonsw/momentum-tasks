@@ -160,7 +160,6 @@ describe('excuseRange', () => {
       new Set(
         planReminders({
           tasks: [read],
-          workout: { enabled: false, days: [], time: '18:00' },
           lang: 'en',
           now,
           log,

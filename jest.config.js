@@ -18,6 +18,5 @@ module.exports = {
   setupFiles: ['<rootDir>/test/jestSetup.js'],
   moduleNameMapper: {
     '^@react-native-async-storage/async-storage$': '<rootDir>/test/asyncStorageStub.ts',
-    '^expo-audio$': '<rootDir>/test/expoAudioStub.ts',
   },
 };

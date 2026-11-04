@@ -45,7 +45,6 @@ beforeEach(() => {
 
 afterEach(() => {
   useTasks.getState().importTasks({ tasks: seedTasks('2026-01-01'), log: {} });
-  useSettings.getState().setFlag('autoTickTasks', true);
 });
 
 const ids = () =>

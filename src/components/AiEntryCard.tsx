@@ -1,10 +1,10 @@
 /**
- * AiEntryCard — the assistant's door in each section, directly under the hero.
+ * AiEntryCard — the assistant's door, at the foot of the tasks.
  *
  *   ┌──────────────────────────────────────────────┐
- *   │ (✦)  Ask about your training               › │
- *   │      Gemini · summaries, trends, suggestions │
- *   │ [Last 4 weeks] [Squat trend] [Suggest a …]   │
+ *   │ (✦)  Ask about your habits                 › │
+ *   │      AI coach · summaries, trends, suggestions│
+ *   │ [How did … go?] [What slipped?] [Suggest …]  │
  *   └──────────────────────────────────────────────┘
  *
  * ── SHOWN UNTIL YOU KNOW, AND TWO WAYS IN ─────────────────────────────────
@@ -15,12 +15,12 @@
  * row opens the chat empty; a chip opens it and asks that question. Either,
  * without a key, lands on the settings screen first and comes back afterwards.
  *
- * Once you know, it goes (U2): the ✕ in its corner, or the first chat in that
- * section, hides it for good, per section — `lib/aiEntry.ts` has the rule and
- * the settings store keeps the list. It renders nothing after that, so the three
- * screens that place it needed no change of their own.
+ * Once you know, it goes (U2): the ✕ in its corner, or the first chat, hides it
+ * for good — `lib/aiEntry.ts` has the rule and the settings store keeps the
+ * flag. It renders nothing after that, so the screen that places it needs no
+ * change of its own.
  *
- * `flat`, like every repeating pane: the section's blur budget belongs to its
+ * `flat`, like every repeating pane: the screen's blur budget belongs to its
  * hero, and this is the card under it rather than a second hero.
  *
  * ── THE v3 LOOK ───────────────────────────────────────────────────────────
@@ -36,8 +36,7 @@
  * SVG text does not truncate, so the line measures itself with an invisible RN
  * copy and runs like `RunningText` when it is longer than the row.
  *
- * The chips WRAP rather than scroll, like the money section's account chips:
- * every chip is visible without a gesture.
+ * The chips WRAP rather than scroll: every chip is visible without a gesture.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -57,19 +56,14 @@ import { FADE_ON, RunningText } from './RunningText';
 import { useAiPrompts } from '../hooks/useAiPrompts';
 import { aiCardShown } from '../lib/aiEntry';
 import { useAi } from '../state/aiStore';
-import { useSettings } from '../state/settingsStore';
+import { aiCardDismissed, useSettings } from '../state/settingsStore';
 import { useArrived } from '../hooks/useArrived';
 import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
-import type { AiSection } from '../lib/ai/aiSchema';
 import { MARQUEE_DELAY_MS, MARQUEE_FADE, marqueePhases, marqueeTravel } from '../lib/marquee';
 import { ai, curve, motion, palette, radius } from '../theme/tokens';
 
-const TITLE: Record<AiSection, string> = {
-  Workout: 'Ask about your training',
-  Tasks: 'Ask about your habits',
-  Expenses: 'Ask about your money',
-};
+const TITLE = 'Ask about your habits';
 
 /** The card's inner padding, and the ✕'s square and inset from the card's edge. */
 const CARD_PAD = 16;
@@ -92,35 +86,30 @@ export function SparkleCircle({ size = 40 }: { size?: number }) {
 }
 
 export function AiEntryCard({
-  section,
   ready,
   onOpen,
 }: {
-  section: AiSection;
   ready: boolean;
   /** The chat, empty, or asking `prompt`. */
   onOpen: (prompt?: string) => void;
 }) {
   const t = useT();
-  const prompts = useAiPrompts(section).slice(0, 3);
-  const title = t(TITLE[section]);
+  const prompts = useAiPrompts().slice(0, 3);
+  const title = t(TITLE);
   const line = ready
     ? t('AI coach · summaries, trends, suggestions')
     : t('Connect a Google AI key to start');
   const press = usePressScale(0.97);
-  const dismissed = useSettings((s) => s.aiCardsDismissed);
+  const dismissed = useSettings(aiCardDismissed);
   const dismiss = useSettings((s) => s.dismissAiCard);
-  const chatted = useAi(
-    (s) => (s.chats[section]?.length ?? 0) > 0 || (s.archive[section]?.length ?? 0) > 0,
-  );
-  const shown = aiCardShown(section, dismissed, chatted);
+  const chatted = useAi((s) => s.chat.length > 0 || s.archive.length > 0);
+  const shown = aiCardShown(dismissed, chatted);
 
-  /* The first chat is written into the same list as the ✕, so deleting every
+  /* The first chat is written into the same flag as the ✕, so deleting every
      past chat later does not bring back a card the user has already used. */
-  const alreadyClosed = (dismissed ?? []).includes(section);
   useEffect(() => {
-    if (chatted && !alreadyClosed) dismiss(section);
-  }, [chatted, alreadyClosed, dismiss, section]);
+    if (chatted && !dismissed) dismiss();
+  }, [chatted, dismissed, dismiss]);
 
   if (!shown) return null;
 
@@ -161,7 +150,7 @@ export function AiEntryCard({
           }}
         >
           <Pressable
-            onPress={() => dismiss(section)}
+            onPress={() => dismiss()}
             accessibilityRole="button"
             accessibilityLabel={t('Hide the AI coach card')}
             accessibilityHint={t('The sparkle at the top stays the way in')}
@@ -247,7 +236,7 @@ function GradientLine({ text }: { text: string }) {
 
   useEffect(() => {
     x.setValue(0);
-    // Waits for its section to arrive, as `RunningText`'s does.
+    // Waits for its screen to arrive, as `RunningText`'s does.
     if (travel === 0 || motionScale === 0 || !arrived) return undefined;
     const phases = marqueePhases(travel);
     const ease = curve(motion.ease);

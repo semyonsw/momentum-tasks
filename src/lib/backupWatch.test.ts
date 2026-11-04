@@ -6,7 +6,7 @@ import {
   pickFields,
   settingsSlice,
   sliceChanged,
-  watchedStores,
+  WATCHED_STORES,
 } from './backupWatch';
 
 /**
@@ -15,19 +15,18 @@ import {
  */
 
 describe('a change is a backed-up field that is a new reference', () => {
-  const chats = { workout: [] };
-  const archive = { workout: [] };
-  const proposals = {};
+  const chat: unknown[] = [];
+  const archive: unknown[] = [];
 
   it('ignores fields the backup does not carry', () => {
-    const before = pickFields({ chats, archive, proposals, pending: false }, BACKED_UP_FIELDS.ai);
-    const after = pickFields({ chats, archive, proposals, pending: true }, BACKED_UP_FIELDS.ai);
+    const before = pickFields({ chat, archive, pending: false }, BACKED_UP_FIELDS.ai);
+    const after = pickFields({ chat, archive, pending: true }, BACKED_UP_FIELDS.ai);
     expect(sliceChanged(before, after)).toBe(false);
   });
 
   it('sees a replaced field', () => {
-    const before = pickFields({ chats, archive, proposals }, BACKED_UP_FIELDS.ai);
-    const after = pickFields({ chats: { workout: [1] }, archive, proposals }, BACKED_UP_FIELDS.ai);
+    const before = pickFields({ chat, archive }, BACKED_UP_FIELDS.ai);
+    const after = pickFields({ chat: [1], archive }, BACKED_UP_FIELDS.ai);
     expect(sliceChanged(before, after)).toBe(true);
   });
 
@@ -46,17 +45,17 @@ describe('a change is a backed-up field that is a new reference', () => {
 
 describe('the settings slice', () => {
   const base = {
-    restSecondsBetweenSets: 90,
-    gyms: [],
+    tasksTrendRange: 'month',
+    themeId: 'lime',
     autoBackupEnabled: true,
     autoBackupFolderUri: 'content://tree',
     autoBackupFile: { uri: 'content://f', day: '2026-10-15' },
     lastBackupAt: '2026-10-15T10:00:00.000Z',
-    setNumber: () => undefined,
+    setTheme: () => undefined,
   };
 
   it('holds every setting and none of the backup’s own bookkeeping or actions', () => {
-    expect(Object.keys(settingsSlice(base)).sort()).toEqual(['gyms', 'restSecondsBetweenSets']);
+    expect(Object.keys(settingsSlice(base)).sort()).toEqual(['tasksTrendRange', 'themeId']);
   });
 
   it('does not change when the backup records itself — the loop this exists to stop', () => {
@@ -69,7 +68,7 @@ describe('the settings slice', () => {
   });
 
   it('changes with a real setting', () => {
-    const after = { ...base, restSecondsBetweenSets: 120 };
+    const after = { ...base, tasksTrendRange: 'year' };
     expect(sliceChanged(settingsSlice(base), settingsSlice(after))).toBe(true);
   });
 
@@ -80,21 +79,8 @@ describe('the settings slice', () => {
   });
 });
 
-describe('which stores each app watches', () => {
-  it('settings and the assistant everywhere, plus the app’s own log', () => {
-    expect(watchedStores('tasks')).toEqual(['settings', 'tasks', 'ai']);
-    expect(watchedStores('expenses')).toEqual(['settings', 'money', 'ai']);
-  });
-
-  it('Workout watches its legacy tasks and money too, since its file may carry them', () => {
-    expect(watchedStores('workout')).toEqual([
-      'settings',
-      'library',
-      'workoutHistory',
-      'debriefs',
-      'tasks',
-      'money',
-      'ai',
-    ]);
+describe('which stores are watched', () => {
+  it('the settings, the tasks and the assistant — everything the file carries', () => {
+    expect(WATCHED_STORES).toEqual(['settings', 'tasks', 'ai']);
   });
 });

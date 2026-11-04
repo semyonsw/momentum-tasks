@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import { buildTasksContext } from './ai/aiContext';
 import { habitStrength } from './habitStrength';
-import { nextUnansweredTask } from './landing';
 import { planReminders } from './reminders';
 import {
   allExcusedOn,
@@ -18,7 +17,6 @@ import {
   type TaskLog,
   type TaskMark,
 } from './tasks';
-import { weeklyReview } from './weeklyReview';
 import { yearPixels } from './yearPixels';
 
 /**
@@ -252,18 +250,6 @@ describe('the day, the month and the year never count an unanswered day against 
     expect(one.months[8].cells[8].kind).toBe('blank');
   });
 
-  it('the weekly review never names it as the task that slipped', () => {
-    const review = weeklyReview({
-      today: '2026-09-17',
-      workouts: [],
-      tasks: [weekly, plain],
-      log: marks({ '2026-09-08': 'done' }, 'read'),
-      amounts: [],
-      categories: [],
-    });
-    // Stretch is first in the list and was left seven days; Read six. Read slipped.
-    expect(review?.tasks?.slipped?.name).toBe('Read');
-  });
 });
 
 describe('habit strength, stepped by the week', () => {
@@ -349,18 +335,11 @@ describe('the rest of the app', () => {
     expect(describeSchedule({ kind: 'weekly', times: 3 }, 'ru')).toBe('3 × в неделю');
   });
 
-  it('the landing chip skips it once the week is met', () => {
-    const log = marks({ '2026-09-07': 'done', '2026-09-08': 'done', '2026-09-09': 'done' });
-    expect(nextUnansweredTask([weekly], log, '2026-09-10', { autoTick: true })).toBeNull();
-    expect(nextUnansweredTask([weekly], {}, '2026-09-10', { autoTick: true })?.id).toBe('stretch');
-  });
-
   it('reminds daily, and the follow-ups stop once the week is met', () => {
     const reminded = task({ reminder: { hour: 20, minute: 0, every: 60 } });
     const now = new Date(2026, 8, 10, 8, 0);
     const open = planReminders({
       tasks: [reminded],
-      workout: { enabled: false, days: [], time: '18:00' },
       lang: 'en',
       now,
     });
@@ -372,7 +351,6 @@ describe('the rest of the app', () => {
     expect(open.some((r) => r.id.startsWith('task:stretch:2026-09-10:again'))).toBe(true);
     const met = planReminders({
       tasks: [reminded],
-      workout: { enabled: false, days: [], time: '18:00' },
       lang: 'en',
       now,
       log: marks({ '2026-09-07': 'done', '2026-09-08': 'done', '2026-09-09': 'done' }),

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { habitStrength } from './habitStrength';
-import { nextUnansweredTask } from './landing';
 import {
   clearExcused,
   dayProgress,
@@ -18,7 +17,6 @@ import {
   type TaskEntry,
   type TaskLog,
 } from './tasks';
-import { weeklyReview } from './weeklyReview';
 import { yearPixels } from './yearPixels';
 
 /**
@@ -189,18 +187,6 @@ describe('every reader treats a counted day as done iff the target was reached',
     expect(year.months[8].cells[28].kind).toBe('score');
   });
 
-  it('the weekly review counts it done only at the target', () => {
-    const review = weeklyReview({
-      today: '2026-10-08',
-      workouts: [],
-      tasks: [counted],
-      log,
-      amounts: [],
-      categories: [],
-    });
-    // 28 Sep–4 Oct: done on the 28th and 30th, of seven asked.
-    expect(review?.tasks?.percent).toBe(Math.round((2 / 7) * 100));
-  });
 });
 
 describe('a pause over a counted day', () => {
@@ -218,11 +204,3 @@ describe('a pause over a counted day', () => {
   });
 });
 
-describe('the landing chip', () => {
-  it('skips a counted row: one tap there is a part, not the task', () => {
-    const plain = task({ id: 'read', name: 'Read', target: undefined, order: 1 });
-    expect(nextUnansweredTask([counted, plain], {}, '2026-09-10', { autoTick: true })?.id).toBe(
-      'read',
-    );
-  });
-});

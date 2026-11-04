@@ -6,14 +6,13 @@
  *   │     8 cards · your month in numbers      │
  *   ╰──────────────────────────────────────────╯
  *
- * The same row on the Landing (in the first seven days of a month, and through
- * December and January for the year) and at the foot of each history (always,
- * for last month). It reads the period through `useWrapped`, so the card count it
+ * At the foot of the task history: last month's always, and the year's through
+ * December and January. It reads the period through `useWrapped`, so the card count it
  * prints is the count the screen shows — and a period with nothing in it draws
  * no row at all rather than a door to an empty story.
  *
- * Lit, where the other Landing rows are plain glass: it is the one row there
- * that is an occasion rather than a log. The book is drawn here (three strokes)
+ * Lit, where the other rows are plain glass: it is the one row there that is
+ * an occasion rather than a log. The book is drawn here (three strokes)
  * rather than added to the symbol set for one use.
  */
 
@@ -24,13 +23,7 @@ import Svg, { Path } from 'react-native-svg';
 import { useWrapped } from '../hooks/useWrapped';
 import { useLanguage } from '../hooks/useT';
 import { useToday } from '../hooks/useToday';
-import {
-  lastMonth,
-  monthlyWrappedOffer,
-  wrappedEntry,
-  yearlyWrappedOffer,
-  type WrappedPeriod,
-} from '../lib/wrapped';
+import { lastMonth, wrappedEntry, yearlyWrappedOffer, type WrappedPeriod } from '../lib/wrapped';
 import { palette, radius, tint } from '../theme/tokens';
 import { Icon } from './Icon';
 import { pressedStyle } from './motion';
@@ -113,23 +106,7 @@ function Book({ color }: { color: string }) {
 }
 
 /**
- * The Landing's offers: last month's during the first seven days of a month, the
- * year's through December and January — both, in early January.
- */
-export function WrappedOffers({ onOpen }: { onOpen: (period: WrappedPeriod) => void }) {
-  const today = useToday();
-  const month = monthlyWrappedOffer(today);
-  const year = yearlyWrappedOffer(today);
-  return (
-    <>
-      {month ? <WrappedEntry period={month} onOpen={onOpen} /> : null}
-      {year ? <WrappedEntry period={year} onOpen={onOpen} /> : null}
-    </>
-  );
-}
-
-/**
- * At the foot of each history, above its Settings row: last month's Wrapped at
+ * At the foot of the history, above its Settings row: last month's Wrapped at
  * any time, and the year's in its window. The past is where a look back belongs.
  */
 export function WrappedHistoryFoot({ onOpen }: { onOpen: (period: WrappedPeriod) => void }) {

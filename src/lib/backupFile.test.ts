@@ -46,7 +46,6 @@ import {
   pickFolder,
   pickJsonFile,
   readTextFile,
-  saveCsvFile,
   writeDailyBackup,
   writeToFolder,
 } from './backupFile';
@@ -182,63 +181,6 @@ describe('deleteFile', () => {
   });
 });
 
-describe('saveCsvFile', () => {
-  it('saves into the picked folder', async () => {
-    native.saf.createFileAsync.mockResolvedValue(`${TREE}/document/primary%3ADownload%2Fmoney.csv`);
-    await expect(saveCsvFile('money', 'a,b\n')).resolves.toEqual({
-      saved: true,
-      name: 'money.csv',
-      where: 'Download',
-      folderUri: TREE,
-      uri: `${TREE}/document/primary%3ADownload%2Fmoney.csv`,
-    });
-  });
-
-  it('is a cancel, not a failure, when the picker is dismissed', async () => {
-    native.saf.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: false });
-    await expect(saveCsvFile('b', 'a')).resolves.toEqual({ saved: false, cancelled: true });
-    expect(native.saf.createFileAsync).not.toHaveBeenCalled();
-  });
-
-  it('asks SAF for a CSV so the file gets the right extension', async () => {
-    await saveCsvFile('money', 'a,b\n');
-    expect(native.saf.createFileAsync).toHaveBeenCalledWith(TREE, 'money', 'text/csv');
-  });
-
-  it('falls back to the app folder with no picker, and returns a path', async () => {
-    native.platform.OS = 'ios';
-    const result = await saveCsvFile('money', 'a,b\n');
-    expect(native.fs.writeAsStringAsync).toHaveBeenCalledWith(
-      'file:///data/user/0/app/files/money.csv',
-      'a,b\n',
-    );
-    expect(result).toEqual({
-      saved: true,
-      name: 'money.csv',
-      where: '/data/user/0/app/files/money.csv',
-    });
-  });
-
-  it('falls back when Android has no SAF module', async () => {
-    native.fs.StorageAccessFramework = undefined;
-    const result = await saveCsvFile('b', 'a');
-    expect(result).toMatchObject({ saved: true, name: 'b.csv' });
-  });
-
-  it('throws a translated sentence when there is no writable app folder either', async () => {
-    native.platform.OS = 'ios';
-    native.fs.documentDirectory = null;
-    await expect(saveCsvFile('b', 'a', 'ru')).rejects.toThrow(
-      'На этом устройстве нет папки для записи.',
-    );
-  });
-
-  it('propagates a real write error rather than reporting it as saved', async () => {
-    native.fs.writeAsStringAsync.mockRejectedValue(new Error('disk full'));
-    await expect(saveCsvFile('b', 'a')).rejects.toThrow('disk full');
-  });
-});
-
 /**
  * A SAF provider as Android's external storage behaves in mode `"w"`: a write
  * lands over the file's bytes from the start and does NOT truncate, so a shorter
@@ -317,16 +259,16 @@ describe('writeDailyBackup', () => {
   it('creates today’s file when there is none', async () => {
     const disk = nonTruncatingDisk({});
     const result = await writeDailyBackup(TREE, undefined, small, TODAY);
-    const uri = fileUri('momentum-workout-backup-2026-10-15.json');
+    const uri = fileUri('momentum-tasks-backup-2026-10-15.json');
     expect(result).toEqual({
-      name: 'momentum-workout-backup-2026-10-15.json',
+      name: 'momentum-tasks-backup-2026-10-15.json',
       file: { uri, day: '2026-10-15' },
     });
     expect(disk.get(uri)!.toString('utf8')).toBe(small);
   });
 
   it('overwrites today’s file in place: same URI, still one file', async () => {
-    const uri = fileUri('momentum-workout-backup-2026-10-15.json');
+    const uri = fileUri('momentum-tasks-backup-2026-10-15.json');
     const disk = nonTruncatingDisk({ [uri]: big });
 
     const result = await writeDailyBackup(TREE, { uri, day: '2026-10-15' }, small, TODAY);
@@ -338,13 +280,13 @@ describe('writeDailyBackup', () => {
   });
 
   it('on a new day creates the new file, then deletes the old one and strays — never older builds’ files', async () => {
-    const yesterday = fileUri('momentum-workout-backup-2026-10-14.json');
-    const stray = fileUri('momentum-workout-backup-2026-10-13 (1).json');
+    const yesterday = fileUri('momentum-tasks-backup-2026-10-14.json');
+    const stray = fileUri('momentum-tasks-backup-2026-10-13 (1).json');
     const oldAuto = fileUri('workout-tracker-auto-2026-10-01.json');
     const oldExport = fileUri('workout-tracker-backup-2026-10-01-0900.json');
-    // 2.x's combined backup and the other two apps' files share the folder.
+    // 2.x's combined backup and the other two Momentum apps' files share the folder.
     const combined = fileUri('momentum-backup-2026-10-14.json');
-    const tasks = fileUri('momentum-tasks-backup-2026-10-14.json');
+    const workout = fileUri('momentum-workout-backup-2026-10-14.json');
     const expenses = fileUri('momentum-expenses-backup-2026-10-14.json');
     const disk = nonTruncatingDisk({
       [yesterday]: big,
@@ -352,7 +294,7 @@ describe('writeDailyBackup', () => {
       [oldAuto]: big,
       [oldExport]: big,
       [combined]: big,
-      [tasks]: big,
+      [workout]: big,
       [expenses]: big,
     });
 
@@ -363,42 +305,29 @@ describe('writeDailyBackup', () => {
       TODAY,
     );
 
-    const today = fileUri('momentum-workout-backup-2026-10-15.json');
+    const today = fileUri('momentum-tasks-backup-2026-10-15.json');
     expect(result.file).toEqual({ uri: today, day: '2026-10-15' });
     expect([...disk.keys()].sort()).toEqual(
-      [oldAuto, oldExport, combined, tasks, expenses, today].sort(),
+      [oldAuto, oldExport, combined, workout, expenses, today].sort(),
     );
   });
 
-  it('writes under the app’s own name, and sweeps only its own files', async () => {
-    const mine = fileUri('momentum-tasks-backup-2026-10-14.json');
-    const workout = fileUri('momentum-workout-backup-2026-10-14.json');
-    const combined = fileUri('momentum-backup-2026-10-14.json');
-    const disk = nonTruncatingDisk({ [mine]: big, [workout]: big, [combined]: big });
-
-    const result = await writeDailyBackup(TREE, undefined, small, TODAY, 'tasks');
-
-    const today = fileUri('momentum-tasks-backup-2026-10-15.json');
-    expect(result.name).toBe('momentum-tasks-backup-2026-10-15.json');
-    expect([...disk.keys()].sort()).toEqual([combined, today, workout].sort());
-  });
-
-  it('leaves the inherited record of 2.x’s combined file alone: a new file, nothing deleted', async () => {
-    // The Workout app's first backup after the update: its settings still point
-    // at today's combined file, which Tasks and Expenses are about to import.
+  it('leaves a record of 2.x’s combined file alone: a new file, nothing deleted', async () => {
+    // A settings record that points at today's combined file — the file the
+    // other apps import from — is not this app's to overwrite or retire.
     const combined = fileUri('momentum-backup-2026-10-15.json');
     const disk = nonTruncatingDisk({ [combined]: big });
 
     const result = await writeDailyBackup(TREE, { uri: combined, day: '2026-10-15' }, small, TODAY);
 
-    const today = fileUri('momentum-workout-backup-2026-10-15.json');
+    const today = fileUri('momentum-tasks-backup-2026-10-15.json');
     expect(result.file).toEqual({ uri: today, day: '2026-10-15' });
     expect(disk.get(combined)!.toString('utf8')).toBe(big);
     expect([...disk.keys()].sort()).toEqual([combined, today].sort());
   });
 
   it('creates a new file when the stored one was deleted by the user', async () => {
-    const gone = fileUri('momentum-workout-backup-2026-10-15.json');
+    const gone = fileUri('momentum-tasks-backup-2026-10-15.json');
     const disk = nonTruncatingDisk({});
 
     const result = await writeDailyBackup(TREE, { uri: gone, day: '2026-10-15' }, small, TODAY);
@@ -409,7 +338,7 @@ describe('writeDailyBackup', () => {
   });
 
   it('replaces a file whose overwrite did not verify, leaving one good file', async () => {
-    const uri = fileUri('momentum-workout-backup-2026-10-15.json');
+    const uri = fileUri('momentum-tasks-backup-2026-10-15.json');
     const disk = nonTruncatingDisk({ [uri]: big });
     const realWrite = native.fs.writeAsStringAsync.getMockImplementation()!;
     // The overwrite "succeeds" without writing; the fresh file's write is real.
@@ -418,7 +347,7 @@ describe('writeDailyBackup', () => {
 
     const result = await writeDailyBackup(TREE, { uri, day: '2026-10-15' }, small, TODAY);
 
-    const twin = fileUri('momentum-workout-backup-2026-10-15%20(1).json');
+    const twin = fileUri('momentum-tasks-backup-2026-10-15%20(1).json');
     expect(result.file.uri).toBe(twin);
     expect([...disk.keys()]).toEqual([twin]);
     expect(disk.get(twin)!.toString('utf8')).toBe(small);

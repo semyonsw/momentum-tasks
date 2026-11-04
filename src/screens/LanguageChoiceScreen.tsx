@@ -48,10 +48,9 @@ import { Text, View } from 'react-native';
 import { Pressable } from '../components/Pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { APP_VARIANT } from '../lib/appVariant';
 import { commit } from '../lib/feedback';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_NAMES, type Language } from '../lib/i18n';
-import { launchName } from '../lib/settingsScope';
+import { LAUNCH_BRAND } from '../lib/launchReady';
 import { useSettings } from '../state/settingsStore';
 import { palette } from '../theme/tokens';
 
@@ -64,11 +63,10 @@ export function LanguageChoiceScreen() {
       className="flex-1 justify-center bg-bg px-lg"
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
     >
-      {/* The launcher's own word for this APK (`launchName`): the first screen of
-          the Tasks app must not say "Workout tracker". Untranslated, like the
-          rest of this screen — it is a name, and the icon under it says it too. */}
+      {/* The launcher's own word for the app (`LAUNCH_BRAND`). Untranslated, like
+          the rest of this screen — it is a name, and the icon under it says it too. */}
       <Text className="text-micro font-semibold uppercase text-green-bright">
-        {launchName(APP_VARIANT)}
+        {LAUNCH_BRAND.wordmark}
       </Text>
 
       {/* Both languages, same weight. Neither is the app's suggestion. */}

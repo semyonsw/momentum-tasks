@@ -31,7 +31,6 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
-import { APP_VARIANT } from '../lib/appVariant';
 import { classifyBackupError, type BackupFailure } from '../lib/autoBackup';
 import { writeDailyBackup } from '../lib/backupFile';
 import { BackupScheduler, serialized } from '../lib/backupScheduler';
@@ -63,15 +62,8 @@ export const runBackupNow = serialized(async (manual = false): Promise<BackupRun
 
   try {
     const now = new Date();
-    // This app's slices, under this app's file name — see `lib/appVariant.ts`.
-    const text = exportBackupText(now, APP_VARIANT);
-    const { name, file } = await writeDailyBackup(
-      folderUri,
-      settings.autoBackupFile,
-      text,
-      now,
-      APP_VARIANT,
-    );
+    const text = exportBackupText(now);
+    const { name, file } = await writeDailyBackup(folderUri, settings.autoBackupFile, text, now);
     /*
      * Stamped only after the write resolved. And only if the folder is still the
      * one written into: a re-pick while this write was in flight makes `file` a
@@ -106,7 +98,7 @@ export function useAutoBackup(): void {
       // Cheap gate: with nowhere to write, or switched off, a change asks nothing.
       const { autoBackupEnabled, autoBackupFolderUri } = useSettings.getState();
       if (autoBackupEnabled && autoBackupFolderUri) scheduler.request();
-    }, APP_VARIANT);
+    });
     const sub = AppState.addEventListener('change', (next) => {
       if ((next === 'background' || next === 'inactive') && scheduler.pending) {
         void scheduler.flush();

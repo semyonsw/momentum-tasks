@@ -4,10 +4,6 @@
  *
  *   ┌──────────────────────────────────────────────┐
  *   │ ‹ DAILY TASKS SETTINGS                       │
- *   │ ANSWERING                                    │  ← not in a split app; below
- *   │ ┌──────────────────────────────────────────┐ │
- *   │ │ Let the app tick what it knows    [ ●━ ] │ │
- *   │ └──────────────────────────────────────────┘ │
  *   │ PAUSING                                      │
  *   │ ┌──────────────────────────────────────────┐ │
  *   │ │ ॥ Pause for a vacation…                › │ │
@@ -16,22 +12,7 @@
  *   │ (Week)(Month)(3 months)(Year)(All)           │
  *   └──────────────────────────────────────────────┘
  *
- * ── WHY THE AUTOMATIC TICK IS A SWITCH AND NOT A FACT ──────────────────────
- *
- * Two of the seeded tasks are answered by the rest of the app: finishing a
- * workout ticks the training one, recording an amount ticks the money one. That
- * is the best thing about them and it is also the one behaviour in the app that
- * happens without a thumb — and a tick nobody can account for is a tick you stop
- * trusting, which is the failure mode a habit log cannot survive. So it is on by
- * default (a tick you did not have to give is why those rows exist) and it can be
- * switched off, which turns both rows into ordinary tasks that mean "I said so".
- *
- * SINCE 3.0.0 IT IS NOT SHOWN AT ALL. Tasks is its own app (`lib/appVariant.ts`)
- * and nothing in it finishes a workout or records an amount, so the switch would
- * govern ticks that cannot happen. `autoTickOffered` in `lib/settingsScope.ts`
- * decides, by variant; the setting itself stays in the store, untouched.
- *
- * ── AND WHY THE RANGE IS A SETTING RATHER THAN A MEMORY ────────────────────
+ * ── WHY THE RANGE IS A SETTING RATHER THAN A MEMORY ────────────────────────
  *
  * The history screen's chips still change the range for as long as you are on it.
  * This is what it OPENS on, which is a different question: somebody who thinks in
@@ -51,11 +32,9 @@ import { StatusBar } from 'expo-status-bar';
 import { PauseDoorRow, PauseSheet, raisePauseToast } from '../components/PauseSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
 import type { ToastAction } from '../components/glass';
-import { GlassCard, Kicker, SelectChip, SwitchRow } from '../components/primitives';
+import { Kicker, SelectChip } from '../components/primitives';
 import { useT } from '../hooks/useT';
-import { APP_VARIANT } from '../lib/appVariant';
 import { tap } from '../lib/feedback';
-import { autoTickOffered } from '../lib/settingsScope';
 import { TREND_RANGES, TREND_RANGE_LABELS } from '../lib/trends';
 import { useSettings } from '../state/settingsStore';
 import { useTasks } from '../state/tasksStore';
@@ -71,10 +50,7 @@ export function TaskSettingsScreen({
   const t = useT();
   const unpause = useTasks((s) => s.unpause);
   const [pausing, setPausing] = useState(false);
-  const autoTickTasks = useSettings((s) => s.autoTickTasks);
-  const setFlag = useSettings((s) => s.setFlag);
   const tasksTrendRange = useSettings((s) => s.tasksTrendRange);
-  const ticking = autoTickOffered(APP_VARIANT);
   const setTasksTrendRange = useSettings((s) => s.setTasksTrendRange);
 
   return (
@@ -87,36 +63,9 @@ export function TaskSettingsScreen({
         contentContainerStyle={{ paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {ticking ? (
-          <>
-            <Kicker className="mx-lg mb-kicker-gap mt-md">{t('Answering')}</Kicker>
-            <GlassCard className="mx-lg">
-              <SwitchRow
-                label={t('Let the app tick what it knows')}
-                hint={t(
-                  'Finishing a workout ticks the training task; recording an amount ticks the expense one',
-                )}
-                value={autoTickTasks}
-                onChange={(value) => setFlag('autoTickTasks', value)}
-              />
-            </GlassCard>
-            <Text className="mx-lg mt-sm text-label text-ink-faint">
-              {autoTickTasks
-                ? t(
-                    'Both rows are still ordinary tasks — you can tick them, skip them, and change what they say. This only means something else usually gets there first.',
-                  )
-                : t(
-                    'Every task waits for you. Nothing in the app answers a row on its own, and marks already given stay exactly as they are.',
-                  )}
-            </Text>
-          </>
-        ) : null}
-
         {/* Vacation mode (T3) — the whole list's door. The same sheet opens from
             a row's hold menu and from a task's own screen. */}
-        <Kicker className={`mx-lg mb-kicker-gap ${ticking ? 'mt-kicker' : 'mt-md'}`}>
-          {t('Pausing')}
-        </Kicker>
+        <Kicker className="mx-lg mb-kicker-gap mt-md">{t('Pausing')}</Kicker>
         <View className="mx-lg">
           <PauseDoorRow onPress={() => setPausing(true)} />
         </View>

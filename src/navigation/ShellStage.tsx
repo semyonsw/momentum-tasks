@@ -1,6 +1,6 @@
 /**
- * ShellStage — the roots (the app's section and Settings), and how one becomes
- * the other.
+ * ShellStage — the roots (the tasks and Settings), and how one becomes the
+ * other.
  *
  *   slide   section ↔ section the incoming one arrives from ±55% at .94, the
  *                            outgoing one leaves toward ∓32% at .9 and fades
@@ -10,11 +10,6 @@
  * finger's offset came in over the JS thread, one responder event at a time, so
  * the screen trembled whenever a render was running — which, at the start of a
  * switch, it always was.
- *
- * There were two more kinds until 3.0 — `open`, a section growing out of its
- * landing tile through an animated clip, and `close`, the reverse. The landing
- * went when each log became its own app (`lib/appVariant.ts`), and the clip
- * went with it: a slide is the only way one root becomes another now.
  *
  * Blur is left out: an animated `filter: blur` repaints the whole screen per
  * frame on Android, and the scale-and-fade reads the same at 640 ms.
@@ -129,8 +124,6 @@ interface ShellStageProps {
   /** 0 → 1 as a pushed screen covers the roots: the parallax behind it. */
   covered: SharedValue<number>;
   render: (route: ShellRoute) => ReactElement;
-  /** The roots this app has (`variantSections`) — the only ones built as spares. */
-  sections: readonly SectionTab[];
 }
 
 export function ShellStage({
@@ -139,7 +132,6 @@ export function ShellStage({
   progress,
   covered,
   render,
-  sections,
 }: ShellStageProps) {
   const live: ShellRoute[] = transition ? [transition.from, transition.to] : [route];
   const [stored, setStored] = useState(() => initialBuilds(route));
@@ -173,7 +165,7 @@ export function ShellStage({
     [],
   );
   const idle: IdleTask | null =
-    transition != null ? null : stage.gone.length > 0 ? 'drop' : nextSpare(stage, route, sections);
+    transition != null ? null : stage.gone.length > 0 ? 'drop' : nextSpare(stage, route);
   return (
     <>
       <SpareTimer next={idle} touch={touch} work={work} />

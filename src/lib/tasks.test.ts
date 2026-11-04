@@ -179,15 +179,14 @@ describe('the day', () => {
   });
 
   it('puts the note last on the row, after the facts', () => {
+    // `auto`, carried in from Momentum, ticks nothing here and is not said.
     const t = task({ auto: 'money' });
     const marks = log(
       't1',
       { '2026-09-12': 'done', '2026-09-13': 'done' },
       { '2026-09-13': 'bus fare' },
     );
-    expect(describeTaskRow(t, marks, '2026-09-13')).toBe(
-      'Every day · 2 in a row · auto · bus fare',
-    );
+    expect(describeTaskRow(t, marks, '2026-09-13')).toBe('Every day · 2 in a row · bus fare');
   });
 
   it('says nothing about a streak of one', () => {

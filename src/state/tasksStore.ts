@@ -35,8 +35,6 @@ import { persistedStorage } from './persistStorage';
 import { clampHour, clampMinute, dayKey } from '../lib/days';
 import { t } from '../lib/i18n';
 import { toggledMark } from '../lib/taskTap';
-import { APP_VARIANT, type AppVariant } from '../lib/appVariant';
-import { autoTickOffered } from '../lib/settingsScope';
 import { useSettings } from './settingsStore';
 import {
   asksOn,
@@ -79,34 +77,28 @@ export interface TasksValue {
  * Names rather than ids because a task is free text the user edits: the rename
  * below matches the exact shipped string and leaves anything else alone.
  */
-export const SEED_TASK_NAMES: [string, 'daily' | 'mwf', TaskAutoSource | null][] = [
-  ['Morning Bible/Narek reading', 'daily', null],
-  ['In-Work Task Report', 'mwf', null],
-  ['Gym / Boxing', 'mwf', 'workout'],
-  ['Productivity/Day Tasks', 'daily', null],
-  ['Evening Bible reading', 'daily', null],
-  ["Plan tomorrow's tasks", 'daily', null],
-  ['Book reading before sleep', 'daily', null],
-  ['Sleep before midnight', 'daily', null],
-  ['Track expenses', 'daily', 'money'],
+export const SEED_TASK_NAMES: [string, 'daily' | 'mwf'][] = [
+  ['Morning Bible/Narek reading', 'daily'],
+  ['In-Work Task Report', 'mwf'],
+  ['Gym / Boxing', 'mwf'],
+  ['Productivity/Day Tasks', 'daily'],
+  ['Evening Bible reading', 'daily'],
+  ["Plan tomorrow's tasks", 'daily'],
+  ['Book reading before sleep', 'daily'],
+  ['Sleep before midnight', 'daily'],
+  ['Track expenses', 'daily'],
 ];
 
 /** The nine rows the app opens with, starting today. */
 export function seedTasks(today = dayKey(new Date())): Task[] {
   const daily: TaskSchedule = { kind: 'daily' };
   const mwf: TaskSchedule = { kind: 'weekdays', days: [0, 2, 4] };
-  const rows: [string, TaskSchedule, TaskAutoSource | null][] = SEED_TASK_NAMES.map(
-    ([english, kind, auto]) => [
-      t(english, useSettings.getState().language),
-      kind === 'daily' ? daily : mwf,
-      auto,
-    ],
-  );
-  return rows.map(([name, schedule, auto], order) => ({
+  const lang = useSettings.getState().language;
+  return SEED_TASK_NAMES.map(([english, kind], order) => ({
     id: `task_${order + 1}`,
-    name,
-    schedule,
-    auto,
+    name: t(english, lang),
+    schedule: kind === 'daily' ? daily : mwf,
+    auto: null,
     startedOn: today,
     // The nine shipped rows are silent, like every task is until it is asked to
     // speak — see `Task.reminder`.
@@ -340,14 +332,6 @@ interface TasksState extends TasksValue {
   unpause: (cells: readonly ExcusedCell[]) => void;
   /** The inverse: excuse exactly these squares where still unanswered (Resume's Undo). */
   excuse: (cells: readonly ExcusedCell[]) => void;
-  /**
-   * Tick every live task fed by `source`, for `day`, if nobody has answered it.
-   *
-   * A deliberate answer WINS — training on a day you had already marked "missed
-   * on purpose" leaves your mark alone, because the app watching you train is
-   * not a reason for it to overrule you.
-   */
-  tickAuto: (source: TaskAutoSource, day?: string) => void;
   importTasks: (raw: unknown) => void;
 }
 
@@ -526,30 +510,6 @@ export const useTasks = create<TasksState>()(
 
       excuse: (cells) => set((state) => ({ log: excuseCells(state.log, cells) })),
 
-      tickAuto: (source, day = dayKey(new Date())) => {
-        /*
-         * THE SWITCH IS CHECKED HERE, not at the two call sites.
-         *
-         * `Let the app tick what it knows` is off, so nothing in the app answers a
-         * row on its own — and the guard belongs where the write happens, because
-         * there is one write and there will be more callers. Read rather than
-         * subscribed: this runs outside React, from a `Finish` and from an amount
-         * being saved, and the answer only has to be right at that instant.
-         */
-        if (!useSettings.getState().autoTickTasks) return;
-        const { tasks, log } = get();
-        let next = log;
-        for (const task of tasks) {
-          if (task.auto !== source || task.archivedAt !== null) continue;
-          // Only on a day the task asks: a Tuesday workout under a Mon/Wed/Fri
-          // "Gym" wrote a hidden `done` that surfaced the day the schedule changed.
-          if (!asksOn(task, day)) continue;
-          if ((next[task.id]?.[day]?.mark ?? null) !== null) continue;
-          next = writeEntry(next, task.id, day, { mark: 'done' });
-        }
-        if (next !== log) set({ log: next });
-      },
-
       importTasks: (raw) =>
         set({ ...sanitizeTasks(raw as Partial<TasksValue> | undefined | null) }),
     }),
@@ -576,25 +536,6 @@ export const useTasks = create<TasksState>()(
     },
   ),
 );
-
-/**
- * Read path for code outside React — the auto-tick callers.
- *
- * THE APP IS ASKED FIRST, then the switch. Since the split no app holds both a
- * task list it shows and a log that could tick it (`settingsScope.autoTickOffered`),
- * so a Finish in the Workout app or an amount in the Expenses app would only be
- * writing marks into a task list nobody can see — the Workout app's 2.x leftovers,
- * which its backups still carry to the Tasks app, ticked days the user never
- * answered. The variant is a parameter so the tests can still drive the tick.
- */
-export function tickTaskSource(
-  source: TaskAutoSource,
-  day?: string,
-  variant: AppVariant = APP_VARIANT,
-): void {
-  if (!autoTickOffered(variant)) return;
-  useTasks.getState().tickAuto(source, day);
-}
 
 /**
  * v1 → v2: the nine shipped rows, in the language the app is set to.

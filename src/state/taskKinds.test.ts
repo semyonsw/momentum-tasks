@@ -75,7 +75,6 @@ beforeEach(() => {
 
 afterEach(() => {
   useTasks.getState().importTasks({ tasks: seedTasks('2026-01-01'), log: {} });
-  useSettings.getState().setFlag('autoTickTasks', true);
 });
 
 describe('old data (every kind)', () => {
@@ -96,9 +95,9 @@ describe('old data (every kind)', () => {
       workouts: [],
       tasks: V220_TASKS,
     });
-    const parsed = parseBackup(v220, 'en', 'tasks');
+    const parsed = parseBackup(v220, 'en');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'tasks');
+    applyBackup(parsed.envelope);
     expect(useTasks.getState().tasks).toEqual(V220_TASKS.tasks);
     expect(useTasks.getState().log).toEqual(V220_TASKS.log);
   });
@@ -193,24 +192,6 @@ describe('counted tasks (T1)', () => {
     expect(useTasks.getState().log).toEqual({});
   });
 
-  it('the auto-tick is unaffected: a counted auto row is ticked like a plain one', () => {
-    useTasks.getState().importTasks({
-      tasks: [
-        stored({ id: 'gym', auto: 'workout', target: { count: 2, unit: 'sessions' } }),
-        stored({ id: 'plain', auto: 'workout', order: 1 }),
-      ],
-    });
-    useTasks.getState().setCount('gym', shiftDay(DAY, 1), 1);
-    useTasks.getState().tickAuto('workout', DAY);
-    useTasks.getState().tickAuto('workout', shiftDay(DAY, 1));
-    const { log } = useTasks.getState();
-    expect(entryOf(log, 'gym', DAY)).toEqual({ mark: 'done', note: '' });
-    // A partial day is unanswered, so the finished workout answers it — and
-    // the part already counted is kept.
-    expect(entryOf(log, 'gym', shiftDay(DAY, 1))).toEqual({ mark: 'done', note: '', count: 1 });
-    expect(entryOf(log, 'plain', DAY)).toEqual({ mark: 'done', note: '' });
-  });
-
   it('a target is added, changed and taken off through the editor path', () => {
     const { addTask, updateTask } = useTasks.getState();
     const id = addTask({
@@ -233,9 +214,9 @@ describe('counted tasks (T1)', () => {
     const text = exportBackupText();
     useTasks.getState().importTasks({ tasks: [stored()], log: {} });
 
-    const parsed = parseBackup(text, 'en', 'tasks');
+    const parsed = parseBackup(text, 'en');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'tasks');
+    applyBackup(parsed.envelope);
     expect(useTasks.getState().tasks[0].target).toEqual({ count: 8, unit: 'glasses' });
     expect(entryOf(useTasks.getState().log, 'water', DAY)).toEqual({
       mark: null,
@@ -290,9 +271,9 @@ describe('N times a week (T2)', () => {
     });
     const text = exportBackupText();
     useTasks.getState().importTasks({ tasks: [stored()], log: {} });
-    const parsed = parseBackup(text, 'en', 'tasks');
+    const parsed = parseBackup(text, 'en');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'tasks');
+    applyBackup(parsed.envelope);
     expect(useTasks.getState().tasks[0].schedule).toEqual({ kind: 'weekly', times: 4 });
     expect(entryOf(useTasks.getState().log, 'water', DAY).mark).toBe('done');
   });
@@ -345,9 +326,9 @@ describe('habits to avoid (T7)', () => {
     useTasks.getState().importTasks({ tasks: [stored({ avoid: true })] });
     const text = exportBackupText();
     useTasks.getState().importTasks({ tasks: [stored()], log: {} });
-    const parsed = parseBackup(text, 'en', 'tasks');
+    const parsed = parseBackup(text, 'en');
     if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'tasks');
+    applyBackup(parsed.envelope);
     expect(useTasks.getState().tasks[0].avoid).toBe(true);
   });
 

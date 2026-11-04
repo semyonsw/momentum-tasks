@@ -31,7 +31,7 @@ import { SheetCancel, SheetFrame } from './Sheet';
 import { PrimaryButton } from './primitives';
 import { pressedStyle } from './motion';
 import { useLanguage, useT } from '../hooks/useT';
-import { formatValue } from '../lib/money';
+import { formatWhole } from '../lib/formatNumber';
 import { describeNextLevel, type LevelProgress, type XpLine } from '../lib/xp';
 import { glass, gradientBar, palette, radius, tint } from '../theme/tokens';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -44,7 +44,7 @@ export function LevelChip({ progress, onPress }: { progress: LevelProgress; onPr
       accessibilityRole="button"
       accessibilityLabel={t('Level {n}, {xp} XP. Open the level', {
         n: progress.level,
-        xp: formatValue(progress.xp),
+        xp: formatWhole(progress.xp),
       })}
       // 28 drawn, 44 to the thumb.
       hitSlop={{ top: 8, bottom: 8, left: 4, right: 12 }}
@@ -117,7 +117,7 @@ export function LevelSheet({
           style={{ fontSize: 40, lineHeight: 46, letterSpacing: -1 }}
           className="font-semibold tabular-nums text-ink"
         >
-          {formatValue(progress.xp)}
+          {formatWhole(progress.xp)}
         </Text>
         <Text maxFontSizeMultiplier={1.3} className="flex-1 text-label text-ink-muted">
           {describeNextLevel(progress, lang)}
@@ -159,7 +159,7 @@ export function LevelSheet({
               </Text>
               {line.count > 0 ? (
                 <Text maxFontSizeMultiplier={1.3} className="text-micro text-ink-faint">
-                  {t('{n} so far', { n: `${formatValue(line.xp)} ${t('XP')}` })}
+                  {t('{n} so far', { n: `${formatWhole(line.xp)} ${t('XP')}` })}
                 </Text>
               ) : null}
             </View>

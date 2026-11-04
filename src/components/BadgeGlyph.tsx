@@ -5,11 +5,10 @@
  *   earned   ( ◉ )  the stop at 14% fill, 55% edge, glyph in the stop
  *   locked   ( ┆ )  dashed `ink-faint` edge, no fill, glyph in `ink-faint`
  *
- * The glyph is the series the badge counts — a plate for workouts, a trend for
- * tonnage and records, the flame for runs, the tick for tasks, the wallet for
- * money — so a row of badges reads by what they are about before a word of
- * them is read. Not one glyph per badge: thirty-three pictures nobody has to
- * learn are thirty-three pictures nobody does.
+ * The glyph is the series the badge counts — the flame for runs, the tick for
+ * everything else — so a row of badges reads by what they are about before a
+ * word of them is read. Not one glyph per badge: pictures nobody has to learn
+ * are pictures nobody does.
  *
  * Bronze, silver and gold are the THEME's c3, c2 and c1 (the design's note), so
  * a gold badge is the brightest stop of whatever theme is worn, never a metal
@@ -34,25 +33,8 @@ export function tierColor(tier: BadgeTier): string {
 }
 
 function Glyph({ series, size, color }: { series: keyof LogFacts; size: number; color: string }) {
-  switch (series) {
-    case 'workouts':
-    case 'sets':
-      return <MaterialSymbol name="fitness_center" size={size} color={color} filled />;
-    case 'tonnage':
-    case 'records':
-      return <Icon name="trending-up" size={size} color={color} />;
-    case 'runs':
-      return <Icon name="flame" size={size} color={color} />;
-    case 'tasksDone':
-    case 'perfectDays':
-    case 'fullWeeks':
-      return <MaterialSymbol name="task_alt" size={size} color={color} filled />;
-    case 'amounts':
-    case 'spendDays':
-      return <MaterialSymbol name="payments" size={size} color={color} filled />;
-    default:
-      return <MaterialSymbol name="account_balance_wallet" size={size} color={color} filled />;
-  }
+  if (series === 'runs') return <Icon name="flame" size={size} color={color} />;
+  return <MaterialSymbol name="task_alt" size={size} color={color} filled />;
 }
 
 export function BadgeGlyph({

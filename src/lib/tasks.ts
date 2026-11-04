@@ -2,18 +2,16 @@
  * The daily log — what you said you would do, and what you did.
  *
  *   Morning Bible/Narek reading     Every day · 12 in a row
- *   Gym / Boxing                    Mon · Wed · Fri · auto
+ *   Gym / Boxing                    Mon · Wed · Fri
  *   Book reading before sleep       Every day · missed on purpose · travelling
  *
- * ── A STREAK HERE, AND NOT IN THE TRAINING LOG ─────────────────────────────
+ * ── A STREAK, AND THE ESCAPE HATCH THAT KEEPS IT HONEST ───────────────────
  *
- * `lib/calendar.ts` refuses to count a streak, and the reason it gives is that a
- * training streak turns "I was ill for a week" into a number going to zero. That
- * argument is about TRAINING, where the body decides and the log's only job is to
- * be honest about what happened. A habit is the other thing: the whole reason to
- * write "read before sleep" on a list is that the list pushes back, and a habit
- * list with nothing at stake is a to-do list that resets every night. So the
- * streak stays — and the escape hatch that makes it honest comes with it.
+ * A streak can turn "I was ill for a week" into a number going to zero. But the
+ * whole reason to write "read before sleep" on a list is that the list pushes
+ * back, and a habit list with nothing at stake is a to-do list that resets every
+ * night. So the streak stays — and the escape hatch that makes it honest comes
+ * with it.
  *
  * ── THREE ANSWERS, NOT TWO ────────────────────────────────────────────────
  *
@@ -31,10 +29,11 @@
  *
  * ── AND `auto` ────────────────────────────────────────────────────────────
  *
- * Two tasks are ticked by the rest of the app rather than by a thumb: finishing a
- * workout ticks the training one, recording an amount ticks the money one. They
- * are still ordinary tasks — still tappable, still skippable — `auto` only says
- * that something else will get there first. See `lib/autoTick.ts`.
+ * In Momentum, before the tasks became an app of their own, two tasks were
+ * ticked by the rest of the app: finishing a workout ticked the training one,
+ * recording an amount ticked the money one. Nothing here can tick a row, so the
+ * field is never set — but it is still read and written back as it was, so a
+ * task carried in from Momentum, and a backup carried back to it, keep it.
  *
  * ── A PAUSE IS THE SAME MARK, WRITTEN FOR A RUN OF DAYS ──────────────────
  *
@@ -166,7 +165,7 @@ export const WEEKLY_MAX = 7;
 /** What the circle on the left of a row says. Absent = unanswered. */
 export type TaskMark = 'done' | 'missed';
 
-/** Which part of the app ticks this one without being asked. */
+/** Which part of Momentum ticked this one without being asked — see `auto` above. */
 export type TaskAutoSource = 'workout' | 'money';
 
 /**
@@ -689,7 +688,7 @@ export function tasksOn(tasks: readonly Task[], day: string): Task[] {
 }
 
 /**
- * The faint second line of a row: schedule, streak, `auto`, then the day's note.
+ * The faint second line of a row: schedule, streak, reminder, then the day's note.
  *
  * The note goes LAST and the row clips at one line, so a long note is trimmed
  * rather than pushing the facts off the end.
@@ -736,7 +735,6 @@ export function describeTaskRow(
   const reminder = describeReminder(task, lang);
   if (reminder) parts.push(reminder);
   if (entry.mark === 'missed') parts.push(t('missed on purpose', lang));
-  if (task.auto) parts.push(t('auto', lang));
   if (entry.note.trim() !== '') parts.push(entry.note.trim());
   return parts.join(' · ');
 }

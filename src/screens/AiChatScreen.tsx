@@ -1,25 +1,21 @@
 /**
- * AiChatScreen — one section's conversation with the assistant.
+ * AiChatScreen — the conversation with the assistant.
  *
- *   ‹  AI · WORKOUT                                  +
- *      Gemini · reads your training log on this phone
+ *   ‹  AI COACH · TASKS                              +
+ *      Reads your task answers on this phone
  *   ─────────────────────────────────────────────────
- *                          Summarize my last 4 weeks ▸
+ *                                 How did October go? ▸
  *   GEMINI
- *   [ LAST 4 WEEKS · 11 WORKOUTS  214 sets · 38.4 t … ]
+ *   [ OCTOBER · 84% DONE  Stretching slipped twice … ]
  *   ─────────────────────────────────────────────────
- *   [Last 4 weeks] [Squat trend] [Suggest a routine] →
- *   ( Ask, or say what to change…                    ➤ )
+ *   [This month] [What slips most?] [Better schedule] →
+ *   ( Ask, or say what you did…                      ➤ )
  *
- * ── ONE CHAT PER SECTION, AND IT SAYS WHICH ────────────────────────────────
+ * ── IT SAYS WHAT IT READS ─────────────────────────────────────────────────
  *
- * One chat per log, because the context sent with a question is that log alone.
- * Since 3.0.0 each app is one log (`lib/appVariant.ts`), so each app has exactly
- * one of these chats — `lib/ai/aiScope.ts` names it, and `state/aiActions.ts`
- * refuses to ask or apply from any other. The Workout app's store still holds
- * the 2.x Tasks and Finance chats; they are kept, never opened here. The kicker
- * names the section and the line under it names what is read, so there is never
- * a question about what the assistant can see.
+ * The context sent with a question is the tasks and nothing else, and the line
+ * under the kicker names it, so there is never a question about what the
+ * assistant can see.
  *
  * ── THE SCREEN IS COMPOSITION ──────────────────────────────────────────────
  *
@@ -28,11 +24,11 @@
  * `components/AiBlocks.tsx`. This file lays them out, keeps the list scrolled to
  * the newest message, and owns one piece of state — the draft in the composer.
  *
- * A proposal's `Add to routines` goes to the shell rather than straight to the
- * store, because the toast that says what happened — with its Undo — has to be
- * raised by something that outlives this screen. Deleting a past chat raises
+ * A card's `Apply changes` goes to the shell rather than straight to the store,
+ * because the toast that says what happened — with its Undo — has to be raised
+ * by something that outlives this screen. Deleting a past chat raises
  * the same toast (`onToast`): the ✕ acts at once and Undo puts the chat back
- * where it was, messages and suggestions and all (U14).
+ * where it was, messages and all (U14).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
@@ -43,9 +39,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SparkleCircle } from '../components/AiEntryCard';
 import { ErrorAnswer, SummaryCard, TextAnswer, Typing, UserBubble } from '../components/AiBlocks';
-import { AiProposalCard } from '../components/AiProposalCard';
 import { AiChangesCard } from '../components/AiChangesCard';
-import { AiSequenceCard } from '../components/AiSequenceCard';
 import { BubblePressable } from '../components/bubbles';
 import { Sheet } from '../components/Sheet';
 import { GlassBar, GlassSurface, Lamps, type ToastAction } from '../components/glass';
@@ -55,10 +49,9 @@ import { useAiPrompts } from '../hooks/useAiPrompts';
 import { useFollow, useKeyboardOverlap } from '../hooks/useKeyboard';
 import { useLanguage, usePlural, useT } from '../hooks/useT';
 import { dayKey, formatShortDay } from '../lib/days';
-import type { AiSection } from '../lib/ai/aiSchema';
 import { tap } from '../lib/feedback';
 import { liftedBottom } from '../lib/keyboard';
-import { discardChanges, discardSequence, sectionContext, sendMessage } from '../state/aiActions';
+import { chatContext, discardChanges, sendMessage } from '../state/aiActions';
 import { useAi, type AiMessage } from '../state/aiStore';
 import { glassTier, gradientFill, motion, palette, radius } from '../theme/tokens';
 
@@ -68,58 +61,31 @@ const COMPOSER_MAX_LINES = 4;
 /** The composer's foot above the gesture strip — or above the keyboard. */
 const COMPOSER_GAP = 12;
 
-const META: Record<
-  AiSection,
-  { kicker: string; line: string; title: string; body: string; placeholder: string }
-> = {
-  Workout: {
-    kicker: 'AI coach · Workout',
-    line: 'Reads your training log on this phone',
-    title: 'Ask about your training',
-    body: 'Answers come from your own log on this phone. It can also log your weight, fix a set that was really a warm-up, or show where anything is in the app. Nothing changes until you tap Apply. To talk instead of type, tap the mic on your keyboard.',
-    placeholder: 'Ask, or say what to change…',
-  },
-  Tasks: {
-    kicker: 'AI coach · Tasks',
-    line: 'Reads your task answers on this phone',
-    title: 'Ask about your habits',
-    body: 'Reads your daily tasks and how each day was answered, including the days you excused on purpose. Tell it what you did and it will tick the day for you once you tap Apply. The mic on your keyboard works here too.',
-    placeholder: 'Ask, or say what you did…',
-  },
-  Expenses: {
-    kicker: 'AI coach · Finance',
-    line: 'Reads your amounts on this phone',
-    title: 'Ask about your money',
-    body: 'Reads your amounts by day and month, with categories. Whole-month amounts like rent are counted per month, never per day. Say what you spent or earned and it will log it once you tap Apply. The mic on your keyboard works here too.',
-    placeholder: 'Ask, or say what you spent…',
-  },
+/** The chat's words — `t()` keys, translated where they are drawn. */
+const META = {
+  kicker: 'AI coach · Tasks',
+  line: 'Reads your task answers on this phone',
+  title: 'Ask about your habits',
+  body: 'Reads your daily tasks and how each day was answered, including the days you excused on purpose. Tell it what you did and it will tick the day for you once you tap Apply. The mic on your keyboard works here too.',
+  placeholder: 'Ask, or say what you did…',
 };
 
 export interface AiChatScreenProps {
-  section: AiSection;
   /** A question to ask on arrival — the chip that opened this chat. */
   prompt?: string;
   /** Called once the arrival question has been sent, so it is not sent again. */
   onPromptSent: () => void;
   onBack: () => void;
-  onReview: (proposalId: string) => void;
-  onAccept: (proposalId: string) => void;
-  /** `Apply loop` on a suggested training loop — the shell shows the Undo. */
-  onApplySequence: (messageId: string) => void;
-  /** `Apply changes` on a suggested settings card — the shell shows the Undo. */
+  /** `Apply changes` on a suggested changes card — the shell shows the Undo. */
   onApplyChanges: (messageId: string) => void;
   /** The shell's toast, which outlives this screen — the past-chat delete's Undo. */
   onToast: (text: string, action?: ToastAction) => void;
 }
 
 export function AiChatScreen({
-  section,
   prompt,
   onPromptSent,
   onBack,
-  onReview,
-  onAccept,
-  onApplySequence,
   onApplyChanges,
   onToast,
 }: AiChatScreenProps) {
@@ -127,16 +93,15 @@ export function AiChatScreen({
   const lang = useLanguage();
   const plural = usePlural();
   const insets = useSafeAreaInsets();
-  const meta = META[section];
-  const messages = useAi((s) => s.chats[section]);
-  const proposals = useAi((s) => s.proposals);
-  const pending = useAi((s) => s.pending[section]);
-  const retrying = useAi((s) => s.retrying[section]);
-  const prompts = useAiPrompts(section);
+  const meta = META;
+  const messages = useAi((s) => s.chat);
+  const pending = useAi((s) => s.pending);
+  const retrying = useAi((s) => s.retrying);
+  const prompts = useAiPrompts();
   /* Filled in by the composer, which owns the draft — see `Composer`. */
   const clearDraft = useRef<() => void>(() => undefined);
   const [showingHistory, setShowingHistory] = useState(false);
-  const archived = useAi((s) => s.archive[section]);
+  const archived = useAi((s) => s.archive);
   const scrollRef = useRef<ScrollView>(null);
 
   /* The arrival question, exactly once. */
@@ -144,38 +109,26 @@ export function AiChatScreen({
   useEffect(() => {
     if (!prompt || sent.current) return;
     sent.current = true;
-    void sendMessage(section, prompt);
+    void sendMessage(prompt);
     onPromptSent();
-  }, [onPromptSent, prompt, section]);
+  }, [onPromptSent, prompt]);
 
   /* How much is being read, counted once per question rather than per render. */
   const reading = useMemo(() => {
     if (!pending) return '';
-    const count = sectionContext(section).count;
-    if (section === 'Workout') {
-      return t('Reading {count} {noun}…', {
-        count,
-        noun: plural(count, { one: t('workout'), few: 'тренировки', many: t('workouts') }),
-      });
-    }
-    if (section === 'Tasks') {
-      return t('Reading {count} {noun} of tasks…', {
-        count,
-        noun: plural(count, { one: t('day'), few: 'дня', many: t('days') }),
-      });
-    }
-    return t('Reading {count} {noun} of amounts…', {
+    const count = chatContext().count;
+    return t('Reading {count} {noun} of tasks…', {
       count,
-      noun: plural(count, { one: t('month'), few: 'месяца', many: t('months') }),
+      noun: plural(count, { one: t('day'), few: 'дня', many: t('days') }),
     });
-  }, [pending, plural, section, t]);
+  }, [pending, plural, t]);
 
   const ask = (text: string) => {
     const question = text.trim();
     if (!question || pending) return;
     tap();
     clearDraft.current();
-    void sendMessage(section, question);
+    void sendMessage(question);
   };
 
   /*
@@ -184,7 +137,7 @@ export function AiChatScreen({
    * in the history with its suggestion still there to add, so there is nothing
    * left to confirm.
    */
-  const startNew = () => useAi.getState().clearChat(section);
+  const startNew = () => useAi.getState().clearChat();
 
   /** The pill's resting height — one line. It grows to four (`Composer`). */
   const composerHeight = 60;
@@ -214,7 +167,7 @@ export function AiChatScreen({
   return (
     <View className="flex-1 bg-bg">
       <StatusBar style="light" />
-      <Lamps section={section} />
+      <Lamps section="Tasks" />
 
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
         <GlassBar>
@@ -278,21 +231,16 @@ export function AiChatScreen({
           <Stagger key={message.id} duration={motion.enter}>
             <Message
               message={message}
-              proposals={proposals}
               // Only the LAST error retries: an older one's question has later
               // turns after it, and its answer would land at the bottom with no
               // question beside it.
               onRetry={
                 index === messages.length - 1
-                  ? (m) => void sendMessage(section, m.retry, m.id)
+                  ? (m) => void sendMessage(m.retry, m.id)
                   : undefined
               }
-              onReview={onReview}
-              onAccept={onAccept}
-              onApplySequence={() => onApplySequence(message.id)}
-              onDiscardSequence={() => discardSequence(section, message.id)}
               onApplyChanges={() => onApplyChanges(message.id)}
-              onDiscardChanges={() => discardChanges(section, message.id)}
+              onDiscardChanges={() => discardChanges(message.id)}
             />
           </Stagger>
         ))}
@@ -370,7 +318,7 @@ export function AiChatScreen({
             >
               <BubblePressable
                 onPress={() => {
-                  useAi.getState().openArchived(section, chat.id);
+                  useAi.getState().openArchived(chat.id);
                   setShowingHistory(false);
                 }}
                 radius={radius.row}
@@ -391,7 +339,7 @@ export function AiChatScreen({
                 onPress={() => {
                   // One tap, and the Undo puts it back exactly (U14) — see
                   // `lib/ai/chatArchive.ts` for why not a confirm.
-                  const deleted = useAi.getState().deleteArchived(section, chat.id);
+                  const deleted = useAi.getState().deleteArchived(chat.id);
                   if (!deleted) return;
                   onToast(t('Chat deleted'), {
                     label: t('Undo'),
@@ -421,22 +369,12 @@ export function AiChatScreen({
 
 function Message({
   message,
-  proposals,
   onRetry,
-  onReview,
-  onAccept,
-  onApplySequence,
-  onDiscardSequence,
   onApplyChanges,
   onDiscardChanges,
 }: {
   message: AiMessage;
-  proposals: ReturnType<typeof useAi.getState>['proposals'];
   onRetry?: (message: Extract<AiMessage, { role: 'error' }>) => void;
-  onReview: (proposalId: string) => void;
-  onAccept: (proposalId: string) => void;
-  onApplySequence: () => void;
-  onDiscardSequence: () => void;
   onApplyChanges: () => void;
   onDiscardChanges: () => void;
 }) {
@@ -454,34 +392,12 @@ function Message({
       {message.blocks.map((block, index) => {
         if (block.type === 'text') return <TextAnswer key={index} text={block.text} />;
         if (block.type === 'summary') return <SummaryCard key={index} block={block} />;
-        if (block.type === 'sequence') {
-          return (
-            <AiSequenceCard
-              key={index}
-              block={block}
-              onApply={onApplySequence}
-              onDiscard={onDiscardSequence}
-            />
-          );
-        }
-        if (block.type === 'changes') {
-          return (
-            <AiChangesCard
-              key={index}
-              block={block}
-              onApply={onApplyChanges}
-              onDiscard={onDiscardChanges}
-            />
-          );
-        }
-        const stored = proposals[block.proposalId];
-        if (!stored) return null;
         return (
-          <AiProposalCard
-            key={block.proposalId}
-            stored={stored}
-            onReview={() => onReview(block.proposalId)}
-            onAccept={() => onAccept(block.proposalId)}
+          <AiChangesCard
+            key={index}
+            block={block}
+            onApply={onApplyChanges}
+            onDiscard={onDiscardChanges}
           />
         );
       })}
@@ -576,7 +492,7 @@ function RoundButton({
  *
  * Its own component so that typing re-renders the composer and nothing else: with
  * the draft in the screen, every character re-rendered the whole conversation —
- * each message, each proposal card, each entrance — and a long chat typed like a
+ * each message, each card, each entrance — and a long chat typed like a
  * slow one. `clearRef` is how the screen empties it: a chip or a suggestion asked
  * from the thread clears the draft in the same batch as it always did.
  *

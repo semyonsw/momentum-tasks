@@ -1,23 +1,17 @@
 /**
- * NavBar — the app's own section and Settings, on one pane of glass.
+ * NavBar — the tasks and Settings, on one pane of glass.
  *
  *   ╭──────────────────────────────╮
- *   │      🏋              ⚙       │
- *   │    Workout        Settings   │
+ *   │      ✓               ⚙       │
+ *   │    Tasks          Settings   │
  *   ╰──────────────────────────────╯
  *
- * ── TWO ITEMS, EACH IN ITS OWN HALF (3.0) ─────────────────────────────────
+ * ── TWO ITEMS, EACH IN ITS OWN HALF ───────────────────────────────────────
  *
- * From 2.0 to 2.10 the bar was four glyphs around a raised, gradient-filled
- * Home button: Momentum put a landing above three logs, and the way back to it
- * had to be one tap from anywhere. Each log is its own app now
- * (`lib/appVariant.ts`), the section is the landing, and the bar holds exactly
- * what the app has — its section and Settings (`variantSections`). They sit at
- * the quarter points (`lib/sectionNav.navSlots`), each centred in the half it
- * owns. Rejected: keeping two of the old four positions (a hole in the middle
- * where a button used to be reads as something missing) and dropping the bar
- * for a gear in the corner (Settings would stop being one tap from the root,
- * and the blob would have nowhere to go).
+ * The tasks are the landing, and the bar holds exactly the two roots. They sit
+ * at the quarter points (`lib/sectionNav.NAV_SLOTS`), each centred in the half
+ * it owns. Rejected: dropping the bar for a gear in the corner (Settings would
+ * stop being one tap from the root, and the blob would have nowhere to go).
  *
  * ── EVERY ITEM IS NAMED (2.9, redesign #10) ───────────────────────────────
  *
@@ -61,21 +55,17 @@ import { BlurGate, GlassBar } from './glass';
 import { useOverlayOpen } from './overlay';
 import { MaterialSymbol, type SymbolName } from './MaterialSymbol';
 import { useT } from '../hooks/useT';
-import { BLOB_HALF, navSlots, type SectionTab } from '../lib/sectionNav';
+import { BLOB_HALF, NAV_SLOTS, SECTIONS, type SectionTab } from '../lib/sectionNav';
 import { palette, tint } from '../theme/tokens';
 
 const GLYPH: Record<SectionTab, SymbolName> = {
-  Workout: 'fitness_center',
   Tasks: 'task_alt',
-  Expenses: 'account_balance_wallet',
   Settings: 'settings',
 };
 
-/** The section's own name — printed under the glyph and spoken. Expenses as Finance. */
+/** The root's own name — printed under the glyph and spoken. */
 const LABEL: Record<SectionTab, string> = {
-  Workout: 'Workout',
   Tasks: 'Tasks',
-  Expenses: 'Finance',
   Settings: 'Settings',
 };
 
@@ -90,8 +80,6 @@ const LABEL_BOTTOM = 8;
 const LABEL_LINE = 16;
 
 interface NavBarProps {
-  /** The sections this app has, in bar order (`variantSections`). */
-  sections: readonly SectionTab[];
   active: SectionTab;
   /**
    * False under a pushed screen. A sheet being up hides it too, but
@@ -103,7 +91,7 @@ interface NavBarProps {
   onSelect: (tab: SectionTab) => void;
 }
 
-function NavBarComponent({ sections, active, visible: onRoute, onSelect }: NavBarProps) {
+function NavBarComponent({ active, visible: onRoute, onSelect }: NavBarProps) {
   const insets = useSafeAreaInsets();
   const t = useT();
   const [width, setWidth] = useState(0);
@@ -130,11 +118,10 @@ function NavBarComponent({ sections, active, visible: onRoute, onSelect }: NavBa
   }, [shown, visible]);
 
   /* The blob's two edges, each on its own clock. See the file header. */
-  const slots = useMemo(() => navSlots(sections), [sections]);
-  const centre = (slots[active] ?? 0) * width;
+  const centre = NAV_SLOTS[active] * width;
   const left = useSharedValue(centre - BLOB_HALF);
   const right = useSharedValue(centre + BLOB_HALF);
-  const activeIndex = sections.indexOf(active);
+  const activeIndex = SECTIONS.indexOf(active);
   const previous = useSharedValue(activeIndex);
   const placed = useRef(false);
   useEffect(() => {
@@ -159,10 +146,7 @@ function NavBarComponent({ sections, active, visible: onRoute, onSelect }: NavBa
     previous.value = activeIndex;
   }, [activeIndex, centre, left, previous, right, width]);
 
-  const centres = useMemo(
-    () => sections.map((s) => (slots[s] ?? 0) * width),
-    [sections, slots, width],
-  );
+  const centres = useMemo(() => SECTIONS.map((s) => NAV_SLOTS[s] * width), [width]);
 
   const barStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, shown.value * 1.4),
@@ -223,7 +207,7 @@ function NavBarComponent({ sections, active, visible: onRoute, onSelect }: NavBa
       </View>
 
       {width > 0
-        ? sections.map((section, i) => (
+        ? SECTIONS.map((section, i) => (
             <NavItem
               key={section}
               section={section}

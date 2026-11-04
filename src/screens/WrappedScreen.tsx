@@ -53,18 +53,15 @@ import { useMotionScale } from '../hooks/useMotionScale';
 import { useT } from '../hooks/useT';
 import { useWrapped } from '../hooks/useWrapped';
 import { tap } from '../lib/feedback';
-import { APP_VARIANT } from '../lib/appVariant';
-import { launchBrand } from '../lib/launchReady';
+import { LAUNCH_BRAND } from '../lib/launchReady';
 import type { WrappedCard, WrappedPeriod, WrappedSummary } from '../lib/wrapped';
 import { curve, glass, motion, palette, radius, stopTint, tint } from '../theme/tokens';
 
 /*
  * The name on the story's header and on the summary card is the app's own, the
- * same untranslated name the launcher and the launch screen show. It said
- * "Momentum" while one app held all three logs; a Tasks Wrapped signed by a
- * name that is no longer on the phone would be a card from somewhere else.
+ * same untranslated name the launcher and the launch screen show.
  */
-const APP_NAME = launchBrand(APP_VARIANT).wordmark;
+const APP_NAME = LAUNCH_BRAND.wordmark;
 
 /** The share of the width that steps BACK; the rest steps on. */
 const BACK_ZONE = 0.35;
@@ -209,7 +206,6 @@ function spoken(card: WrappedCard, summary: WrappedSummary): string {
       summary.kicker,
       summary.title,
       ...summary.cells.map((c) => `${c.label} ${c.value}`),
-      summary.record ?? '',
     ]
       .filter(Boolean)
       .join('. ');
@@ -381,24 +377,6 @@ function SummaryFrame({
             </View>
           ))}
         </View>
-        {summary.record ? (
-          <View style={{ marginTop: 14 }}>
-            <Text
-              maxFontSizeMultiplier={1.3}
-              style={{ fontSize: 12.5, letterSpacing: 1.1, textTransform: 'uppercase' }}
-              className="font-semibold text-ink-muted"
-            >
-              {t('Best record')}
-            </Text>
-            <Text
-              maxFontSizeMultiplier={1.3}
-              style={{ fontSize: 19, lineHeight: 26 }}
-              className="text-ink"
-            >
-              {summary.record}
-            </Text>
-          </View>
-        ) : null}
         <View style={{ marginTop: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <AppMark size={28} />
           <Text

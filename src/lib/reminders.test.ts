@@ -6,7 +6,6 @@ import {
   instantOn,
   planKey,
   planReminders,
-  type ReminderInputs,
 } from './reminders';
 import type { Task, TaskLog } from './tasks';
 
@@ -15,8 +14,8 @@ import type { Task, TaskLog } from './tasks';
  *
  * What these pin is the set of cases where the app must say NOTHING, because
  * every one of them is a phone buzzing about something that is not true: a task
- * that has not started, a one-day task whose day has gone, an archived row, a
- * workout reminder with no days. A notification the user cannot account for is
+ * that has not started, a one-day task whose day has gone, an archived row. A
+ * notification the user cannot account for is
  * the thing that gets the whole channel silenced, and after that none of the
  * reminders they did want arrive either.
  */
@@ -35,15 +34,13 @@ function task(over: Partial<Task> = {}): Task {
   };
 }
 
-const SILENT_WORKOUT: ReminderInputs['workout'] = { enabled: false, days: [], time: '18:00' };
-
 /** 13 September 2026, 10:00 local. */
 function now(): Date {
   return new Date(2026, 8, 13, 10, 0, 0, 0);
 }
 
-function plan(tasks: Task[], workout: ReminderInputs['workout'] = SILENT_WORKOUT) {
-  return planReminders({ tasks, workout, lang: 'en', now: now() });
+function plan(tasks: Task[]) {
+  return planReminders({ tasks, lang: 'en', now: now() });
 }
 
 describe('which tasks speak', () => {
@@ -138,31 +135,10 @@ describe('a one-day task', () => {
   });
 });
 
-describe('the workout schedule', () => {
-  it('is silent while it is off', () => {
-    expect(plan([], { enabled: false, days: [0, 2, 4], time: '18:00' })).toEqual([]);
-  });
-
-  it('is silent with no days, however it was switched on', () => {
-    expect(plan([], { enabled: true, days: [], time: '18:00' })).toEqual([]);
-  });
-
-  it('is silent on an unreadable time rather than firing at a guess', () => {
-    expect(plan([], { enabled: true, days: [0], time: 'half six' })).toEqual([]);
-  });
-
-  it('gives one weekly alert per day it was told', () => {
-    const alerts = plan([], { enabled: true, days: [0, 2, 4], time: '18:30' });
-    expect(alerts.map((a) => a.id)).toEqual(['workout:w0', 'workout:w2', 'workout:w4']);
-    expect(alerts[2].trigger).toEqual({ kind: 'weekly', weekday: 4, hour: 18, minute: 30 });
-  });
-});
-
 describe('what the language changes', () => {
   it('translates the body, and never the task name', () => {
     const [alert] = planReminders({
       tasks: [task()],
-      workout: SILENT_WORKOUT,
       lang: 'ru',
       now: now(),
     });
@@ -172,14 +148,9 @@ describe('what the language changes', () => {
 });
 
 describe('counting', () => {
-  it('arms one alert per asking day, plus the workout', () => {
-    const alerts = plan([task({ schedule: { kind: 'weekdays', days: [0, 2, 4] } })], {
-      enabled: true,
-      days: [1],
-      time: '18:00',
-    });
-    // Three for the one task, one for the workout.
-    expect(alerts).toHaveLength(4);
+  it('arms one alert per asking day', () => {
+    const alerts = plan([task({ schedule: { kind: 'weekdays', days: [0, 2, 4] } })]);
+    expect(alerts).toHaveLength(3);
   });
 });
 
@@ -229,12 +200,10 @@ describe('what the queue is handed', () => {
           startedOn: '2026-09-20',
           reminder: { hour: 9, minute: 0 },
         }),
-      ],
-      { enabled: true, days: [0, 1, 2], time: '18:00' },
-    );
+    ]);
     const ids = alerts.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.length).toBe(7 + 1 + 1 + 3);
+    expect(ids.length).toBe(7 + 1 + 1);
   });
 });
 
@@ -254,7 +223,7 @@ describe('remind again', () => {
       ...over,
     });
   const planWith = (tasks: Task[], log?: TaskLog) =>
-    planReminders({ tasks, workout: SILENT_WORKOUT, lang: 'en', now: now(), log });
+    planReminders({ tasks, lang: 'en', now: now(), log });
 
   it('asks again every interval after the first, under the same name', () => {
     const alerts = planWith([once({ reminder: { hour: 22, minute: 0, every: 30 } })]);

@@ -240,3 +240,24 @@ export function parseClockTime(value: unknown): { hour: number; minute: number }
   if (hour > 23 || minute > 59) return null;
   return { hour, minute };
 }
+
+const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * "8 Aug" — the shortest unambiguous form for a point on a chart. No year: a
+ * log is read backwards from today, and the axis it sits on says which year.
+ *
+ * The phone's own calendar day, not UTC's: an instant stored as UTC names the
+ * day before for anything done before 04:00 in Yerevan. Russian dates take the
+ * genitive month — `12 сентября`, never `12 Сентябрь`.
+ */
+export function formatShortDate(iso: string, lang: Language = 'en'): string {
+  const date = new Date(iso);
+  const months = lang === 'ru' ? MONTH_NAMES_RU_OF : MONTHS_EN;
+  return `${date.getDate()} ${months[date.getMonth()]}`;
+}
+
+/** "8 AUG" — the chart's axis form. */
+export function formatChartDate(iso: string, lang: Language = 'en'): string {
+  return formatShortDate(iso, lang).toUpperCase();
+}

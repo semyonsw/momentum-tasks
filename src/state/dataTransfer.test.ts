@@ -1,408 +1,210 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import {
-  UnreadableLogError,
-  applyBackup,
-  currentSnapshot,
-  exportBackupText,
-  exportCsvText,
-} from './dataTransfer';
-import { seedCategories, useMoney } from './moneyStore';
-import { useLibrary } from './libraryStore';
+import { applyBackup, currentSnapshot, exportBackupText, restorableCounts } from './dataTransfer';
 import { DEFAULT_SETTINGS, useSettings } from './settingsStore';
-import { useWorkoutHistory } from './workoutHistoryStore';
-import { sanitizeAi, useAi } from './aiStore';
-import { useDebriefs } from './debriefStore';
-import { parseBackup } from '../lib/backup';
-import { buildDraftSession, type DraftSession } from '../lib/draft';
-import { seedExercises, seedRoutine, seedUser } from '../data/seed';
-import { fixtureHistoryByExerciseId } from '../../test/fixtures/history';
-import type { Exercise, ID } from '../types/models';
+import { sanitizeAi, useAi, type AiMessage } from './aiStore';
+import { seedTasks, useTasks } from './tasksStore';
+import { BACKUP_FORMAT, parseBackup } from '../lib/backup';
 
-const exercisesById = Object.fromEntries(seedExercises.map((e) => [e.id, e])) as Record<
-  ID,
-  Exercise
->;
+/**
+ * The backup, end to end: stores → file → stores. What matters is that a file
+ * this app writes comes back whole, that a Momentum file (a combined 2.x one, or
+ * one Momentum 3.0.0's Tasks app wrote) restores the tasks and nothing else, and
+ * that what belongs to THIS phone — the folder grant, the connection — never
+ * rides in on a file.
+ */
 
-/** A finished session with real logged sets, so history has something in it. */
-function loggedDraft(startedAt: string): DraftSession {
-  const session = buildDraftSession({
-    routine: seedRoutine,
-    exercisesById,
-    historyByExerciseId: fixtureHistoryByExerciseId,
-    policy: seedUser.overloadPolicy,
-    unitSystem: 'metric',
-    defaultRestSeconds: 120,
-    defaultTransitionRestSeconds: 150,
-    startedAt,
-    now: new Date(startedAt),
-  });
-  const [first, ...rest] = session.entries;
-  return {
-    ...session,
-    entries: [
-      { ...first, sets: first.sets.map((s) => ({ ...s, isCompleted: true, isPrefilled: false })) },
-      ...rest,
-    ],
-  };
+const user = (id: string, text = id): AiMessage => ({
+  id,
+  role: 'user',
+  text,
+  at: '2026-09-27T18:00:00.000Z',
+});
+
+const READ = {
+  id: 't_read',
+  name: 'Read',
+  schedule: { kind: 'daily' },
+  auto: null,
+  startedOn: '2026-09-01',
+  reminder: null,
+  archivedAt: null,
+  order: 0,
+};
+const LOG = { t_read: { '2026-09-02': { mark: 'done', note: 'a chapter' } } };
+
+/** Parse and apply, or fail the test with the parser's sentence. */
+function restore(text: string) {
+  const parsed = parseBackup(text);
+  if (!parsed.ok) throw new Error(parsed.error);
+  return applyBackup(parsed.envelope);
 }
 
 beforeEach(() => {
-  useLibrary.getState().restoreSeedLibrary();
-  useWorkoutHistory.getState().clearHistory();
-  useSettings.getState().resetToDefaults();
+  useSettings.getState().importSettings(DEFAULT_SETTINGS);
+  useTasks.getState().importTasks({ tasks: seedTasks('2026-01-01'), log: {} });
+  useAi.setState(sanitizeAi({}));
 });
 
 /* ------------------------------------------------------------------ */
 
 describe('the round trip', () => {
-  it('exports what is on the phone and restores it byte for byte', () => {
-    useWorkoutHistory.getState().saveSession(loggedDraft('2026-08-17T17:00:00.000Z'));
-    useSettings.getState().setNumber('restSecondsBetweenSets', 75);
-    const created = useLibrary.getState().createRoutine('Neck day');
-
+  it('exports what is on the phone and restores it as it was', () => {
+    useTasks.getState().importTasks({ tasks: [READ], log: LOG });
+    useSettings.getState().setTasksTrendRange('year');
+    const before = { tasks: useTasks.getState().tasks, log: useTasks.getState().log };
     const text = exportBackupText();
-    const before = currentSnapshot();
 
-    // Wipe the phone as thoroughly as the app can from inside itself.
-    useLibrary.getState().importLibrary({ exercises: [], routines: [] });
-    useWorkoutHistory.getState().clearHistory();
-    useSettings.getState().resetToDefaults();
-    expect(useLibrary.getState().exercises).toEqual([]);
+    useTasks.getState().importTasks({ tasks: seedTasks('2026-01-01'), log: {} });
+    useSettings.getState().importSettings(DEFAULT_SETTINGS);
+    const applied = restore(text);
 
-    const parsed = parseBackup(text);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    const applied = applyBackup(parsed.envelope);
-
-    expect(currentSnapshot()).toEqual(before);
-    expect(applied.workouts).toBe(1);
-    expect(applied.exercises).toBe(seedExercises.length);
-    expect(useLibrary.getState().routines.some((r) => r.id === created.id)).toBe(true);
-    // Settings ride along: the rest lengths are what every timer in the app reads.
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(75);
-    expect(applied.settingsApplied).toBe(true);
-  });
-
-  it('carries the raw set rows, not just the summary lines', () => {
-    useWorkoutHistory.getState().saveSession(loggedDraft('2026-08-17T17:00:00.000Z'));
-    const parsed = parseBackup(exportBackupText());
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-
-    useWorkoutHistory.getState().clearHistory();
-    applyBackup(parsed.envelope);
-
-    // These rows are what every prefill and every overload verdict reads. A
-    // backup that kept only the pretty summary would restore a history that looks
-    // right and teaches the app nothing.
-    const [workout] = useWorkoutHistory.getState().workouts;
-    expect(workout.sets.length).toBeGreaterThan(0);
-    expect(workout.sets[0].exerciseId).toBeTruthy();
-    expect(workout.sets[0].countUnit).toBeTruthy();
-  });
-
-  /**
-   * A ladder is two numbers on a library row, and losing them costs more than it
-   * looks: `max` is a tested maximum and `earned` is how many sessions of progress
-   * stand behind it. Neither can be recomputed from the log — a session that met
-   * its target looks exactly like one that beat a different target.
-   */
-  it('carries a rep ladder, max and earned reps both', () => {
-    const [first] = useLibrary.getState().exercises;
-    useLibrary.getState().updateExercise(first.id, {
-      ...first,
-      countUnit: 'reps',
-      ladder: { max: 16, earned: 2 },
-    });
-
-    const parsed = parseBackup(exportBackupText());
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-
-    useLibrary.getState().importLibrary({ exercises: [], routines: [] });
-    applyBackup(parsed.envelope);
-
-    const restored = useLibrary.getState().exercises.find((e) => e.id === first.id);
-    expect(restored?.ladder).toEqual({ max: 16, earned: 2 });
+    expect(applied).toMatchObject({ settingsApplied: true, tasks: 1 });
+    expect(useTasks.getState().tasks).toEqual(before.tasks);
+    expect(useTasks.getState().log).toEqual(before.log);
+    expect(useSettings.getState().tasksTrendRange).toBe('year');
   });
 
   it('never writes the store actions into the file', () => {
-    const file = JSON.parse(exportBackupText()) as { settings: Record<string, unknown> };
+    const text = exportBackupText();
+    for (const action of ['importTasks', 'setTheme', 'appendMessage']) {
+      expect(text).not.toContain(action);
+    }
+  });
 
-    // `settings` is sanitized rather than spread: the live store carries its
-    // actions alongside its values, and functions do not survive JSON.
-    //
-    // Asserted as a SUBSET rather than an exact key match, because one setting is
-    // legitimately absent from the file: `bodyweightKg` is `undefined` until the
-    // user types one, and `JSON.stringify` drops an undefined value. What must
-    // hold is that nothing in the file is a key `Settings` does not declare — an
-    // action leaking through would be exactly that.
-    const declared = new Set(Object.keys(DEFAULT_SETTINGS));
-    for (const key of Object.keys(file.settings)) expect(declared.has(key)).toBe(true);
-    expect(Object.keys(file.settings).length).toBeGreaterThan(0);
+  it('writes Momentum’s envelope, with no training or money in it', () => {
+    const file = JSON.parse(exportBackupText());
+    expect(file.format).toBe(BACKUP_FORMAT);
+    expect(file.version).toBe(2);
+    expect(Object.keys(file).sort()).toEqual(
+      ['aiChats', 'counts', 'exportedAt', 'format', 'settings', 'tasks', 'version'].sort(),
+    );
+    // The chats filed the way Momentum 3.0.0 reads them.
+    expect(Object.keys(file.aiChats.chats)).toEqual(['Tasks']);
+    expect(Object.keys(file.aiChats.archive)).toEqual(['Tasks']);
+  });
+
+  it('counts what a restore would replace, for the confirmation sheet', () => {
+    useTasks.getState().importTasks({ tasks: [READ], log: LOG });
+    expect(restorableCounts()).toEqual({ tasks: 1, chats: 0 });
+    expect(currentSnapshot().tasks).toEqual({ tasks: useTasks.getState().tasks, log: LOG });
   });
 });
-
-/* ------------------------------------------------------------------ */
 
 describe('importing is validated, not trusted', () => {
   it('drops malformed rows and reports what actually landed', () => {
-    const applied = applyBackup({
-      settings: null,
-      exercises: [
-        // The one good row.
-        {
-          id: 'ex_ok',
-          name: 'Neck curl',
-          muscleGroups: ['neck'],
-          requiresWeight: true,
-          countUnit: 'reps',
-          loadMode: 'external',
-          isUnilateral: false,
-          isArchived: false,
-          createdAt: '2026-01-01T00:00:00.000Z',
-        },
-        { id: 'ex_bad' }, // no shape at all
-        'not even an object',
-      ],
-      routines: [{ id: 'r_bad' }],
-      workouts: [{ id: 'w_bad' }],
+    const text = JSON.stringify({
+      format: BACKUP_FORMAT,
+      version: 2,
+      tasks: { tasks: [READ, { id: 'x', name: '   ' }, 'junk'], log: LOG },
     });
-
-    expect(applied.exercises).toBe(1);
-    expect(applied.routines).toBe(0);
-    expect(applied.workouts).toBe(0);
-    expect(applied.settingsApplied).toBe(false);
-    expect(useLibrary.getState().exercises.map((e) => e.id)).toEqual(['ex_ok']);
-  });
-
-  it('drops routine items pointing at exercises the file did not carry', () => {
-    applyBackup({
-      settings: null,
-      exercises: [],
-      routines: [
-        {
-          id: 'r_1',
-          name: 'Pull',
-          items: [{ id: 'ri_1', exerciseId: 'ex_missing', order: 0, targetSets: 4 }],
-        },
-      ],
-      workouts: [],
-    });
-
-    // A routine holding an unresolvable id plans fewer sets than it says it does.
-    expect(useLibrary.getState().routines[0].items).toEqual([]);
+    expect(restore(text).tasks).toBe(1);
+    expect(useTasks.getState().tasks.map((t) => t.id)).toEqual(['t_read']);
   });
 
   it('replaces rather than merges — a restore is not a union', () => {
-    const kept = useLibrary.getState().createRoutine('Made after the backup');
-    applyBackup({ settings: null, exercises: [], routines: [], workouts: [] });
-
-    expect(useLibrary.getState().routines.some((r) => r.id === kept.id)).toBe(false);
-    expect(useLibrary.getState().routines).toEqual([]);
+    const text = JSON.stringify({ format: BACKUP_FORMAT, version: 2, tasks: { tasks: [READ] } });
+    restore(text);
+    expect(useTasks.getState().tasks).toHaveLength(1);
   });
 
-  it('leaves settings alone when the file has none', () => {
-    useSettings.getState().setNumber('restSecondsBetweenSets', 45);
-    applyBackup({ settings: null, exercises: [], routines: [], workouts: [] });
-
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(45);
+  it('leaves settings alone when the file has none, or an empty block', () => {
+    useSettings.getState().setTasksTrendRange('year');
+    for (const settings of [undefined, {}, [], 'x']) {
+      const applied = restore(
+        JSON.stringify({ format: BACKUP_FORMAT, version: 2, settings, tasks: { tasks: [READ] } }),
+      );
+      expect(applied.settingsApplied).toBe(false);
+      expect(useSettings.getState().tasksTrendRange).toBe('year');
+    }
   });
 
-  it('clamps a settings block that would otherwise reach a timer as NaN', () => {
-    applyBackup({
-      settings: { restSecondsBetweenSets: 'nonsense', beepSeconds: 9999 },
-      exercises: [],
+  it('refuses a file with no tasks before touching the settings', () => {
+    useSettings.getState().setLanguage('en');
+    expect(() => applyBackup({ settings: { language: 'ru' } })).toThrow(/no tasks/);
+    expect(useSettings.getState().language).toBe('en');
+  });
+});
+
+describe('Momentum’s files', () => {
+  it('a combined 2.x backup restores the tasks, the Tasks chats and the settings — nothing else', () => {
+    const combined = JSON.stringify({
+      format: BACKUP_FORMAT,
+      version: 2,
+      settings: { language: 'en', tasksTrendRange: 'quarter', restSecondsBetweenSets: 90 },
+      exercises: [{ id: 'ex' }],
       routines: [],
-      workouts: [],
+      workouts: [{ id: 'w', sets: [] }],
+      sequence: null,
+      numbering: null,
+      tasks: { tasks: [READ], log: LOG },
+      money: { accounts: [], amounts: [{ id: 'a' }] },
+      debriefs: {},
+      aiChats: {
+        chats: { Workout: [user('w1')], Tasks: [user('t1')], Expenses: [user('e1')] },
+        archive: { Workout: [], Tasks: [], Expenses: [] },
+        proposals: {},
+      },
     });
+    const applied = restore(combined);
 
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(
-      DEFAULT_SETTINGS.restSecondsBetweenSets,
+    expect(applied).toMatchObject({ settingsApplied: true, tasks: 1, chats: 1 });
+    expect(useTasks.getState().log).toEqual(LOG);
+    expect(useAi.getState().chat.map((m) => m.id)).toEqual(['t1']);
+    expect(useSettings.getState().language).toBe('en');
+    expect(useSettings.getState().tasksTrendRange).toBe('quarter');
+    expect(
+      (useSettings.getState() as unknown as Record<string, unknown>).restSecondsBetweenSets,
+    ).toBeUndefined();
+  });
+
+  it('a backup Momentum 3.0.0’s Tasks app wrote restores whole', () => {
+    const v300 = JSON.stringify({
+      format: BACKUP_FORMAT,
+      version: 2,
+      exportedAt: '2026-11-01T10:00:00.000Z',
+      counts: { tasks: 1, chats: 1 },
+      settings: { ...DEFAULT_SETTINGS, currencyCode: 'AMD', autoTickTasks: true },
+      tasks: { tasks: [READ], log: LOG },
+      aiChats: {
+        chats: { Tasks: [user('t1')] },
+        archive: { Tasks: [] },
+        proposals: {},
+      },
+    });
+    expect(restore(v300)).toMatchObject({ tasks: 1, chats: 1 });
+    expect(useTasks.getState().tasks.map((t) => t.id)).toEqual(['t_read']);
+  });
+
+  it('a file this app writes is one Momentum 3.0.0 reads: the same keys, the same filing', () => {
+    useTasks.getState().importTasks({ tasks: [READ], log: LOG });
+    useAi.getState().appendMessage(user('q'));
+    const file = JSON.parse(exportBackupText());
+    expect(file.tasks).toEqual({ tasks: useTasks.getState().tasks, log: LOG });
+    expect(file.aiChats.chats.Tasks.map((m: AiMessage) => m.id)).toEqual(['q']);
+    expect(file.counts).toEqual({ tasks: 1, chats: 1 });
+  });
+
+  it('a training-only file is refused in words', () => {
+    const parsed = parseBackup(
+      JSON.stringify({ format: BACKUP_FORMAT, version: 1, exercises: [], workouts: [] }),
     );
-    expect(useSettings.getState().beepSeconds).toBe(30); // the setting's ceiling
+    expect(parsed.ok).toBe(false);
   });
 });
-
-describe('the training sequence rides along', () => {
-  it('is exported and restored with the routines it points at', () => {
-    const routine = useLibrary.getState().routines[0];
-    useLibrary.getState().addSequenceStep(routine.id);
-    useLibrary.getState().setSequenceActive(true);
-
-    const text = exportBackupText(new Date('2026-08-19T09:00:00.000Z'));
-
-    // Wreck it, then restore.
-    useLibrary.getState().restoreSeedLibrary();
-    expect(useLibrary.getState().sequence.routineIds).toEqual([]);
-
-    const parsed = parseBackup(text);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    applyBackup(parsed.envelope);
-
-    expect(useLibrary.getState().sequence).toEqual({
-      isActive: true,
-      routineIds: [routine.id],
-      cursor: 0,
-    });
-  });
-
-  it('restores as off from a file written before sequences existed', () => {
-    useLibrary.getState().addSequenceStep(useLibrary.getState().routines[0].id);
-    useLibrary.getState().setSequenceActive(true);
-
-    // A restore is "make this phone look like that backup", so a file with no
-    // sequence in it must not leave the local one standing.
-    applyBackup({
-      settings: null,
-      exercises: useLibrary.getState().exercises,
-      routines: useLibrary.getState().routines,
-      workouts: [],
-    });
-
-    expect(useLibrary.getState().sequence).toEqual({
-      isActive: false,
-      routineIds: [],
-      cursor: 0,
-    });
-  });
-});
-
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-
-describe('the pinned workout number rides along', () => {
-  it('is exported and restored', () => {
-    useWorkoutHistory.getState().saveSession(loggedDraft('2026-08-17T17:00:00.000Z'));
-    const workout = useWorkoutHistory.getState().workouts[0];
-    useWorkoutHistory.getState().setWorkoutNumber(workout.id, 91);
-
-    const text = exportBackupText(new Date('2026-08-19T09:00:00.000Z'));
-    useWorkoutHistory.getState().clearHistory();
-    expect(useWorkoutHistory.getState().numbering).toBeNull();
-
-    const parsed = parseBackup(text);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    applyBackup(parsed.envelope);
-
-    // The one fact in the app that cannot be recomputed from the sessions.
-    expect(useWorkoutHistory.getState().numbering).toEqual({ workoutId: workout.id, number: 91 });
-  });
-});
-
-/* ------------------------------------------------------------------ */
-
-/**
- * THE PATH THAT TURNS A FAILED READ INTO A REAL LOSS.
- *
- * Exporting is what a careful person does first when the app looks wrong. If the
- * log could not be read, the snapshot's `workouts` is empty for a reason that has
- * nothing to do with what is on disk — and a file with `"workouts": []` in it is
- * one `Replace everything from a file` away from making the loss permanent and
- * unrecoverable.
- */
-describe('a backup is refused when the log could not be read', () => {
-  it('throws instead of writing a file with the log missing', () => {
-    useWorkoutHistory.getState().saveSession(loggedDraft('2026-08-17T17:00:00.000Z'));
-    // The state a failed read leaves: nothing in memory, everything on disk.
-    useWorkoutHistory.setState({ workouts: [], loadFailed: true });
-
-    expect(() => exportBackupText()).toThrow(UnreadableLogError);
-  });
-
-  it('exports normally once the log has been read', () => {
-    useWorkoutHistory.getState().saveSession(loggedDraft('2026-08-17T17:00:00.000Z'));
-    useWorkoutHistory.setState({ loadFailed: false });
-
-    const parsed = parseBackup(exportBackupText());
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    expect(parsed.counts.workouts).toBe(1);
-  });
-
-  it('still exports an empty log that is genuinely empty', () => {
-    // A fresh install has nothing to back up and that is not an error: the file is
-    // valid, it just has no workouts in it.
-    useWorkoutHistory.getState().clearHistory();
-    useWorkoutHistory.setState({ loadFailed: false });
-
-    expect(() => exportBackupText()).not.toThrow();
-  });
-});
-
-/* ------------------------------------------------------------------ */
-
-describe('the CSV exports read the stores', () => {
-  it('workouts: one row per logged set, refused on an unreadable log', () => {
-    useWorkoutHistory.getState().saveSession(loggedDraft('2026-08-17T17:00:00.000Z'));
-    useWorkoutHistory.setState({ loadFailed: false });
-    const sets = useWorkoutHistory.getState().workouts[0].sets.length;
-    const lines = exportCsvText('workouts')
-      .split('\r\n')
-      .filter((l) => l !== '');
-    expect(lines).toHaveLength(1 + sets);
-
-    useWorkoutHistory.setState({ workouts: [], loadFailed: true });
-    expect(() => exportCsvText('workouts')).toThrow(UnreadableLogError);
-    useWorkoutHistory.setState({ loadFailed: false });
-  });
-
-  it('amounts: in the pinned scale and the label the user counts in', () => {
-    useSettings.setState({ currencyCode: 'USD' });
-    useMoney.getState().importMoney({
-      scale: 2,
-      accounts: [{ id: 'cash', name: 'Cash', glyph: '💵', order: 0, opening: 0, archivedAt: null }],
-      categories: [
-        { id: 'food', name: 'Food', glyph: '🍜', direction: 'expense', order: 0, archivedAt: null },
-      ],
-      amounts: [
-        {
-          id: 'a1',
-          categoryId: 'food',
-          accountId: 'cash',
-          direction: 'expense',
-          value: 1250,
-          when: { kind: 'day', date: '2026-10-03' },
-          note: '',
-          createdAt: '2026-10-03T10:00:00.000Z',
-        },
-      ],
-    });
-    expect(exportCsvText('amounts')).toContain(
-      '\r\n2026-10-03,Cash,expense,Food,-12.50,USD,,false\r\n',
-    );
-  });
-});
-
-/* ------------------------------------------------------------------ */
 
 describe('what the assistant leaves out of a backup', () => {
   /*
-   * Chats DO travel now — a restored phone should open on the conversations it
-   * had, past chats included. What must never travel is the key, the model
-   * choice or the connection state: a restored phone tests its own key.
+   * Chats DO travel — a restored phone should open on the conversations it had,
+   * past chats included. What must never travel is the key, the model choice or
+   * the connection state: a restored phone tests its own key.
    */
   it('carries the chats and past chats, and nothing that looks like a key', () => {
     const marker = 'CHAT-MARKER-7f3kQ2';
     const past = 'PAST-CHAT-MARKER-9x';
-    useAi.setState(sanitizeAi({}));
-    useAi.getState().appendMessage('Tasks', {
-      id: 'p1',
-      role: 'user',
-      text: past,
-      at: '2026-09-26T18:00:00.000Z',
-    });
-    useAi.getState().clearChat('Tasks');
-    useAi.getState().appendMessage('Workout', {
-      id: 'm1',
-      role: 'user',
-      text: marker,
-      at: '2026-09-27T18:00:00.000Z',
-    });
+    useAi.getState().appendMessage(user('p1', past));
+    useAi.getState().clearChat();
+    useAi.getState().appendMessage(user('m1', marker));
     useAi.getState().markReady(800);
 
     const text = exportBackupText();
@@ -411,530 +213,63 @@ describe('what the assistant leaves out of a backup', () => {
     expect(text).not.toContain('AIza');
     expect(text).not.toContain('gemini');
     expect(text).not.toContain('"status": "ready"');
-    expect(Object.keys(useAi.getState())).not.toContain('key');
-    expect(Object.keys(useAi.getState())).not.toContain('apiKey');
 
-    // Restored onto a phone with nothing: each app gets its own conversation
-    // back, visible — Workout the open chat, Tasks the past one the Workout
-    // app's file still carried from before the split.
     useAi.setState(sanitizeAi({}));
-    const parsed = parseBackup(text);
-    if (!parsed.ok) throw new Error(parsed.error);
-    expect(parsed.counts.chats).toBe(1);
-    const applied = applyBackup(parsed.envelope);
-    expect(applied.chats).toBe(1);
-    expect(useAi.getState().chats.Workout.map((m) => m.id)).toEqual(['m1']);
-    expect(useAi.getState().archive.Tasks).toEqual([]);
-
-    const forTasks = parseBackup(text, 'en', 'tasks');
-    if (!forTasks.ok) throw new Error(forTasks.error);
-    expect(forTasks.counts.chats).toBe(1);
-    expect(applyBackup(forTasks.envelope, 'tasks').chats).toBe(1);
-    expect(useAi.getState().archive.Tasks[0].title).toBe(past);
-    // And restoring Tasks left the Workout chat where the Workout restore put it.
-    expect(useAi.getState().chats.Workout.map((m) => m.id)).toEqual(['m1']);
+    const applied = restore(text);
+    expect(applied.chats).toBe(2);
+    expect(useAi.getState().chat.map((m) => m.id)).toEqual(['m1']);
+    expect(useAi.getState().archive[0].title).toBe(past);
     // The connection is the phone's own, not the file's.
     expect(useAi.getState().status).toBe('off');
-    useAi.setState(sanitizeAi({}));
   });
 
-  it('leaves the chats alone when restoring a file from before they travelled', () => {
-    useAi.setState(sanitizeAi({}));
-    useAi.getState().appendMessage('Workout', {
-      id: 'keep',
-      role: 'user',
-      text: 'keep me',
-      at: '2026-09-27T18:00:00.000Z',
-    });
-    const parsed = parseBackup(JSON.stringify({ exercises: [], routines: [], workouts: [] }));
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-    expect(useAi.getState().chats.Workout.map((m) => m.id)).toEqual(['keep']);
-    useAi.setState(sanitizeAi({}));
+  it('leaves the chats alone when restoring a file without them', () => {
+    useAi.getState().appendMessage(user('keep'));
+    restore(JSON.stringify({ format: BACKUP_FORMAT, version: 2, tasks: { tasks: [READ] } }));
+    expect(useAi.getState().chat.map((m) => m.id)).toEqual(['keep']);
   });
 });
 
-describe('the debriefs', () => {
-  const debriefWorkout = {
-    id: 'w_debrief',
-    title: 'Push',
-    startedAt: '2026-09-27T18:00:00.000Z',
-    endedAt: '2026-09-27T19:00:00.000Z',
-    durationMinutes: 60,
-    setCount: 1,
-    totalVolumeKg: 0,
-    volumeIsPartial: false,
-    exercises: [],
-    sets: [],
-  };
-
-  it('travel in a backup and come back', () => {
-    useDebriefs.setState({ debriefs: [], openId: null });
-    useDebriefs.getState().offer(debriefWorkout, false);
-    useDebriefs.getState().saveAnswers('w_debrief', { load: { choices: ['heavy'] } }, true);
-    const text = exportBackupText();
-    useDebriefs.setState({ debriefs: [] });
-    const parsed = parseBackup(text);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-    expect(useDebriefs.getState().debriefs).toHaveLength(1);
-    expect(useDebriefs.getState().debriefs[0].answers).toEqual({ load: { choices: ['heavy'] } });
-  });
-
-  it('are left alone by a file from before they existed', () => {
-    useDebriefs.setState({ debriefs: [], openId: null });
-    useDebriefs.getState().offer(debriefWorkout, false);
-    const parsed = parseBackup(JSON.stringify({ exercises: [], routines: [], workouts: [] }));
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-    expect(useDebriefs.getState().debriefs).toHaveLength(1);
-  });
-});
-
-describe('the closed assistant cards', () => {
-  it('travel in a backup and come back', () => {
-    useSettings.getState().dismissAiCard('Tasks');
+describe('settings that travel', () => {
+  it('the closed assistant card and the engagement switch come back', () => {
+    useSettings.getState().dismissAiCard();
+    useSettings.getState().setEngagement(true);
     const text = exportBackupText();
     useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    expect(useSettings.getState().aiCardsDismissed).toBeUndefined();
-
-    const parsed = parseBackup(text);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
+    restore(text);
     expect(useSettings.getState().aiCardsDismissed).toEqual(['Tasks']);
-  });
-
-  it('a 2.2.0 backup, written before the key existed, imports unchanged and shows every card', () => {
-    useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    const v220 = JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 1,
-      settings: { restSecondsBetweenSets: 90, autoTickTasks: false },
-      exercises: [],
-      routines: [],
-      workouts: [],
-    });
-    const parsed = parseBackup(v220);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
-    expect(useSettings.getState().autoTickTasks).toBe(false);
-    expect(useSettings.getState().aiCardsDismissed).toBeUndefined();
-    expect(useSettings.getState().weeklyReviewDismissed).toBeUndefined();
-  });
-
-  it('the closed weekly review travels in a backup and comes back', () => {
-    useSettings.getState().dismissWeeklyReview('2026-10-07');
-    const text = exportBackupText();
-    useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    expect(useSettings.getState().weeklyReviewDismissed).toBeUndefined();
-
-    const parsed = parseBackup(text);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-    expect(useSettings.getState().weeklyReviewDismissed).toBe('2026-10-05');
-  });
-});
-
-describe('body measurements (W9)', () => {
-  it('travel in a backup and come back', () => {
-    useSettings.getState().recordMeasurement('waist', '2026-10-05', 82.5);
-    useSettings.getState().recordMeasurement('arm', '2026-09-01', 36.83);
-    const text = exportBackupText();
-    useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    expect(useSettings.getState().bodyMeasurements).toBeUndefined();
-
-    const parsed = parseBackup(text);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-    expect(useSettings.getState().bodyMeasurements).toEqual({
-      waist: [{ day: '2026-10-05', cm: 82.5 }],
-      arm: [{ day: '2026-09-01', cm: 36.83 }],
-    });
-  });
-
-  it('a 2.2.0 backup, written before the key existed, imports unchanged with none', () => {
-    useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    const v220 = JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 1,
-      settings: {
-        restSecondsBetweenSets: 90,
-        bodyweightKg: 80,
-        bodyweightLog: [{ at: '2026-08-30T08:00:00.000Z', kg: 80 }],
-      },
-      exercises: [],
-      routines: [],
-      workouts: [],
-    });
-    const parsed = parseBackup(v220);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
-    expect(useSettings.getState().bodyweightKg).toBe(80);
-    expect(useSettings.getState().bodyweightLog).toEqual([
-      { at: '2026-08-30T08:00:00.000Z', kg: 80 },
-    ]);
-    expect(useSettings.getState().bodyMeasurements).toBeUndefined();
-  });
-});
-
-describe('the engagement switch (Wave 3)', () => {
-  it('travels in a backup and comes back on', () => {
-    useSettings.getState().setEngagement(true);
-    const text = exportBackupText();
-    useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    expect(useSettings.getState().engagement).toBeUndefined();
-    const parsed = parseBackup(text);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
     expect(useSettings.getState().engagement).toBe(true);
-  });
-
-  it('a 2.2.0 backup, written before the key existed, imports unchanged and off', () => {
-    useSettings.getState().setEngagement(true);
-    const v220 = JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 1,
-      settings: { restSecondsBetweenSets: 90, bodyweightKg: 80 },
-      exercises: [],
-      routines: [],
-      workouts: [],
-    });
-    const parsed = parseBackup(v220);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
-    expect(useSettings.getState().bodyweightKg).toBe(80);
-    expect(useSettings.getState().engagement).toBeUndefined();
-  });
-});
-
-describe('the milestone stamp (E4)', () => {
-  it('travels in a backup, and a 2.2.0 backup has none', () => {
-    useSettings.getState().recordMilestone(250);
-    const text = exportBackupText();
-    useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    expect(useSettings.getState().milestoneShown).toBeUndefined();
-    const parsed = parseBackup(text);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-    expect(useSettings.getState().milestoneShown).toBe(250);
-
-    const v220 = JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 1,
-      settings: { restSecondsBetweenSets: 90 },
-      exercises: [],
-      routines: [],
-      workouts: [],
-    });
-    const old = parseBackup(v220);
-    if (!old.ok) throw new Error(old.error);
-    applyBackup(old.envelope);
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
-    expect(useSettings.getState().milestoneShown).toBeUndefined();
-  });
-});
-
-describe('the money scale (U25)', () => {
-  it('a 2.2.0 backup with amounts imports them unchanged, in whole units', async () => {
-    const { useMoney } = await import('./moneyStore');
-    useMoney.getState().pinScale(2);
-    const v220 = JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 2,
-      exercises: [],
-      routines: [],
-      workouts: [],
-      money: {
-        accounts: [{ id: 'cash', name: 'Cash', glyph: '💵', order: 0, opening: 0 }],
-        categories: [{ id: 'food', name: 'Food', glyph: '🧊', order: 0, direction: 'expense' }],
-        amounts: [
-          {
-            id: 'a1',
-            categoryId: 'food',
-            accountId: 'cash',
-            direction: 'expense',
-            value: 12500,
-            when: { kind: 'day', date: '2026-09-01' },
-            note: '',
-            createdAt: '2026-09-01T10:00:00.000Z',
-          },
-        ],
-      },
-    });
-    const parsed = parseBackup(v220, 'en', 'expenses');
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'expenses');
-
-    expect(useMoney.getState().amounts.map((amount) => amount.value)).toEqual([12500]);
-    expect(useMoney.getState().scale).toBeUndefined();
-  });
-
-  it('a pinned scale travels in a backup and comes back', async () => {
-    const { useMoney } = await import('./moneyStore');
-    useMoney.getState().importMoney({});
-    useMoney.getState().pinScale(2);
-    const text = exportBackupText(undefined, 'expenses');
-    useMoney.getState().importMoney({});
-    expect(useMoney.getState().scale).toBeUndefined();
-
-    const parsed = parseBackup(text, 'en', 'expenses');
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'expenses');
-    expect(useMoney.getState().scale).toBe(2);
-  });
-});
-
-describe('budgets (M1)', () => {
-  it('travel in a backup and come back', () => {
-    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
-    useMoney.getState().setBudget('food', 80000, true);
-    const text = exportBackupText(undefined, 'expenses');
-    useMoney.getState().importMoney({});
-    expect(useMoney.getState().budgets).toBeUndefined();
-
-    const parsed = parseBackup(text, 'en', 'expenses');
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'expenses');
-    expect(useMoney.getState().budgets).toEqual([
-      { categoryId: 'food', monthly: 80000, alerts: true },
-    ]);
-  });
-
-  it('a 2.2.0 backup, written before budgets existed, imports unchanged with none', () => {
-    useMoney.getState().importMoney({});
-    useMoney.getState().setBudget('food', 80000);
-    const v220 = JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 2,
-      exercises: [],
-      routines: [],
-      workouts: [],
-      money: {
-        accounts: [{ id: 'cash', name: 'Cash', glyph: '💵', order: 0, opening: 1000 }],
-        categories: [{ id: 'food', name: 'Food', glyph: '🧊', order: 0, direction: 'expense' }],
-        amounts: [
-          {
-            id: 'a1',
-            categoryId: 'food',
-            accountId: 'cash',
-            direction: 'expense',
-            value: 12500,
-            when: { kind: 'month', year: 2026, month: 8 },
-            note: 'rent',
-            createdAt: '2026-09-01T10:00:00.000Z',
-          },
-        ],
-      },
-    });
-    const parsed = parseBackup(v220, 'en', 'expenses');
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'expenses');
-
-    const money = useMoney.getState();
-    expect(money.budgets).toBeUndefined();
-    expect(money.budgetAlertsFired).toBeUndefined();
-    expect(money.amounts).toHaveLength(1);
-    expect(money.amounts[0]).toMatchObject({ value: 12500, note: 'rent' });
-    expect(money.accounts[0].opening).toBe(1000);
-  });
-});
-
-describe('recurring payments (M2)', () => {
-  it('travel in a backup with every answer, and come back', () => {
-    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
-    const id =
-      useMoney.getState().addRecurring(
-        {
-          name: 'Rent',
-          categoryId: 'family',
-          accountId: 'cash',
-          value: 150000,
-          schedule: { kind: 'monthly', day: 5 },
-          wholeMonth: true,
-        },
-        '2026-09-01',
-      ) ?? '';
-    useMoney.getState().confirmRecurring(id, '2026-09-05');
-    useMoney.getState().skipRecurring(id, '2026-10-05');
-    const before = useMoney.getState().recurring;
-    const text = exportBackupText(undefined, 'expenses');
-    useMoney.getState().importMoney({});
-    expect(useMoney.getState().recurring).toBeUndefined();
-
-    const parsed = parseBackup(text, 'en', 'expenses');
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'expenses');
-    expect(useMoney.getState().recurring).toEqual(before);
-    expect(useMoney.getState().amounts).toHaveLength(1);
-  });
-
-  it('a 2.2.0 backup imports unchanged, with none', () => {
-    const v220 = JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 2,
-      exercises: [],
-      routines: [],
-      workouts: [],
-      money: { categories: seedCategories, amounts: [] },
-    });
-    const parsed = parseBackup(v220, 'en', 'expenses');
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'expenses');
-    expect(useMoney.getState().recurring).toBeUndefined();
-    expect(useMoney.getState().categories.map((c) => c.id)).toEqual(
-      seedCategories.map((c) => c.id),
-    );
-  });
-});
-
-describe('savings goals (M5)', () => {
-  it('travel in a backup and come back', () => {
-    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
-    useMoney.getState().addGoal({
-      name: 'Trip',
-      glyph: '🚆',
-      target: 200000,
-      by: '2026-12-15',
-      accountId: 'online',
-    });
-    const before = useMoney.getState().goals;
-    const text = exportBackupText(undefined, 'expenses');
-    useMoney.getState().importMoney({});
-    expect(useMoney.getState().goals).toBeUndefined();
-
-    const parsed = parseBackup(text, 'en', 'expenses');
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'expenses');
-    expect(useMoney.getState().goals).toEqual(before);
-  });
-
-  it('a 2.2.0 backup imports unchanged, with none', () => {
-    useMoney.getState().importMoney({ categories: seedCategories, amounts: [] });
-    useMoney.getState().addGoal({
-      name: 'Trip',
-      glyph: '🚆',
-      target: 200000,
-      by: null,
-      accountId: 'online',
-    });
-    const v220 = JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 2,
-      exercises: [],
-      routines: [],
-      workouts: [],
-      money: { categories: seedCategories, amounts: [] },
-    });
-    const parsed = parseBackup(v220, 'en', 'expenses');
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope, 'expenses');
-    expect(useMoney.getState().goals).toBeUndefined();
-  });
-});
-
-describe('the weekly training goal (W8)', () => {
-  it('the goal and the excused weeks travel in a backup and come back', () => {
-    useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    useSettings.getState().stepWeeklyWorkoutGoal(1);
-    useSettings.getState().setWeekExcused('2026-10-08', true, '2026-10-08');
-    const text = exportBackupText();
-    useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    expect(useSettings.getState().weeklyWorkoutGoal).toBeUndefined();
-    expect(useSettings.getState().excusedWeeks).toBeUndefined();
-
-    const parsed = parseBackup(text);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-    expect(useSettings.getState().weeklyWorkoutGoal).toBe(4);
-    expect(useSettings.getState().excusedWeeks).toEqual(['2026-10-05']);
-  });
-
-  it('a 2.2.0 backup, written before the keys existed, imports unchanged with none', () => {
-    useSettings.getState().importSettings(DEFAULT_SETTINGS);
-    const v220 = JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 1,
-      settings: { restSecondsBetweenSets: 90, bodyweightKg: 80 },
-      exercises: [],
-      routines: [],
-      workouts: [],
-    });
-    const parsed = parseBackup(v220);
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
-
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(90);
-    expect(useSettings.getState().bodyweightKg).toBe(80);
-    expect(useSettings.getState().weeklyWorkoutGoal).toBeUndefined();
-    expect(useSettings.getState().excusedWeeks).toBeUndefined();
-  });
-});
-
-/*
- * THE WEEKLY BACKUP'S KEYS. Every file a 2.5.x phone wrote carries
- * `autoBackupIntervalDays` and `autoBackupUris` in its settings. The interval is
- * gone and the rotation list is replaced by the day's file, and neither may stop
- * that file restoring ("Never break import of an old backup").
- */
-describe('a backup from the weekly auto-backup era', () => {
-  const v25 = (settings: Record<string, unknown>) =>
-    JSON.stringify({
-      format: 'workout-tracker-backup',
-      version: 2,
-      settings,
-      exercises: [],
-      routines: [],
-      workouts: [],
-    });
-
-  it('imports, keeps its real settings and drops the retired keys', () => {
-    const parsed = parseBackup(
-      v25({
-        restSecondsBetweenSets: 105,
-        autoBackupEnabled: false,
-        autoBackupFolderUri: 'content://tree/other-phone',
-        autoBackupIntervalDays: 14,
-        autoBackupUris: ['content://tree/other-phone/workout-tracker-auto-2026-09-01.json'],
-        lastBackupAt: '2026-09-01T10:00:00.000Z',
-      }),
-    );
-    if (!parsed.ok) throw new Error(parsed.error);
-    const applied = applyBackup(parsed.envelope);
-
-    expect(applied.settingsApplied).toBe(true);
-    expect(useSettings.getState().restSecondsBetweenSets).toBe(105);
-    const state = useSettings.getState() as unknown as Record<string, unknown>;
-    expect(state.autoBackupIntervalDays).toBeUndefined();
-    expect(state.autoBackupUris).toBeUndefined();
   });
 
   it('keeps THIS phone’s folder, day file and switch, not the file’s', () => {
     useSettings.getState().setAutoBackupFolder('content://tree/this-phone');
     const file = {
-      uri: 'content://tree/this-phone/momentum-backup-2026-10-15.json',
+      uri: 'content://tree/this-phone/momentum-tasks-backup-2026-10-15.json',
       day: '2026-10-15',
     };
     useSettings.getState().recordBackup('2026-10-15T10:00:00.000Z', file);
 
-    const parsed = parseBackup(
-      v25({
-        autoBackupEnabled: false,
-        autoBackupFolderUri: 'content://tree/other-phone',
-        autoBackupIntervalDays: 3,
-        autoBackupFile: { uri: 'content://tree/other-phone/x.json', day: '2026-01-01' },
+    restore(
+      JSON.stringify({
+        format: BACKUP_FORMAT,
+        version: 2,
+        settings: {
+          language: 'en',
+          autoBackupEnabled: false,
+          autoBackupFolderUri: 'content://tree/other-phone',
+          autoBackupIntervalDays: 3,
+          autoBackupFile: { uri: 'content://tree/other-phone/x.json', day: '2026-01-01' },
+        },
+        tasks: { tasks: [READ] },
       }),
     );
-    if (!parsed.ok) throw new Error(parsed.error);
-    applyBackup(parsed.envelope);
 
     expect(useSettings.getState().autoBackupFolderUri).toBe('content://tree/this-phone');
     expect(useSettings.getState().autoBackupFile).toEqual(file);
     expect(useSettings.getState().autoBackupEnabled).toBe(DEFAULT_SETTINGS.autoBackupEnabled);
+    expect(
+      (useSettings.getState() as unknown as Record<string, unknown>).autoBackupIntervalDays,
+    ).toBeUndefined();
   });
 
   it('writes no retired key into a new backup', () => {

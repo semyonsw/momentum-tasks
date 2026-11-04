@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Momentum",
+    "name": "Tasks",
     "slug": "momentum-app",
-    "version": "3.0.0",
+    "version": "3.0.1",
     "orientation": "portrait",
-    "scheme": "workouttracker",
+    "scheme": "momentumtasks",
     "platforms": [
       "android"
     ],
@@ -21,8 +21,8 @@
       "**/*"
     ],
     "android": {
-      "package": "com.semyonsw.workouttracker",
-      "versionCode": 77,
+      "package": "com.semyonsw.momentum.tasks",
+      "versionCode": 78,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#060807"
@@ -31,40 +31,24 @@
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "VIBRATE",
-        "WAKE_LOCK",
         "POST_NOTIFICATIONS",
         "SCHEDULE_EXACT_ALARM",
-        "USE_EXACT_ALARM",
-        "android.permission.health.WRITE_EXERCISE"
+        "USE_EXACT_ALARM"
       ]
     },
     "plugins": [
       [
         "expo-notifications",
         {
-          "color": "#3DDC84",
-          "sounds": [
-            "./assets/beep_tick.wav",
-            "./assets/beep_final.wav"
-          ]
+          "color": "#3DDC84"
         }
       ],
       "./plugins/withReleaseSigning",
-      [
-        "expo-audio",
-        {
-          "recordAudioAndroid": false
-        }
-      ],
-      "./plugins/withoutMicrophone",
-      "expo-sqlite",
       "expo-secure-store",
-      "react-native-health-connect",
       [
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26,
             "useLegacyPackaging": true
           }
         }

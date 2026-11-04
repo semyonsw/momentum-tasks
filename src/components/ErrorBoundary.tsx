@@ -1,47 +1,36 @@
 /**
- * ErrorBoundary — the difference between a bug and "Workout Tracker keeps
- * stopping".
+ * ErrorBoundary — the difference between a bug and "Tasks keeps stopping".
  *
  *   ┌──────────────────────────────────────────────┐
  *   │ SOMETHING BROKE                              │
- *   │ The screen below this one crashed. Your       │
- *   │ logged sets are saved.                        │
+ *   │ The screen below this one crashed.           │
+ *   │ Everything you have ticked is saved.         │
  *   │ ╭──────────────────────────────────────────╮ │
  *   │ │ TypeError: Cannot read property 'x' of…  │ │
- *   │ │   at ExerciseCard (ExerciseCard.tsx:74)  │ │
+ *   │ │   at TaskRow (TasksScreen.tsx:74)        │ │
  *   │ ╰──────────────────────────────────────────╯ │
  *   │ ╭─────────────── Try again ───────────────╮  │
- *   │ ╰──── Discard the workout and restart ────╯  │
  *   └──────────────────────────────────────────────┘
  *
- * Why this exists, and why it shows a stack trace to a lifter:
+ * Why this exists, and why it shows a stack trace:
  *
  * In a release build there is no red box. An uncaught render error takes the
  * whole process down, and Android offers "App info / Close app" — which tells
- * nobody anything. Worse, the live session is PERSISTED: if the crash is in the
- * logging screen, the next launch rehydrates that session, navigates straight
- * back to it, and dies again. That is a crash LOOP, and it is unrecoverable
- * without clearing app data.
- *
- * So this component does three things a bare boundary wouldn't:
+ * nobody anything. So this component does two things a bare boundary wouldn't:
  *
  *  1. It shows the actual message and the top of the stack. Ugly on purpose:
  *     "something went wrong" is unactionable, whereas a file and a line is a bug
  *     report the user can screenshot.
  *  2. `Try again` remounts the tree. Enough for a transient failure — a race on a
- *     timer, a half-written store — without losing the session.
- *  3. `Discard the workout` clears the persisted session before remounting. This
- *     is the escape hatch from the loop above, and it is the SECOND button rather
- *     than the first because it throws a workout away.
+ *     timer, a half-written store — and every tick is already on disk, so a
+ *     remount loses nothing.
  */
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
-import { releaseBeeper } from '../lib/beeper';
 import { t as translate } from '../lib/i18n';
 import { useSettings } from '../state/settingsStore';
-import { useActiveWorkout } from '../state/activeWorkoutStore';
 import { Kicker, PrimaryButton } from './primitives';
 
 interface ErrorBoundaryProps {
@@ -75,25 +64,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   private retry = () => {
     this.setState((s) => ({ error: null, componentStack: null, generation: s.generation + 1 }));
-  };
-
-  private discardAndRetry = () => {
-    /*
-     * Order matters: clear the in-memory session first so the remount can't read
-     * it back, then wipe the persisted copy so the NEXT cold launch is clean too.
-     * Both are best-effort — if the store itself is the broken thing, remounting
-     * without a session is still an improvement on a crash loop.
-     */
-    try {
-      useActiveWorkout.getState().discardSession();
-    } catch {
-      // Nothing more to try; the clear below is the real fix.
-    }
-    void Promise.resolve(useActiveWorkout.persist?.clearStorage?.()).catch(() => {});
-    // Native audio players are the one thing here that survives a remount, and a
-    // crash is decent evidence that native state is suspect.
-    releaseBeeper();
-    this.retry();
   };
 
   render() {
@@ -135,7 +105,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         </Text>
         <Text className="mt-sm text-body text-ink-muted">
           {t(
-            'Sets you already logged are saved. Try again first — discard the workout only if it crashes straight back to here.',
+            'Everything you have ticked is saved. Try again — and if it crashes straight back to here, closing and reopening the app is safe too.',
           )}
         </Text>
 
@@ -151,12 +121,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
         <View className="mt-xl">
           <PrimaryButton label={t('Try again')} onPress={this.retry} />
-          <View className="h-sm" />
-          <PrimaryButton
-            label={t('Discard the workout and restart')}
-            variant="ghost"
-            onPress={this.discardAndRetry}
-          />
         </View>
       </View>
     );

@@ -48,7 +48,7 @@ import Svg, {
 } from 'react-native-svg';
 
 import { useLanguage } from '../hooks/useT';
-import { formatChartDate } from '../lib/units';
+import { formatChartDate } from '../lib/days';
 import type { TrendPoint } from '../lib/trends';
 import { palette } from '../theme/tokens';
 

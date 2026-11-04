@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { columnMove, columnOffset, digitCells } from './rollingDigits';
-import { workNumeralSize } from './focusType';
 
 /**
  * The columns, not the animation. The animation is only right if the columns
@@ -110,10 +109,12 @@ class Column {
   }
 }
 
-/** Focus mode's numeral and line height for one weight string — `FocusMode`'s arithmetic. */
-function focusLineHeight(value: string): number {
-  const numeral = Math.max(40, Math.min(120, workNumeralSize([{ value, unit: 'KG' }], 250, 120)));
-  return Math.round(numeral * 1.1);
+/**
+ * A numeral that shrinks as it grows, as the rings' centre figures do: three
+ * digits or more is a smaller cell than two — which is why a size change snaps.
+ */
+function lineHeight(value: string): number {
+  return value.replace(/\D/g, '').length >= 3 ? 110 : 132;
 }
 
 describe('columns always come to rest on a cell', () => {
@@ -149,17 +150,13 @@ describe('columns always come to rest on a cell', () => {
     expect(col.offset).toBe(columnOffset(5, 92));
   });
 
-  it('the focus-mode numeral really does change size with the digits (why the snap exists)', () => {
-    expect(focusLineHeight('100')).not.toBe(focusLineHeight('97.5'));
-  });
-
-  it('400 presses of the weight chips, cut short at random, every column ends on its digit', () => {
+  it('400 presses of a stepper, cut short at random, every column ends on its digit', () => {
     const steps = [2, 0.5, -0.5, -2, 2, 2, -0.5, 2];
     const progress = [0.1, 0.5, 1, 0.33, 0.9];
     let kg = 0;
     const cols = new Map<string, Column>();
     const render = (value: string, fraction: number) => {
-      const lh = focusLineHeight(value);
+      const lh = lineHeight(value);
       for (const cell of digitCells(value)) {
         if (cell.kind !== 'digit') continue;
         const col = cols.get(cell.key);
@@ -176,7 +173,7 @@ describe('columns always come to rest on a cell', () => {
       render(String(kg), 0.2); // and an unrelated re-render while it rolls
     }
     const final = String(kg);
-    const lh = focusLineHeight(final);
+    const lh = lineHeight(final);
     for (const col of cols.values()) col.settle();
     for (const cell of digitCells(final)) {
       if (cell.kind !== 'digit') continue;
