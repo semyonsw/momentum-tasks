@@ -154,9 +154,11 @@ applies them:
 
 - **`react-native-health-connect`** writes a finished workout to Health Connect
   (`src/lib/healthConnect.ts`). Workout only: `app.config.js` drops its plugin
-  and permission from Tasks and Expenses, and `react-native.config.js` turns off
-  its Android linking there (unset variant = linked, so a missed variable can only
-  cost Tasks an unused library, never cost Workout the one it uses). It is `require`d lazily inside a `try`, so the app
+  and permission from Tasks and Expenses, and the shell only writes from Workout.
+  The library itself is still LINKED into all three: unlinking it with a
+  `react-native.config.js` was tried and breaks the build, because the package
+  also ships an Expo module (`react-native-health-connect-expo`) that Expo
+  autolinks anyway and that cannot configure without the RN project. It is `require`d lazily inside a `try`, so the app
   runs identically in a build that does not contain it — which is what makes it
   removable by deleting the dependency and the plugin entry. It needs
   `android.permission.health.WRITE_EXERCISE` in `app.json`'s `permissions` (the
