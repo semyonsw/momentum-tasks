@@ -111,22 +111,6 @@ export async function ensureChannels(lang?: Language): Promise<void> {
   if (!(await ready) && channels?.ready === ready) channels = null; // let a later call try again
 }
 
-/**
- * Has the user actually granted notifications?
- *
- * Asked by the settings screens so a switch that is on can say when nothing will
- * come of it — an armed reminder behind a denied permission is the single most
- * confusing state this feature has, because everything in the app looks right.
- */
-export async function notificationsGranted(): Promise<boolean> {
-  try {
-    const current = await Notifications.getPermissionsAsync();
-    return current.granted === true;
-  } catch {
-    return false;
-  }
-}
-
 /** Ask for permission. Silent on refusal — the app works fine without it. */
 export async function requestNotificationPermission(): Promise<void> {
   await ensureNotificationPermission();

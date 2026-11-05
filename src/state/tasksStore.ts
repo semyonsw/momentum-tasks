@@ -32,7 +32,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { persistedStorage } from './persistStorage';
 
-import { clampHour, clampMinute, dayKey } from '../lib/days';
+import { clampHour, clampMinute, dayKey, parseDay } from '../lib/days';
 import { t } from '../lib/i18n';
 import { toggledMark } from '../lib/taskTap';
 import { useSettings } from './settingsStore';
@@ -174,14 +174,31 @@ function sanitizeTarget(raw: unknown): TaskTarget | undefined {
   return { count: Math.min(TARGET_MAX, count), unit };
 }
 
+/**
+ * The first day, as a `YYYY-MM-DD` key — the only form every reader compares.
+ *
+ * Kept as it is when it already is one. A full instant (`2026-09-01T10:30:00Z`,
+ * what a hand-edited file or another tool writes) is read as the LOCAL day it
+ * names: kept verbatim it sorted AFTER its own day's key, so the first day never
+ * asked, and `ageInDays` could not parse it, so a streak's walk stopped after
+ * one day. Anything that is no date at all starts today, as a missing one does,
+ * rather than as a string every day compares below — a task that never asks.
+ */
+function usableStart(value: unknown, today: string): string {
+  if (typeof value !== 'string' || value === '') return today;
+  // A key-shaped impossible date (`2026-02-31`) is junk, not an instant in UTC.
+  if (DAY_KEY.test(value)) return parseDay(value) ? value : today;
+  const day = dayKey(value);
+  return day !== '' ? day : today;
+}
+
 function sanitizeTask(raw: unknown, index: number, today: string): Task | null {
   const value = raw as Partial<Task> | undefined;
   if (!value || typeof value.id !== 'string' || value.id === '') return null;
   const name = typeof value.name === 'string' ? value.name.trim() : '';
   if (name === '') return null;
   const auto = value.auto === 'workout' || value.auto === 'money' ? value.auto : null;
-  const startedOn =
-    typeof value.startedOn === 'string' && value.startedOn !== '' ? value.startedOn : today;
+  const startedOn = usableStart(value.startedOn, today);
   const target = sanitizeTarget(value.target);
   // A habit to avoid (T7): only a literal `true`, and never beside a target —
   // the target is the one carrying data, so it is the one kept.

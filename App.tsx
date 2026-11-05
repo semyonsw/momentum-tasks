@@ -41,7 +41,7 @@
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AppState, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { vars } from 'nativewind';

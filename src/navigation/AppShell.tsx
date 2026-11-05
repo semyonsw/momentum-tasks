@@ -57,7 +57,6 @@ import type { WrappedPeriod } from '../lib/wrapped';
 import { Hold } from './Hold';
 import { ShellStage, TRANSITION_MS, type ShellTransition } from './ShellStage';
 import { PushHost } from './PushHost';
-import { mayLeave } from './leaveGuard';
 import { TaskSettingsScreen } from '../screens/TaskSettingsScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TasksScreen } from '../screens/TasksScreen';
@@ -233,8 +232,6 @@ export function AppShell() {
    */
   const leaveTop = useRef<() => void>(pop);
   leaveTop.current = () => {
-    // A screen with unsaved edits asks first — see `navigation/leaveGuard.ts`.
-    if (!mayLeave()) return;
     pop();
   };
 

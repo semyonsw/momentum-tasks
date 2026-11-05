@@ -7,5 +7,6 @@
  */
 export function formatWhole(value: number): string {
   const rounded = Math.round(Math.abs(value));
-  return (value < 0 ? '-' : '') + rounded.toLocaleString('en-US');
+  // The sign only when something survives the rounding: `-0.4` is "0", not "-0".
+  return (value < 0 && rounded > 0 ? '-' : '') + rounded.toLocaleString('en-US');
 }

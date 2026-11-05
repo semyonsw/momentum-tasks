@@ -107,14 +107,8 @@ import {
 } from '../lib/habitStrength';
 import { DangerZone, FieldWell, Kicker } from '../components/primitives';
 import { useLanguage, useT } from '../hooks/useT';
-import {
-  dayKey,
-  formatLongDay,
-  formatMonth,
-  formatShortDay,
-  parseDay,
-  weekdayInitials,
-} from '../lib/days';
+import { useToday } from '../hooks/useToday';
+import { formatLongDay, formatMonth, formatShortDay, parseDay, weekdayInitials } from '../lib/days';
 import { taskDetailActions, type TaskRowAction } from '../lib/taskTap';
 import {
   type Task,
@@ -162,7 +156,8 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
   const restoreEntry = useTasks((s) => s.restoreEntry);
   const requestMove = useTaskMove((s) => s.requestMove);
 
-  const today = dayKey(new Date());
+  /* State, so a screen left open over midnight moves its today ring with the clock. */
+  const today = useToday();
   const start = parseDay(today) ?? new Date();
   const [cursor, setCursor] = useState({ year: start.getFullYear(), month: start.getMonth() });
   const [noteDay, setNoteDay] = useState(today);
@@ -341,7 +336,9 @@ export function TaskDetailScreen({ task, onBack, onToast }: TaskDetailScreenProp
               >
                 {month.weekTally ? month.weekTally.met : month.done}
               </Text>
-              <Text className="ml-xs text-label text-ink-muted">
+              {/* Shrinks and wraps: `из 12 недель` at a large font would run out of
+                  a half-width card. */}
+              <Text className="ml-xs shrink text-label text-ink-muted">
                 {month.weekTally
                   ? t('of {asked} weeks met', { asked: month.weekTally.of })
                   : t('of {asked}', { asked: month.asked })}

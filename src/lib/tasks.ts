@@ -926,7 +926,8 @@ function rangeStart(tasks: readonly Task[], range: TrendRange, today: string): s
   if (length != null) return shiftDay(today, -(length - 1));
   let earliest = today;
   for (const task of tasks) {
-    if (task.startedOn !== '' && task.startedOn < earliest) earliest = task.startedOn;
+    // An unparseable start is no start: the walk could never step off it.
+    if (task.startedOn < earliest && parseDay(task.startedOn)) earliest = task.startedOn;
   }
   return earliest;
 }
@@ -967,6 +968,11 @@ export function taskTrendSeries(
   range: TrendRange,
   today: string,
 ): TaskTrendPoint[] {
+  // A malformed `today` once spun the loop below forever: `shiftDay` hands an
+  // unparseable key back unchanged, every pass plotted nothing, and the bound
+  // there counts points. With a real `today`, and a start `rangeStart` only
+  // takes from a real day, every step moves and the walk ends.
+  if (!parseDay(today)) return [];
   const from = rangeStart(tasks, range, today);
   const points: TaskTrendPoint[] = [];
 
@@ -983,7 +989,6 @@ export function taskTrendSeries(
       done,
       asked: total,
     });
-    // A malformed `today` would otherwise make this loop run forever.
     if (points.length > 3660) break;
   }
 

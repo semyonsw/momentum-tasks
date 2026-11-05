@@ -85,7 +85,7 @@ function ActionRow({
       accessibilityRole="button"
       accessibilityLabel={`${label}. ${detail}`}
       style={pressedStyle}
-      className="h-row-lg justify-center px-lg"
+      className="min-h-row-lg justify-center px-lg py-sm"
     >
       <Text maxFontSizeMultiplier={1.3} className="text-body text-ink">
         {label}

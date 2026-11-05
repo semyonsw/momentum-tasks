@@ -351,9 +351,11 @@ function blockList(raw: unknown): unknown[] | null {
   if (Array.isArray(raw.blocks)) return raw.blocks;
   // The list serialised INTO a string: `{"blocks": "[{...}]"}`.
   if (typeof raw.blocks === 'string') {
+    // Anything else that parses — one block, a whole reply, a quoted sentence —
+    // is read through the same shapes; what reads as nothing is the sentence.
     try {
       const inner: unknown = JSON.parse(raw.blocks);
-      if (Array.isArray(inner)) return inner;
+      return Array.isArray(inner) ? inner : (blockList(inner) ?? [raw.blocks]);
     } catch {
       return [raw.blocks];
     }

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Tasks",
     "slug": "momentum-app",
-    "version": "3.0.1",
+    "version": "3.0.2",
     "orientation": "portrait",
     "scheme": "momentumtasks",
     "platforms": [
@@ -22,7 +22,7 @@
     ],
     "android": {
       "package": "com.semyonsw.momentum.tasks",
-      "versionCode": 78,
+      "versionCode": 79,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#060807"

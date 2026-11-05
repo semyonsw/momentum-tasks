@@ -162,15 +162,15 @@ import {
   type ToastAction,
 } from '../components/glass';
 import { pressedStyle, usePressScale } from '../components/motion';
-import { Kicker, MoreButton, TextButton } from '../components/primitives';
+import { Kicker, MoreButton } from '../components/primitives';
 import { NumberSheet } from '../components/NumberSheet';
-import { Sheet } from '../components/Sheet';
+import { Sheet, SheetCancel } from '../components/Sheet';
 import { TaskActionList } from '../components/TaskActionList';
 import { TaskEditorSheet } from '../components/TaskEditorSheet';
 import { useDragReorder, type CardLayout } from '../hooks/useDragReorder';
 import { useLanguage, useT } from '../hooks/useT';
+import { useToday } from '../hooks/useToday';
 import {
-  dayKey,
   formatLongDay,
   formatShortDay,
   monthNames,
@@ -256,7 +256,8 @@ export function TasksScreen({
   const reorderTasks = useTasks((s) => s.reorderTasks);
 
   const bars = useBarInsets();
-  const today = dayKey(new Date());
+  /* State, so a screen left open over midnight moves `Today` with the clock. */
+  const today = useToday();
   const [adding, setAdding] = useState(false);
   /** The row whose hold menu is up. */
   const [menuFor, setMenuFor] = useState<ID | null>(null);
@@ -519,7 +520,7 @@ export function TasksScreen({
 
         {lifted && liftedTask ? (
           <View className="mx-lg mt-lg items-center">
-            <Kicker tone="green">
+            <Kicker tone="green" numberOfLines={1}>
               {t('Moving')} · {liftedTask.name}
             </Kicker>
             <Text className="mt-xs text-label tabular-nums text-ink-muted">
@@ -889,7 +890,7 @@ function FirstTaskCard({ onPress }: { onPress: () => void }) {
  * door learns the other exists. The day is named only when it is not today —
  * on today it is what the skip's own label already says.
  */
-function TaskMenu({
+export function TaskMenu({
   task,
   day,
   isToday,
@@ -913,7 +914,9 @@ function TaskMenu({
       </Text>
       {isToday ? null : <Kicker className="mb-sm">{formatLongDay(day, lang)}</Kicker>}
       <TaskActionList actions={actions} isToday={isToday} onAction={onAction} />
-      <TextButton label={t('Cancel')} onPress={onDismiss} />
+      {/* `SheetCancel`, not a bare `TextButton`: Cancel takes the same animated
+          way out as the scrim and Back, instead of cutting the sheet off. */}
+      <SheetCancel label={t('Cancel')} onDismiss={onDismiss} />
     </Sheet>
   );
 }

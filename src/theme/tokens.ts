@@ -254,30 +254,6 @@ export const heat = {
   quiet: 'rgba(236,241,238,0.02)',
 } as const;
 
-/**
- * The app's ONLY shadow. It belongs to the timer pill and nothing else — the
- * clock has to read as the layer above the list. Spec: `0 14px 36px rgba(0,0,0,0.65)`.
- */
-export const timerShadow = {
-  shadowColor: '#000000',
-  shadowOffset: { width: 0, height: 14 },
-  shadowOpacity: 0.65,
-  shadowRadius: 18,
-  elevation: 16,
-} as const;
-
-/**
- * The halo behind a focus-mode numeral. Empty since 2.1.0 — see `textGlow`.
- *
- * The app's one glow, at a wider radius than `SetRow`'s 16: these numerals are
- * twice the size and more, and a bloom that does not grow with the glyph reads as
- * a sharper edge rather than a lit one. A token rather than a constant in a
- * component because two of them now draw glowing numerals — the clock's get-ready
- * count and the working numbers — and a glow that drifted apart between them
- * would be two different lights on one screen.
- */
-export const focusGlow: TextStyle = {};
-
 /* ══════════════════════════════════════════════════════════════════════════
    LIQUID GLASS — the layer the redesign added on top of everything above.
 
@@ -561,17 +537,6 @@ export const LAMPS: Record<string, readonly LampSpec[]> = {
 export const floatingSlot = { right: 16, bottom: 102, height: 64, paddingH: 24 } as const;
 
 /**
- * The same slot on a PUSHED screen (an editor, a detail): no nav pill under it,
- * so 28 off the bottom (the design's worded pill sits at 24 + the pill's edge).
- * `clearance` is what a scroll on such a screen leaves under its last row so the
- * pill never sits on it: 28, the pill, and 24 of air.
- */
-export const pushedSlot = {
-  bottom: 28,
-  clearance: 28 + floatingSlot.height + 24,
-} as const;
-
-/**
  * What a scroll must clear so the two translucent bars never hide a row.
  *
  * Content scrolls visibly UNDER both bars — that is the single clearest read on
@@ -652,19 +617,6 @@ export const danger = '#E0735F';
  * rule's guard (`lib/destructive.ts`) still finds every OTHER use of `danger`.
  */
 export const overBudget = danger;
-
-/**
- * WHICH WAY MONEY WENT, on an amount in the finance history: green in, red out.
- *
- * Fixed rather than themed — the accent can be any three colours, and "income
- * is green" is a convention older than this app that a purple theme should not
- * overrule. NOT `danger`: an expense is not a destructive action, and the
- * destructive rule's guard (`lib/destructive.ts`) keeps that hue on confirms.
- */
-export const moneyTone = {
-  income: '#5FD08C',
-  expense: '#EF6B5E',
-} as const;
 
 /** The danger confirm's washes, from the design: edge .35, outline .40, fill .08. */
 export const dangerTint = {

@@ -34,7 +34,6 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { EDGE_BACK_PX, edgeBackCommits } from '../lib/sectionNav';
-import { mayLeave } from './leaveGuard';
 import { palette } from '../theme/tokens';
 
 const PUSH = Easing.bezier(0.22, 1, 0.36, 1);
@@ -185,7 +184,7 @@ export function PushHost({
         },
         onPanResponderRelease: (_e, g) => {
           // A screen holding unsaved edits springs back and asks instead.
-          if (edgeBackCommits(g.dx, g.vx) && mayLeave()) {
+          if (edgeBackCommits(g.dx, g.vx)) {
             const out = () => {
               alreadyOut.current = true;
               onBackRef.current();
